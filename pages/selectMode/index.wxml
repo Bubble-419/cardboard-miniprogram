@@ -1,0 +1,104 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
+      </view>
+      <view class="navbar-title">选择模式&目标</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 工作坊名称和玩家区域 -->
+  <view class="workshop-section">
+    <view class="workshop-info">
+      <text class="workshop-name">{{workshopName}}</text>
+      <view class="players-group">
+        <view class="player-avatar" wx:for="{{players}}" wx:key="index">
+          <image class="avatar-img" src="/assets/icons/passenger.png" mode="aspectFit"></image>
+        </view>
+      </view>
+    </view>
+    <view class="add-player-btn" bindtap="addPlayer">
+      <view class="add-player-bg"></view>
+      <text class="add-player-icon">+</text>
+    </view>
+  </view>
+
+  <!-- 分类标签 -->
+  <view class="categories-section">
+    <view class="category-item {{item.selected ? 'selected' : ''}}" 
+          wx:for="{{categories}}" 
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="selectCategory">
+      <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
+      <text class="category-name">{{item.name}}</text>
+    </view>
+  </view>
+
+  <!-- 选中的问题显示 -->
+  <view class="selected-problem-section" wx:if="{{selectedProblem}}">
+    <view class="selected-problem-card">
+      <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit"></image>
+      <text class="problem-text">{{selectedProblem.text}}</text>
+    </view>
+  </view>
+
+  <!-- 脑暴模式选择 -->
+  <view class="mode-section">
+    <view class="section-title">脑暴模式</view>
+    <view class="mode-list">
+      <view class="mode-item {{item.selected ? 'selected' : ''}}"
+            wx:for="{{brainstormModes}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="selectMode">
+        <view class="mode-content">
+          <view class="mode-radio">
+            <view class="radio-outer {{item.selected ? 'selected' : ''}}">
+              <view class="radio-inner" wx:if="{{item.selected}}"></view>
+            </view>
+          </view>
+        </view>
+        <view class="mode-info">
+          <text class="mode-title">{{item.title}}</text>
+          <text class="mode-description">{{item.description}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 脑暴目标滑块 -->
+  <view class="goal-section">
+    <view class="section-title">脑暴目标</view>
+    <view class="slider-container">
+      <slider 
+        class="goal-slider"
+        value="{{goalSliderValue}}"
+        min="0"
+        max="100"
+        step="1"
+        activeColor="#5ec159"
+        backgroundColor="#e9f5e9"
+        block-color="#5ec159"
+        block-size="24"
+        bindchange="onSliderChange"
+      />
+      <view class="slider-labels">
+        <text class="slider-label">数量优先</text>
+        <text class="slider-label">质量优先</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部下一步按钮 -->
+  <view class="footer">
+    <button class="next-btn" bindtap="nextStep">下一步</button>
+  </view>
+</view>
+
