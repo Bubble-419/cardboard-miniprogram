@@ -1,0 +1,65 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
+      </view>
+      <view class="navbar-title">抽选首位出牌玩家</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 触摸交互区域 -->
+  <view 
+    class="touch-area"
+    bindtouchstart="onTouchStart"
+    bindtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+    bindtouchcancel="onTouchCancel"
+  >
+    <!-- 提示文字 -->
+    <view class="instruction-text">
+      <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
+      <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
+    </view>
+
+    <!-- 波纹效果 -->
+    <view 
+      class="ripple {{item.visible ? 'visible' : ''}}"
+      wx:for="{{activeTouches}}"
+      wx:key="id"
+      style="left: {{item.x}}px; top: {{item.y}}px;"
+    >
+      <view class="ripple-circle ripple-1"></view>
+      <view class="ripple-circle ripple-2"></view>
+      <view class="ripple-circle ripple-3"></view>
+    </view>
+
+    <!-- 倒计时显示 -->
+    <view class="countdown-display" wx:if="{{countdown > 0 && isSelecting}}">
+      <text class="countdown-text">{{countdown}}s</text>
+    </view>
+  </view>
+
+  <!-- 玩家数量显示 -->
+  <view class="player-count">
+    <text class="count-number">{{playerCount}}</text>
+    <text class="count-divider">/</text>
+    <text class="count-total">{{minPlayers}}</text>
+  </view>
+
+  <!-- 底部跳过按钮 -->
+  <view class="footer">
+    <button class="skip-btn" bindtap="skipSelection">跳过</button>
+  </view>
+
+  <!-- 添加玩家按钮 -->
+  <view class="add-player-btn" bindtap="addPlayer">
+    <image class="add-player-icon" src="/assets/icons/passenger.png" mode="aspectFit"></image>
+  </view>
+</view>
+
