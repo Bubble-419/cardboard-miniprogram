@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/selectProblem/index",
+    "pages/selectMode/index",
+    "pages/selectPlayer/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "选择设计问题",
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
+

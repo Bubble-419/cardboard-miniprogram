@@ -1,0 +1,67 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
+      </view>
+      <view class="navbar-title">选择设计问题</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 工作坊名称和玩家区域 -->
+  <view class="workshop-section">
+    <view class="workshop-info">
+      <text class="workshop-name">{{workshopName}}</text>
+      <view class="players-group">
+        <view class="player-avatar" wx:for="{{players}}" wx:key="index">
+          <image class="avatar-img" src="/assets/icons/passenger.png" mode="aspectFit"></image>
+        </view>
+      </view>
+    </view>
+    <view class="add-player-btn" bindtap="addPlayer">
+      <view class="add-player-bg"></view>
+      <text class="add-player-icon">+</text>
+    </view>
+  </view>
+
+  <!-- 分类标签 -->
+  <view class="categories-section">
+    <view class="category-item {{item.selected ? 'selected' : ''}}" 
+          wx:for="{{categories}}" 
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="selectCategory">
+      <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
+      <text class="category-name">{{item.name}}</text>
+    </view>
+  </view>
+
+  <!-- 问题列表 -->
+  <scroll-view class="problems-container" scroll-y="true">
+    <view class="problem-item {{item.selected ? 'selected' : ''}} {{item.isAISummary ? 'ai-summary' : ''}}"
+          wx:for="{{problems}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="selectProblem">
+      <view class="problem-content">
+        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" wx:if="{{!item.isAISummary}}"></image>
+        <text class="problem-text {{item.isAISummary ? 'ai-text' : ''}}">{{item.text}}</text>
+      </view>
+      <view class="check-icon" wx:if="{{item.selected}}">
+        <image class="check-img" src="/assets/icons/submit-arrow.png" mode="aspectFit"></image>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 底部确认按钮 -->
+  <view class="footer">
+    <view class="countdown" wx:if="{{countdown > 0}}">{{countdown}}s</view>
+    <button class="confirm-btn" bindtap="confirmSelection">确认问题</button>
+  </view>
+</view>
+
