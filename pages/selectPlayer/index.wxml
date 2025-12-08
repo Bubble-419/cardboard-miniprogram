@@ -13,7 +13,13 @@
     </view>
   </view>
 
-  <!-- 触摸交互区域 -->
+  <!-- 提示文字（不可触摸区域） -->
+  <view class="instruction-text">
+    <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
+    <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
+  </view>
+
+  <!-- 触摸交互区域（限制在文字和按钮之间） -->
   <view 
     class="touch-area"
     bindtouchstart="onTouchStart"
@@ -21,12 +27,6 @@
     bindtouchend="onTouchEnd"
     bindtouchcancel="onTouchCancel"
   >
-    <!-- 提示文字 -->
-    <view class="instruction-text">
-      <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
-      <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
-    </view>
-
     <!-- 波纹效果 -->
     <view 
       class="ripple {{item.visible ? 'visible' : ''}}"

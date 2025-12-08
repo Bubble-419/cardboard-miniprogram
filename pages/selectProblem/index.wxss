@@ -134,6 +134,8 @@
   gap: 10rpx;
   padding: 20rpx 41rpx;
   background-color: #ffffff;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .category-item {
@@ -145,8 +147,10 @@
   display: flex;
   align-items: center;
   gap: 10rpx;
-  width: calc(50% - 5rpx);
+  flex: 0 0 calc((100% - 10rpx) / 2);
+  min-width: 0;
   box-sizing: border-box;
+  max-width: calc((100% - 10rpx) / 2);
 }
 
 .category-icon {
@@ -165,6 +169,9 @@
 .problems-container {
   height: calc(100vh - 400rpx);
   padding: 20rpx 41rpx;
+  box-sizing: border-box;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 /* 问题项 */
@@ -180,6 +187,10 @@
   justify-content: space-between;
   position: relative;
   box-shadow: 0 2rpx 12rpx 0 rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .problem-item.selected {
