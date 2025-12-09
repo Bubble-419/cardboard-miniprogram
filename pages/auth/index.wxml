@@ -1,0 +1,27 @@
+<view class="container">
+  <view class="content">
+    <!-- 标题 -->
+    <view class="title-section">
+      <text class="main-title">脑暴工作坊</text>
+      <text class="sub-title">请选择您的身份</text>
+    </view>
+
+    <!-- 身份选择卡片 -->
+    <view class="role-cards">
+      <!-- 上帝用户卡片 -->
+      <view class="role-card" bindtap="selectGod">
+        <view class="card-icon god-icon">👑</view>
+        <text class="role-title">上帝用户</text>
+        <text class="role-description">控制游戏流程，管理主屏页面</text>
+      </view>
+
+      <!-- 玩家用户卡片 -->
+      <view class="role-card" bindtap="selectPlayer">
+        <view class="card-icon player-icon">👤</view>
+        <text class="role-title">玩家用户</text>
+        <text class="role-description">参与游戏，查看副屏页面</text>
+      </view>
+    </view>
+  </view>
+</view>
+

@@ -1,5 +1,6 @@
 {
   "pages": [
+    "pages/auth/index",
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectMode/index",
     "pages/main-pages/selectPlayer/index"
@@ -7,7 +8,7 @@
   "window": {
     "backgroundTextStyle": "light",
     "navigationBarBackgroundColor": "#ffffff",
-    "navigationBarTitleText": "选择设计问题",
+    "navigationBarTitleText": "选择身份",
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
   },

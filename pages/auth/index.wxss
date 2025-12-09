@@ -1,0 +1,95 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fbfa 0%, #e9f5e9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+
+.content {
+  width: 100%;
+  max-width: 600rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 标题区域 */
+.title-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 100rpx;
+}
+
+.main-title {
+  font-size: 56rpx;
+  font-weight: bold;
+  color: #5ec159;
+  margin-bottom: 20rpx;
+  text-align: center;
+}
+
+.sub-title {
+  font-size: 32rpx;
+  color: #666666;
+  text-align: center;
+}
+
+/* 身份选择卡片 */
+.role-cards {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 40rpx;
+}
+
+.role-card {
+  width: 100%;
+  background-color: #ffffff;
+  border-radius: 32rpx;
+  padding: 60rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4rpx 20rpx rgba(94, 193, 89, 0.15);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.role-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 2rpx 10rpx rgba(94, 193, 89, 0.2);
+}
+
+.card-icon {
+  font-size: 120rpx;
+  margin-bottom: 30rpx;
+  line-height: 1;
+}
+
+.god-icon {
+  color: #5ec159;
+}
+
+.player-icon {
+  color: #5ec159;
+}
+
+.role-title {
+  font-size: 44rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 20rpx;
+  text-align: center;
+}
+
+.role-description {
+  font-size: 28rpx;
+  color: #999999;
+  text-align: center;
+  line-height: 1.6;
+}
+

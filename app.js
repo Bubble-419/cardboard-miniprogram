@@ -3,6 +3,7 @@ App({
     // 小程序启动
   },
   globalData: {
+    userRole: null, // 'god' 或 'player'
     selectedProblem: null,
     selectedMode: null,
     selectedPlayer: null,
