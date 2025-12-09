@@ -104,7 +104,7 @@ Page({
     };
     
     wx.navigateTo({
-      url: '/pages/selectPlayer/index'
+      url: '/pages/main-pages/selectPlayer/index'
     });
   },
 

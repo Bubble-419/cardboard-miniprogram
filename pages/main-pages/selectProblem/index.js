@@ -126,7 +126,7 @@ Page({
     getApp().globalData.selectedProblem = problem;
     
     wx.navigateTo({
-      url: '/pages/selectMode/index'
+      url: '/pages/main-pages/selectMode/index'
     });
   },
 

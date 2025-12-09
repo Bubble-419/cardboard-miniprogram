@@ -1,8 +1,8 @@
 {
   "pages": [
-    "pages/selectProblem/index",
-    "pages/selectMode/index",
-    "pages/selectPlayer/index"
+    "pages/main-pages/selectProblem/index",
+    "pages/main-pages/selectMode/index",
+    "pages/main-pages/selectPlayer/index"
   ],
   "window": {
     "backgroundTextStyle": "light",
