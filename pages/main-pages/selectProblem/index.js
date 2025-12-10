@@ -59,14 +59,29 @@ Page({
       });
     }
     
+    // 加载玩家提交的问题
+    this.loadSubmittedProblems();
+    
     // 启动倒计时
     this.startCountdown();
+    
+    // 启动定时器，定期检查新提交的问题
+    this.startProblemCheck();
+  },
+
+  onShow() {
+    // 页面显示时也刷新问题列表
+    this.loadSubmittedProblems();
   },
 
   onUnload() {
     // 清除倒计时
     if (this.countdownTimer) {
       clearInterval(this.countdownTimer);
+    }
+    // 清除问题检查定时器
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
     }
   },
 
@@ -80,6 +95,76 @@ Page({
         clearInterval(this.countdownTimer);
       }
     }, 1000);
+  },
+
+  // 加载玩家提交的问题（从云数据库）
+  loadSubmittedProblems() {
+    const db = wx.cloud.database();
+    
+    // 从云数据库查询所有问题，按提交时间倒序排列
+    // 注意：需要在云开发控制台为 designProblems 集合创建索引，字段：submitTime，排序：desc
+    db.collection('designProblems')
+      .orderBy('submitTime', 'desc')
+      .get({
+        success: (res) => {
+          console.log('从云数据库获取问题:', res.data);
+          
+          // 将云数据库的问题转换为页面需要的格式
+          const newProblems = res.data.map((item, index) => ({
+            id: item._id || `problem_${index}`, // 使用云数据库的 _id 作为唯一标识
+            text: item.text,
+            selected: false,
+            isAISummary: false
+          }));
+          
+          // 如果有提交的问题，使用提交的问题；否则保留默认问题
+          if (newProblems.length > 0) {
+            // 检查是否有新问题（通过比较问题数量或ID）
+            const currentProblemIds = this.data.problems.map(p => p.id);
+            const newProblemIds = newProblems.map(p => p.id);
+            
+            // 检查是否有新问题或问题列表有变化
+            const hasNewProblems = newProblemIds.some(id => !currentProblemIds.includes(id));
+            const hasRemovedProblems = currentProblemIds.some(id => !newProblemIds.includes(id));
+            const lengthChanged = newProblems.length !== this.data.problems.length;
+            
+            // 如果问题列表有变化，更新列表
+            if (hasNewProblems || hasRemovedProblems || lengthChanged) {
+              // 保持当前选中的问题ID（如果新列表中有的话）
+              let newSelectedId = this.data.selectedProblemId;
+              if (!newProblemIds.includes(newSelectedId)) {
+                newSelectedId = newProblems.length > 0 ? newProblems[0].id : null;
+              }
+              
+              this.setData({
+                problems: newProblems,
+                selectedProblemId: newSelectedId
+              });
+            }
+          }
+        },
+        fail: (err) => {
+          console.error('从云数据库获取问题失败:', err);
+          // 如果查询失败，保持当前问题列表不变
+        }
+      });
+  },
+
+  // 启动问题检查定时器
+  startProblemCheck() {
+    // 清除之前的定时器（如果存在）
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
+    }
+    // 每500毫秒检查一次新提交的问题（提高响应速度）
+    this.problemCheckTimer = setInterval(() => {
+      this.loadSubmittedProblems();
+    }, 500);
+  },
+
+  // 刷新问题列表（供外部调用）
+  refreshProblems() {
+    this.loadSubmittedProblems();
   },
 
   selectCategory(e) {

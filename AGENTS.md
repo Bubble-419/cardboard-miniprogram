@@ -33,8 +33,10 @@
 - selectMode：选择模式。
 - selectPlayer：选择出牌玩家。
 ### 副屏三级文件夹（针对玩家用户）：
-- selectProblem：提交设计问题页面。
+- submitProblem：提交设计问题页面。
 - awaitMode：等待上帝用户选择设计问题页面。
 - awaitPlayer：等待上帝用户选择模式页面。
+- selectProblem：选择设计问题页面。
+
 
 

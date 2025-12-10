@@ -33,7 +33,17 @@ Page({
     
     // 跳转到副屏页面（提交问题页面）
     wx.redirectTo({
-      url: '/pages/sub-pages/submitProblem/index'
+      url: '/pages/sub-pages/submitProblem/index',
+      success: () => {
+        // 跳转成功
+      },
+      fail: (err) => {
+        console.error('跳转失败:', err);
+        wx.showToast({
+          title: '跳转失败，请重试',
+          icon: 'none'
+        });
+      }
     });
   }
 })

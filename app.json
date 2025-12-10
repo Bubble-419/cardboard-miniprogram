@@ -3,7 +3,8 @@
     "pages/auth/index",
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectMode/index",
-    "pages/main-pages/selectPlayer/index"
+    "pages/main-pages/selectPlayer/index",
+    "pages/sub-pages/submitProblem/index"
   ],
   "window": {
     "backgroundTextStyle": "light",

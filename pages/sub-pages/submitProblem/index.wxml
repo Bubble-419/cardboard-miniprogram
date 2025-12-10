@@ -1,0 +1,64 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left"></view>
+      <view class="navbar-title">提交设计问题</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分类标签 -->
+  <view class="categories-section">
+    <view class="category-item {{item.selected ? 'selected' : ''}}" 
+          wx:for="{{categories}}" 
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="selectCategory">
+      <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
+      <text class="category-name">{{item.name}}</text>
+    </view>
+  </view>
+
+  <!-- 提交区域 -->
+  <view class="submit-section">
+    <view class="submit-header">
+      <view class="character-icon">
+        <view class="character-face">
+          <view class="eye eye-left"></view>
+          <view class="eye eye-right"></view>
+          <view class="mouth"></view>
+        </view>
+      </view>
+      <text class="header-text">匿名提交您的设计问题</text>
+    </view>
+
+    <view class="example-text">
+      <text class="example-label">设计问题示例：</text>
+      <text class="example-content">如何帮助用户在差旅过程中快速进行剃须</text>
+    </view>
+
+    <!-- 输入框 -->
+    <view class="input-container">
+      <textarea 
+        class="problem-input"
+        placeholder="请输入设计问题..."
+        value="{{problemText}}"
+        maxlength="{{maxLength}}"
+        bindinput="onInput"
+        placeholder-class="input-placeholder"
+        auto-focus="{{false}}"
+      ></textarea>
+      <view class="input-footer">
+        <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
+        <view class="submit-icon" bindtap="submitProblem">
+          <image class="icon-img" src="/assets/icons/submit-arrow.png" mode="aspectFit"></image>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+
