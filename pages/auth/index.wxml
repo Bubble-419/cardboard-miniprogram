@@ -1,4 +1,9 @@
 <view class="container">
+  <!-- 右上角灵感空间入口 -->
+  <view class="inspiration-entry" bindtap="goToInspiration">
+    <text class="inspiration-text">灵感空间</text>
+  </view>
+  
   <view class="content">
     <!-- 标题 -->
     <view class="title-section">

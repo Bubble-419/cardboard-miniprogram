@@ -45,6 +45,13 @@ Page({
         });
       }
     });
+  },
+
+  // 跳转到灵感空间
+  goToInspiration() {
+    wx.navigateTo({
+      url: '/pages/inspiration/index'
+    });
   }
 })
 

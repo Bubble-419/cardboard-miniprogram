@@ -1,0 +1,100 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit" bindtap="goBack"></image>
+      </view>
+      <view class="navbar-center">
+        <!-- 文本/图像切换 -->
+        <view class="tab-switch">
+          <view class="tab-bg"></view>
+          <view class="tab-item {{tabType === 'text' ? 'active' : ''}}" bindtap="switchTab" data-type="text">
+            <image class="tab-icon" src="/assets/icons/text-icon.png" mode="aspectFit"></image>
+            <text class="tab-text">文本</text>
+          </view>
+          <view class="tab-item {{tabType === 'image' ? 'active' : ''}}" bindtap="switchTab" data-type="image">
+            <image class="tab-icon" src="/assets/icons/image-icon.png" mode="aspectFit"></image>
+            <text class="tab-text">图像</text>
+          </view>
+        </view>
+      </view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- AI 灵感区域 -->
+  <view class="ai-section">
+    <view class="ai-input-container">
+      <view class="ai-input-wrapper">
+        <text class="ai-placeholder" wx:if="{{!aiPrompt}}">输入提示词，AI帮你生成灵感</text>
+        <input class="ai-input" type="text" value="{{aiPrompt}}" bindinput="onAIInput" confirm-type="done"></input>
+      </view>
+      <view class="ai-button" bindtap="generateAIInspiration">
+        <text class="ai-button-text">AI灵感</text>
+      </view>
+    </view>
+    <!-- 已引用灵感标签 -->
+    <view class="referenced-tag" wx:if="{{referencedInspirations.length > 0}}">
+      <image class="referenced-icon" src="/assets/icons/link-icon.png" mode="aspectFit"></image>
+      <text class="referenced-text">已引用{{referencedInspirations.length}}个灵感</text>
+    </view>
+  </view>
+
+  <!-- 瀑布流灵感列表 -->
+  <scroll-view class="inspirations-container" scroll-y="true" enable-back-to-top="true">
+    <view class="waterfall-wrapper">
+      <view class="waterfall-column" wx:for="{{waterfallColumns}}" wx:key="index">
+        <view class="inspiration-card {{item.referenced ? 'referenced' : ''}}"
+              wx:for="{{item.items}}"
+              wx:for-item="inspiration"
+              wx:key="id"
+              data-id="{{inspiration.id}}"
+              bindtap="toggleReference">
+          <!-- 引用标记 -->
+          <view class="reference-check" wx:if="{{inspiration.referenced}}">
+            <image class="check-icon" src="/assets/icons/check-icon.png" mode="aspectFit"></image>
+          </view>
+          
+          <!-- 文本类型灵感 -->
+          <view class="card-content" wx:if="{{inspiration.type === 'text'}}">
+            <text class="card-text">{{inspiration.content}}</text>
+          </view>
+          
+          <!-- 图像类型灵感 -->
+          <view class="card-content" wx:if="{{inspiration.type === 'image'}}">
+            <image class="card-image" src="{{inspiration.imageUrl}}" mode="aspectFill"></image>
+            <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
+          </view>
+          
+          <!-- 音频类型灵感 -->
+          <view class="card-content" wx:if="{{inspiration.type === 'audio'}}">
+            <view class="audio-player">
+              <view class="audio-controls">
+                <image class="play-icon" src="/assets/icons/play-icon.png" mode="aspectFit"></image>
+                <text class="audio-time">{{inspiration.duration || '00:00'}}</text>
+              </view>
+              <view class="audio-waveform">
+                <view class="wave-bar" wx:for="{{[1,2,3,4,5,6,7,8]}}" wx:key="*this"></view>
+              </view>
+            </view>
+            <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 底部灵感记录框 -->
+  <view class="bottom-input">
+    <view class="input-container">
+      <image class="add-icon" src="/assets/icons/add-icon.png" mode="aspectFit"></image>
+      <input class="record-input" type="text" placeholder="记录您的灵感..." value="{{recordText}}" bindinput="onRecordInput" confirm-type="done" bindconfirm="saveInspiration"></input>
+      <image class="mic-icon" src="/assets/icons/mic-icon.png" mode="aspectFit" bindtap="startRecord"></image>
+    </view>
+  </view>
+</view>
+

@@ -7,7 +7,8 @@
     "pages/sub-pages/submitProblem/index",
     "pages/sub-pages/selectProblem/index",
     "pages/sub-pages/awaitMode/index",
-    "pages/sub-pages/awaitPlayer/index"
+    "pages/sub-pages/awaitPlayer/index",
+    "pages/inspiration/index"
   ],
   "window": {
     "backgroundTextStyle": "light",
