@@ -90,7 +90,7 @@ Page({
           wx.redirectTo({
             url: '/pages/sub-pages/selectProblem/index'
           });
-        }, 1500);
+        }, 500);
       },
       fail: (err) => {
         console.error('提交问题失败:', err);
