@@ -1,0 +1,43 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit"></image>
+      </view>
+      <view class="navbar-title">选择模式</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 等待内容区域 -->
+  <view class="waiting-content">
+    <!-- 倒计时 -->
+    <view class="countdown" wx:if="{{countdown > 0}}">{{countdown}}s</view>
+
+    <!-- 角色图标区域 -->
+    <view class="character-container">
+      <view class="character-bg">
+        <view class="character-icon">
+          <view class="character-face">
+            <view class="eye eye-left"></view>
+            <view class="eye eye-right"></view>
+            <view class="mouth"></view>
+            <view class="foot foot-left"></view>
+            <view class="foot foot-right"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 主提示文字 -->
+    <view class="main-text">等待主屏幕选择游戏模式和目标</view>
+
+    <!-- 副提示文字 -->
+    <view class="sub-text">等待中...</view>
+  </view>
+</view>
+

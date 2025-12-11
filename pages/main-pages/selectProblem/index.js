@@ -210,8 +210,27 @@ Page({
     const problem = this.data.problems.find(p => p.id === this.data.selectedProblemId);
     getApp().globalData.selectedProblem = problem;
     
-    wx.navigateTo({
-      url: '/pages/main-pages/selectMode/index'
+    // 更新云数据库中的游戏状态，通知所有副屏跳转到 awaitMode
+    const db = wx.cloud.database();
+    db.collection('gameState').add({
+      data: {
+        currentPage: 'selectMode',
+        updateTime: db.serverDate()
+      },
+      success: () => {
+        console.log('游戏状态已更新为 selectMode');
+        // 跳转到 selectMode 页面
+        wx.navigateTo({
+          url: '/pages/main-pages/selectMode/index'
+        });
+      },
+      fail: (err) => {
+        console.error('更新游戏状态失败:', err);
+        // 即使更新失败也跳转
+        wx.navigateTo({
+          url: '/pages/main-pages/selectMode/index'
+        });
+      }
     });
   },
 

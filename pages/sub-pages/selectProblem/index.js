@@ -25,17 +25,27 @@ Page({
     
     // 启动定时器，定期检查新提交的问题
     this.startProblemCheck();
+    
+    // 启动定时器，检查游戏状态变化
+    this.startStateCheck();
   },
 
   onShow() {
     // 页面显示时也刷新问题列表
     this.loadSubmittedProblems();
+    
+    // 检查游戏状态
+    this.checkGameState();
   },
 
   onUnload() {
     // 清除问题检查定时器
     if (this.problemCheckTimer) {
       clearInterval(this.problemCheckTimer);
+    }
+    // 清除状态检查定时器
+    if (this.stateCheckTimer) {
+      clearInterval(this.stateCheckTimer);
     }
   },
 
@@ -100,6 +110,45 @@ Page({
     // 每500毫秒检查一次新提交的问题
     this.problemCheckTimer = setInterval(() => {
       this.loadSubmittedProblems();
+    }, 500);
+  },
+
+  // 检查游戏状态
+  checkGameState() {
+    const db = wx.cloud.database();
+    
+    // 从云数据库查询当前游戏状态
+    db.collection('gameState')
+      .orderBy('updateTime', 'desc')
+      .limit(1)
+      .get({
+        success: (res) => {
+          if (res.data && res.data.length > 0) {
+            const currentState = res.data[0].currentPage;
+            
+            // 如果状态变为 selectMode，跳转到 awaitMode 页面
+            if (currentState === 'selectMode') {
+              wx.redirectTo({
+                url: '/pages/sub-pages/awaitMode/index'
+              });
+            }
+          }
+        },
+        fail: (err) => {
+          console.error('检查游戏状态失败:', err);
+        }
+      });
+  },
+
+  // 启动状态检查定时器
+  startStateCheck() {
+    // 清除之前的定时器（如果存在）
+    if (this.stateCheckTimer) {
+      clearInterval(this.stateCheckTimer);
+    }
+    // 每500毫秒检查一次游戏状态
+    this.stateCheckTimer = setInterval(() => {
+      this.checkGameState();
     }, 500);
   }
 })

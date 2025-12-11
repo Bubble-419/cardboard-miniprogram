@@ -5,7 +5,8 @@
     "pages/main-pages/selectMode/index",
     "pages/main-pages/selectPlayer/index",
     "pages/sub-pages/submitProblem/index",
-    "pages/sub-pages/selectProblem/index"
+    "pages/sub-pages/selectProblem/index",
+    "pages/sub-pages/awaitMode/index"
   ],
   "window": {
     "backgroundTextStyle": "light",
