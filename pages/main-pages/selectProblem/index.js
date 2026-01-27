@@ -2,6 +2,8 @@ Page({
   data: {
     workshopName: "工作坊名称",
     players: [1, 2, 3, 4, 5, 6], // 玩家数量
+    avatarList: [],
+    currentUser: null,
     categories: [
       { id: 1, name: "智能座舱显示屏", icon: "/assets/icons/display.png", selected: false },
       { id: 2, name: "智能穿戴设备", icon: "/assets/icons/wearable.png", selected: false },
@@ -58,6 +60,9 @@ Page({
         workshopName: app.globalData.workshopName
       });
     }
+
+    // 初始化头像列表
+    this.initAvatarList();
     
     // 加载玩家提交的问题
     this.loadSubmittedProblems();
@@ -72,6 +77,17 @@ Page({
   onShow() {
     // 页面显示时也刷新问题列表
     this.loadSubmittedProblems();
+  },
+
+  initAvatarList() {
+    const avatars = (this.data.players || []).map((id) => ({
+      id,
+      avatar: '/assets/avatar.png'
+    }));
+    this.setData({
+      avatarList: avatars,
+      currentUser: avatars.length ? avatars[0].id : null
+    });
   },
 
   onUnload() {

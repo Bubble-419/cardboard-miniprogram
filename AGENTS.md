@@ -40,5 +40,7 @@
 - awaitPlayer：等待上帝用户选择模式页面。
 - selectProblem：选择设计问题页面。
 
-
-
+# Component设计
+## userList：
+- 说明：用于展示用户信息的列表，目前的信息仅包括头像，通常展示在页面的头部。头像具有被选中的效果（比如流程轮到某人发言）。
+- props设计：接收一个存放图片格式文件的列表avatarList，当前被选中的用户currentUser。

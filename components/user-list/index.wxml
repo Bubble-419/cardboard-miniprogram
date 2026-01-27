@@ -1,0 +1,16 @@
+<view class="user-list {{isFold ? 'fold' : ''}}">
+  <scroll-view class="avatar-scroll" scroll-x="true" show-scrollbar="false">
+    <view class="avatar-row">
+      <block wx:for="{{avatarList}}" wx:key="id">
+        <view class="avatar-item {{item.id === currentUser ? 'active' : ''}}">
+          <image class="avatar-img" src="{{item.avatar || item.url || defaultAvatar}}" mode="aspectFill"></image>
+          <view class="active-ring" wx:if="{{item.id === currentUser}}"></view>
+          <view class="active-indicator" wx:if="{{item.id === currentUser}}"></view>
+        </view>
+      </block>
+      <view class="add-btn" wx:if="{{enableAdd}}" bindtap="onAddTap">
+        <image class="add-icon" src="/assets/icons/add-icon.png" mode="aspectFit"></image>
+      </view>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,104 @@
+.user-list {
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 1;
+}
+
+.avatar-scroll {
+  width: 100%;
+  overflow: hidden;
+  padding: 8rpx 0;
+}
+
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 0 12rpx;
+  box-sizing: border-box;
+}
+
+.avatar-item {
+  position: relative;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  padding: 6rpx;
+  box-sizing: border-box;
+  background-color: #f2f2f2;
+  box-shadow: inset 0 0 4rpx rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: #e8e8e8;
+}
+
+.active-ring {
+  position: absolute;
+  inset: 0;
+  border: 3rpx solid #00d468;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.active-indicator {
+  position: absolute;
+  bottom: -8rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 12rpx solid transparent;
+  border-right: 12rpx solid transparent;
+  border-top: 12rpx solid #00d468;
+}
+
+.add-btn {
+  width: 80rpx;
+  height: 80rpx;
+  margin-left: 8rpx;
+  border-radius: 20rpx;
+  background: #e9f5e9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+}
+
+.add-icon {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+/* 折叠态，整体更紧凑以兼容顶部空间不足的区域 */
+.fold .avatar-row {
+  gap: 8rpx;
+  padding: 0 6rpx;
+}
+
+.fold .avatar-item {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 36rpx;
+  padding: 4rpx;
+}
+
+.fold .active-indicator {
+  bottom: -6rpx;
+}
+
+.fold .add-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+}
+
+.fold .add-icon {
+  width: 30rpx;
+  height: 30rpx;
+}
