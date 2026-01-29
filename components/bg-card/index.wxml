@@ -1,0 +1,21 @@
+<view class="bg-card {{active ? 'is-active' : 'is-inactive'}}">
+  <view class="card-top" bindtap="onTapInput">
+    <view class="type-badge">
+      <text class="type-badge-text">{{typeInfo.label}}</text>
+    </view>
+    <view class="top-inner">
+      <text class="placeholder" wx:if="{{!value}}">{{typeInfo.placeholder}}</text>
+      <text class="value-text" wx:else>{{value}}</text>
+    </view>
+  </view>
+
+  <view class="card-bottom">
+    <view class="bottom-header">
+      <text class="bottom-title">{{typeInfo.title}}</text>
+      <view class="next-btn" bindtap="onNext">
+        <text class="next-text">{{typeInfo.nextText}}</text>
+      </view>
+    </view>
+    <text class="desc">{{typeInfo.description}}</text>
+  </view>
+</view>

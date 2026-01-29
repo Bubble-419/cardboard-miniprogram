@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/auth/index",
+    "pages/main-pages/selectBG/index",
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectMode/index",
     "pages/main-pages/selectPlayer/index",

@@ -243,7 +243,7 @@ Page({
       fail: (err) => {
         console.error('更新游戏状态失败:', err);
         // 即使更新失败也跳转
-        wx.navigateTo({
+    wx.navigateTo({
           url: '/pages/main-pages/selectMode/index'
         });
       }

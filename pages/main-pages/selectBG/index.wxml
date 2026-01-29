@@ -1,0 +1,94 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
+      </view>
+      <view class="navbar-title">定义情境</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 步骤条 -->
+  <view class="stepper">
+    <view class="stepper-line"></view>
+    <view class="step-item {{currentStep === 0 ? 'active' : ''}}">
+      <view class="step-circle {{currentStep === 0 ? 'active' : ''}}">1</view>
+      <text class="step-text">场景</text>
+    </view>
+    <view class="step-item {{currentStep === 1 ? 'active' : ''}}">
+      <view class="step-circle {{currentStep === 1 ? 'active' : ''}}">2</view>
+      <text class="step-text">用户</text>
+    </view>
+    <view class="step-item {{currentStep === 2 ? 'active' : ''}}">
+      <view class="step-circle {{currentStep === 2 ? 'active' : ''}}">3</view>
+      <text class="step-text">平台</text>
+    </view>
+    <view class="step-item {{currentStep === 3 ? 'active' : ''}}">
+      <view class="step-circle {{currentStep === 3 ? 'active' : ''}}">4</view>
+      <text class="step-text">功能</text>
+    </view>
+  </view>
+
+  <!-- 卡片 swiper -->
+  <view class="cards-wrap">
+    <swiper
+      class="cards-swiper"
+      current="{{currentStep}}"
+      bindchange="onSwiperChange"
+      previous-margin="54rpx"
+      next-margin="54rpx"
+      easing-function="easeOutCubic"
+    >
+      <swiper-item class="card-item">
+        <view class="card-padding">
+          <bg-card type="scene" value="{{bg.scene}}" active="{{currentStep === 0}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+        </view>
+      </swiper-item>
+      <swiper-item class="card-item">
+        <view class="card-padding">
+          <bg-card type="user" value="{{bg.user}}" active="{{currentStep === 1}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+        </view>
+      </swiper-item>
+      <swiper-item class="card-item">
+        <view class="card-padding">
+          <bg-card type="platform" value="{{bg.platform}}" active="{{currentStep === 2}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+        </view>
+      </swiper-item>
+      <swiper-item class="card-item">
+        <view class="card-padding">
+          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 3}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+        </view>
+      </swiper-item>
+    </swiper>
+  </view>
+
+  <!-- 底部确认按钮 -->
+  <view class="footer">
+    <button class="confirm-btn {{canConfirm ? 'enabled' : ''}}" disabled="{{!canConfirm}}" bindtap="confirmBG">确认情境</button>
+  </view>
+
+  <!-- 输入弹层 -->
+  <view class="mask" wx:if="{{showInput}}" bindtap="closeInput"></view>
+  <view class="input-modal" wx:if="{{showInput}}">
+    <view class="input-header">
+      <text class="input-title">请输入{{inputTitle}}</text>
+      <text class="input-close" bindtap="closeInput">×</text>
+    </view>
+    <textarea
+      class="input-textarea"
+      value="{{inputValue}}"
+      maxlength="60"
+      placeholder="请输入..."
+      bindinput="onInputChange"
+      auto-height="true"
+      focus="{{true}}"
+    />
+    <button class="input-save" bindtap="saveInput">保存</button>
+  </view>
+</view>
+

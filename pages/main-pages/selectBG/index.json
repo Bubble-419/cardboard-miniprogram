@@ -1,0 +1,6 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "bg-card": "/components/bg-card/index"
+  }
+}

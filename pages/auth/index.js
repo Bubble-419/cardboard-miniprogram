@@ -18,7 +18,7 @@ Page({
     
     // 跳转到主屏页面
     wx.redirectTo({
-      url: '/pages/main-pages/selectProblem/index'
+      url: '/pages/main-pages/selectBG/index'
     });
   },
 

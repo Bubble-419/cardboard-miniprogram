@@ -1,4 +1,4 @@
-<view class="user-list {{isFold ? 'fold' : ''}}">
+<view class="user-list">
   <scroll-view class="avatar-scroll" scroll-x="true" show-scrollbar="false">
     <view class="avatar-row">
       <block wx:for="{{avatarList}}" wx:key="id">
