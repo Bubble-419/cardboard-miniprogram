@@ -246,6 +246,27 @@
   height: 24rpx;
 }
 
+.right-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.edit-icon {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-img {
+  width: 28rpx;
+  height: 28rpx;
+}
+
 /* 底部区域 */
 .footer {
   position: fixed;
@@ -292,3 +313,72 @@
   opacity: 0.8;
 }
 
+/* 编辑弹框 */
+.edit-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 99;
+}
+
+.edit-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 640rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  z-index: 100;
+  padding: 24rpx;
+  box-sizing: border-box;
+  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.18);
+}
+
+.edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.edit-title {
+  font-size: 30rpx;
+  color: #111827;
+  font-weight: 600;
+}
+
+.edit-close {
+  font-size: 40rpx;
+  color: #9ca3af;
+  padding: 0 10rpx;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 160rpx;
+  background: #f3f3f3;
+  border-radius: 18rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  font-size: 28rpx;
+  color: #374151;
+}
+
+.edit-save {
+  margin-top: 18rpx;
+  width: 100%;
+  height: 84rpx;
+  background-color: #5ec159;
+  color: #ffffff;
+  border-radius: 18rpx;
+  font-size: 32rpx;
+  border: none;
+}
+
+.edit-save::after {
+  border: none;
+}

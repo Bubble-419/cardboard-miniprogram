@@ -50,7 +50,9 @@ Page({
       }
     ],
     selectedProblemId: 1,
-    countdown: 5
+    countdown: 5,
+    // 当前正在内联编辑的问题 ID
+    editingProblemId: ''
   },
 
   onLoad() {
@@ -227,6 +229,79 @@ Page({
       problems,
       selectedProblemId: problemId
     });
+  },
+
+  // 点击编辑按钮，进入内联编辑状态
+  onEditProblem(e) {
+    const problemId = e.currentTarget.dataset.id;
+    this.setData({
+      editingProblemId: problemId
+    });
+  },
+
+  // 内联编辑输入时更新本地数据
+  onProblemInput(e) {
+    const id = e.currentTarget.dataset.id;
+    const value = e.detail.value;
+    const problems = this.data.problems.map(item => {
+      if (item.id === id) {
+        return { ...item, text: value };
+      }
+      return item;
+    });
+    this.setData({ problems });
+  },
+
+  // 失焦时同步到云数据库
+  onProblemBlur(e) {
+    const id = e.currentTarget.dataset.id;
+    const text = (e.detail.value || '').trim();
+    if (!id) return;
+
+    const problems = this.data.problems.map(item => {
+      if (item.id === id) {
+        return { ...item, text };
+      }
+      return item;
+    });
+    this.setData({
+      problems,
+      editingProblemId: ''
+    });
+
+    // 本地示例数据（非云文档）不做云端更新
+    if (typeof id === 'string' && id.indexOf('problem_') === 0) {
+      return;
+    }
+
+    if (!text) {
+      wx.showToast({
+        title: '问题内容不能为空',
+        icon: 'none'
+      });
+      return;
+    }
+
+    const db = wx.cloud.database();
+    db.collection('designProblems')
+      .doc(id)
+      .update({
+        data: { text }
+      })
+      .then(() => {
+        wx.showToast({
+          title: '已更新',
+          icon: 'success',
+          duration: 800
+        });
+      })
+      .catch(err => {
+        console.error('更新设计问题失败:', err);
+        wx.showToast({
+          title: '更新失败，请稍后重试',
+          icon: 'none'
+        });
+      });
   },
 
   confirmSelection() {

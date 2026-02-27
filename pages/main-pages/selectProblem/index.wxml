@@ -42,10 +42,26 @@
           bindtap="selectProblem">
       <view class="problem-content">
         <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" wx:if="{{!item.isAISummary}}"></image>
-        <text class="problem-text {{item.isAISummary ? 'ai-text' : ''}}">{{item.text}}</text>
+        <block wx:if="{{editingProblemId === item.id}}">
+          <textarea
+            class="problem-textarea"
+            value="{{item.text}}"
+            maxlength="120"
+            auto-height="true"
+            data-id="{{item.id}}"
+            bindinput="onProblemInput"
+            bindblur="onProblemBlur"
+          />
+        </block>
+        <text wx:else class="problem-text {{item.isAISummary ? 'ai-text' : ''}}">{{item.text}}</text>
       </view>
-      <view class="check-icon" wx:if="{{item.selected}}">
-        <image class="check-img" src="/assets/icons/submit-arrow.png" mode="aspectFit"></image>
+      <view class="right-actions" wx:if="{{item.selected}}">
+        <view class="edit-icon" data-id="{{item.id}}" catchtap="onEditProblem">
+          <image class="edit-img" src="/assets/icons/edit.svg" mode="aspectFit"></image>
+        </view>
+        <view class="check-icon">
+          <image class="check-img" src="/assets/icons/submit-arrow.svg" mode="aspectFit"></image>
+        </view>
       </view>
     </view>
   </scroll-view>
