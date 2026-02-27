@@ -230,6 +230,10 @@
   flex-direction: column;
 }
 
+.mode-item.disabled {
+  opacity: 0.4;
+}
+
 .mode-item.selected {
   border-color: #5ec159;
 }

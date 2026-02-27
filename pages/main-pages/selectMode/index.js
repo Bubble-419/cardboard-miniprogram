@@ -17,19 +17,22 @@ Page({
         id: 1,
         title: "全新创意",
         description: "所有玩家从0开始，共同进行脑暴",
-        selected: true
+        selected: true,
+        disabled: false
       },
       {
         id: 2,
         title: "残局模式",
         description: "在现有方案基础上，共同进行脑暴",
-        selected: false
+        selected: false,
+        disabled: true
       },
       {
         id: 3,
         title: "各自为战",
         description: "每个人先拼出一组表达式（5张牌）",
-        selected: false
+        selected: false,
+        disabled: true
       }
     ],
     selectedModeId: 1,
@@ -99,6 +102,10 @@ Page({
 
   selectMode(e) {
     const modeId = e.currentTarget.dataset.id;
+    const target = this.data.brainstormModes.find(item => item.id === modeId);
+    if (target && target.disabled) {
+      return;
+    }
     const brainstormModes = this.data.brainstormModes.map(item => {
       return {
         ...item,

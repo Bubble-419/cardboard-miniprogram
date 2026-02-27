@@ -45,7 +45,7 @@
   <view class="mode-section">
     <view class="section-title">脑暴模式</view>
     <view class="mode-list">
-      <view class="mode-item {{item.selected ? 'selected' : ''}}"
+      <view class="mode-item {{item.selected ? 'selected' : ''}} {{item.disabled ? 'disabled' : ''}}"
             wx:for="{{brainstormModes}}"
             wx:key="id"
             data-id="{{item.id}}"
