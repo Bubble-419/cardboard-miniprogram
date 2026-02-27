@@ -4,11 +4,12 @@ Page({
     players: [1, 2, 3, 4, 5, 6], // 玩家数量
     avatarList: [],
     currentUser: null,
+    // 分类标签区域，后续会根据 selectBG 页面选择的情境进行覆盖
     categories: [
-      { id: 1, name: "智能座舱显示屏", icon: "/assets/icons/display.png", selected: false },
-      { id: 2, name: "智能穿戴设备", icon: "/assets/icons/wearable.png", selected: false },
-      { id: 3, name: "网约车乘客", icon: "/assets/icons/passenger.png", selected: false },
-      { id: 4, name: "点赞分享", icon: "/assets/icons/share.png", selected: false }
+      { id: 1, key: 'scene', name: "场景", icon: "/assets/icons/display.png", selected: false },
+      { id: 2, key: 'user', name: "用户", icon: "/assets/icons/wearable.png", selected: false },
+      { id: 3, key: 'platform', name: "平台", icon: "/assets/icons/passenger.png", selected: false },
+      { id: 4, key: 'function', name: "功能", icon: "/assets/icons/share.png", selected: false }
     ],
     selectedProblem: null, // 从上一页传入的问题
     brainstormModes: [
@@ -51,6 +52,20 @@ Page({
       this.setData({
         workshopName: app.globalData.workshopName
       });
+    }
+
+    // 使用 selectBG 页面选择的情境信息覆盖分类标签文案
+    if (app.globalData.selectedBG) {
+      const bg = app.globalData.selectedBG || {};
+      const categories = this.data.categories.map(item => {
+        let name = item.name;
+        if (item.key === 'scene' && bg.scene) name = bg.scene;
+        if (item.key === 'user' && bg.user) name = bg.user;
+        if (item.key === 'platform' && bg.platform) name = bg.platform;
+        if (item.key === 'function' && bg.function) name = bg.function;
+        return { ...item, name };
+      });
+      this.setData({ categories });
     }
 
     // 初始化头像列表

@@ -74,8 +74,8 @@ Component({
       this.setData({ typeInfo: info });
     },
 
-    onTapInput() {
-      this.triggerEvent('tapinput', { type: this.data.type });
+    onInput(e) {
+      this.triggerEvent('input', { type: this.data.type, value: e.detail.value });
     },
 
     onNext() {

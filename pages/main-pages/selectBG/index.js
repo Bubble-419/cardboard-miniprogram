@@ -7,12 +7,7 @@ Page({
       platform: '',
       function: ''
     },
-    canConfirm: false,
-
-    showInput: false,
-    editingType: 'scene',
-    inputTitle: '场景',
-    inputValue: ''
+    canConfirm: false
   },
 
   onLoad() {
@@ -27,42 +22,22 @@ Page({
     this.setData({ currentStep: e.detail.current });
   },
 
+  onTapStep(e) {
+    const step = Number(e.currentTarget.dataset.step || 0);
+    this.setData({ currentStep: step });
+  },
+
   onNextCard() {
     const next = Math.min(3, this.data.currentStep + 1);
     this.setData({ currentStep: next });
   },
 
-  onTapInput(e) {
-    const { type } = e.detail || {};
-    const map = {
-      scene: '场景',
-      user: '用户',
-      platform: '平台',
-      function: '功能'
-    };
-    const title = map[type] || '情境';
-    this.setData({
-      showInput: true,
-      editingType: type,
-      inputTitle: title,
-      inputValue: this.data.bg[type] || ''
-    });
-  },
-
-  closeInput() {
-    this.setData({ showInput: false });
-  },
-
-  onInputChange(e) {
-    this.setData({ inputValue: e.detail.value });
-  },
-
-  saveInput() {
-    const type = this.data.editingType;
-    const val = (this.data.inputValue || '').trim();
+  onCardInput(e) {
+    const { type, value } = e.detail || {};
+    if (!type) return;
+    const val = (value || '').trim();
     this.setData({
       bg: { ...this.data.bg, [type]: val },
-      showInput: false
     });
     this.updateCanConfirm();
   },

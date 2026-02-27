@@ -1,11 +1,17 @@
 <view class="bg-card {{active ? 'is-active' : 'is-inactive'}}">
-  <view class="card-top" bindtap="onTapInput">
+  <view class="card-top">
     <view class="type-badge">
       <text class="type-badge-text">{{typeInfo.label}}</text>
     </view>
     <view class="top-inner">
-      <text class="placeholder" wx:if="{{!value}}">{{typeInfo.placeholder}}</text>
-      <text class="value-text" wx:else>{{value}}</text>
+      <textarea
+        class="card-textarea"
+        placeholder="{{typeInfo.placeholder}}"
+        value="{{value}}"
+        maxlength="60"
+        auto-height="true"
+        bindinput="onInput"
+      />
     </view>
   </view>
 

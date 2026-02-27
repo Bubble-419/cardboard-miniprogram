@@ -16,19 +16,19 @@
   <!-- 步骤条 -->
   <view class="stepper">
     <view class="stepper-line"></view>
-    <view class="step-item {{currentStep === 0 ? 'active' : ''}}">
+    <view class="step-item {{currentStep === 0 ? 'active' : ''}}" data-step="0" bindtap="onTapStep">
       <view class="step-circle {{currentStep === 0 ? 'active' : ''}}">1</view>
       <text class="step-text">场景</text>
     </view>
-    <view class="step-item {{currentStep === 1 ? 'active' : ''}}">
+    <view class="step-item {{currentStep === 1 ? 'active' : ''}}" data-step="1" bindtap="onTapStep">
       <view class="step-circle {{currentStep === 1 ? 'active' : ''}}">2</view>
       <text class="step-text">用户</text>
     </view>
-    <view class="step-item {{currentStep === 2 ? 'active' : ''}}">
+    <view class="step-item {{currentStep === 2 ? 'active' : ''}}" data-step="2" bindtap="onTapStep">
       <view class="step-circle {{currentStep === 2 ? 'active' : ''}}">3</view>
       <text class="step-text">平台</text>
     </view>
-    <view class="step-item {{currentStep === 3 ? 'active' : ''}}">
+    <view class="step-item {{currentStep === 3 ? 'active' : ''}}" data-step="3" bindtap="onTapStep">
       <view class="step-circle {{currentStep === 3 ? 'active' : ''}}">4</view>
       <text class="step-text">功能</text>
     </view>
@@ -46,22 +46,22 @@
     >
       <swiper-item class="card-item">
         <view class="card-padding">
-          <bg-card type="scene" value="{{bg.scene}}" active="{{currentStep === 0}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+          <bg-card type="scene" value="{{bg.scene}}" active="{{currentStep === 0}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
         </view>
       </swiper-item>
       <swiper-item class="card-item">
         <view class="card-padding">
-          <bg-card type="user" value="{{bg.user}}" active="{{currentStep === 1}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+          <bg-card type="user" value="{{bg.user}}" active="{{currentStep === 1}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
         </view>
       </swiper-item>
       <swiper-item class="card-item">
         <view class="card-padding">
-          <bg-card type="platform" value="{{bg.platform}}" active="{{currentStep === 2}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+          <bg-card type="platform" value="{{bg.platform}}" active="{{currentStep === 2}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
         </view>
       </swiper-item>
       <swiper-item class="card-item">
         <view class="card-padding">
-          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 3}}" bind:tapinput="onTapInput" bind:next="onNextCard"></bg-card>
+          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 3}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
         </view>
       </swiper-item>
     </swiper>
@@ -71,24 +71,4 @@
   <view class="footer">
     <button class="confirm-btn {{canConfirm ? 'enabled' : ''}}" disabled="{{!canConfirm}}" bindtap="confirmBG">确认情境</button>
   </view>
-
-  <!-- 输入弹层 -->
-  <view class="mask" wx:if="{{showInput}}" bindtap="closeInput"></view>
-  <view class="input-modal" wx:if="{{showInput}}">
-    <view class="input-header">
-      <text class="input-title">请输入{{inputTitle}}</text>
-      <text class="input-close" bindtap="closeInput">×</text>
-    </view>
-    <textarea
-      class="input-textarea"
-      value="{{inputValue}}"
-      maxlength="60"
-      placeholder="请输入..."
-      bindinput="onInputChange"
-      auto-height="true"
-      focus="{{true}}"
-    />
-    <button class="input-save" bindtap="saveInput">保存</button>
-  </view>
 </view>
-
