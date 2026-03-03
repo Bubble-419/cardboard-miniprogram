@@ -1,0 +1,46 @@
+.invite-entry {
+  width: 100%;
+  height: 56rpx; /* 矮一点的按钮 */
+  border-radius: 999rpx;
+  background-color: #e9f5e9;
+  border: 2rpx solid #5ec159;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invite-entry.primary {
+  background-color: #e9f5e9;
+}
+
+.invite-entry.ghost {
+  background-color: transparent;
+}
+
+.invite-entry.icon {
+  width: auto;
+  padding: 0 16rpx;
+}
+
+.invite-entry.disabled {
+  opacity: 0.4;
+}
+
+.invite-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+}
+
+.invite-icon {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.invite-label {
+  font-size: 26rpx;
+  color: #5ec159;
+}
+

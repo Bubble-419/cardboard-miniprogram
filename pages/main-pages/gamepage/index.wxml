@@ -1,0 +1,80 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title">出牌</view>
+      <view class="navbar-right" />
+    </view>
+  </view>
+
+  <!-- 2.1 顶部玩家列表 -->
+  <view class="section top-section">
+    <user-list
+      avatarList="{{avatarList}}"
+      currentUser="{{currentPlayerIndex}}"
+      enableAdd="{{false}}"
+    />
+  </view>
+
+  <!-- 2.2 中部出牌展示区：灰底 + 图片 -->
+  <view class="section card-section">
+    <view class="card-container">
+      <image
+        wx:if="{{!imageError}}"
+        class="card-img"
+        src="/assets/icons/aaatest.png"
+        mode="aspectFit"
+        binderror="onImageError"
+      />
+      <view wx:else class="card-placeholder">
+        <text class="card-placeholder-text">图片加载失败</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 2.3 底部评分与操作区：与中部卡片同宽的白底圆角卡片 -->
+  <view class="section bottom-section">
+    <view class="score-card">
+      <!-- 顶部信息栏：左侧标题 + 右侧进度，绿色 -->
+      <view class="score-info-bar">
+        <text class="score-info-title">{{currentPlayerName}} 此次行动评分</text>
+        <text class="score-info-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+      </view>
+
+      <!-- 评分按钮区：0～5 分，等宽横向排列 -->
+      <view class="score-row">
+        <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
+          <view
+            class="score-btn {{myScore === item ? 'score-btn-active' : ''}}"
+            data-score="{{item}}"
+            bindtap="onScoreTap"
+          >
+            <view class="score-btn-inner">
+              <text class="score-num">{{item}}</text>
+              <text class="score-unit">分</text>
+            </view>
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <view class="action-row">
+      <view class="end-game-btn" bindtap="handleEndGame">
+        <text class="end-game-line">结束</text>
+        <text class="end-game-line">游戏</text>
+      </view>
+      <button
+        class="action-btn {{canStartVote ? '' : 'action-btn-disabled'}}"
+        disabled="{{!canStartVote}}"
+        bindtap="handleStartVote"
+      >开始表态</button>
+    </view>
+  </view>
+</view>

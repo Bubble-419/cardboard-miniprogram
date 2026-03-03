@@ -1,0 +1,15 @@
+<view
+  class="invite-entry {{variant}} {{disabled ? 'disabled' : ''}}"
+  bindtap="handleTap"
+>
+  <view class="invite-inner">
+    <image
+      wx:if="{{icon}}"
+      class="invite-icon"
+      src="{{icon}}"
+      mode="aspectFit"
+    />
+    <text class="invite-label">{{label}}</text>
+  </view>
+</view>
+

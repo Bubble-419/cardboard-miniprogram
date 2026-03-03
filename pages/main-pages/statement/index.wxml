@@ -1,0 +1,25 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left" bindtap="handleGoBack">
+        <text class="back-chevron">‹</text>
+      </view>
+      <view class="navbar-title">表态</view>
+      <view class="navbar-right">
+        <text class="navbar-icon">⋯</text>
+        <text class="navbar-icon">◎</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="instruction">
+    <text class="instruction-line">请用表态卡对{{currentPlayerName}}的行动表态</text>
+    <text class="instruction-line">选择表态统计结果</text>
+  </view>
+
+  <view class="statement-buttons">
+    <view class="statement-btn statement-btn-pass" bindtap="onStatementTap" data-type="all_pass">全部通过</view>
+    <view class="statement-btn statement-btn-partial" bindtap="onStatementTap" data-type="partial_pass">部分通过</view>
+    <view class="statement-btn statement-btn-question" bindtap="onStatementTap" data-type="all_question">全部疑问</view>
+  </view>
+</view>

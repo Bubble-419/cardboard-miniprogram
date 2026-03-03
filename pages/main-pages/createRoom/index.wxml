@@ -1,0 +1,47 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">创建房间</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="content">
+    <view class="headline">发起新的工作坊</view>
+    <view class="subtext">
+      点击下方按钮为本次脑暴创建一个房间，后续可在设置页配置工作坊名称与个人信息。
+    </view>
+
+    <button
+      class="primary-btn"
+      type="primary"
+      loading="{{isCreating}}"
+      disabled="{{isCreating}}"
+      bindtap="handleCreateRoom"
+    >
+      {{isCreating ? '创建中…' : '创建房间'}}
+    </button>
+
+    <view class="tips">
+      <text>如果多次创建失败，请检查网络状态或稍后重试。</text>
+    </view>
+
+    <view class="debug-info" wx:if="{{lastError}}">
+      <text class="debug-title">最近一次错误：</text>
+      <text class="debug-text">{{lastError.errMsg}}（{{lastError.errCode}}）</text>
+    </view>
+  </view>
+</view>
+

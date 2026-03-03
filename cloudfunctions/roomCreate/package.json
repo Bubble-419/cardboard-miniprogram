@@ -1,0 +1,10 @@
+{
+  "name": "roomCreate",
+  "version": "1.0.0",
+  "description": "云函数 roomCreate：创建房间并写入创建者成员记录",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}
+

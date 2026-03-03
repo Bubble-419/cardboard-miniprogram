@@ -1,0 +1,9 @@
+{
+  "name": "roomJoin",
+  "version": "1.0.0",
+  "description": "扫码加入房间，分配随机颜色头像与玩家k名称",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

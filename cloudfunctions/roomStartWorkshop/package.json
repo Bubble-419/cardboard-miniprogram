@@ -1,0 +1,10 @@
+{
+  "name": "roomStartWorkshop",
+  "version": "1.0.0",
+  "description": "云函数 roomStartWorkshop：更新房间状态为 STARTED 并写入工作坊名称",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}
+

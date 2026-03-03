@@ -1,0 +1,102 @@
+<view class="container">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">发起工作坊</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 标题区 -->
+  <view class="header-section">
+    <text class="header-title">发起工作坊</text>
+    <text class="header-desc">设置您的头像、昵称以及工作坊名称</text>
+    <text class="header-desc">便于其他用户找到您</text>
+  </view>
+
+  <!-- 头像区 -->
+  <view class="avatar-section">
+    <view class="avatar-wrapper" bindtap="chooseAvatar">
+      <image
+        class="avatar-img"
+        src="{{avatarUrl || defaultAvatarUrl}}"
+        mode="aspectFill"
+      />
+    </view>
+  </view>
+
+  <!-- 昵称区 -->
+  <view class="nickname-section">
+    <view class="nickname-display">
+      <block wx:if="{{!isEditingName}}">
+        <view class="nickname-display-inner" bindtap="startEditNickName">
+          <text class="nickname-text">{{displayName}}</text>
+          <image
+            class="nickname-edit-icon"
+            src="/assets/icons/editname.png"
+            mode="aspectFit"
+          />
+        </view>
+      </block>
+      <block wx:else>
+        <input
+          class="nickname-input"
+          value="{{godNickName}}"
+          maxlength="24"
+          bindinput="onNickNameInput"
+        />
+        <image
+          class="nickname-confirm-icon"
+          src="/assets/icons/comfirm.svg"
+          mode="aspectFit"
+          bindtap="confirmEditNickName"
+        />
+      </block>
+    </view>
+  </view>
+
+  <!-- 工作坊名称输入区 -->
+  <view class="workshop-section">
+    <view class="workshop-input-wrapper">
+      <input
+        class="workshop-input"
+        placeholder="设置工作坊名称"
+        placeholder-class="workshop-placeholder"
+        value="{{workshopName}}"
+        bindinput="onWorkshopNameInput"
+        maxlength="40"
+      />
+      <image
+        wx:if="{{workshopName}}"
+        class="workshop-clear-icon"
+        src="/assets/icons/delete.svg"
+        mode="aspectFit"
+        bindtap="clearWorkshopName"
+      />
+    </view>
+  </view>
+
+  <view class="footer">
+    <button
+      class="primary-btn"
+      type="primary"
+      loading="{{isSubmitting}}"
+      disabled="{{!roomId || isSubmitting}}"
+      bindtap="handleStartWorkshop"
+    >
+      发起
+    </button>
+  </view>
+</view>
+

@@ -1,0 +1,9 @@
+{
+  "name": "getAddPlayerData",
+  "version": "1.0.0",
+  "description": "获取 addPlayer 页所需：房间小程序码与成员列表",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

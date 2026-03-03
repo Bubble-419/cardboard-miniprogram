@@ -1,0 +1,75 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">添加成员</view>
+      <view class="navbar-right">
+        <view class="navbar-icon">⋯</view>
+        <view class="navbar-icon">○</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="instruction-section">
+    <text class="instruction-title">邀请玩家加入房间</text>
+    <text class="instruction-subtitle">让其他玩家扫码或分享小程序码加入本次脑暴</text>
+  </view>
+
+  <!-- 主视觉区：中央二维码 + 圆周成员 -->
+  <view class="main-visual">
+    <view class="circle-wrap">
+      <!-- 中央小程序码 -->
+      <view class="qrcode-card">
+        <image
+          wx:if="{{qrcodeStatus === 'success' && qrcodeUrl}}"
+          class="qrcode-img"
+          src="{{qrcodeUrl}}"
+          mode="aspectFit"
+        />
+        <view wx:elif="{{qrcodeStatus === 'loading'}}" class="qrcode-placeholder">
+          <text class="qrcode-placeholder-text">加载中…</text>
+        </view>
+        <view wx:elif="{{qrcodeStatus === 'no_qr'}}" class="qrcode-placeholder">
+          <text class="qrcode-placeholder-text">二维码未生成</text>
+          <text class="qrcode-placeholder-hint">若为体验版/开发版，请确保 addPlayer 页面已发布；或点击重试</text>
+          <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+        </view>
+        <view wx:else class="qrcode-placeholder">
+          <text class="qrcode-placeholder-text">获取二维码失败</text>
+          <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+        </view>
+        <text class="qrcode-roomid" wx:if="{{roomId}}">房间号：{{roomId}}</text>
+      </view>
+
+      <!-- 圆周成员槽位 -->
+      <block wx:for="{{memberSlots}}" wx:key="index">
+        <view
+          class="avatar-slot"
+          style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
+        >
+          <view
+            wx:if="{{item.member}}"
+            class="avatar-circle"
+            style="background-color: {{item.member.avatarColor}};"
+          />
+          <view wx:else class="avatar-placeholder" />
+          <text class="avatar-name" wx:if="{{item.member}}">
+            {{item.member.nickName}}{{item.member.isMe ? '（我）' : ''}}
+          </text>
+          <text class="avatar-name placeholder-name" wx:else>空位</text>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="footer">
+    <button class="primary-btn" bindtap="handleComplete">完成</button>
+  </view>
+</view>

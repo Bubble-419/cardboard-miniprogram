@@ -1,0 +1,11 @@
+<view class="container">
+  <view class="content">
+    <text class="title">测试页（aaa）</text>
+    <text class="hint">点击下方按钮将创建房间并跳转到「添加成员」页</text>
+    <button
+      class="create-btn"
+      disabled="{{loading}}"
+      bindtap="handleCreateAndGo"
+    >{{loading ? '创建中…' : '创建房间并去添加成员'}}</button>
+  </view>
+</view>

@@ -1,6 +1,10 @@
 {
   "pages": [
+    "pages/main-pages/aaa/index",
     "pages/auth/index",
+    "pages/main-pages/addPlayer/index",
+    "pages/main-pages/gamepage/index",
+    "pages/main-pages/statement/index",
     "pages/main-pages/selectBG/index",
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectMode/index",
@@ -21,4 +25,3 @@
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }
-
