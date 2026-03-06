@@ -40,7 +40,7 @@
 .active-ring {
   position: absolute;
   inset: 0;
-  border: 3rpx solid #00d468;
+  border: 6rpx solid #00d468;
   border-radius: 50%;
   box-sizing: border-box;
 }
@@ -86,6 +86,10 @@
   height: 72rpx;
   border-radius: 36rpx;
   padding: 4rpx;
+}
+
+.fold .active-ring {
+  border-width: 6rpx;
 }
 
 .fold .active-indicator {

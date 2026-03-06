@@ -52,7 +52,7 @@ Page({
       }
 
       const members = result.members;
-      const totalRequired = Math.max(0, members.length - 1);
+      const totalRequired = members.length;
       const avatarList = members.map(m => ({
         id: m.playerIndex,
         avatar: m.avatarUrl || ''
@@ -84,8 +84,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok === true && result.scoredCount != null) {
         this.setData({
-          scoredCount: result.scoredCount,
-          totalRequired: result.totalRequired != null ? result.totalRequired : this.data.totalRequired
+          scoredCount: result.scoredCount
         });
         this.updateCanStartVote();
       }
@@ -95,8 +94,9 @@ Page({
   },
 
   updateCanStartVote() {
-    const { scoredCount, totalRequired } = this.data;
-    const canStartVote = totalRequired === 0 || scoredCount >= totalRequired;
+    const { scoredCount, totalRequired, members } = this.data;
+    const requiredScores = Math.max(0, (members.length || totalRequired) - 1);
+    const canStartVote = requiredScores === 0 || scoredCount >= requiredScores;
     this.setData({ canStartVote });
   },
 
@@ -124,8 +124,7 @@ Page({
       if (result.ok === true) {
         this.setData({
           myScore: parseInt(score, 10),
-          scoredCount: result.scoredCount != null ? result.scoredCount : this.data.scoredCount + 1,
-          totalRequired: result.totalRequired != null ? result.totalRequired : this.data.totalRequired
+          scoredCount: result.scoredCount != null ? result.scoredCount : this.data.scoredCount + 1
         });
         this.updateCanStartVote();
       } else {
