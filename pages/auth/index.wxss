@@ -89,11 +89,11 @@
   line-height: 1;
 }
 
-.god-icon {
+.preset-icon {
   color: #5ec159;
 }
 
-.player-icon {
+.custom-icon {
   color: #5ec159;
 }
 

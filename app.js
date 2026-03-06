@@ -12,6 +12,7 @@ App({
   },
   globalData: {
     userRole: null, // 'god' 或 'player'
+    roomId: null,   // 当前房间 ID（由 addPlayer 等页面设置）
     selectedProblem: null,
     selectedMode: null,
     selectedPlayer: null,

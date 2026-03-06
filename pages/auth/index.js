@@ -1,49 +1,30 @@
 Page({
-  data: {
-    userRole: null // 'god' 或 'player'
-  },
+  data: {},
 
   onLoad() {
     // 页面加载
   },
 
-  // 选择上帝用户
-  selectGod() {
-    this.setData({
-      userRole: 'god'
-    });
-    
-    // 保存用户身份到全局
-    getApp().globalData.userRole = 'god';
-    
-    // 跳转到主屏页面
+  /**
+   * 已设定情境：选择线下大屏上已展示的情境，直接进入游戏
+   */
+  selectPresetScenario() {
+    const roomId = getApp().globalData.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息，请先创建房间', icon: 'none' });
+      return;
+    }
     wx.redirectTo({
-      url: '/pages/main-pages/selectBG/index'
+      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}`
     });
   },
 
-  // 选择玩家用户
-  selectPlayer() {
-    this.setData({
-      userRole: 'player'
-    });
-    
-    // 保存用户身份到全局
-    getApp().globalData.userRole = 'player';
-    
-    // 跳转到副屏页面（提交问题页面）
+  /**
+   * 自定义情境：自行选择情境卡（场景、用户、平台、功能）
+   */
+  selectCustomScenario() {
     wx.redirectTo({
-      url: '/pages/sub-pages/submitProblem/index',
-      success: () => {
-        // 跳转成功
-      },
-      fail: (err) => {
-        console.error('跳转失败:', err);
-        wx.showToast({
-          title: '跳转失败，请重试',
-          icon: 'none'
-        });
-      }
+      url: '/pages/main-pages/selectBG/index'
     });
   },
 
@@ -53,5 +34,4 @@ Page({
       url: '/pages/inspiration/index'
     });
   }
-})
-
+});

@@ -3,30 +3,29 @@
   <view class="inspiration-entry" bindtap="goToInspiration">
     <text class="inspiration-text">灵感空间</text>
   </view>
-  
+
   <view class="content">
     <!-- 标题 -->
     <view class="title-section">
       <text class="main-title">脑暴工作坊</text>
-      <text class="sub-title">请选择您的身份</text>
+      <text class="sub-title">请选择情境类型</text>
     </view>
 
-    <!-- 身份选择卡片 -->
+    <!-- 情境选择卡片 -->
     <view class="role-cards">
-      <!-- 上帝用户卡片 -->
-      <view class="role-card" bindtap="selectGod">
-        <view class="card-icon god-icon">👑</view>
-        <text class="role-title">上帝用户</text>
-        <text class="role-description">控制游戏流程，管理主屏页面</text>
+      <!-- 已设定情境 -->
+      <view class="role-card" bindtap="selectPresetScenario">
+        <view class="card-icon preset-icon">📺</view>
+        <text class="role-title">已设定情境</text>
+        <text class="role-description">选择线下大屏上已展示的情境，直接进入游戏页面</text>
       </view>
 
-      <!-- 玩家用户卡片 -->
-      <view class="role-card" bindtap="selectPlayer">
-        <view class="card-icon player-icon">👤</view>
-        <text class="role-title">玩家用户</text>
-        <text class="role-description">参与游戏，查看副屏页面</text>
+      <!-- 自定义情境 -->
+      <view class="role-card" bindtap="selectCustomScenario">
+        <view class="card-icon custom-icon">✏️</view>
+        <text class="role-title">自定义情境</text>
+        <text class="role-description">自行选择情境卡（场景、用户、平台、功能），创建专属脑暴情境</text>
       </view>
     </view>
   </view>
 </view>
-

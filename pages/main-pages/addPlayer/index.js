@@ -35,6 +35,9 @@ Page({
       return;
     }
 
+    // 将 roomId 存为全局变量，供 auth 等后续页面使用
+    getApp().globalData.roomId = roomId;
+
     this.setData({
       roomId,
       isFromScan: !!scene
@@ -185,8 +188,9 @@ Page({
 
   handleComplete() {
     const roomId = this.data.roomId || '';
+    if (roomId) getApp().globalData.roomId = roomId;
     wx.navigateTo({
-      url: `/pages/main-pages/gamepage/index${roomId ? `?roomId=${roomId}` : ''}`
+      url: '/pages/auth/index'
     });
   }
 });
