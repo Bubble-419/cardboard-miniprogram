@@ -24,7 +24,10 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.members && result.members.length) {
-        this.setData({ members: result.members });
+        this.setData({
+          members: result.members,
+          minPlayers: result.members.length
+        });
       }
     } catch (e) {
       console.warn('loadMembers', e);
