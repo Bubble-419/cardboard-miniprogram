@@ -13,7 +13,8 @@
     "pages/sub-pages/selectProblem/index",
     "pages/sub-pages/awaitMode/index",
     "pages/sub-pages/awaitPlayer/index",
-    "pages/inspiration/index"
+    "pages/inspiration/index",
+    "pages/Leaderboard/index"
   ],
   "window": {
     "backgroundTextStyle": "light",

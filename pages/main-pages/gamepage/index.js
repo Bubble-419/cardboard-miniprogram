@@ -154,8 +154,12 @@ Page({
       cancelText: '取消',
       success: (res) => {
         if (res.confirm) {
-          wx.showToast({ title: '已结束游戏', icon: 'none' });
-          wx.reLaunch({ url: '/pages/auth/index' });
+          const roomId = this.data.roomId || getApp().globalData.roomId || '';
+          wx.redirectTo({
+            url: roomId
+              ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+              : '/pages/auth/index'
+          });
         }
       }
     });

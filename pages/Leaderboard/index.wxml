@@ -1,0 +1,48 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left" bindtap="handleBack">
+        <text class="back-chevron">‹</text>
+      </view>
+      <view class="navbar-title">排行榜</view>
+      <view class="navbar-right" />
+    </view>
+  </view>
+
+  <view class="content">
+    <view wx:if="{{loading}}" class="loading-wrap">
+      <text class="loading-text">加载中…</text>
+    </view>
+
+    <view wx:elif="{{error}}" class="error-wrap">
+      <text class="error-text">{{error}}</text>
+    </view>
+
+    <view wx:else class="leaderboard-list">
+      <view
+        class="leaderboard-item"
+        wx:for="{{leaderboard}}"
+        wx:key="playerIndex"
+      >
+        <view class="rank {{item.rank <= 3 ? 'rank-top' : ''}}">{{item.rank}}</view>
+        <view class="avatar-wrap" style="background-color: {{item.avatarColor || '#5EC159'}}">
+          <image
+            wx:if="{{item.avatarUrl}}"
+            class="avatar-img"
+            src="{{item.avatarUrl}}"
+            mode="aspectFill"
+          />
+          <text wx:else class="avatar-placeholder">{{item.nickName && item.nickName[0] ? item.nickName[0] : item.playerIndex}}</text>
+        </view>
+        <view class="info">
+          <text class="name">{{item.nickName}}</text>
+          <text class="meta">共 {{item.scoreCount}} 次评分</text>
+        </view>
+        <view class="score-wrap">
+          <text class="score-val">{{item.averageScore}}</text>
+          <text class="score-unit">分</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
