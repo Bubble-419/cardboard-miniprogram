@@ -15,7 +15,7 @@ Page({
       return;
     }
     wx.redirectTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+      url: `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
     });
   },
 

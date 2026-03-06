@@ -141,6 +141,11 @@ Page({
       goalValue: this.data.goalSliderValue
     };
     
+    const roomId = getApp().globalData.roomId || '';
+    const selectPlayerUrl = roomId
+      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/selectPlayer/index';
+
     // 更新云数据库中的游戏状态，通知所有副屏跳转到 awaitPlayer
     const db = wx.cloud.database();
     db.collection('gameState').add({
@@ -150,17 +155,11 @@ Page({
       },
       success: () => {
         console.log('游戏状态已更新为 selectPlayer');
-        // 跳转到 selectPlayer 页面
-        wx.navigateTo({
-          url: '/pages/main-pages/selectPlayer/index'
-        });
+        wx.navigateTo({ url: selectPlayerUrl });
       },
       fail: (err) => {
         console.error('更新游戏状态失败:', err);
-        // 即使更新失败也跳转
-    wx.navigateTo({
-          url: '/pages/main-pages/selectPlayer/index'
-        });
+        wx.navigateTo({ url: selectPlayerUrl });
       }
     });
   },

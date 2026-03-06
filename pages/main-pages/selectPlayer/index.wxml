@@ -29,11 +29,17 @@
   >
     <!-- 波纹效果 -->
     <view 
-      class="ripple {{item.visible ? 'visible' : ''}}"
+      class="ripple {{item.visible ? 'visible' : ''}} {{item.id === selectedTouchId ? 'selected' : ''}}"
       wx:for="{{activeTouches}}"
       wx:key="id"
       style="left: {{item.x}}px; top: {{item.y}}px;"
     >
+      <!-- 选中时的水珠荡开效果（在波纹下方） -->
+      <view class="water-ring ring-1" wx:if="{{item.id === selectedTouchId}}"></view>
+      <view class="water-ring ring-2" wx:if="{{item.id === selectedTouchId}}"></view>
+      <view class="water-ring ring-3" wx:if="{{item.id === selectedTouchId}}"></view>
+      <view class="water-ring ring-4" wx:if="{{item.id === selectedTouchId}}"></view>
+      <view class="water-ring ring-5" wx:if="{{item.id === selectedTouchId}}"></view>
       <view class="ripple-circle ripple-1"></view>
       <view class="ripple-circle ripple-2"></view>
       <view class="ripple-circle ripple-3"></view>
