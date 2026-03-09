@@ -107,6 +107,7 @@ Page({
 
   // 触摸开始
   onTouchStart(e) {
+    if (this.data.selectedPlayerIndex) return;
     const touches = e.touches;
     const now = Date.now();
     
@@ -143,6 +144,7 @@ Page({
 
   // 触摸移动
   onTouchMove(e) {
+    if (this.data.selectedPlayerIndex) return;
     const touches = e.touches;
     
     // 更新触摸点位置
@@ -162,6 +164,7 @@ Page({
 
   // 触摸结束
   onTouchEnd(e) {
+    if (this.data.selectedPlayerIndex) return;
     const changedTouches = e.changedTouches;
     
     // 移除结束的触摸点
@@ -232,76 +235,76 @@ Page({
     }, 500);
   },
 
-  // 随机选择玩家
+  // 随机选择玩家：被选中的位置播放 1.5s 水波纹动画，结束后显示几号玩家被选中 + 确认按钮
   selectRandomPlayer() {
-    const { activeTouches, members, roomId } = this.data;
+    const { activeTouches, members } = this.data;
     let currentPlayerIndex = 1;
+    let selectedPosition = null;
 
     if (activeTouches.length > 0) {
-      // 随机选择一个触摸点，在波纹下显示光效
       const randomIndex = Math.floor(Math.random() * activeTouches.length);
       const selectedTouch = activeTouches[randomIndex];
-      // 触摸序号对应成员序号，有成员时取对应 playerIndex
+      selectedPosition = { x: selectedTouch.x, y: selectedTouch.y };
       if (members.length > 0) {
         const mIndex = randomIndex % members.length;
         currentPlayerIndex = members[mIndex].playerIndex;
       } else {
         currentPlayerIndex = randomIndex + 1;
       }
-
       getApp().globalData.selectedPlayer = {
         touchId: selectedTouch.id,
-        position: { x: selectedTouch.x, y: selectedTouch.y },
+        position: selectedPosition,
         currentPlayerIndex
       };
-
-      this.setData({ selectedTouchId: selectedTouch.id });
-      wx.showToast({ title: '已选择首位出牌玩家', icon: 'success', duration: 2000 });
+      this.setData({
+        selectedTouchId: selectedTouch.id,
+        selectedPlayerIndex: currentPlayerIndex,
+        selectedPosition,
+        selectionAnimationDone: false
+      });
     } else {
-      // 无触摸时从成员中随机选
       if (members.length > 0) {
         const mIndex = Math.floor(Math.random() * members.length);
         currentPlayerIndex = members[mIndex].playerIndex;
       }
       getApp().globalData.selectedPlayer = { currentPlayerIndex };
-      wx.showToast({ title: '已随机选择玩家', icon: 'success', duration: 1000 });
+      this.setData({
+        selectedTouchId: null,
+        selectedPlayerIndex: currentPlayerIndex,
+        selectedPosition: null,
+        selectionAnimationDone: true
+      });
     }
 
-    // 光效展示约 1.5 秒后自动跳转
-    const delay = activeTouches.length > 0 ? 1500 : 800;
-    setTimeout(() => this.navigateToGamepage(roomId, currentPlayerIndex), delay);
+    const SELECTION_ANIMATION_DURATION = 1500;
+    if (selectedPosition) {
+      this.animationDoneTimer = setTimeout(() => {
+        this.setData({ selectionAnimationDone: true });
+      }, SELECTION_ANIMATION_DURATION);
+    }
   },
 
-  // 跳过选择：直接系统随机选定一个玩家并跳转
-  skipSelection() {
-    const { activeTouches, members, roomId } = this.data;
-    let currentPlayerIndex = 1;
+  confirmSelection() {
+    const { selectedPlayerIndex, roomId } = this.data;
+    if (selectedPlayerIndex == null) return;
+    this.navigateToGamepage(roomId, selectedPlayerIndex);
+  },
 
-    if (activeTouches.length > 0) {
-      const randomIndex = Math.floor(Math.random() * activeTouches.length);
-      const selectedTouch = activeTouches[randomIndex];
-      if (members.length > 0) {
-        currentPlayerIndex = members[randomIndex % members.length].playerIndex;
-      } else {
-        currentPlayerIndex = randomIndex + 1;
-      }
-      getApp().globalData.selectedPlayer = {
-        touchId: selectedTouch.id,
-        position: { x: selectedTouch.x, y: selectedTouch.y },
-        currentPlayerIndex
-      };
-      this.setData({ selectedTouchId: selectedTouch.id });
-      wx.showToast({ title: '已随机选定玩家', icon: 'success', duration: 1200 });
-      setTimeout(() => this.navigateToGamepage(roomId, currentPlayerIndex), 1200);
-    } else {
-      if (members.length > 0) {
-        const mIndex = Math.floor(Math.random() * members.length);
-        currentPlayerIndex = members[mIndex].playerIndex;
-      }
-      getApp().globalData.selectedPlayer = { currentPlayerIndex };
-      wx.showToast({ title: '已随机选定玩家', icon: 'success' });
-      setTimeout(() => this.navigateToGamepage(roomId, currentPlayerIndex), 800);
+  reselectSelection() {
+    if (this.animationDoneTimer) {
+      clearTimeout(this.animationDoneTimer);
+      this.animationDoneTimer = null;
     }
+    this.setData({
+      activeTouches: [],
+      playerCount: 0,
+      countdown: 0,
+      selectedTouchId: null,
+      selectedPlayerIndex: null,
+      selectedPosition: null,
+      selectionAnimationDone: false,
+      isSelecting: false
+    });
   },
 
   navigateToGamepage(roomId, currentPlayerIndex) {

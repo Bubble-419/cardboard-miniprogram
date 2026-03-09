@@ -176,7 +176,7 @@ Page({
           this._updateRoomState('leaderboard');
           wx.redirectTo({
             url: roomId
-              ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+              ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
               : '/pages/auth/index'
           });
         }

@@ -55,7 +55,7 @@
           mode="aspectFill"
           data-id="{{item.id}}"
           binderror="onAvatarError"
-        />
+        ></image>
         <text class="player-label">{{item.label}}</text>
       </view>
     </view>

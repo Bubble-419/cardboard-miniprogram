@@ -15,7 +15,7 @@
     "pages/sub-pages/awaitMode/index",
     "pages/sub-pages/awaitPlayer/index",
     "pages/inspiration/index",
-    "pages/Leaderboard/index"
+    "pages/leaderboard/index"
   ],
   "window": {
     "backgroundTextStyle": "light",
