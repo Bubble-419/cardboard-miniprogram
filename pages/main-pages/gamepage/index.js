@@ -157,7 +157,7 @@ Page({
           const roomId = this.data.roomId || getApp().globalData.roomId || '';
           wx.redirectTo({
             url: roomId
-              ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+              ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
               : '/pages/auth/index'
           });
         }

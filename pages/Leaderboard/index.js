@@ -53,5 +53,29 @@ Page({
 
   handleBack() {
     wx.reLaunch({ url: '/pages/auth/index' });
+  },
+
+  async handleNewGame() {
+    const { roomId } = this.data;
+    if (roomId) {
+      wx.showLoading({ title: '加载中…' });
+      try {
+        await wx.cloud.callFunction({
+          name: 'clearRoomScores',
+          data: { roomId }
+        });
+      } catch (e) {
+        console.warn('clearRoomScores', e);
+      } finally {
+        wx.hideLoading();
+      }
+    }
+    const app = getApp();
+    const gd = app.globalData;
+    gd.selectedPlayer = null;
+    gd.selectedProblem = null;
+    gd.selectedMode = null;
+    gd.selectedBG = null;
+    wx.reLaunch({ url: '/pages/auth/index' });
   }
 });

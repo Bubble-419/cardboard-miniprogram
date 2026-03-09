@@ -1,0 +1,9 @@
+{
+  "name": "clearRoomScores",
+  "version": "1.0.0",
+  "description": "清除房间评分记录，再来一局时使用",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

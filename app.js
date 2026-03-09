@@ -11,11 +11,12 @@ App({
     }
   },
   globalData: {
-    userRole: null, // 'god' 或 'player'
-    roomId: null,   // 当前房间 ID（由 addPlayer 等页面设置）
+    userRole: null,
+    roomId: null,
     selectedProblem: null,
     selectedMode: null,
     selectedPlayer: null,
+    selectedBG: null,
     workshopName: "工作坊名称"
   }
 })

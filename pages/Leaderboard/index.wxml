@@ -45,4 +45,9 @@
       </view>
     </view>
   </view>
+
+  <!-- 底部再来一局按钮 -->
+  <view class="footer" wx:if="{{!loading && !error}}">
+    <button class="new-game-btn" bindtap="handleNewGame">再来一局</button>
+  </view>
 </view>
