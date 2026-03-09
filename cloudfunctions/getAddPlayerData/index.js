@@ -35,6 +35,13 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
+    const isHost = !!(room.creatorId && room.creatorId === OPENID);
+    const roomState = {
+      currentPage: room.currentPage || 'addPlayer',
+      currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
+      currentPlayerName: room.currentPlayerName || '玩家1'
+    };
+
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId })
@@ -51,7 +58,9 @@ exports.main = async (event, context) => {
     return {
       ok: true,
       qrcodeFileID: room.qrcodeFileID || null,
-      members
+      members,
+      isHost,
+      roomState
     };
   } catch (e) {
     console.error('getAddPlayerData error', e);

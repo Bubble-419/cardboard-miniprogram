@@ -12,7 +12,8 @@ Page({
     qrcodeStatus: 'loading', // loading | success | no_qr | error
     members: [],
     memberSlots: [], // 用于圆周均分展示的槽位（含占位）
-    isFromScan: false
+    isFromScan: false,
+    isHost: true // 房主为 true，普通玩家为 false
   },
 
   onLoad(options) {
@@ -46,7 +47,93 @@ Page({
     if (scene) {
       this.joinRoomThenLoad(roomId);
     } else {
-      this.loadRoomData(roomId);
+      this.loadRoomData(roomId).then((result) => {
+        if (result && result.isHost) {
+          this._updateRoomState('addPlayer');
+          this._startMemberPolling();
+        } else if (result && !result.isHost) {
+          this._startStatePolling();
+        }
+      });
+    }
+  },
+
+  onUnload() {
+    this._stopMemberPolling();
+    this._stopStatePolling();
+  },
+
+  /** 房主更新房间当前页状态 */
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage, currentPlayerIndex, currentPlayerName }
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
+  },
+
+  /** 普通玩家：轮询房间状态，跟随房主跳转 */
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId;
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
+          wx.redirectTo({ url: '/pages/auth/index?isWaiting=1' });
+        } else if (page === 'selectplayer') {
+          wx.redirectTo({ url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&isWaiting=1` });
+        } else if (page === 'gamepage') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+        } else if (page === 'statement') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1` });
+        } else if (page === 'leaderboard') {
+          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 2000);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
+    }
+  },
+
+  /** 房主端：定时轮询成员列表，以便新玩家扫码加入后自动刷新展示 */
+  _startMemberPolling() {
+    this._stopMemberPolling();
+    const poll = () => {
+      const roomId = this.data.roomId;
+      if (roomId) this.loadRoomData(roomId, { silent: true });
+    };
+    this._memberPollTimer = setInterval(poll, 3000);
+  },
+
+  _stopMemberPolling() {
+    if (this._memberPollTimer) {
+      clearInterval(this._memberPollTimer);
+      this._memberPollTimer = null;
     }
   },
 
@@ -66,7 +153,9 @@ Page({
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
       }
-      this.loadRoomData(roomId);
+      this.loadRoomData(roomId).then((result) => {
+        if (result && !result.isHost) this._startStatePolling();
+      });
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
@@ -75,21 +164,38 @@ Page({
 
   /**
    * 拉取房间小程序码 + 成员列表，并计算圆周槽位
+   * @param {string} roomId
+   * @param {object} [opts] - { silent: true } 静默刷新，仅更新成员列表（不弹 loading、不碰二维码），用于房主轮询
    */
-  async loadRoomData(roomId) {
-    this.setData({ qrcodeStatus: 'loading' });
-    wx.showLoading({ title: '加载中…' });
+  async loadRoomData(roomId, opts = {}) {
+    const silent = opts && opts.silent === true;
+    if (!silent) {
+      this.setData({ qrcodeStatus: 'loading' });
+      wx.showLoading({ title: '加载中…' });
+    }
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
         data: { roomId }
       });
       const result = (res && res.result) || {};
-      wx.hideLoading();
+      if (!silent) wx.hideLoading();
       if (result.ok !== true) {
-        this.setData({ qrcodeStatus: 'error' });
-        wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
-        return;
+        if (!silent) {
+          this.setData({ qrcodeStatus: 'error' });
+          wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
+        }
+        return null;
+      }
+
+      const members = result.members || [];
+      const memberSlots = this.buildMemberSlots(members);
+      const isHost = result.isHost !== false;
+      const roomState = result.roomState || { currentPage: 'addPlayer', currentPlayerIndex: 1, currentPlayerName: '玩家1' };
+
+      if (silent) {
+        this.setData({ members, memberSlots });
+        return result;
       }
 
       let qrcodeFileID = result.qrcodeFileID;
@@ -132,19 +238,34 @@ Page({
         }
       }
 
-      const members = result.members || [];
-      const memberSlots = this.buildMemberSlots(members);
-
       this.setData({
         qrcodeUrl,
         qrcodeStatus,
         members,
-        memberSlots
+        memberSlots,
+        isHost,
+        roomState
       });
+      return result;
     } catch (err) {
-      wx.hideLoading();
-      this.setData({ qrcodeStatus: 'error' });
-      wx.showToast({ title: err.errMsg || '加载失败', icon: 'none' });
+      if (!silent) {
+        wx.hideLoading();
+        this.setData({ qrcodeStatus: 'error' });
+        wx.showToast({ title: err.errMsg || '加载失败', icon: 'none' });
+      }
+      return null;
+    }
+  },
+
+  /** 下拉刷新：重新拉取成员列表与二维码 */
+  onPullDownRefresh() {
+    const roomId = this.data.roomId;
+    if (roomId) {
+      this.loadRoomData(roomId).finally(() => {
+        wx.stopPullDownRefresh();
+      });
+    } else {
+      wx.stopPullDownRefresh();
     }
   },
 
@@ -189,6 +310,7 @@ Page({
   handleComplete() {
     const roomId = this.data.roomId || '';
     if (roomId) getApp().globalData.roomId = roomId;
+    this._updateRoomState('auth');
     wx.navigateTo({
       url: '/pages/auth/index'
     });

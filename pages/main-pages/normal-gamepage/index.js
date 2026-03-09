@@ -8,7 +8,6 @@ Page({
     myScore: null,
     scoredCount: 0,
     totalRequired: 0,
-    canStartVote: false,
     imageError: false
   },
 
@@ -30,12 +29,54 @@ Page({
 
     this.loadRoomData(roomId);
     this.refreshScoreCount(roomId, currentPlayerIndex);
+    this._startStatePolling();
+  },
+
+  onUnload() {
+    this._stopStatePolling();
   },
 
   onShow() {
     const { roomId, currentPlayerIndex } = this.data;
     if (roomId && currentPlayerIndex != null) {
       this.refreshScoreCount(roomId, currentPlayerIndex);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'statement') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({
+            url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+          });
+        } else if (page === 'leaderboard') {
+          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 2000);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
@@ -67,9 +108,6 @@ Page({
         totalRequired,
         currentPlayerName
       });
-
-      this.updateCanStartVote();
-      this._updateRoomState('gamepage', this.data.currentPlayerIndex, currentPlayerName);
     } catch (e) {
       console.error('loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -84,21 +122,11 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.scoredCount != null) {
-        this.setData({
-          scoredCount: result.scoredCount
-        });
-        this.updateCanStartVote();
+        this.setData({ scoredCount: result.scoredCount });
       }
     } catch (e) {
       console.warn('refreshScoreCount', e);
     }
-  },
-
-  updateCanStartVote() {
-    const { scoredCount, totalRequired, members } = this.data;
-    const requiredScores = Math.max(0, (members.length || totalRequired) - 1);
-    const canStartVote = requiredScores === 0 || scoredCount >= requiredScores;
-    this.setData({ canStartVote });
   },
 
   onImageError() {
@@ -127,7 +155,6 @@ Page({
           myScore: parseInt(score, 10),
           scoredCount: result.scoredCount != null ? result.scoredCount : this.data.scoredCount + 1
         });
-        this.updateCanStartVote();
       } else {
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
       }
@@ -135,53 +162,6 @@ Page({
       console.error('submitGameScore', e);
       wx.showToast({ title: '提交失败', icon: 'none' });
     }
-  },
-
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    try {
-      const data = { roomId, currentPage };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-    } catch (e) {
-      console.warn('updateRoomState', e);
-    }
-  },
-
-  handleStartVote() {
-    if (!this.data.canStartVote) return;
-    const roomId = this.data.roomId || '';
-    const currentPlayerIndex = this.data.currentPlayerIndex;
-    const currentPlayerName = this.data.currentPlayerName || `玩家${currentPlayerIndex}`;
-    this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
-    wx.navigateTo({
-      url: `/pages/main-pages/statement/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${encodeURIComponent(currentPlayerName)}`
-    });
-  },
-
-  handleEndGame() {
-    wx.showModal({
-      title: '结束游戏',
-      content: '是否结束全局游戏？',
-      confirmText: '结束',
-      cancelText: '取消',
-      success: (res) => {
-        if (res.confirm) {
-          const roomId = this.data.roomId || getApp().globalData.roomId || '';
-          this._updateRoomState('leaderboard');
-          wx.redirectTo({
-            url: roomId
-              ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
-              : '/pages/auth/index'
-          });
-        }
-      }
-    });
   },
 
   handleGoBack() {

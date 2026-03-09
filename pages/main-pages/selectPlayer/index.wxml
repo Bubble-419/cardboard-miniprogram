@@ -1,5 +1,4 @@
 <view class="container">
-  <!-- 自定义导航栏 -->
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
@@ -13,7 +12,13 @@
     </view>
   </view>
 
-  <!-- 提示文字（不可触摸区域） -->
+  <!-- 普通玩家：等待房主在主屏抽取首位玩家 -->
+  <view class="empty-wait-state" wx:if="{{isWaiting}}">
+    <text class="empty-wait-text">请在主屏上参与抽取首位玩家</text>
+  </view>
+
+  <!-- 房主：触摸交互区域 -->
+  <block wx:else>
   <view class="instruction-text">
     <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
     <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
@@ -67,5 +72,6 @@
   <view class="add-player-btn" bindtap="addPlayer">
     <image class="add-player-icon" src="/assets/icons/passenger.png" mode="aspectFit"></image>
   </view>
+  </block>
 </view>
 

@@ -69,7 +69,7 @@
     </view>
   </view>
 
-  <view class="footer">
+  <view class="footer" wx:if="{{isHost}}">
     <button class="primary-btn" bindtap="handleComplete">完成</button>
   </view>
 </view>

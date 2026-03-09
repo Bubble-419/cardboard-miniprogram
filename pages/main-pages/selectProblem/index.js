@@ -55,8 +55,21 @@ Page({
     editingProblemId: ''
   },
 
+  async _updateRoomState(currentPage) {
+    const roomId = getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage }
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
+  },
+
   onLoad() {
-    // 页面加载
+    this._updateRoomState('selectProblem');
     const app = getApp();
     if (app.globalData.workshopName) {
       this.setData({

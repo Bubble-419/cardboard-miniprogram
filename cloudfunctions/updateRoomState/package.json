@@ -1,0 +1,9 @@
+{
+  "name": "updateRoomState",
+  "version": "1.0.0",
+  "description": "房主更新房间当前页面状态，供普通玩家跟随跳转",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

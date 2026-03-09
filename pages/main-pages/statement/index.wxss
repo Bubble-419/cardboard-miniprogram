@@ -103,3 +103,19 @@
 .statement-btn-question {
   background-color: #212121;
 }
+
+/* 普通玩家等待空状态 */
+.empty-statement-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80rpx 60rpx;
+}
+
+.empty-statement-text {
+  font-size: 36rpx;
+  color: #666;
+  text-align: center;
+  line-height: 1.6;
+}

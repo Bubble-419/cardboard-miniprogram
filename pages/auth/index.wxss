@@ -112,3 +112,20 @@
   line-height: 1.6;
 }
 
+/* 普通玩家等待空状态 */
+.wait-hint {
+  color: #999 !important;
+}
+
+.empty-state {
+  width: 100%;
+  padding: 80rpx 40rpx;
+  text-align: center;
+}
+
+.empty-state-text {
+  font-size: 32rpx;
+  color: #999;
+  line-height: 1.6;
+}
+

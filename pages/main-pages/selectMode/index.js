@@ -40,8 +40,21 @@ Page({
     goalLabels: ["数量优先", "质量优先"]
   },
 
+  async _updateRoomState(currentPage) {
+    const roomId = getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage }
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
+  },
+
   onLoad() {
-    // 页面加载
+    this._updateRoomState('selectMode');
     const app = getApp();
     
     // 获取上一页选择的问题
@@ -146,6 +159,7 @@ Page({
       ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
       : '/pages/main-pages/selectPlayer/index';
 
+    this._updateRoomState('selectPlayer');
     // 更新云数据库中的游戏状态，通知所有副屏跳转到 awaitPlayer
     const db = wx.cloud.database();
     db.collection('gameState').add({

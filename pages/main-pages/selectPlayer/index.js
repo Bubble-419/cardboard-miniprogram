@@ -1,19 +1,90 @@
 Page({
   data: {
-    activeTouches: [], // 当前活动的触摸点 [{id, x, y, timestamp}]
-    playerCount: 0, // 当前参与玩家数
-    minPlayers: 4, // 最少需要玩家数
-    countdown: 5, // 倒计时
-    isSelecting: false, // 是否正在选择
-    selectedTouchId: null, // 被选中玩家的触摸点 id，用于显示光效
+    activeTouches: [],
+    playerCount: 0,
+    minPlayers: 4,
+    countdown: 5,
+    isSelecting: false,
+    selectedTouchId: null,
     roomId: '',
-    members: [] // 房间成员，用于跳过时随机选取
+    members: [],
+    isHost: true,
+    isWaiting: false // 普通玩家等待房主在主屏抽取首位玩家
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    this.setData({ roomId });
-    if (roomId) this.loadMembers(roomId);
+    const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+    this.setData({ roomId, isWaiting: !!isWaiting });
+    if (isWaiting) {
+      this.setData({ isHost: false });
+      this._startStatePolling();
+      return;
+    }
+    if (roomId) {
+      this.loadMembers(roomId);
+      this._updateRoomState('selectPlayer');
+    }
+  },
+
+  onUnload() {
+    this._stopStatePolling();
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    if (this.selectionTimer) clearTimeout(this.selectionTimer);
+  },
+
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      const data = { roomId, currentPage };
+      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
+      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'gamepage') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+        } else if (page === 'statement') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1` });
+        } else if (page === 'leaderboard') {
+          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 2000);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
+    }
   },
 
   async loadMembers(roomId) {
@@ -31,16 +102,6 @@ Page({
       }
     } catch (e) {
       console.warn('loadMembers', e);
-    }
-  },
-
-  onUnload() {
-    // 清除定时器
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-    }
-    if (this.selectionTimer) {
-      clearTimeout(this.selectionTimer);
     }
   },
 
@@ -251,6 +312,10 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    const members = this.data.members || [];
+    const current = members.find(m => m.playerIndex === currentPlayerIndex);
+    const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
+    this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
     wx.redirectTo({
       url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
     });

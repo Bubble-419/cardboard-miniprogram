@@ -12,6 +12,20 @@ Page({
 
   onLoad() {
     this.updateCanConfirm();
+    this._updateRoomState('selectBG');
+  },
+
+  async _updateRoomState(currentPage) {
+    const roomId = getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage }
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
   },
 
   goBack() {
@@ -53,6 +67,7 @@ Page({
     const app = getApp();
     app.globalData = app.globalData || {};
     app.globalData.selectedBG = { ...this.data.bg };
+    this._updateRoomState('selectProblem');
     wx.redirectTo({ url: '/pages/main-pages/selectProblem/index' });
   }
 });

@@ -12,6 +12,13 @@
     </view>
   </view>
 
+  <!-- 普通玩家：请用实体表态卡进行表态 -->
+  <view class="empty-statement-state" wx:if="{{isWaiting}}">
+    <text class="empty-statement-text">请用实体表态卡进行表态</text>
+  </view>
+
+  <!-- 房主：表态操作区 -->
+  <block wx:else>
   <view class="instruction">
     <text class="instruction-line">请用表态卡对{{currentPlayerName}}的行动表态</text>
     <text class="instruction-line">选择表态统计结果</text>
@@ -22,4 +29,5 @@
     <view class="statement-btn statement-btn-partial" bindtap="onStatementTap" data-type="partial_pass">部分通过</view>
     <view class="statement-btn statement-btn-question" bindtap="onStatementTap" data-type="all_question">全部疑问</view>
   </view>
+  </block>
 </view>
