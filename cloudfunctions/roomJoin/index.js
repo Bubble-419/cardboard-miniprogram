@@ -9,10 +9,20 @@ const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
 const AVATAR_COLORS = ['#5EC159', '#4A90E2', '#E24A4A', '#E2B84A', '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB'];
+const AVATAR_INDEX_MAX = 8;
 
 function pickAvatarColor(usedColors) {
   const available = AVATAR_COLORS.filter(c => !usedColors.includes(c));
   return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : AVATAR_COLORS[0];
+}
+
+function pickAvatarIndex(usedIndices) {
+  const used = new Set(usedIndices.filter(i => i >= 0 && i <= AVATAR_INDEX_MAX));
+  const available = [];
+  for (let i = 0; i <= AVATAR_INDEX_MAX; i++) {
+    if (!used.has(i)) available.push(i);
+  }
+  return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : 0;
 }
 
 exports.main = async (event, context) => {
@@ -51,6 +61,7 @@ exports.main = async (event, context) => {
         playerIndex: m.playerIndex,
         nickName: m.nickName || `玩家${m.playerIndex}`,
         avatarColor: m.avatarColor || AVATAR_COLORS[0],
+        avatarIndex: m.avatarIndex != null ? m.avatarIndex : 0,
         role: m.role
       };
     }
@@ -63,8 +74,10 @@ exports.main = async (event, context) => {
 
     const members = membersRes.data || [];
     const usedColors = members.map(m => m.avatarColor).filter(Boolean);
+    const usedAvatarIndices = members.map(m => m.avatarIndex).filter(i => i != null);
     const nextIndex = members.length + 1;
     const avatarColor = pickAvatarColor(usedColors);
+    const avatarIndex = pickAvatarIndex(usedAvatarIndices);
     const nickName = `玩家${nextIndex}`;
     const now = Date.now();
 
@@ -76,6 +89,7 @@ exports.main = async (event, context) => {
         nickName,
         avatarUrl: null,
         avatarColor,
+        avatarIndex,
         joinedAt: now,
         playerIndex: nextIndex
       }
@@ -86,6 +100,7 @@ exports.main = async (event, context) => {
       playerIndex: nextIndex,
       nickName,
       avatarColor,
+      avatarIndex,
       role: 'PLAYER'
     };
   } catch (e) {

@@ -1,11 +1,32 @@
 <view class="container">
   <view class="content">
-    <text class="title">测试页（aaa）</text>
-    <text class="hint">点击下方按钮将创建房间并跳转到「添加成员」页</text>
-    <button
-      class="create-btn"
-      disabled="{{loading}}"
-      bindtap="handleCreateAndGo"
-    >{{loading ? '创建中…' : '创建房间并去添加成员'}}</button>
+    <view class="title-section">
+      <text class="main-title">脑暴工作坊</text>
+      <text class="sub-title">创建或加入房间，开始头脑风暴</text>
+    </view>
+
+    <view class="action-cards">
+      <view
+        class="action-card action-card-primary"
+        bindtap="handleCreateRoom"
+      >
+        <view class="card-icon create-icon">✨</view>
+        <text class="card-title">创建房间</text>
+        <text class="card-desc">新建脑暴房间，邀请成员扫码加入</text>
+        <view class="card-btn {{loading ? 'card-btn-disabled' : ''}}">
+          {{loading ? '创建中…' : '立即创建'}}
+        </view>
+      </view>
+
+      <view
+        class="action-card action-card-secondary"
+        bindtap="handleScanJoin"
+      >
+        <view class="card-icon scan-icon">📷</view>
+        <text class="card-title">扫码加入房间</text>
+        <text class="card-desc">扫描房间二维码，快速加入已有房间</text>
+        <view class="card-btn card-btn-outline">扫码加入</view>
+      </view>
+    </view>
   </view>
 </view>

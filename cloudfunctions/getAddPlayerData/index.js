@@ -48,12 +48,17 @@ exports.main = async (event, context) => {
       .orderBy('playerIndex', 'asc')
       .get();
 
-    const members = (membersRes.data || []).map(m => ({
-      playerIndex: m.playerIndex,
-      nickName: m.nickName || `玩家${m.playerIndex}`,
-      avatarColor: m.avatarColor || '#5EC159',
-      isMe: m.userId === OPENID
-    }));
+    const members = (membersRes.data || []).map(m => {
+      const out = {
+        playerIndex: m.playerIndex,
+        nickName: m.nickName || `玩家${m.playerIndex}`,
+        avatarColor: m.avatarColor || '#5EC159',
+        isMe: m.userId === OPENID,
+        userId: m.userId || null
+      };
+      if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;
+      return out;
+    });
 
     return {
       ok: true,

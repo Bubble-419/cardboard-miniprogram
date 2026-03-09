@@ -8,7 +8,7 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
-/** 成员头像随机颜色池（创建者/玩家共用） */
+/** 成员头像随机颜色池（兼容旧逻辑） */
 const AVATAR_COLORS = ['#5EC159', '#4A90E2', '#E24A4A', '#E2B84A', '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB'];
 
 function pickAvatarColor(usedColors) {
@@ -127,6 +127,7 @@ exports.main = async (event, context) => {
           nickName: '玩家1',
           avatarUrl: null,
           avatarColor: creatorColor,
+          avatarIndex: 0,
           joinedAt: now,
           playerIndex: 1
         }

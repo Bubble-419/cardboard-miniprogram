@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container {{isDragging ? 'container-dragging' : ''}}">
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
@@ -18,55 +18,137 @@
   </view>
 
   <view class="instruction-section">
-    <text class="instruction-title">邀请玩家加入房间</text>
-    <text class="instruction-subtitle">让其他玩家扫码或分享小程序码加入本次脑暴</text>
+    <view class="instruction-lines">
+      <text class="instruction-title">请各成员扫码进入游戏</text>
+      <text class="instruction-subtitle">长按后拖动可调整成员顺序</text>
+    </view>
   </view>
 
-  <!-- 主视觉区：中央二维码 + 圆周成员 -->
-  <view class="main-visual">
-    <view class="circle-wrap">
-      <!-- 中央小程序码 -->
-      <view class="qrcode-card">
-        <image
-          wx:if="{{qrcodeStatus === 'success' && qrcodeUrl}}"
-          class="qrcode-img"
-          src="{{qrcodeUrl}}"
-          mode="aspectFit"
-        />
-        <view wx:elif="{{qrcodeStatus === 'loading'}}" class="qrcode-placeholder">
-          <text class="qrcode-placeholder-text">加载中…</text>
-        </view>
-        <view wx:elif="{{qrcodeStatus === 'no_qr'}}" class="qrcode-placeholder">
-          <text class="qrcode-placeholder-text">二维码未生成</text>
-          <text class="qrcode-placeholder-hint">若为体验版/开发版，请确保 addPlayer 页面已发布；或点击重试</text>
-          <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
-        </view>
-        <view wx:else class="qrcode-placeholder">
-          <text class="qrcode-placeholder-text">获取二维码失败</text>
-          <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
-        </view>
-        <text class="qrcode-roomid" wx:if="{{roomId}}">房间号：{{roomId}}</text>
-      </view>
+  <view
+    class="content-area {{isDragging ? 'content-area-dragging' : ''}}"
+    catchtouchmove="onContentTouchMove"
+    catchtouchend="onContentTouchEnd"
+    catchtouchcancel="onContentTouchEnd"
+  >
+    <view class="main-stage">
+      <view
+        class="circle-wrap"
+        id="circleWrap"
+        catchtouchmove="onWrapTouchMove"
+        catchtouchend="onWrapTouchEnd"
+        catchtouchcancel="onWrapTouchEnd"
+      >
+        <view class="deco-ring deco-ring-1"></view>
+        <view class="deco-ring deco-ring-2"></view>
+        <view class="deco-ring deco-ring-3"></view>
+        <view class="deco-ring deco-ring-inner"></view>
+        <view class="deco-glow"></view>
+        <view class="deco-particle deco-particle-1"></view>
+        <view class="deco-particle deco-particle-2"></view>
+        <view class="deco-particle deco-particle-3"></view>
+        <view class="deco-particle deco-particle-4"></view>
+        <view class="deco-particle deco-particle-5"></view>
+        <view class="deco-particle deco-particle-6"></view>
 
-      <!-- 圆周成员槽位 -->
-      <block wx:for="{{memberSlots}}" wx:key="index">
-        <view
-          class="avatar-slot"
-          style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
-        >
-          <view
-            wx:if="{{item.member}}"
-            class="avatar-circle"
-            style="background-color: {{item.member.avatarColor}};"
-          />
-          <view wx:else class="avatar-placeholder" />
-          <text class="avatar-name" wx:if="{{item.member}}">
-            {{item.member.nickName}}{{item.member.isMe ? '（我）' : ''}}
-          </text>
-          <text class="avatar-name placeholder-name" wx:else>空位</text>
+        <view class="qrcode-area">
+          <view class="qrcode-card">
+            <view class="qrcode-circle-bg">
+              <image
+                wx:if="{{qrcodeStatus === 'success' && qrcodeUrl}}"
+                class="qrcode-img"
+                src="{{qrcodeUrl}}"
+                mode="aspectFit"
+              />
+              <view wx:elif="{{qrcodeStatus === 'loading'}}" class="qrcode-placeholder">
+                <text class="qrcode-placeholder-text">加载中…</text>
+              </view>
+              <view wx:elif="{{qrcodeStatus === 'no_qr'}}" class="qrcode-placeholder">
+                <text class="qrcode-placeholder-text">二维码未生成</text>
+                <text class="qrcode-placeholder-hint">
+                  若为体验版或开发版，请确保 addPlayer 页面已发布；或点击重试
+                </text>
+                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+              </view>
+              <view wx:else class="qrcode-placeholder">
+                <text class="qrcode-placeholder-text">获取二维码失败</text>
+                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+              </view>
+            </view>
+          </view>
         </view>
-      </block>
+
+        <block wx:for="{{memberSlots}}" wx:key="index">
+          <view
+            class="avatar-slot {{isDragging && dropTargetIndex === item.index ? 'avatar-slot-dragging' : ''}} {{item.member && item.member.isMe ? 'avatar-slot-me' : ''}}"
+            style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
+            data-index="{{item.index}}"
+            bindtap="onSlotTap"
+            bindtouchstart="onSlotTouchStart"
+            catchtouchmove="onSlotTouchMove"
+            catchtouchend="onSlotTouchEnd"
+            catchtouchcancel="onSlotTouchEnd"
+          >
+            <image
+              wx:if="{{item.member && !(isDragging && item.index === dropTargetIndex) && item.member.avatarImage}}"
+              class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
+              src="{{item.member.avatarImage}}"
+              mode="aspectFill"
+            />
+            <view
+              wx:elif="{{isDragging && item.index === dropTargetIndex}}"
+              class="avatar-placeholder avatar-drop-target"
+            ></view>
+            <view
+              wx:elif="{{!item.member}}"
+              class="avatar-placeholder avatar-placeholder-animate"
+            ></view>
+
+            <view
+              wx:if="{{item.member && !(isDragging && item.index === dropTargetIndex)}}"
+              class="avatar-name-wrap"
+            >
+              <text class="avatar-name">{{item.member.nickName}}</text>
+              <text class="avatar-name avatar-me" wx:if="{{item.member.isMe}}">（我）</text>
+            </view>
+            <text
+              wx:elif="{{!item.member && !(isDragging && item.index === dropTargetIndex)}}"
+              class="avatar-name placeholder-name"
+            >
+              空位
+            </text>
+          </view>
+        </block>
+      </view>
     </view>
+  </view>
+
+  <view
+    class="drag-mask {{isDragging ? 'drag-mask-active' : ''}}"
+    catchtouchmove="onDragMaskTouchMove"
+    catchtouchend="onDragMaskTouchEnd"
+    catchtouchcancel="onDragMaskTouchEnd"
+  ></view>
+
+  <view
+    wx:if="{{isDragging && dragPosX != null}}"
+    class="avatar-drag-float"
+    style="left: {{dragPosX}}px; top: {{dragPosY}}px;"
+  >
+    <image
+      wx:if="{{draggingMember && draggingMember.avatarImage}}"
+      class="avatar-img avatar-circle-glow avatar-drag-float-circle {{draggingMember.isMe ? 'avatar-me' : ''}}"
+      src="{{draggingMember.avatarImage}}"
+      mode="aspectFill"
+    />
+    <view
+      wx:else
+      class="avatar-placeholder avatar-placeholder-animate avatar-drag-float-placeholder"
+    ></view>
+    <view class="avatar-name-wrap avatar-drag-float-name" wx:if="{{draggingMember}}">
+      <text class="avatar-name">{{draggingMember.nickName}}</text>
+      <text class="avatar-name avatar-me" wx:if="{{draggingMember.isMe}}">（我）</text>
+    </view>
+    <text wx:else class="avatar-name placeholder-name avatar-drag-float-name">空位</text>
   </view>
 
   <view class="footer" wx:if="{{isHost}}">

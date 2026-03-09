@@ -1,7 +1,6 @@
 {
   "navigationBarTitleText": "添加玩家",
   "navigationStyle": "custom",
-  "enablePullDownRefresh": true,
+  "enablePullDownRefresh": false,
   "usingComponents": {}
 }
-
