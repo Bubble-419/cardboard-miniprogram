@@ -13,8 +13,8 @@
     </view>
   </view>
 
-  <!-- 提示文字（不可触摸区域） -->
-  <view class="instruction-text">
+  <!-- 提示文字（出现几号玩家被选中后隐藏） -->
+  <view class="instruction-text" wx:if="{{!selectionAnimationDone || !selectedPlayerIndex}}">
     <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
     <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
   </view>
@@ -27,40 +27,54 @@
     bindtouchend="onTouchEnd"
     bindtouchcancel="onTouchCancel"
   >
-    <!-- 波纹效果 -->
+    <!-- 波纹效果：仅未选中时显示 -->
     <view 
-      class="ripple {{item.visible ? 'visible' : ''}} {{item.id === selectedTouchId ? 'selected' : ''}}"
+      class="ripple visible"
       wx:for="{{activeTouches}}"
       wx:key="id"
+      wx:if="{{!selectedPlayerIndex}}"
       style="left: {{item.x}}px; top: {{item.y}}px;"
     >
-      <!-- 选中时的水珠荡开效果（在波纹下方） -->
-      <view class="water-ring ring-1" wx:if="{{item.id === selectedTouchId}}"></view>
-      <view class="water-ring ring-2" wx:if="{{item.id === selectedTouchId}}"></view>
-      <view class="water-ring ring-3" wx:if="{{item.id === selectedTouchId}}"></view>
-      <view class="water-ring ring-4" wx:if="{{item.id === selectedTouchId}}"></view>
-      <view class="water-ring ring-5" wx:if="{{item.id === selectedTouchId}}"></view>
       <view class="ripple-circle ripple-1"></view>
       <view class="ripple-circle ripple-2"></view>
       <view class="ripple-circle ripple-3"></view>
+    </view>
+
+    <!-- 选中后的水波纹荡开效果（1.5s，绿色），动画结束后隐藏 -->
+    <view 
+      wx:if="{{selectedPlayerIndex && selectedPosition && !selectionAnimationDone}}"
+      class="ripple ripple-water-spread visible"
+      style="left: {{selectedPosition.x}}px; top: {{selectedPosition.y}}px;"
+    >
+      <view class="water-ring ring-1"></view>
+      <view class="water-ring ring-2"></view>
+      <view class="water-ring ring-3"></view>
+      <view class="water-ring ring-4"></view>
+      <view class="water-ring ring-5"></view>
     </view>
 
     <!-- 倒计时显示 -->
     <view class="countdown-display" wx:if="{{countdown > 0 && isSelecting}}">
       <text class="countdown-text">{{countdown}}s</text>
     </view>
+
+    <!-- 1.5s 动画结束后显示几号玩家被选中 -->
+    <view class="selected-player-display" wx:if="{{selectionAnimationDone && selectedPlayerIndex}}">
+      <text class="selected-player-text">{{selectedPlayerIndex}} 号玩家</text>
+      <text class="selected-player-hint">被选为首位出牌</text>
+    </view>
   </view>
 
-  <!-- 玩家数量显示 -->
-  <view class="player-count">
+  <!-- 玩家数量显示（选中后隐藏） -->
+  <view class="player-count" wx:if="{{!selectedPlayerIndex}}">
     <text class="count-number">{{playerCount}}</text>
     <text class="count-divider">/</text>
     <text class="count-total">{{minPlayers}}</text>
   </view>
 
-  <!-- 底部跳过按钮 -->
-  <view class="footer">
-    <button class="skip-btn" bindtap="skipSelection">跳过</button>
+  <!-- 底部确认按钮（1.5s 动画结束后显示） -->
+  <view class="footer" wx:if="{{selectionAnimationDone && selectedPlayerIndex}}">
+    <button class="confirm-btn" bindtap="confirmSelection">确认</button>
   </view>
 
   <!-- 添加玩家按钮 -->

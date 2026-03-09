@@ -33,12 +33,7 @@
   >
     <view
       class="circle-ring"
-      style="
-        width: {{ringDiameter}}rpx;
-        height: {{ringDiameter}}rpx;
-        left: {{circleCenterX}}rpx;
-        top: {{circleCenterY}}rpx;
-      "
+      style="width: {{ringDiameter}}rpx; height: {{ringDiameter}}rpx; left: {{circleCenterX}}rpx; top: {{circleCenterY}}rpx;"
     ></view>
 
     <view
@@ -60,7 +55,7 @@
           mode="aspectFill"
           data-id="{{item.id}}"
           binderror="onAvatarError"
-        />
+        ></image>
         <text class="player-label">{{item.label}}</text>
       </view>
     </view>
@@ -77,4 +72,3 @@
     </button>
   </view>
 </view>
-

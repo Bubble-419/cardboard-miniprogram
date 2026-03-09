@@ -143,14 +143,7 @@
   animation: ripple-animation 1.5s ease-out 1s infinite;
 }
 
-/* 选中波纹样式 */
-.ripple.selected .ripple-circle {
-  border-color: #4fc3f7;
-  border-width: 4rpx;
-  background-color: rgba(79, 195, 247, 0.25);
-}
-
-/* 水珠荡开效果：同心圆向外扩散，更明显 */
+/* 选中后的水波纹荡开效果（与页面绿色 #5ec159 一致，持续 1.5s） */
 .water-ring {
   position: absolute;
   left: 50%;
@@ -159,41 +152,41 @@
   border-radius: 50%;
   pointer-events: none;
   z-index: -1;
-  border: 8rpx solid rgba(33, 150, 243, 0.95);
+  border: 8rpx solid rgba(94, 193, 89, 0.95);
   background: transparent;
   box-shadow:
-    0 0 30rpx rgba(33, 150, 243, 0.6),
-    inset 0 0 20rpx rgba(79, 195, 247, 0.2);
+    0 0 30rpx rgba(94, 193, 89, 0.5),
+    inset 0 0 20rpx rgba(94, 193, 89, 0.15);
 }
 
 .water-ring.ring-1 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread 0.9s ease-out forwards;
+  animation: water-spread 1s ease-out forwards;
 }
 
 .water-ring.ring-2 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread 0.9s ease-out 0.15s forwards;
+  animation: water-spread 1s ease-out 0.1s forwards;
 }
 
 .water-ring.ring-3 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread 0.9s ease-out 0.3s forwards;
+  animation: water-spread 1s ease-out 0.2s forwards;
 }
 
 .water-ring.ring-4 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread 0.9s ease-out 0.45s forwards;
+  animation: water-spread 1s ease-out 0.3s forwards;
 }
 
 .water-ring.ring-5 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread 0.9s ease-out 0.6s forwards;
+  animation: water-spread 1s ease-out 0.4s forwards;
 }
 
 @keyframes water-spread {
@@ -244,6 +237,31 @@
   text-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.2);
 }
 
+/* 选中后显示的玩家号 */
+.selected-player-display {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.selected-player-text {
+  font-size: 72rpx;
+  font-weight: 700;
+  color: #5ec159;
+}
+
+.selected-player-hint {
+  font-size: 28rpx;
+  color: #5ec159;
+}
+
 /* 玩家数量显示 */
 .player-count {
   position: absolute;
@@ -291,14 +309,14 @@
   pointer-events: auto;
 }
 
-.skip-btn {
+.confirm-btn {
   width: 100%;
   height: 96rpx;
   background-color: #5ec159;
   color: #ffffff;
   border-radius: 28rpx;
   font-size: 44rpx;
-  font-weight: 400;
+  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -306,11 +324,11 @@
   letter-spacing: 4rpx;
 }
 
-.skip-btn::after {
+.confirm-btn::after {
   border: none;
 }
 
-.skip-btn:active {
+.confirm-btn:active {
   opacity: 0.8;
 }
 
