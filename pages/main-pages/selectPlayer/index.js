@@ -228,6 +228,23 @@ Page({
     this.navigateToGamepage(roomId, selectedPlayerIndex);
   },
 
+  reselectSelection() {
+    if (this.animationDoneTimer) {
+      clearTimeout(this.animationDoneTimer);
+      this.animationDoneTimer = null;
+    }
+    this.setData({
+      activeTouches: [],
+      playerCount: 0,
+      countdown: 0,
+      selectedTouchId: null,
+      selectedPlayerIndex: null,
+      selectedPosition: null,
+      selectionAnimationDone: false,
+      isSelecting: false
+    });
+  },
+
   navigateToGamepage(roomId, currentPlayerIndex) {
     if (!roomId) {
       roomId = getApp().globalData.roomId || '';

@@ -307,15 +307,41 @@
   padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
   z-index: 10;
   pointer-events: auto;
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+}
+
+.reselect-btn {
+  flex: 1;
+  height: 96rpx;
+  background-color: #fff;
+  color: #5ec159;
+  border: 2rpx solid #5ec159;
+  border-radius: 28rpx;
+  font-size: 40rpx;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 4rpx;
+}
+
+.reselect-btn::after {
+  border: none;
+}
+
+.reselect-btn:active {
+  opacity: 0.8;
 }
 
 .confirm-btn {
-  width: 100%;
+  flex: 1;
   height: 96rpx;
   background-color: #5ec159;
   color: #ffffff;
   border-radius: 28rpx;
-  font-size: 44rpx;
+  font-size: 40rpx;
   font-weight: 500;
   display: flex;
   align-items: center;
