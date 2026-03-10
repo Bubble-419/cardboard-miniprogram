@@ -67,8 +67,12 @@ Page({
     const app = getApp();
     app.globalData = app.globalData || {};
     app.globalData.selectedBG = { ...this.data.bg };
-    this._updateRoomState('selectProblem');
-    wx.redirectTo({ url: '/pages/main-pages/selectProblem/index' });
+    const roomId = app.globalData.roomId || '';
+    const url = roomId
+      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/selectPlayer/index';
+    this._updateRoomState('selectPlayer');
+    wx.redirectTo({ url });
   }
 });
 
