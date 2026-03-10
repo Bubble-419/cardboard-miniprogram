@@ -28,7 +28,7 @@ Page({
   },
 
   checkRoomState() {
-    const roomId = getApp().globalData.roomId || '';
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     wx.cloud.callFunction({
       name: 'getAddPlayerData',
@@ -57,6 +57,7 @@ Page({
 
   startStateCheck() {
     if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
-    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 2000);
+    this.checkRoomState();
+    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 1500);
   }
 });

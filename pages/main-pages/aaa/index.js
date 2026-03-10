@@ -36,6 +36,7 @@ Page({
         wx.showToast({ title: '未返回房间号', icon: 'none' });
         return;
       }
+      getApp().globalData.roomId = roomId;
 
       wx.navigateTo({
         url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`

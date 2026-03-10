@@ -55,7 +55,8 @@ Page({
 
   startStateCheck() {
     if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
-    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 2000);
+    this.checkRoomState();
+    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 1500);
   }
 })
 

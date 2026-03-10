@@ -71,13 +71,25 @@ Page({
       this.joinRoomThenLoad(roomId);
     } else {
       this.loadRoomData(roomId).then((result) => {
-        if (result && result.isHost) {
+        if (!result) {
+          console.log('[addPlayer] loadRoomData 返回空，跳过');
+          return;
+        }
+        console.log('[addPlayer] loadRoomData 完成', { isHost: result.isHost });
+        if (result.isHost === true) {
           this._updateRoomState('addPlayer');
           this._startMemberPolling();
-        } else if (result && !result.isHost) {
+        } else {
+          console.log('[addPlayer] 副屏用户，启动页面状态轮询');
           this._startStatePolling();
         }
       });
+    }
+  },
+
+  onShow() {
+    if (!this.data.isHost && this.data.roomId && this._statePollTimer && typeof this._statePollFn === 'function') {
+      this._statePollFn();
     }
   },
 
@@ -88,53 +100,94 @@ Page({
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
     const roomId = this.data.roomId;
-    if (!roomId) return;
+    if (!roomId) {
+      console.warn('[主屏] updateRoomState 跳过：无 roomId');
+      return { ok: false };
+    }
     try {
-      await wx.cloud.callFunction({
+      console.log('[主屏] 调用 updateRoomState', { roomId, currentPage });
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data: { roomId, currentPage, currentPlayerIndex, currentPlayerName }
       });
+      const result = (res && res.result) || {};
+      if (result.ok === true) {
+        console.log('[主屏] updateRoomState 成功', { currentPage: result.currentPage });
+        return result;
+      }
+      console.warn('[主屏] updateRoomState 失败', {
+        errCode: result.errCode,
+        errMsg: result.errMsg,
+        roomId,
+        currentPage
+      });
+      return result;
     } catch (e) {
-      console.warn('updateRoomState', e);
+      console.warn('[主屏] updateRoomState 异常', e);
+      return { ok: false, errMsg: e.errMsg };
     }
   },
 
   _startStatePolling() {
     this._stopStatePolling();
+    console.log('[副屏轮询] 已启动 _startStatePolling');
     const poll = async () => {
-      const roomId = this.data.roomId;
-      if (!roomId) return;
+      const roomId = this.data.roomId || getApp().globalData.roomId;
+      if (!roomId) {
+        console.log('[副屏轮询] 无 roomId，跳过', { dataRoomId: this.data.roomId, globalRoomId: getApp().globalData.roomId });
+        return;
+      }
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
+        console.log('[副屏轮询] getAddPlayerData 返回', {
+          ok: result.ok,
+          isHost: result.isHost,
+          hasRoomState: !!result.roomState,
+          currentPage: result.roomState && result.roomState.currentPage,
+          raw: result
+        });
+        if (result.ok !== true || !result.roomState) {
+          console.log('[副屏轮询] 数据无效，跳过', { ok: result.ok, errMsg: result.errMsg });
+          return;
+        }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
 
         if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
+          console.log('[副屏轮询] 主屏在 auth/selectbg/selectproblem，跳转 awaitBG');
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectmode') {
+          console.log('[副屏轮询] 主屏在 selectmode，跳转 awaitMode');
           wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectplayer') {
+          console.log('[副屏轮询] 主屏在 selectplayer，跳转 awaitPlayer');
           wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
         } else if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+          console.log('[副屏轮询] 主屏在 gamepage，跳转 normal-gamepage');
+          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
-          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1` });
+          console.log('[副屏轮询] 主屏在 statement，跳转 statement');
+          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
         } else if (page === 'leaderboard') {
+          console.log('[副屏轮询] 主屏在 leaderboard，跳转 leaderboard');
           wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        } else {
+          console.log('[副屏轮询] 主屏在 addPlayer，保持当前页', { page });
         }
       } catch (e) {
-        console.warn('state poll', e);
+        console.warn('[副屏轮询] 异常', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollFn = poll;
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
   },
 
   _stopStatePolling() {
@@ -142,6 +195,7 @@ Page({
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;
     }
+    this._statePollFn = null;
   },
 
   _startMemberPolling() {
@@ -209,7 +263,18 @@ Page({
         return;
       }
       this.loadRoomData(roomId).then((result) => {
-        if (result && !result.isHost) this._startStatePolling();
+        if (!result) {
+          console.log('[addPlayer] joinRoomThenLoad loadRoomData 返回空');
+          return;
+        }
+        console.log('[addPlayer] joinRoomThenLoad 完成', { isHost: result.isHost });
+        if (result.isHost === true) {
+          this._updateRoomState('addPlayer');
+          this._startMemberPolling();
+        } else {
+          console.log('[addPlayer] 副屏用户(扫码进入)，启动页面状态轮询');
+          this._startStatePolling();
+        }
       });
     } catch (err) {
       wx.hideLoading();
@@ -245,7 +310,8 @@ Page({
       const withAvatars = this._assignAvatarImages(deduped);
       const members = this._expandMembersToSlots(withAvatars);
       const memberSlots = this.buildMemberSlots(members);
-      const isHost = result.isHost !== false;
+      /* 仅创建者为主屏，其余（含扫码/输入加入）均为副屏 */
+      const isHost = result.isHost === true;
       const roomState = result.roomState || {
         currentPage: 'addPlayer',
         currentPlayerIndex: 1,
@@ -661,10 +727,15 @@ Page({
     });
   },
 
-  handleComplete() {
+  async handleComplete() {
     const roomId = this.data.roomId || '';
     if (roomId) getApp().globalData.roomId = roomId;
-    this._updateRoomState('auth');
+    console.log('[主屏] handleComplete 开始，准备更新状态为 auth');
+    const updateRes = await this._updateRoomState('auth');
+    if (updateRes && updateRes.ok !== true) {
+      console.error('[主屏] updateRoomState 失败，副屏可能无法跟随', updateRes);
+      wx.showToast({ title: '状态同步失败，副屏可能无法跟随', icon: 'none' });
+    }
     wx.navigateTo({
       url: '/pages/auth/index'
     });
