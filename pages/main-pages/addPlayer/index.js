@@ -115,9 +115,11 @@ Page({
         const roomIdEnc = encodeURIComponent(roomId);
 
         if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
-          wx.redirectTo({ url: '/pages/auth/index?isWaiting=1' });
+          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
+        } else if (page === 'selectmode') {
+          wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectplayer') {
-          wx.redirectTo({ url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&isWaiting=1` });
+          wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
         } else if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
@@ -126,7 +128,7 @@ Page({
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
           wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1` });
         } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
@@ -328,7 +330,7 @@ Page({
         isHost,
         roomState
       });
-      return result;
+      return { isHost: result.isHost };
     } catch (err) {
       if (!silent) {
         wx.hideLoading();

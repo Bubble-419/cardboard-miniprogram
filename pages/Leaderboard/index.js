@@ -1,6 +1,7 @@
 Page({
   data: {
     roomId: '',
+    isSubScreen: false,
     leaderboard: [],
     loading: true,
     error: ''
@@ -8,6 +9,7 @@ Page({
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
+    const isSubScreen = (options && options.isSubScreen) === '1' || (options && options.isSubScreen) === 'true';
     if (!roomId) {
       this.setData({
         loading: false,
@@ -15,7 +17,7 @@ Page({
       });
       return;
     }
-    this.setData({ roomId });
+    this.setData({ roomId, isSubScreen });
     this.loadLeaderboard(roomId);
   },
 
