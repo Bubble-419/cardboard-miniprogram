@@ -18,14 +18,20 @@
         </view>
       </view>
 
-      <view
-        class="action-card action-card-secondary"
-        bindtap="handleScanJoin"
-      >
-        <view class="card-icon scan-icon">📷</view>
-        <text class="card-title">扫码加入房间</text>
-        <text class="card-desc">扫描房间二维码，快速加入已有房间</text>
-        <view class="card-btn card-btn-outline">扫码加入</view>
+      <view class="action-card action-card-join">
+        <view class="card-icon join-icon">📲</view>
+        <text class="card-title">加入房间</text>
+        <text class="card-desc">扫描二维码或输入房间号加入已有房间</text>
+        <input
+          class="room-id-input"
+          placeholder="请输入房间号"
+          value="{{inputRoomId}}"
+          bindinput="onInputRoomId"
+        />
+        <view class="join-btn-row">
+          <view class="card-btn card-btn-outline" data-action="scan" bindtap="handleJoinAction">扫码加入</view>
+          <view class="card-btn card-btn-outline" data-action="input" bindtap="handleJoinAction">输入房间号加入</view>
+        </view>
       </view>
     </view>
   </view>

@@ -118,6 +118,29 @@
   text-align: center;
 }
 
+.room-id-wrap {
+  margin-top: 16rpx;
+  padding: 12rpx 24rpx;
+  background-color: #f3f4f6;
+  border-radius: 12rpx;
+  flex-direction: row;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.room-id-label {
+  font-size: 26rpx;
+  color: #6b7280;
+}
+
+.room-id-value {
+  font-size: 28rpx;
+  color: #111827;
+  font-weight: 500;
+  word-break: break-all;
+}
+
 .content-area {
   flex: 1;
   min-height: 0;

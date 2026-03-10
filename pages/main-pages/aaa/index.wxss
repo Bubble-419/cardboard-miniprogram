@@ -60,7 +60,7 @@
   box-sizing: border-box;
 }
 
-.action-card:active {
+.action-card-primary:active {
   transform: scale(0.98);
 }
 
@@ -82,7 +82,8 @@
   color: #5ec159;
 }
 
-.scan-icon {
+.scan-icon,
+.join-icon {
   color: #5ec159;
 }
 
@@ -103,9 +104,9 @@
 }
 
 .card-btn {
-  padding: 24rpx 64rpx;
+  padding: 24rpx;
   border-radius: 48rpx;
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 500;
   background-color: #5ec159;
   color: #ffffff;
@@ -119,4 +120,41 @@
 
 .card-btn-disabled {
   opacity: 0.7;
+}
+
+/* 加入房间卡片 */
+.action-card-join {
+  align-items: center;
+  border: 2rpx solid rgba(150, 150, 150, 0.2);
+}
+
+.action-card-join .room-id-input,
+.action-card-join .join-btn-row {
+  align-self: stretch;
+  width: 100%;
+}
+
+.join-btn-row {
+  display: flex;
+  flex-direction: row;
+  gap: 24rpx;
+  width: 100%;
+  justify-content: center;
+}
+
+.join-btn-row .card-btn {
+  flex: 1;
+  text-align: center;
+}
+
+.room-id-input {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 24rpx;
+  margin-bottom: 24rpx;
+  font-size: 32rpx;
+  color: #333;
+  background-color: #f5f5f5;
+  border-radius: 16rpx;
+  box-sizing: border-box;
 }

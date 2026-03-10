@@ -21,6 +21,10 @@
     <view class="instruction-lines">
       <text class="instruction-title">请各成员扫码进入游戏</text>
       <text class="instruction-subtitle">长按后拖动可调整成员顺序</text>
+      <view wx:if="{{roomId}}" class="room-id-wrap">
+        <text class="room-id-label">房间号：</text>
+        <text class="room-id-value" selectable>{{roomId}}</text>
+      </view>
     </view>
   </view>
 
