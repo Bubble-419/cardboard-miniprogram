@@ -176,6 +176,17 @@
   margin-top: 2rpx;
 }
 
+/* 自己的打分轮次：置灰不可选 */
+.score-btn-disabled {
+  background-color: #e0e0e0 !important;
+  opacity: 0.6;
+}
+
+.score-btn-disabled .score-num,
+.score-btn-disabled .score-unit {
+  color: #999 !important;
+}
+
 /* 选中态：高饱和绿底、白色文字 */
 .score-btn-active {
   background-color: #00a84a;

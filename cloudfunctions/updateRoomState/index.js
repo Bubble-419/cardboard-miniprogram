@@ -12,7 +12,7 @@ const ROOMS_COLLECTION = 'rooms';
  * 仅房间创建者可调用
  */
 exports.main = async (event, context) => {
-  const { roomId, currentPage, currentPlayerIndex, currentPlayerName } = event || {};
+  const { roomId, currentPage, currentPlayerIndex, currentPlayerName, incrementRound } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
     return {
@@ -51,8 +51,17 @@ exports.main = async (event, context) => {
       };
     }
 
+    let currentRound = room.currentRound != null ? room.currentRound : 1;
+    if (incrementRound === true) {
+      currentRound += 1;
+    }
+    if (currentPage === 'auth') {
+      currentRound = 1;
+    }
+
     const updateData = {
       currentPage: currentPage || 'addPlayer',
+      currentRound,
       updatedAt: Date.now()
     };
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;

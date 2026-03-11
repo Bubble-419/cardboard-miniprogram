@@ -1,7 +1,9 @@
 .container {
   min-height: 100vh;
-  background-color: #fff;
+  background-color: #fafafa;
   padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  flex-direction: column;
 }
 
 .custom-navbar {
@@ -104,18 +106,97 @@
   background-color: #212121;
 }
 
-/* 普通玩家等待空状态 */
-.empty-statement-state {
+/* 普通玩家等待状态（与 awaitBG 等副屏页面风格一致） */
+.waiting-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+}
+
+.character-container {
+  margin-bottom: 40rpx;
+}
+
+.character-bg {
+  width: 438rpx;
+  height: 294rpx;
+  background-color: rgba(31, 177, 213, 0.15);
+  border-radius: 20rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 80rpx 60rpx;
 }
 
-.empty-statement-text {
-  font-size: 36rpx;
-  color: #666;
+.character-icon {
+  width: 128rpx;
+  height: 120rpx;
+  background-color: #4fc8e7;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.character-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye {
+  width: 26rpx;
+  height: 26rpx;
+  background-color: #000000;
+  border-radius: 50%;
+  position: absolute;
+  top: 40%;
+}
+
+.eye-left { left: 25%; transform: translate(-50%, -50%); }
+.eye-right { right: 25%; transform: translate(50%, -50%); }
+
+.mouth {
+  width: 18rpx;
+  height: 9rpx;
+  border: 2rpx solid #000000;
+  border-top: none;
+  border-radius: 0 0 18rpx 18rpx;
+  position: absolute;
+  bottom: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.foot {
+  width: 34rpx;
+  height: 32rpx;
+  background-color: #000000;
+  border-radius: 4rpx;
+  position: absolute;
+  bottom: 10%;
+}
+
+.foot-left { left: 20%; }
+.foot-right { right: 20%; }
+
+.main-text {
+  font-size: 56rpx;
+  color: #16a6ca;
   text-align: center;
-  line-height: 1.6;
+  margin-bottom: 20rpx;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.sub-text {
+  font-size: 36rpx;
+  color: #9a9a9a;
+  text-align: center;
+  line-height: 1.33;
 }

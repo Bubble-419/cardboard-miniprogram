@@ -5,6 +5,8 @@ Page({
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
+    myPlayerIndex: null,
+    isMyScoringTurn: false,
     myScore: null,
     scoredCount: 0,
     totalRequired: 0,
@@ -27,19 +29,38 @@ Page({
       currentPlayerIndex
     });
 
-    this.loadRoomData(roomId);
-    this.refreshScoreCount(roomId, currentPlayerIndex);
     this._startStatePolling();
+    this._startScorePolling();
+    this._loadAndRefresh(roomId, currentPlayerIndex);
   },
 
   onUnload() {
     this._stopStatePolling();
+    this._stopScorePolling();
   },
 
   onShow() {
     const { roomId, currentPlayerIndex } = this.data;
     if (roomId && currentPlayerIndex != null) {
       this.refreshScoreCount(roomId, currentPlayerIndex);
+    }
+  },
+
+  _startScorePolling() {
+    this._stopScorePolling();
+    const poll = () => {
+      const { roomId, currentPlayerIndex } = this.data;
+      if (roomId && currentPlayerIndex != null) {
+        this.refreshScoreCount(roomId, currentPlayerIndex);
+      }
+    };
+    this._scorePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopScorePolling() {
+    if (this._scorePollTimer) {
+      clearInterval(this._scorePollTimer);
+      this._scorePollTimer = null;
     }
   },
 
@@ -64,13 +85,13 @@ Page({
             url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
           });
         } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollTimer = setInterval(poll, 1000);
   },
 
   _stopStatePolling() {
@@ -78,6 +99,11 @@ Page({
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;
     }
+  },
+
+  async _loadAndRefresh(roomId, currentPlayerIndex) {
+    await this.loadRoomData(roomId);
+    await this.refreshScoreCount(roomId, currentPlayerIndex);
   },
 
   async loadRoomData(roomId) {
@@ -93,7 +119,7 @@ Page({
       }
 
       const members = result.members;
-      const totalRequired = members.length;
+      const totalRequired = Math.max(0, members.length - 1);
       const avatarList = members.map(m => ({
         id: m.playerIndex,
         avatar: m.avatarUrl || ''
@@ -101,12 +127,17 @@ Page({
 
       const current = members.find(m => m.playerIndex === this.data.currentPlayerIndex);
       const currentPlayerName = current ? (current.nickName || `玩家${this.data.currentPlayerIndex}`) : `玩家${this.data.currentPlayerIndex}`;
+      const me = members.find(m => m.isMe);
+      const myPlayerIndex = me ? me.playerIndex : null;
+      const isMyScoringTurn = myPlayerIndex != null && this.data.currentPlayerIndex === myPlayerIndex;
 
       this.setData({
         members,
         avatarList,
         totalRequired,
-        currentPlayerName
+        currentPlayerName,
+        myPlayerIndex,
+        isMyScoringTurn
       });
     } catch (e) {
       console.error('loadRoomData', e);
@@ -121,8 +152,13 @@ Page({
         data: { roomId, currentPlayerIndex }
       });
       const result = (res && res.result) || {};
-      if (result.ok === true && result.scoredCount != null) {
-        this.setData({ scoredCount: result.scoredCount });
+      if (result.ok === true) {
+        const updates = {};
+        if (result.scoredCount != null) updates.scoredCount = result.scoredCount;
+        if (result.totalRequired != null) updates.totalRequired = result.totalRequired;
+        if (Object.keys(updates).length) {
+          this.setData(updates);
+        }
       }
     } catch (e) {
       console.warn('refreshScoreCount', e);
@@ -136,6 +172,7 @@ Page({
   async onScoreTap(e) {
     const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
     if (score == null) return;
+    if (this.data.isMyScoringTurn) return;
 
     const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;

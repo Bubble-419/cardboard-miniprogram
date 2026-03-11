@@ -78,7 +78,7 @@ Page({
         console.warn('state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollTimer = setInterval(poll, 1000);
   },
 
   _stopStatePolling() {

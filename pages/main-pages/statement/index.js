@@ -42,13 +42,14 @@ Page({
     this._stopStatePolling();
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, incrementRound) {
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
+      if (incrementRound === true) data.incrementRound = true;
       await wx.cloud.callFunction({
         name: 'updateRoomState',
         data
@@ -78,13 +79,13 @@ Page({
             url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
           });
         } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollTimer = setInterval(poll, 1000);
   },
 
   _stopStatePolling() {
@@ -124,10 +125,11 @@ Page({
     const nextIndex = (currentPlayerIndex % count) + 1;
     const nextMember = (members || []).find(m => m.playerIndex === nextIndex);
     const nextPlayerName = nextMember ? (nextMember.nickName || `玩家${nextIndex}`) : `玩家${nextIndex}`;
+    const isCyclingBack = nextIndex === 1;
 
-    this._updateRoomState('gamepage', nextIndex, nextPlayerName);
-    wx.navigateTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${roomId}&currentPlayerIndex=${nextIndex}`
+    this._updateRoomState('gamepage', nextIndex, nextPlayerName, isCyclingBack);
+    wx.redirectTo({
+      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
     });
   }
 });

@@ -19,6 +19,44 @@ Page({
     }
     this.setData({ roomId, isSubScreen });
     this.loadLeaderboard(roomId);
+    if (isSubScreen) {
+      this._startStatePolling();
+    }
+  },
+
+  onUnload() {
+    this._stopStatePolling();
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
+          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${encodeURIComponent(roomId)}` });
+        }
+      } catch (e) {
+        console.warn('leaderboard state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
+    }
   },
 
   async loadLeaderboard(roomId) {
@@ -66,8 +104,12 @@ Page({
           name: 'clearRoomScores',
           data: { roomId }
         });
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: { roomId, currentPage: 'auth' }
+        });
       } catch (e) {
-        console.warn('clearRoomScores', e);
+        console.warn('clearRoomScores/updateRoomState', e);
       } finally {
         wx.hideLoading();
       }
