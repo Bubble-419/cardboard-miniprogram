@@ -132,7 +132,7 @@
 
 .main-stage {
   position: absolute;
-  top: 50%;
+  top: 45%;
   left: 50%;
   transform: translate(-50%, -50%);
   width: 100%;
@@ -531,11 +531,18 @@
   margin-top: 8rpx;
 }
 
-.footer {
+.footer-wrap {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer {
   width: 100%;
   padding: 30rpx 54rpx;
   padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,6 +551,7 @@
 .primary-btn {
   width: 100%;
   height: 96rpx;
+  line-height: 96rpx;
   background: linear-gradient(135deg, #5ec159 0%, #4db84a 100%);
   color: #ffffff;
   border-radius: 24rpx;

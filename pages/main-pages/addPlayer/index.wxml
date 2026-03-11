@@ -151,7 +151,9 @@
     <text wx:else class="avatar-name placeholder-name avatar-drag-float-name">空位</text>
   </view>
 
-  <view class="footer" wx:if="{{isHost}}">
-    <button class="primary-btn" bindtap="handleComplete">完成</button>
+  <view class="footer-wrap" wx:if="{{isHost}}">
+    <view class="footer">
+      <button class="primary-btn" bindtap="handleComplete">完成</button>
+    </view>
   </view>
 </view>
