@@ -12,7 +12,7 @@ const ROOMS_COLLECTION = 'rooms';
  * 仅房间创建者可调用
  */
 exports.main = async (event, context) => {
-  const { roomId, currentPage, currentPlayerIndex, currentPlayerName } = event || {};
+  const { roomId, currentPage, currentPlayerIndex, currentPlayerName, incrementRound } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
     return {
@@ -27,6 +27,7 @@ exports.main = async (event, context) => {
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
     if (!roomRes.data || roomRes.data.length === 0) {
+      console.warn('[updateRoomState] 房间不存在', roomId);
       return {
         ok: false,
         errCode: 'ROOM_NOT_FOUND',
@@ -35,7 +36,14 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
-    if (room.creatorId && room.creatorId !== OPENID) {
+    const creatorId = room.creatorId || room.creator_id;
+    const isCreator = !creatorId || String(creatorId) === String(OPENID);
+    const membersRes = creatorId && !isCreator
+      ? await db.collection('roomMembers').where({ roomId, userId: OPENID }).limit(1).get()
+      : { data: [] };
+    const isMember = membersRes.data && membersRes.data.length > 0;
+    if (!isCreator && !isMember) {
+      console.warn('[updateRoomState] 无权限', { roomCreatorId: creatorId, callerOpenId: OPENID });
       return {
         ok: false,
         errCode: 'NO_PERMISSION',
@@ -43,16 +51,30 @@ exports.main = async (event, context) => {
       };
     }
 
+    let currentRound = room.currentRound != null ? room.currentRound : 1;
+    if (incrementRound === true) {
+      currentRound += 1;
+    }
+    if (currentPage === 'auth') {
+      currentRound = 1;
+    }
+
     const updateData = {
       currentPage: currentPage || 'addPlayer',
+      currentRound,
       updatedAt: Date.now()
     };
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
 
-    await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
+    const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
       data: updateData
     });
+    const updated = (updateRes && updateRes.stats && updateRes.stats.updated) || 0;
+    if (updated === 0) {
+      console.warn('[updateRoomState] 未更新到任何记录', { roomId, updateRes });
+    }
+    console.log('[updateRoomState] 更新完成', { roomId, currentPage: updateData.currentPage, updated });
 
     return {
       ok: true,

@@ -3,6 +3,7 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
+const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
@@ -35,6 +36,10 @@ exports.main = async (event, context) => {
   }
 
   try {
+    const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+    const room = roomRes.data && roomRes.data[0];
+    const currentRound = room && room.currentRound != null ? room.currentRound : 1;
+
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId })
@@ -47,6 +52,7 @@ exports.main = async (event, context) => {
       .where({
         roomId,
         currentPlayerIndex,
+        round: currentRound,
         userId: OPENID
       })
       .limit(1)
@@ -62,6 +68,7 @@ exports.main = async (event, context) => {
         data: {
           roomId,
           currentPlayerIndex,
+          round: currentRound,
           userId: OPENID,
           score: s,
           createdAt: now,
@@ -72,7 +79,7 @@ exports.main = async (event, context) => {
 
     const countRes = await db
       .collection(ROOM_SCORES_COLLECTION)
-      .where({ roomId, currentPlayerIndex })
+      .where({ roomId, currentPlayerIndex, round: currentRound })
       .count();
     const scoredCount = (countRes && countRes.total) || 0;
 

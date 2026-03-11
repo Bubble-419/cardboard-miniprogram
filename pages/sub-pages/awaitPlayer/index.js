@@ -3,79 +3,58 @@ Page({
     countdown: 5
   },
 
-  onLoad() {
-    // 启动倒计时
+  onLoad(options) {
+    const roomId = options.roomId || getApp().globalData.roomId || '';
+    if (roomId) getApp().globalData.roomId = roomId;
+    this.setData({ roomId });
     this.startCountdown();
-    
-    // 启动定时器，检查游戏状态变化
     this.startStateCheck();
   },
 
   onShow() {
-    // 页面显示时也检查状态
-    this.checkGameState();
+    this.checkRoomState();
   },
 
   onUnload() {
-    // 清除倒计时
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-    }
-    // 清除状态检查定时器
-    if (this.stateCheckTimer) {
-      clearInterval(this.stateCheckTimer);
-    }
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
   },
 
   startCountdown() {
     this.countdownTimer = setInterval(() => {
-      if (this.data.countdown > 0) {
-        this.setData({
-          countdown: this.data.countdown - 1
-        });
-      } else {
-        // 倒计时结束后重新开始
-        this.setData({
-          countdown: 5
-        });
-      }
+      const count = this.data.countdown > 0 ? this.data.countdown - 1 : 5;
+      this.setData({ countdown: count || 5 });
     }, 1000);
   },
 
-  // 检查游戏状态
-  checkGameState() {
-    const db = wx.cloud.database();
-    
-    // 从云数据库查询当前游戏状态
-    db.collection('gameState')
-      .orderBy('updateTime', 'desc')
-      .limit(1)
-      .get({
-        success: (res) => {
-          if (res.data && res.data.length > 0) {
-            const currentState = res.data[0].currentPage;
-            
-            // 如果状态变为其他页面，根据需求跳转
-            // 这里可以根据实际需求添加更多状态判断
-            // 例如：如果状态变为游戏开始，可以跳转到游戏页面
-          }
-        },
-        fail: (err) => {
-          console.error('检查游戏状态失败:', err);
-        }
-      });
+  checkRoomState() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    wx.cloud.callFunction({
+      name: 'getAddPlayerData',
+      data: { roomId }
+    }).then((res) => {
+      const result = (res && res.result) || {};
+      if (result.ok !== true || !result.roomState) return;
+      const page = (result.roomState.currentPage || '').toLowerCase();
+      const roomIdEnc = encodeURIComponent(roomId);
+      if (page === 'gamepage') {
+        const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+        wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
+      } else if (page === 'statement') {
+        const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+        const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+        wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
+      } else if (page === 'leaderboard') {
+        wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+      }
+    }).catch((e) => console.warn('checkRoomState', e));
   },
 
-  // 启动状态检查定时器
   startStateCheck() {
-    // 清除之前的定时器（如果存在）
-    if (this.stateCheckTimer) {
-      clearInterval(this.stateCheckTimer);
-    }
-    // 每500毫秒检查一次游戏状态
-    this.stateCheckTimer = setInterval(() => {
-      this.checkGameState();
-    }, 500);
+    if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
+    this.checkRoomState();
+    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 1500);
   }
 })
 

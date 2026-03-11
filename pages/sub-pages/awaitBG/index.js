@@ -38,11 +38,13 @@ Page({
       if (result.ok !== true || !result.roomState) return;
       const page = (result.roomState.currentPage || '').toLowerCase();
       const roomIdEnc = encodeURIComponent(roomId);
-      if (page === 'selectplayer') {
+      if (page === 'selectmode') {
+        wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
+      } else if (page === 'selectplayer') {
         wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
       } else if (page === 'gamepage') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-        wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
+        wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
       } else if (page === 'statement') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
         const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
@@ -58,5 +60,4 @@ Page({
     this.checkRoomState();
     this.stateCheckTimer = setInterval(() => this.checkRoomState(), 1500);
   }
-})
-
+});

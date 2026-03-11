@@ -31,6 +31,7 @@ Page({
     this._stopStatePolling();
     if (this.countdownTimer) clearInterval(this.countdownTimer);
     if (this.selectionTimer) clearTimeout(this.selectionTimer);
+    this._clearLongPressTimer();
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
@@ -65,19 +66,19 @@ Page({
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
-          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1` });
+          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
         } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/Leaderboard/index?roomId=${roomIdEnc}` });
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollTimer = setInterval(poll, 1000);
   },
 
   _stopStatePolling() {
@@ -142,7 +143,7 @@ Page({
     });
   },
 
-  // 触摸移动
+  // 触摸移动（选中后不处理）
   onTouchMove(e) {
     if (this.data.selectedPlayerIndex) return;
     const touches = e.touches;
@@ -162,11 +163,11 @@ Page({
     });
   },
 
-  // 触摸结束
+  // 触摸结束（选中后不处理，水波纹不会因手指离开而停止）
   onTouchEnd(e) {
     if (this.data.selectedPlayerIndex) return;
     const changedTouches = e.changedTouches;
-    
+
     // 移除结束的触摸点
     changedTouches.forEach(touch => {
       const touchId = touch.identifier;
@@ -175,7 +176,7 @@ Page({
         this.data.activeTouches.splice(index, 1);
       }
     });
-    
+
     this.updatePlayerCount();
     this.setData({
       activeTouches: [...this.data.activeTouches]
@@ -193,10 +194,29 @@ Page({
     this.setData({
       playerCount: count
     });
-    
-    // 如果达到最少玩家数，可以开始选择
+
     if (count >= this.data.minPlayers && !this.data.isSelecting) {
-      this.startSelection();
+      this._startLongPressTimer();
+    } else {
+      this._clearLongPressTimer();
+    }
+  },
+
+  /** 长按 0.8 秒后才开始倒计时+随机选择 */
+  _startLongPressTimer() {
+    if (this._longPressTimer) return;
+    this._longPressTimer = setTimeout(() => {
+      this._longPressTimer = null;
+      if (this.data.activeTouches.length >= this.data.minPlayers && !this.data.isSelecting) {
+        this.startSelection();
+      }
+    }, 800);
+  },
+
+  _clearLongPressTimer() {
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer);
+      this._longPressTimer = null;
     }
   },
 
@@ -235,7 +255,7 @@ Page({
     }, 500);
   },
 
-  // 随机选择玩家：被选中的位置播放 1.5s 水波纹动画，结束后显示几号玩家被选中 + 确认按钮
+  // 随机选择玩家：被选中的位置播放 3s 水波纹动画（不随手指离开停止），结束后显示几号玩家被选中 + 确认按钮
   selectRandomPlayer() {
     const { activeTouches, members } = this.data;
     let currentPlayerIndex = 1;
@@ -276,7 +296,7 @@ Page({
       });
     }
 
-    const SELECTION_ANIMATION_DURATION = 1500;
+    const SELECTION_ANIMATION_DURATION = 3000;
     if (selectedPosition) {
       this.animationDoneTimer = setTimeout(() => {
         this.setData({ selectionAnimationDone: true });
@@ -291,6 +311,7 @@ Page({
   },
 
   reselectSelection() {
+    this._clearLongPressTimer();
     if (this.animationDoneTimer) {
       clearTimeout(this.animationDoneTimer);
       this.animationDoneTimer = null;
@@ -321,6 +342,24 @@ Page({
     this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
     wx.redirectTo({
       url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
+    });
+  },
+
+  /** 跳过：直接随机选出一名玩家并显示结果 */
+  handleSkip() {
+    if (this.data.selectedPlayerIndex) return;
+    const { members } = this.data;
+    let currentPlayerIndex = 1;
+    if (members && members.length > 0) {
+      const mIndex = Math.floor(Math.random() * members.length);
+      currentPlayerIndex = members[mIndex].playerIndex;
+    }
+    getApp().globalData.selectedPlayer = { currentPlayerIndex };
+    this.setData({
+      selectedPlayerIndex: currentPlayerIndex,
+      selectedPosition: null,
+      selectionAnimationDone: true,
+      isSelecting: false
     });
   },
 

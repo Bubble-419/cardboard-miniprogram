@@ -47,7 +47,7 @@
       <view class="score-row">
         <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
           <view
-            class="score-btn {{myScore === item ? 'score-btn-active' : ''}}"
+            class="score-btn {{myScore === item ? 'score-btn-active' : ''}} {{isMyScoringTurn ? 'score-btn-disabled' : ''}}"
             data-score="{{item}}"
             bindtap="onScoreTap"
           >

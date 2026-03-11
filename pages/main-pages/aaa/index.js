@@ -1,6 +1,7 @@
 Page({
   data: {
-    loading: false
+    loading: false,
+    inputRoomId: ''
   },
 
   onLoad() {},
@@ -35,6 +36,7 @@ Page({
         wx.showToast({ title: '未返回房间号', icon: 'none' });
         return;
       }
+      getApp().globalData.roomId = roomId;
 
       wx.navigateTo({
         url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
@@ -47,6 +49,29 @@ Page({
       });
     } finally {
       this.setData({ loading: false });
+    }
+  },
+
+  onInputRoomId(e) {
+    this.setData({ inputRoomId: (e.detail && e.detail.value) || '' });
+  },
+
+  /** 加入房间：根据 data-action 区分扫码或输入 */
+  handleJoinAction(e) {
+    const action = e.currentTarget.dataset.action;
+    if (action === 'scan') {
+      this.handleScanJoin();
+    } else if (action === 'input') {
+      const roomId = (this.data.inputRoomId || '').trim();
+      if (!roomId) {
+        wx.showToast({ title: '请输入房间号', icon: 'none' });
+        return;
+      }
+      if (!/^[\w-]{10,50}$/.test(roomId)) {
+        wx.showToast({ title: '房间号格式不正确', icon: 'none' });
+        return;
+      }
+      this._joinRoomAndGo(roomId);
     }
   },
 

@@ -5,6 +5,8 @@ Page({
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
+    myPlayerIndex: null,
+    isMyScoringTurn: false,
     myScore: null,
     scoredCount: 0,
     totalRequired: 0,
@@ -25,11 +27,17 @@ Page({
 
     this.setData({
       roomId,
-      currentPlayerIndex
+      currentPlayerIndex,
+      scoredCount: 0,
+      myScore: null
     });
 
-    this.loadRoomData(roomId);
-    this.refreshScoreCount(roomId, currentPlayerIndex);
+    this._startScorePolling();
+    this._loadAndRefresh(roomId, currentPlayerIndex);
+  },
+
+  onUnload() {
+    this._stopScorePolling();
   },
 
   onShow() {
@@ -37,6 +45,29 @@ Page({
     if (roomId && currentPlayerIndex != null) {
       this.refreshScoreCount(roomId, currentPlayerIndex);
     }
+  },
+
+  _startScorePolling() {
+    this._stopScorePolling();
+    const poll = () => {
+      const { roomId, currentPlayerIndex } = this.data;
+      if (roomId && currentPlayerIndex != null) {
+        this.refreshScoreCount(roomId, currentPlayerIndex);
+      }
+    };
+    this._scorePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopScorePolling() {
+    if (this._scorePollTimer) {
+      clearInterval(this._scorePollTimer);
+      this._scorePollTimer = null;
+    }
+  },
+
+  async _loadAndRefresh(roomId, currentPlayerIndex) {
+    await this.loadRoomData(roomId);
+    await this.refreshScoreCount(roomId, currentPlayerIndex);
   },
 
   async loadRoomData(roomId) {
@@ -52,7 +83,7 @@ Page({
       }
 
       const members = result.members;
-      const totalRequired = members.length;
+      const totalRequired = Math.max(0, members.length - 1);
       const avatarList = members.map(m => ({
         id: m.playerIndex,
         avatar: m.avatarUrl || ''
@@ -60,12 +91,17 @@ Page({
 
       const current = members.find(m => m.playerIndex === this.data.currentPlayerIndex);
       const currentPlayerName = current ? (current.nickName || `玩家${this.data.currentPlayerIndex}`) : `玩家${this.data.currentPlayerIndex}`;
+      const me = members.find(m => m.isMe);
+      const myPlayerIndex = me ? me.playerIndex : null;
+      const isMyScoringTurn = myPlayerIndex != null && this.data.currentPlayerIndex === myPlayerIndex;
 
       this.setData({
         members,
         avatarList,
         totalRequired,
-        currentPlayerName
+        currentPlayerName,
+        myPlayerIndex,
+        isMyScoringTurn
       });
 
       this.updateCanStartVote();
@@ -83,11 +119,14 @@ Page({
         data: { roomId, currentPlayerIndex }
       });
       const result = (res && res.result) || {};
-      if (result.ok === true && result.scoredCount != null) {
-        this.setData({
-          scoredCount: result.scoredCount
-        });
-        this.updateCanStartVote();
+      if (result.ok === true) {
+        const updates = {};
+        if (result.scoredCount != null) updates.scoredCount = result.scoredCount;
+        if (result.totalRequired != null) updates.totalRequired = result.totalRequired;
+        if (Object.keys(updates).length) {
+          this.setData(updates);
+          this.updateCanStartVote();
+        }
       }
     } catch (e) {
       console.warn('refreshScoreCount', e);
@@ -96,7 +135,7 @@ Page({
 
   updateCanStartVote() {
     const { scoredCount, totalRequired, members } = this.data;
-    const requiredScores = Math.max(0, (members.length || totalRequired) - 1);
+    const requiredScores = members.length ? Math.max(0, members.length - 1) : totalRequired;
     const canStartVote = requiredScores === 0 || scoredCount >= requiredScores;
     this.setData({ canStartVote });
   },
@@ -108,6 +147,7 @@ Page({
   async onScoreTap(e) {
     const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
     if (score == null) return;
+    if (this.data.isMyScoringTurn) return;
 
     const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;
@@ -159,7 +199,7 @@ Page({
     const currentPlayerIndex = this.data.currentPlayerIndex;
     const currentPlayerName = this.data.currentPlayerName || `玩家${currentPlayerIndex}`;
     this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
-    wx.navigateTo({
+    wx.redirectTo({
       url: `/pages/main-pages/statement/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${encodeURIComponent(currentPlayerName)}`
     });
   },

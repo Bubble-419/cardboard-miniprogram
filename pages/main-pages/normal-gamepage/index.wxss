@@ -169,6 +169,16 @@
   margin-top: 2rpx;
 }
 
+.score-btn-disabled {
+  background-color: #e0e0e0 !important;
+  opacity: 0.6;
+}
+
+.score-btn-disabled .score-num,
+.score-btn-disabled .score-unit {
+  color: #999 !important;
+}
+
 .score-btn-active {
   background-color: #00a84a;
 }
