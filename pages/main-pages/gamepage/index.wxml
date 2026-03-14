@@ -28,7 +28,7 @@
     <view class="card-container">
       <image
         class="card-bg-img"
-        src="/assets/icons/bg.png"
+        src="/assets/icons/bg.webp"
         mode="widthFix"
       />
     </view>
