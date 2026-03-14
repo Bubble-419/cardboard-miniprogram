@@ -11,6 +11,7 @@ Page({
     scoredCount: 0,
     totalRequired: 0,
     canStartVote: false,
+    isSubmittingScore: false,
     imageError: false
   },
 
@@ -147,10 +148,17 @@ Page({
   async onScoreTap(e) {
     const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
     if (score == null) return;
-    if (this.data.isMyScoringTurn) return;
+    if (this.data.isSubmittingScore) return;
 
     const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;
+
+    const numericScore = parseInt(score, 10);
+    // 乐观更新：本地先高亮选中的分数，提升点击响应速度
+    this.setData({
+      myScore: numericScore,
+      isSubmittingScore: true
+    });
 
     try {
       const res = await wx.cloud.callFunction({
@@ -158,22 +166,34 @@ Page({
         data: {
           roomId,
           currentPlayerIndex,
-          score: parseInt(score, 10)
+          score: numericScore
         }
       });
       const result = (res && res.result) || {};
       if (result.ok === true) {
-        this.setData({
-          myScore: parseInt(score, 10),
-          scoredCount: result.scoredCount != null ? result.scoredCount : this.data.scoredCount + 1
-        });
+        if (result.scoredCount != null) {
+          this.setData({
+            scoredCount: result.scoredCount
+          });
+        }
         this.updateCanStartVote();
       } else {
+        // 提交失败还原本地状态
+        this.setData({
+          myScore: null
+        });
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
       }
     } catch (e) {
       console.error('submitGameScore', e);
+      this.setData({
+        myScore: null
+      });
       wx.showToast({ title: '提交失败', icon: 'none' });
+    } finally {
+      this.setData({
+        isSubmittingScore: false
+      });
     }
   },
 

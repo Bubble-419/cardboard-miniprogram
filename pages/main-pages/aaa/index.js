@@ -53,7 +53,15 @@ Page({
   },
 
   onInputRoomId(e) {
-    this.setData({ inputRoomId: (e.detail && e.detail.value) || '' });
+    const raw = (e.detail && e.detail.value) || '';
+    // 只保留数字，最多 8 位
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    this.setData({ inputRoomId: digits });
+
+    // 自动触发：当达到 8 位数字时尝试加入房间
+    if (digits.length === 8) {
+      this._autoJoinIfValid(digits);
+    }
   },
 
   /** 加入房间：根据 data-action 区分扫码或输入 */
@@ -61,18 +69,20 @@ Page({
     const action = e.currentTarget.dataset.action;
     if (action === 'scan') {
       this.handleScanJoin();
-    } else if (action === 'input') {
-      const roomId = (this.data.inputRoomId || '').trim();
-      if (!roomId) {
-        wx.showToast({ title: '请输入房间号', icon: 'none' });
-        return;
-      }
-      if (!/^[\w-]{10,50}$/.test(roomId)) {
-        wx.showToast({ title: '房间号格式不正确', icon: 'none' });
-        return;
-      }
-      this._joinRoomAndGo(roomId);
     }
+  },
+
+  /**
+   * 输入满 8 位数字后自动校验并尝试加入房间
+   */
+  _autoJoinIfValid(roomId) {
+    if (!/^\d{8}$/.test(roomId)) return;
+    // 避免重复触发：若正在 loading，则不再发起
+    if (this._autoJoining) return;
+    this._autoJoining = true;
+    this._joinRoomAndGo(roomId).finally(() => {
+      this._autoJoining = false;
+    });
   },
 
   /**
@@ -122,8 +132,8 @@ Page({
       const rid = u.searchParams.get('rid') || u.searchParams.get('roomId');
       if (rid) return rid;
     } catch (_) {}
-    // 纯 roomId（形如 1730123456789-123456）
-    if (/^[\w-]{10,50}$/.test(s)) return s;
+    // 纯 roomId：只支持 8 位数字
+    if (/^\d{8}$/.test(s)) return s;
     return '';
   },
 

@@ -27,15 +27,10 @@
   <view class="section card-section">
     <view class="card-container">
       <image
-        wx:if="{{!imageError}}"
-        class="card-img"
-        src="/assets/icons/aaatest.png"
-        mode="aspectFit"
-        binderror="onImageError"
+        class="card-bg-img"
+        src="/assets/icons/bg.png"
+        mode="widthFix"
       />
-      <view wx:else class="card-placeholder">
-        <text class="card-placeholder-text">图片加载失败</text>
-      </view>
     </view>
   </view>
 
@@ -52,7 +47,7 @@
       <view class="score-row">
         <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
           <view
-            class="score-btn {{myScore === item ? 'score-btn-active' : ''}} {{isMyScoringTurn ? 'score-btn-disabled' : ''}}"
+            class="score-btn {{myScore === item ? 'score-btn-active' : ''}}"
             data-score="{{item}}"
             bindtap="onScoreTap"
           >

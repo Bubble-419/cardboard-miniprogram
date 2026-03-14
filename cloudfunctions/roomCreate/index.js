@@ -17,6 +17,26 @@ function pickAvatarColor(usedColors) {
 }
 
 /**
+ * 生成不超过 8 位数字的房间号，并尽量避免与已有房间重复
+ * @param {number} maxRetry
+ * @returns {Promise<string>}
+ */
+async function generateNumericRoomId(maxRetry = 5) {
+  for (let i = 0; i < maxRetry; i++) {
+    // 生成 8 位纯数字（10000000 - 99999999）
+    const n = Math.floor(10000000 + Math.random() * 90000000);
+    const roomId = String(n);
+    // 检查是否已存在同名房间，避免冲突
+    const exist = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+    if (!exist.data || exist.data.length === 0) {
+      return roomId;
+    }
+  }
+  // 退化兜底：多次重试后依然冲突，仍返回一个 8 位数字（极小概率重复）
+  return String(Math.floor(10000000 + Math.random() * 90000000));
+}
+
+/**
  * 云调用生成小程序码（无需 APP_SECRET，云开发环境自动鉴权）
  * scene 最多 32 字符，使用 rid=roomId
  * @param {string} roomId
@@ -103,7 +123,8 @@ exports.main = async (event, context) => {
     }
 
     const now = Date.now();
-    const roomId = `${now}-${Math.floor(Math.random() * 1000000)}`;
+    // 生成 8 位数字的房间号，满足「不超过 8 位数字」的要求
+    const roomId = await generateNumericRoomId();
     const creatorColor = pickAvatarColor([]);
 
     // 使用事务同时写 Room 与 RoomMember（创建者，role=GOD，playerIndex=1，随机头像色）

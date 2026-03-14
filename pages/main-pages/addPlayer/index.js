@@ -22,6 +22,7 @@ const AVATAR_IMAGES = [
 Page({
   data: {
     roomId: '',
+    formattedRoomId: '',
     workshopName: '脑暴工作坊',
     qrcodeUrl: '',
     qrcodeStatus: 'loading',
@@ -64,6 +65,7 @@ Page({
 
     this.setData({
       roomId,
+      formattedRoomId: this._formatRoomId(roomId),
       isFromScan: !!scene
     });
 
@@ -85,6 +87,17 @@ Page({
         }
       });
     }
+  },
+
+  /**
+   * 将 8 位数字房间号格式化为 0000-0000 形式，仅用于展示
+   */
+  _formatRoomId(roomId) {
+    if (!roomId || typeof roomId !== 'string') return '';
+    const digits = roomId.replace(/\D/g, '');
+    if (digits.length <= 4) return digits;
+    const padded = digits.padStart(8, '0').slice(-8);
+    return `${padded.slice(0, 4)}-${padded.slice(4)}`;
   },
 
   onShow() {

@@ -135,9 +135,14 @@
 }
 
 .room-id-value {
-  font-size: 28rpx;
+  font-size: 40rpx;
   color: #111827;
-  font-weight: 500;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 2rpx rgba(17, 24, 39, 0.04);
   word-break: break-all;
 }
 
