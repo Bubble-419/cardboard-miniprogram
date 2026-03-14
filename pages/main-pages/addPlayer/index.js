@@ -82,8 +82,9 @@ Page({
           this._updateRoomState('addPlayer');
           this._startMemberPolling();
         } else {
-          console.log('[addPlayer] 副屏用户，启动页面状态轮询');
+          console.log('[addPlayer] 副屏用户，启动页面状态轮询 + 成员列表轮询');
           this._startStatePolling();
+          this._startMemberPolling();
         }
       });
     }
@@ -181,8 +182,8 @@ Page({
           wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
         } else if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          console.log('[副屏轮询] 主屏在 gamepage，跳转 normal-gamepage');
-          wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
+          console.log('[副屏轮询] 主屏在 gamepage，跳转 gamepage');
+          wx.redirectTo({ url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
@@ -285,8 +286,9 @@ Page({
           this._updateRoomState('addPlayer');
           this._startMemberPolling();
         } else {
-          console.log('[addPlayer] 副屏用户(扫码进入)，启动页面状态轮询');
+          console.log('[addPlayer] 副屏用户(扫码进入)，启动页面状态轮询 + 成员列表轮询');
           this._startStatePolling();
+          this._startMemberPolling();
         }
       });
     } catch (err) {

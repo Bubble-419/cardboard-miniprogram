@@ -40,7 +40,7 @@ Page({
       const roomIdEnc = encodeURIComponent(roomId);
       if (page === 'gamepage') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-        wx.redirectTo({ url: `/pages/main-pages/normal-gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&isSubScreen=1` });
+        wx.redirectTo({ url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
       } else if (page === 'statement') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
         const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);

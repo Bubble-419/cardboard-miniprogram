@@ -12,7 +12,10 @@ Page({
     totalRequired: 0,
     canStartVote: false,
     isSubmittingScore: false,
-    imageError: false
+    imageError: false,
+    isHost: false,
+    // 规则图：jpg 兼容性好，体验版可正常显示
+    bgImageSrc: '/assets/icons/bg.jpg'
   },
 
   onLoad(options) {
@@ -95,6 +98,7 @@ Page({
       const me = members.find(m => m.isMe);
       const myPlayerIndex = me ? me.playerIndex : null;
       const isMyScoringTurn = myPlayerIndex != null && this.data.currentPlayerIndex === myPlayerIndex;
+      const isHost = result.isHost === true;
 
       this.setData({
         members,
@@ -102,7 +106,8 @@ Page({
         totalRequired,
         currentPlayerName,
         myPlayerIndex,
-        isMyScoringTurn
+        isMyScoringTurn,
+        isHost
       });
 
       this.updateCanStartVote();
@@ -145,10 +150,19 @@ Page({
     this.setData({ imageError: true });
   },
 
+  /** 规则图加载失败时尝试相对路径 */
+  onBgImageError() {
+    if (this.data.bgImageSrc.startsWith('/')) {
+      this.setData({ bgImageSrc: '../../../assets/icons/bg.jpg' });
+    }
+  },
+
   async onScoreTap(e) {
     const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
     if (score == null) return;
     if (this.data.isSubmittingScore) return;
+    // 轮到主屏出牌时不能给自己打分
+    if (this.data.isMyScoringTurn) return;
 
     const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;
@@ -225,21 +239,23 @@ Page({
   },
 
   handleEndGame() {
+    const that = this;
     wx.showModal({
       title: '结束游戏',
       content: '是否结束全局游戏？',
       confirmText: '结束',
       cancelText: '取消',
-      success: (res) => {
-        if (res.confirm) {
-          const roomId = this.data.roomId || getApp().globalData.roomId || '';
-          this._updateRoomState('leaderboard');
-          wx.redirectTo({
-            url: roomId
-              ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
-              : '/pages/auth/index'
-          });
-        }
+      success(res) {
+        if (!res.confirm) return;
+        const roomId = that.data.roomId || getApp().globalData.roomId || '';
+        const url = roomId
+          ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/auth/index';
+        that._updateRoomState('leaderboard').catch(function (e) {
+          console.warn('updateRoomState leaderboard', e);
+        }).finally(function () {
+          wx.redirectTo({ url });
+        });
       }
     });
   },

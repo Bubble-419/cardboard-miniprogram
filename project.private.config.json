@@ -2,7 +2,7 @@
   "libVersion": "3.12.0",
   "projectname": "cardboard-miniprogram",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "coverView": true,
     "lazyloadPlaceholderEnable": false,
     "skylineRenderEnable": false,

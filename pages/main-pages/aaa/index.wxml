@@ -22,8 +22,8 @@
         <view class="card-icon join-icon">📲</view>
         <text class="card-title">加入房间</text>
         <text class="card-desc">扫描二维码或输入房间号加入已有房间</text>
-        <!-- 验证码风格 8 位房间号输入 -->
-        <view class="room-code-wrapper">
+        <!-- 验证码风格 8 位房间号输入：点击整块区域即可聚焦输入 -->
+        <view class="room-code-wrapper" bindtap="onRoomCodeTap">
           <view class="room-code-box">
             <block wx:for="{{8}}" wx:key="index">
               <view class="room-code-slot {{(index === 3) ? 'room-code-slot-gap' : ''}}">
@@ -33,14 +33,14 @@
               </view>
             </block>
           </view>
-          <!-- 真正的输入框：透明覆盖，用于接收数字输入 -->
           <input
             class="room-code-input"
             type="number"
             maxlength="8"
-            focus="{{true}}"
+            focus="{{inputFocused}}"
             value="{{inputRoomId}}"
             bindinput="onInputRoomId"
+            bindblur="onRoomCodeBlur"
             placeholder="请输入 8 位房间号"
             placeholder-class="room-code-placeholder"
           />

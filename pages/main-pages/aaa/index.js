@@ -1,7 +1,8 @@
 Page({
   data: {
     loading: false,
-    inputRoomId: ''
+    inputRoomId: '',
+    inputFocused: false
   },
 
   onLoad() {},
@@ -50,6 +51,15 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  /** 点击输入区域时聚焦，便于在体验版等环境下能点击输入 */
+  onRoomCodeTap() {
+    this.setData({ inputFocused: true });
+  },
+
+  onRoomCodeBlur() {
+    this.setData({ inputFocused: false });
   },
 
   onInputRoomId(e) {

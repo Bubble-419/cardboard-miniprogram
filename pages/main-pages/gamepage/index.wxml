@@ -28,8 +28,9 @@
     <view class="card-container">
       <image
         class="card-bg-img"
-        src="/assets/icons/bg.webp"
+        src="{{bgImageSrc}}"
         mode="widthFix"
+        binderror="onBgImageError"
       />
     </view>
   </view>
@@ -47,7 +48,7 @@
       <view class="score-row">
         <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
           <view
-            class="score-btn {{myScore === item ? 'score-btn-active' : ''}}"
+            class="score-btn {{myScore === item ? 'score-btn-active' : ''}} {{isMyScoringTurn ? 'score-btn-disabled' : ''}}"
             data-score="{{item}}"
             bindtap="onScoreTap"
           >
@@ -60,7 +61,7 @@
       </view>
     </view>
 
-    <view class="action-row">
+    <view class="action-row" wx:if="{{isHost}}">
       <view class="end-game-btn" bindtap="handleEndGame">
         <text class="end-game-line">结束</text>
         <text class="end-game-line">游戏</text>
