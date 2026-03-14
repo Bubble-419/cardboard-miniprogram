@@ -1,0 +1,37 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title">讨论</view>
+      <view class="navbar-right" />
+    </view>
+  </view>
+
+  <view class="section top-section">
+    <user-list
+      avatarList="{{avatarList}}"
+      currentUser="{{currentPlayerIndex}}"
+      enableAdd="{{false}}"
+    />
+  </view>
+
+  <view class="content-section">
+    <text class="discussion-title">提出疑问并讨论</text>
+    <image
+      class="discussion-empty-img"
+      src="/assets/icons/discussion.jpg"
+      mode="aspectFit"
+    />
+  </view>
+
+  <view class="footer-section" wx:if="{{isHost}}">
+    <button class="continue-btn" bindtap="handleContinue">继续游戏</button>
+  </view>
+</view>

@@ -189,6 +189,11 @@ Page({
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
           console.log('[副屏轮询] 主屏在 statement，跳转 statement');
           wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
+        } else if (page === 'discussion') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          console.log('[副屏轮询] 主屏在 discussion，跳转 discussion');
+          wx.redirectTo({ url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}` });
         } else if (page === 'leaderboard') {
           console.log('[副屏轮询] 主屏在 leaderboard，跳转 leaderboard');
           wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });

@@ -78,6 +78,12 @@ Page({
           wx.redirectTo({
             url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
           });
+        } else if (page === 'discussion') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({
+            url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`
+          });
         } else if (page === 'leaderboard') {
           wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
@@ -118,8 +124,19 @@ Page({
     const type = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.type;
     if (!type) return;
 
-    const { roomId, currentPlayerIndex, memberCount, members } = this.data;
+    const { roomId, currentPlayerIndex, currentPlayerName, memberCount, members } = this.data;
     if (!roomId) return;
+
+    const roomIdEnc = encodeURIComponent(roomId);
+    const nameEnc = encodeURIComponent(currentPlayerName || `玩家${currentPlayerIndex}`);
+
+    if (type === 'partial_pass' || type === 'all_question') {
+      this._updateRoomState('discussion', currentPlayerIndex, currentPlayerName);
+      wx.redirectTo({
+        url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}`
+      });
+      return;
+    }
 
     const count = memberCount || 1;
     const nextIndex = (currentPlayerIndex % count) + 1;
@@ -129,7 +146,7 @@ Page({
 
     this._updateRoomState('gamepage', nextIndex, nextPlayerName, isCyclingBack);
     wx.redirectTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
+      url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${nextIndex}`
     });
   }
 });

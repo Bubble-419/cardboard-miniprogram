@@ -42,6 +42,7 @@ Page({
 
   onUnload() {
     this._stopScorePolling();
+    this._stopStatePolling();
   },
 
   onShow() {
@@ -112,9 +113,58 @@ Page({
 
       this.updateCanStartVote();
       this._updateRoomState('gamepage', this.data.currentPlayerIndex, currentPlayerName);
+
+      if (!result.isHost) {
+        this._startStatePolling();
+      } else {
+        this._stopStatePolling();
+      }
     } catch (e) {
       console.error('loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
+    }
+  },
+
+  /** 非房主：轮询房间状态，房主点击「开始表态」等时跟随跳转 */
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+        const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+        if (page === 'statement') {
+          wx.redirectTo({
+            url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+          });
+        } else if (page === 'discussion') {
+          wx.redirectTo({
+            url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`
+          });
+        } else if (page === 'leaderboard') {
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        }
+      } catch (e) {
+        console.warn('gamepage state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 1500);
+    poll();
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
