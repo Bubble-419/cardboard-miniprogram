@@ -1,11 +1,17 @@
-<view class="user-list">
+<view class="user-list {{showName ? 'show-name' : ''}}">
   <scroll-view class="avatar-scroll" scroll-x="true" show-scrollbar="false">
     <view class="avatar-row">
       <block wx:for="{{avatarList}}" wx:key="id">
-        <view class="avatar-item {{item.id === currentUser ? 'active' : ''}}">
-          <image class="avatar-img" src="{{item.avatar || item.url || defaultAvatar}}" mode="aspectFill"></image>
-          <view class="active-ring" wx:if="{{item.id === currentUser}}"></view>
-          <view class="active-indicator" wx:if="{{item.id === currentUser}}"></view>
+        <view class="avatar-item {{item.id === currentUser ? 'active' : ''}} {{item.isMe ? 'avatar-item-me' : ''}}">
+          <view class="avatar-wrap">
+            <image class="avatar-img" src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}" mode="aspectFill"></image>
+            <view class="active-ring" wx:if="{{item.id === currentUser}}"></view>
+            <view class="active-indicator" wx:if="{{item.id === currentUser}}"></view>
+          </view>
+          <view class="avatar-name-wrap" wx:if="{{showName && (item.nickName != null || item.isMe)}}">
+            <text class="avatar-name">{{item.nickName || '玩家' + item.id}}</text>
+            <text class="avatar-name avatar-me avatar-me-line" wx:if="{{item.isMe}}">（我）</text>
+          </view>
         </view>
       </block>
       <view class="add-btn" wx:if="{{enableAdd}}" bindtap="onAddTap">

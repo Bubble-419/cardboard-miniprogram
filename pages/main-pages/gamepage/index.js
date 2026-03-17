@@ -88,10 +88,14 @@ Page({
       }
 
       const members = result.members;
+      const { assignAvatarImages } = require('../../../utils/avatars');
+      const enriched = assignAvatarImages(members);
       const totalRequired = Math.max(0, members.length - 1);
-      const avatarList = members.map(m => ({
+      const avatarList = enriched.map(m => ({
         id: m.playerIndex,
-        avatar: m.avatarUrl || ''
+        avatar: m.avatarImage || m.avatarUrl || '',
+        nickName: m.nickName,
+        isMe: m.isMe
       }));
 
       const current = members.find(m => m.playerIndex === this.data.currentPlayerIndex);

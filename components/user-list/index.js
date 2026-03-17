@@ -20,6 +20,11 @@ Component({
     isFold: {
       type: Boolean,
       value: false
+    },
+    // 是否显示昵称（与 addPlayer 一致时开启）
+    showName: {
+      type: Boolean,
+      value: true
     }
   },
 
