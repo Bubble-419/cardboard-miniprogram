@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "",
   "navigationStyle": "custom",
+  "disableSwipeBack": true,
   "usingComponents": {}
 }
 
