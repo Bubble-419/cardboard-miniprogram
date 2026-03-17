@@ -26,7 +26,8 @@
     <text class="discussion-title">提出疑问并讨论</text>
     <image
       class="discussion-empty-img"
-      src="/assets/icons/discussion.jpg"
+      src="{{discussionImgSrc}}"
+      binderror="onDiscussionImageError"
       mode="aspectFit"
     />
   </view>

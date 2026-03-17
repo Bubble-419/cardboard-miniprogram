@@ -29,7 +29,7 @@ Component({
   },
 
   data: {
-    defaultAvatar: '/assets/avatar.png'
+    defaultAvatar: '/assets/avatar/Frame 2085662241.png'
   },
 
   methods: {

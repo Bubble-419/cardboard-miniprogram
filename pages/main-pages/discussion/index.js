@@ -5,7 +5,16 @@ Page({
     currentPlayerName: '玩家1',
     avatarList: [],
     members: [],
-    isHost: false
+    isHost: false,
+    discussionImgSrc: '/assets/icons/discussion.jpg'
+  },
+
+  onDiscussionImageError() {
+    if (this.data.discussionImgSrc && this.data.discussionImgSrc.indexOf('/assets/') === 0) {
+      this.setData({
+        discussionImgSrc: '../../../assets/icons/discussion.jpg'
+      });
+    }
   },
 
   onLoad(options) {
