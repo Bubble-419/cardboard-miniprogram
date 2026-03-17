@@ -2,5 +2,6 @@
   "usingComponents": {
     "user-list": "/components/user-list/index"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "disableSwipeBack": true
 }
