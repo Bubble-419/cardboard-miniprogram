@@ -9,7 +9,7 @@
           bindtap="handleGoBack"
         />
       </view>
-      <view class="navbar-title">讨论</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right" />
     </view>
   </view>

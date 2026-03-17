@@ -299,7 +299,7 @@ Page({
         if (!res.confirm) return;
         const roomId = that.data.roomId || getApp().globalData.roomId || '';
         const url = roomId
-          ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+          ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
           : '/pages/auth/index';
         that._updateRoomState('leaderboard').catch(function (e) {
           console.warn('updateRoomState leaderboard', e);

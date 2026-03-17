@@ -1,4 +1,9 @@
-<view class="container {{isDragging ? 'container-dragging' : ''}}">
+<view
+  class="container {{isDragging ? 'container-dragging' : ''}}"
+  catchtouchmove="onContentTouchMove"
+  catchtouchend="onContentTouchEnd"
+  catchtouchcancel="onContentTouchEnd"
+>
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
@@ -9,7 +14,7 @@
           bindtap="handleGoBack"
         ></image>
       </view>
-      <view class="navbar-title">添加成员</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right">
         <view class="navbar-icon">⋯</view>
         <view class="navbar-icon">○</view>
@@ -93,23 +98,23 @@
             catchtouchcancel="onSlotTouchEnd"
           >
             <image
-              wx:if="{{item.member && !(isDragging && item.index === dropTargetIndex) && item.member.avatarImage}}"
-              class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
+              wx:if="{{item.member && item.member.avatarImage}}"
+              class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}} {{isDragging && (item.index === draggingSlotIndex || item.index === dropTargetIndex) ? 'avatar-origin-hidden' : ''}}"
               src="{{item.member.avatarImage}}"
               mode="aspectFill"
             />
             <view
-              wx:elif="{{isDragging && item.index === dropTargetIndex}}"
+              wx:if="{{isDragging && item.index === dropTargetIndex}}"
               class="avatar-placeholder avatar-drop-target"
             ></view>
             <view
-              wx:elif="{{!item.member}}"
+              wx:if="{{!item.member && !(isDragging && item.index === dropTargetIndex)}}"
               class="avatar-placeholder avatar-placeholder-animate"
             ></view>
 
             <view
-              wx:if="{{item.member && !(isDragging && item.index === dropTargetIndex)}}"
-              class="avatar-name-wrap"
+              wx:if="{{item.member}}"
+              class="avatar-name-wrap {{isDragging && (item.index === draggingSlotIndex || item.index === dropTargetIndex) ? 'avatar-origin-hidden' : ''}}"
             >
               <text class="avatar-name">{{item.member.nickName}}</text>
               <text class="avatar-name avatar-me" wx:if="{{item.member.isMe}}">（我）</text>
@@ -135,7 +140,7 @@
 
   <view
     wx:if="{{isDragging && dragPosX != null}}"
-    class="avatar-drag-float"
+    class="avatar-drag-float {{dragEnterAnimating ? 'avatar-drag-float-enter' : ''}}"
     style="left: {{dragPosX}}px; top: {{dragPosY}}px;"
   >
     <image
@@ -148,11 +153,6 @@
       wx:else
       class="avatar-placeholder avatar-placeholder-animate avatar-drag-float-placeholder"
     ></view>
-    <view class="avatar-name-wrap avatar-drag-float-name" wx:if="{{draggingMember}}">
-      <text class="avatar-name">{{draggingMember.nickName}}</text>
-      <text class="avatar-name avatar-me" wx:if="{{draggingMember.isMe}}">（我）</text>
-    </view>
-    <text wx:else class="avatar-name placeholder-name avatar-drag-float-name">空位</text>
   </view>
 
   <view class="footer-wrap" wx:if="{{isHost}}">

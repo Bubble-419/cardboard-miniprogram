@@ -9,7 +9,7 @@
           bindtap="handleGoBack"
         />
       </view>
-      <view class="navbar-title">出牌</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right" />
     </view>
   </view>

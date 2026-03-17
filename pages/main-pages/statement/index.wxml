@@ -4,11 +4,8 @@
       <view class="navbar-left" bindtap="handleGoBack">
         <text class="back-chevron">‹</text>
       </view>
-      <view class="navbar-title">表态</view>
-      <view class="navbar-right">
-        <text class="navbar-icon">⋯</text>
-        <text class="navbar-icon">◎</text>
-      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
     </view>
   </view>
 

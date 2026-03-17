@@ -4,7 +4,7 @@
       <view class="navbar-left" bindtap="handleBack">
         <text class="back-chevron">‹</text>
       </view>
-      <view class="navbar-title">排行榜</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right" />
     </view>
   </view>

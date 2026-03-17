@@ -5,7 +5,7 @@
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit"></image>
       </view>
-      <view class="navbar-title">选择设计问题</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right">
         <view class="navbar-icon">⋯</view>
         <view class="navbar-icon">○</view>

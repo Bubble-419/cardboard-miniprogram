@@ -10,7 +10,7 @@
           bindtap="handleGoBack"
         ></image>
       </view>
-      <view class="navbar-title">发起工作坊</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right">
         <view class="navbar-icon">⋯</view>
         <view class="navbar-icon">○</view>

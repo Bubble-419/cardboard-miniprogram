@@ -5,11 +5,19 @@ const CENTER_XY = 300;    // 圆心在 600rpx 区域内的坐标
 const START_ANGLE = -Math.PI / 2; // 从顶部开始
 /**
  * 长按进入拖拽的延时（毫秒）
- * 设计意图：
- * - 模拟手机桌面「长按图标进入编辑/拖拽」的手感（不是轻触就拖动）
- * - 给用户一点缓冲时间，避免误触就触发拖拽
+ * 450ms 与手机桌面"长按图标进入编辑"体感一致：
+ * - 短于此时间的轻触/快速滑动不会触发拖拽
+ * - touchmove 超过 8px 阈值时会提前取消定时器，防止滑动误入拖拽
  */
-const LONG_PRESS_ENTER_DRAG_MS = 50;
+const LONG_PRESS_ENTER_DRAG_MS = 450;
+
+/**
+ * touchmove 取消长按的位移阈值（px）
+ * 手指移动超过此距离即视为"有意滑动"而非"长按静止"，立即取消长按定时器
+ */
+const DRAG_CANCEL_THRESHOLD_PX = 8;
+/** 拖拽兜底超时：防止 touchend/cancel 丢失导致一直停在拖拽态 */
+const DRAG_WATCHDOG_MS = 3000;
 
 /** 头像图片列表，按 avatarIndex 分配给成员 */
 const AVATAR_IMAGES = [
@@ -43,7 +51,9 @@ Page({
     draggingMember: null,
     draggingMemberId: null,
     dragFromIndex: null,
-    dropTargetIndex: null
+    dropTargetIndex: null,
+    // 进入可拖拽态的短暂动画标记（用于视觉反馈）
+    dragEnterAnimating: false
   },
 
   onLoad(options) {
@@ -115,6 +125,9 @@ Page({
   onUnload() {
     this._stopMemberPolling();
     this._stopStatePolling();
+    this._clearLongPressTimer();
+    this._clearDragWatchdog();
+    this._clearDragEnterAnimTimer();
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
@@ -347,24 +360,28 @@ Page({
         if (!this.data.isDragging) {
           const deduped = this._dedupeMembersById(rawMembers);
           const withAvatars = this._assignAvatarImages(deduped);
-          const localList = (this.data.members || []).filter((m) => m);
-          // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序
+          // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
+          const localExpanded = this._expandMembersToSlots(this.data.members || []);
+          const localFilledCount = localExpanded.filter((m) => !!m).length;
+          // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
           let expanded;
-          if (deduped.length > localList.length) {
+          if (deduped.length > localFilledCount) {
             expanded = this._expandMembersToSlots(withAvatars);
-          } else if (localList.length > 0) {
+          } else if (localFilledCount > 0) {
             const serverById = new Map();
             withAvatars.forEach((m) => {
               const id = this._getMemberId(m);
               if (id) serverById.set(id, m);
             });
-            const canMerge = serverById.size > 0 && localList.every((m) => this._getMemberId(m));
+            const canMerge = serverById.size > 0;
             const merged = canMerge
-              ? localList.map((m) => {
-                  const s = serverById.get(this._getMemberId(m));
+              ? localExpanded.map((m) => {
+                  if (!m) return null;
+                  const id = this._getMemberId(m);
+                  const s = id ? serverById.get(id) : null;
                   return s ? { ...s } : m;
                 })
-              : localList;
+              : localExpanded;
             expanded = this._expandMembersToSlots(merged);
           } else {
             expanded = this._expandMembersToSlots(withAvatars);
@@ -496,11 +513,14 @@ Page({
 
     // 记录下「按下时」的坐标，用于后续没有 move 事件时也能推算初始拖拽位置
     this._slotTouchStart = { clientX: touch.clientX, clientY: touch.clientY };
+    // 以当前按下手指为准，避免复用历史触点导致进入拖拽时头像瞬移
+    this._lastTouch = { clientX: touch.clientX, clientY: touch.clientY };
     this._longPressSlotIndex = index;
     this._longPressSlot = slot;
     // 预加载圆圈区域的 DOM 尺寸，后续把 rpx 坐标换算为 px 时会用到
     this._preloadCircleRect();
-    // 每次新的 touchstart 先清理旧的长按定时器，避免多次触发
+    // 每次新的 touchstart 先清理旧的长按定时器，防止多指或快速点击时重复触发
+    this._clearLongPressTimer();
     this._longPressTimer = setTimeout(() => {
       this._longPressTimer = null;
       this._enterDragMode(index, slot);
@@ -514,13 +534,53 @@ Page({
     }
   },
 
+  _clearDragWatchdog() {
+    if (this._dragWatchdogTimer) {
+      clearTimeout(this._dragWatchdogTimer);
+      this._dragWatchdogTimer = null;
+    }
+  },
+
+  _armDragWatchdog() {
+    this._clearDragWatchdog();
+    this._dragWatchdogTimer = setTimeout(() => {
+      if (this.data.isDragging) {
+        // 兜底收口：事件链断掉时强制结束，保证头像回到槽位布局
+        this._finishDrag();
+      }
+    }, DRAG_WATCHDOG_MS);
+  },
+
+  _clearDragEnterAnimTimer() {
+    if (this._dragEnterAnimTimer) {
+      clearTimeout(this._dragEnterAnimTimer);
+      this._dragEnterAnimTimer = null;
+    }
+  },
+
+  _trackPendingLongPressMove(x, y) {
+    this._lastTouch = { clientX: x, clientY: y };
+    if (this.data.isDragging) return;
+    // 未进入拖拽时，只要位移超过阈值就取消长按，避免“滑动过程中误入拖拽”
+    const start = this._slotTouchStart;
+    if (!start) return;
+    if (
+      Math.abs(x - start.clientX) > DRAG_CANCEL_THRESHOLD_PX ||
+      Math.abs(y - start.clientY) > DRAG_CANCEL_THRESHOLD_PX
+    ) {
+      this._clearLongPressTimer();
+    }
+  },
+
   /**
    * 进入拖拽模式：
    * - 根据最新的触点位置计算浮动头像的起始坐标（手指位置 = 头像位置）
    * - 初始化被拖拽成员、起始槽位、当前目标槽位等状态
+   * - 存储「去除被拖成员后」的成员快照 _dragBaseMembers，后续重排以此为基准而非实时 data
    * - 后续由 _updateDragPosition 根据手指移动实时更新位置与重排结果
    */
   _enterDragMode(index, slot) {
+    // 优先使用最新触点，保证长按到可拖拽的衔接连续；没有 move 时回退到按下坐标
     const touch = this._lastTouch || this._slotTouchStart;
     let initX = null, initY = null;
     if (touch) {
@@ -528,8 +588,23 @@ Page({
       initY = touch.clientY != null ? touch.clientY : touch.pageY;
     }
 
+    // 取当前布局的快照，移除被拖拽成员后固定下来
+    // 后续每帧重排都基于这份快照 + 目标槽位做插入，而不是对上一帧结果再 splice
+    // 这样无论手指怎么移动，结果都是幂等的，不会出现位置漂移
+    const baseArr = this._expandMembersToSlots(this.data.members || []);
+    const dragId = this._getMemberId(slot.member);
+    const baseFromIdx = baseArr.findIndex(
+      (m) => m && (this._getMemberId(m) === dragId || m === slot.member)
+    );
+    if (baseFromIdx >= 0) baseArr.splice(baseFromIdx, 1);
+    this._dragBaseMembers = baseArr; // 5 个元素（被拖成员已移除）
+
     // 若 circleRect 已缓存则直接用，避免重置缓存导致拖拽开始阶段频繁查询 DOM
     const doEnter = (rect) => {
+      if (!rect) {
+        // 未拿到 circleWrap 的几何信息时不进入拖拽，避免出现半拖拽态
+        return;
+      }
       if (initX == null && rect) {
         // 当没有手指坐标（例如仅有长按而无 move）时，用头像中心点作为初始拖拽位置
         const half = AVATAR_SIZE / 2;
@@ -545,8 +620,21 @@ Page({
         dragPosX: initX,
         dragPosY: initY,
         dragFromIndex: index,
-        dropTargetIndex: index
+        dropTargetIndex: index,
+        dragEnterAnimating: true
       });
+      // 进入拖拽后立刻用当前坐标对齐首帧，避免“已进入但位置不同步”
+      if (initX != null && initY != null) {
+        this._updateDragPosition(initX, initY);
+      }
+      this._clearDragEnterAnimTimer();
+      this._dragEnterAnimTimer = setTimeout(() => {
+        this._dragEnterAnimTimer = null;
+        if (this.data.isDragging) {
+          this.setData({ dragEnterAnimating: false });
+        }
+      }, 180);
+      this._armDragWatchdog();
     };
 
     if (this._circleRect) {
@@ -576,20 +664,22 @@ Page({
     if (!touch) return false;
     const x = touch.clientX != null ? touch.clientX : touch.pageX;
     const y = touch.clientY != null ? touch.clientY : touch.pageY;
-    this._lastTouch = touch;
+    this._trackPendingLongPressMove(x, y);
 
-    if (!this.data.isDragging) return false;
+    if (!this.data.isDragging) {
+      return false;
+    }
     this._updateDragPosition(x, y);
     return false;
   },
 
   onWrapTouchMove(e) {
-    if (!this.data.isDragging) return false;
     const touch = e.touches && e.touches[0];
     if (!touch) return false;
     const x = touch.clientX != null ? touch.clientX : touch.pageX;
     const y = touch.clientY != null ? touch.clientY : touch.pageY;
-    this._lastTouch = touch;
+    this._trackPendingLongPressMove(x, y);
+    if (!this.data.isDragging) return false;
     this._updateDragPosition(x, y);
     return false;
   },
@@ -609,16 +699,18 @@ Page({
       this._finishDrag(e);
     } else {
       this._clearLongPressTimer();
+      this._slotTouchStart = null;
+      this._lastTouch = null;
     }
   },
 
   onContentTouchMove(e) {
-    if (!this.data.isDragging) return;
     const touch = e.touches && e.touches[0];
     if (!touch) return;
     const x = touch.clientX != null ? touch.clientX : touch.pageX;
     const y = touch.clientY != null ? touch.clientY : touch.pageY;
-    this._lastTouch = touch;
+    this._trackPendingLongPressMove(x, y);
+    if (!this.data.isDragging) return;
     this._updateDragPosition(x, y);
   },
 
@@ -627,69 +719,52 @@ Page({
       this._finishDrag(e);
     } else {
       this._clearLongPressTimer();
+      this._slotTouchStart = null;
+      this._lastTouch = null;
     }
   },
 
   _updateDragPosition(clientX, clientY) {
     if (this.data.draggingSlotIndex == null) return;
+    this._armDragWatchdog();
 
-    const applyUpdate = (rect) => {
-      // 根据当前手指位置和圆心关系，计算「应该落在哪个槽位」
-      // 仅在目标槽位变化时才生成重排 patch，避免无效的频繁重排
-      let reorderPatch = null;
-      if (rect) {
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dx = clientX - cx;
-        const dy = clientY - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist >= 10) {
-          // atan2(dx, -dy) 使 theta=0 对应正上方（槽位 0），顺时针递增
-          const theta = Math.atan2(dx, -dy);
-          const thetaNorm = (theta + Math.PI * 2) % (Math.PI * 2);
-          // 使用居中分区：在 theta 上加半个区间偏移，使每个区间以槽位为中心
-          const slotIndex = Math.floor((thetaNorm + Math.PI / 6) / (Math.PI / 3)) % MEMBER_SLOTS;
-          if (slotIndex !== this.data.dropTargetIndex) {
-            const draggingMemberId = this.data.draggingMemberId;
-            const draggingMember = this.data.draggingMember;
-            const members = this._expandMembersToSlots(this.data.members || []);
-            const fromIdx = members.findIndex(
-              (m) => m && (this._getMemberId(m) === draggingMemberId || m === draggingMember)
-            );
-            // 把被拖拽玩家从原位置移除，再插入到新的槽位，形成「挤一挤」的效果
-            if (fromIdx >= 0) {
-              members.splice(fromIdx, 1);
-              members.splice(slotIndex, 0, draggingMember);
-              const reordered = this._expandMembersToSlots(members);
-              reorderPatch = {
-                members: reordered,
-                memberSlots: this.buildMemberSlots(reordered),
-                dropTargetIndex: slotIndex
-              };
-            }
-          }
-        }
-      }
+    // 位置节流：变化不足 1px 时跳过，减少无意义的跨线程通信
+    if (
+      Math.abs(clientX - this.data.dragPosX) < 1 &&
+      Math.abs(clientY - this.data.dragPosY) < 1
+    ) return;
 
-      // 合并为一次 setData，减少跨线程通信次数，提升拖拽跟手流畅度
-      const patch = { dragPosX: clientX, dragPosY: clientY, ...reorderPatch };
-      this.setData(patch);
+    const applyUpdate = () => {
+      // 拖拽中只更新浮层坐标；原槽位/原槽位动效保持不动
+      this.setData({ dragPosX: clientX, dragPosY: clientY });
     };
 
     if (this._circleRect) {
-      applyUpdate(this._circleRect);
+      applyUpdate();
     } else {
-      // 首次查询时先立即更新位置，reorder 等查询完再处理
+      // 首次查询时先立即更新位置
       this.setData({ dragPosX: clientX, dragPosY: clientY });
       const q = wx.createSelectorQuery().in(this);
       q.select('#circleWrap').boundingClientRect();
       q.exec((res) => {
         const rect = res && res[0];
         if (rect) this._circleRect = rect;
-        // 仅在成员还在拖拽时才补做重排（避免 touchend 后回调才到）
-        if (this.data.isDragging) applyUpdate(rect);
+        if (this.data.isDragging) applyUpdate();
       });
     }
+  },
+
+  _getSlotIndexByPoint(clientX, clientY, rect) {
+    if (!rect || clientX == null || clientY == null) return null;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 10) return null;
+    const theta = Math.atan2(dx, -dy);
+    const thetaNorm = (theta + Math.PI * 2) % (Math.PI * 2);
+    return Math.floor((thetaNorm + Math.PI / 6) / (Math.PI / 3)) % MEMBER_SLOTS;
   },
 
   onSlotTouchEnd(e) {
@@ -697,6 +772,8 @@ Page({
       this._finishDrag(e);
     } else {
       this._clearLongPressTimer();
+      this._slotTouchStart = null;
+      this._lastTouch = null;
     }
   },
 
@@ -705,18 +782,28 @@ Page({
       this._finishDrag(e);
     } else {
       this._clearLongPressTimer();
+      this._slotTouchStart = null;
+      this._lastTouch = null;
     }
   },
 
   _finishDrag(e) {
     if (!this.data.isDragging || this.data.draggingSlotIndex == null) {
       this._clearLongPressTimer();
+      this._clearDragWatchdog();
       return;
     }
     this._lastDragEndTime = Date.now();
     const dragFromIndex = this.data.dragFromIndex;
-    const dropTargetIndex = this.data.dropTargetIndex;
-    this.setData({
+    let dropTargetIndex = this.data.dropTargetIndex;
+    const lastTouch = this._lastTouch;
+    if (lastTouch && this._circleRect) {
+      const x = lastTouch.clientX != null ? lastTouch.clientX : lastTouch.pageX;
+      const y = lastTouch.clientY != null ? lastTouch.clientY : lastTouch.pageY;
+      const idx = this._getSlotIndexByPoint(x, y, this._circleRect);
+      if (idx != null) dropTargetIndex = idx;
+    }
+    const updates = {
       isDragging: false,
       draggingSlotIndex: null,
       dragPosX: null,
@@ -724,10 +811,30 @@ Page({
       draggingMember: null,
       draggingMemberId: null,
       dragFromIndex: null,
-      dropTargetIndex: null
-    });
+      dropTargetIndex: null,
+      dragEnterAnimating: false
+    };
+
+    // 仅在松手时一次性提交重排，避免拖动中 slots 反复变化导致“卡住”
+    if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
+      const base = this._dragBaseMembers;
+      const draggingMember = this.data.draggingMember;
+      if (base && draggingMember) {
+        const arr = base.slice();
+        arr.splice(dropTargetIndex, 0, draggingMember);
+        const reordered = this._expandMembersToSlots(arr);
+        updates.members = reordered;
+        updates.memberSlots = this.buildMemberSlots(reordered);
+      }
+    }
+
+    this.setData(updates);
     this._circleRect = null;
     this._lastTouch = null;
+    this._slotTouchStart = null;
+    this._dragBaseMembers = null; // 释放快照，避免内存残留
+    this._clearDragWatchdog();
+    this._clearDragEnterAnimTimer();
     if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
       wx.showToast({ title: '顺序已调整', icon: 'none', duration: 800 });
     }
@@ -742,7 +849,8 @@ Page({
       draggingMember: null,
       draggingMemberId: null,
       dragFromIndex: null,
-      dropTargetIndex: null
+      dropTargetIndex: null,
+      dragEnterAnimating: false
     };
     if (restoreLayout) {
       updates.memberSlots = this.buildMemberSlots(this.data.members || []);
@@ -750,6 +858,10 @@ Page({
     this.setData(updates);
     this._circleRect = null;
     this._lastTouch = null;
+    this._slotTouchStart = null;
+    this._dragBaseMembers = null; // 释放快照，避免内存残留
+    this._clearDragWatchdog();
+    this._clearDragEnterAnimTimer();
   },
 
   handleGoBack() {

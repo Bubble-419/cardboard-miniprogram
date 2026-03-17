@@ -3,7 +3,7 @@
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left"></view>
-      <view class="navbar-title">提交设计问题</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right">
         <view class="navbar-icon">⋯</view>
         <view class="navbar-icon">○</view>

@@ -28,9 +28,10 @@
   pointer-events: none;
 }
 
-/* PRD：拖拽时遮罩不拦截，保证同一根手指长按后可直接拖拽，不抢手势 */
+/* 拖拽期由遮罩统一承接 move/end/cancel，减少手指离开原节点后的事件丢失 */
 .drag-mask-active {
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .custom-navbar {
@@ -400,6 +401,25 @@
   z-index: 25;
 }
 
+.avatar-drag-float-enter {
+  animation: drag-float-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes drag-float-enter {
+  0% {
+    transform: translate(-50%, -50%) scale(0.72);
+    opacity: 0.35;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
 .avatar-drag-float-circle {
   width: 80rpx;
   height: 80rpx;
@@ -503,12 +523,29 @@
 .avatar-drop-target {
   border: 2rpx dashed #5ec159;
   background: rgba(94, 193, 89, 0.12);
-  animation: drop-target-pulse 0.8s ease-in-out infinite;
+  box-shadow: 0 0 10rpx rgba(94, 193, 89, 0.25);
+  animation: drop-target-pulse 0.95s ease-in-out infinite;
+  position: absolute;
+  left: 50%;
+  top: 0;
+  margin-left: -40rpx;
+  z-index: 1;
+}
+
+/* 拖拽时原槽位成员保留 DOM 但隐藏，避免替换节点打断触摸链路 */
+.avatar-origin-hidden {
+  opacity: 0;
 }
 
 @keyframes drop-target-pulse {
-  0%, 100% { opacity: 0.7; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0%, 100% {
+    opacity: 0.68;
+    box-shadow: 0 0 8rpx rgba(94, 193, 89, 0.18);
+  }
+  50% {
+    opacity: 0.98;
+    box-shadow: 0 0 16rpx rgba(94, 193, 89, 0.32);
+  }
 }
 
 @keyframes placeholder-breathe {
