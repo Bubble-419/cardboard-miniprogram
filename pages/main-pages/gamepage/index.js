@@ -293,23 +293,23 @@ Page({
   },
 
   handleEndGame() {
-    const that = this;
     wx.showModal({
       title: '结束游戏',
       content: '是否结束全局游戏？',
       confirmText: '结束',
       cancelText: '取消',
-      success(res) {
+      success: async (res) => {
         if (!res.confirm) return;
-        const roomId = that.data.roomId || getApp().globalData.roomId || '';
+        const roomId = this.data.roomId || getApp().globalData.roomId || '';
         const url = roomId
-          ? `/pages/Leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+          ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
           : '/pages/auth/index';
-        that._updateRoomState('leaderboard').catch(function (e) {
+        try {
+          await this._updateRoomState('leaderboard');
+        } catch (e) {
           console.warn('updateRoomState leaderboard', e);
-        }).finally(function () {
-          wx.redirectTo({ url });
-        });
+        }
+        wx.redirectTo({ url });
       }
     });
   },
