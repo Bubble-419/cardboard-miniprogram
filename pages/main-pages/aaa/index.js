@@ -113,6 +113,10 @@ Page({
       await this._joinRoomAndGo(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
+        wx.showToast({
+          title: '已取消扫码',
+          icon: 'none'
+        });
         return;
       }
       wx.showToast({
@@ -164,6 +168,11 @@ Page({
         return;
       }
       getApp().globalData.roomId = roomId;
+      wx.showToast({
+        title: '加入成功',
+        icon: 'success',
+        duration: 1500
+      });
       wx.navigateTo({
         url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
       });

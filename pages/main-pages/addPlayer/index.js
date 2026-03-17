@@ -3,8 +3,13 @@ const CIRCLE_R = 280;     // 头像圆心半径 rpx
 const AVATAR_SIZE = 80;   // 头像直径 rpx
 const CENTER_XY = 300;    // 圆心在 600rpx 区域内的坐标
 const START_ANGLE = -Math.PI / 2; // 从顶部开始
-/** 长按进入拖拽的时长（毫秒），与手机桌面长按调整图标一致 */
-const LONG_PRESS_ENTER_DRAG_MS = 800;
+/**
+ * 长按进入拖拽的延时（毫秒）
+ * 设计意图：
+ * - 模拟手机桌面「长按图标进入编辑/拖拽」的手感（不是轻触就拖动）
+ * - 给用户一点缓冲时间，避免误触就触发拖拽
+ */
+const LONG_PRESS_ENTER_DRAG_MS = 50;
 
 /** 头像图片列表，按 avatarIndex 分配给成员 */
 const AVATAR_IMAGES = [
@@ -489,11 +494,13 @@ Page({
     const touch = e.touches && e.touches[0];
     if (!touch) return;
 
+    // 记录下「按下时」的坐标，用于后续没有 move 事件时也能推算初始拖拽位置
     this._slotTouchStart = { clientX: touch.clientX, clientY: touch.clientY };
     this._longPressSlotIndex = index;
     this._longPressSlot = slot;
+    // 预加载圆圈区域的 DOM 尺寸，后续把 rpx 坐标换算为 px 时会用到
     this._preloadCircleRect();
-    this._clearLongPressTimer();
+    // 每次新的 touchstart 先清理旧的长按定时器，避免多次触发
     this._longPressTimer = setTimeout(() => {
       this._longPressTimer = null;
       this._enterDragMode(index, slot);
@@ -507,7 +514,12 @@ Page({
     }
   },
 
-  /** 长按 0.8 秒后进入拖拽：头像跟手（手指位置=头像位置），拖到某槽位会挤开该位置玩家 */
+  /**
+   * 进入拖拽模式：
+   * - 根据最新的触点位置计算浮动头像的起始坐标（手指位置 = 头像位置）
+   * - 初始化被拖拽成员、起始槽位、当前目标槽位等状态
+   * - 后续由 _updateDragPosition 根据手指移动实时更新位置与重排结果
+   */
   _enterDragMode(index, slot) {
     const touch = this._lastTouch || this._slotTouchStart;
     let initX = null, initY = null;
@@ -519,6 +531,7 @@ Page({
     // 若 circleRect 已缓存则直接用，避免重置缓存导致拖拽开始阶段频繁查询 DOM
     const doEnter = (rect) => {
       if (initX == null && rect) {
+        // 当没有手指坐标（例如仅有长按而无 move）时，用头像中心点作为初始拖拽位置
         const half = AVATAR_SIZE / 2;
         const rpxToPx = rect.width / 600;
         initX = rect.left + (slot.left + half) * rpxToPx;
@@ -621,7 +634,8 @@ Page({
     if (this.data.draggingSlotIndex == null) return;
 
     const applyUpdate = (rect) => {
-      // 计算重排结果（不触发 setData，先收集变更）
+      // 根据当前手指位置和圆心关系，计算「应该落在哪个槽位」
+      // 仅在目标槽位变化时才生成重排 patch，避免无效的频繁重排
       let reorderPatch = null;
       if (rect) {
         const cx = rect.left + rect.width / 2;
@@ -642,6 +656,7 @@ Page({
             const fromIdx = members.findIndex(
               (m) => m && (this._getMemberId(m) === draggingMemberId || m === draggingMember)
             );
+            // 把被拖拽玩家从原位置移除，再插入到新的槽位，形成「挤一挤」的效果
             if (fromIdx >= 0) {
               members.splice(fromIdx, 1);
               members.splice(slotIndex, 0, draggingMember);
@@ -656,7 +671,7 @@ Page({
         }
       }
 
-      // 合并为一次 setData，减少跨线程通信次数
+      // 合并为一次 setData，减少跨线程通信次数，提升拖拽跟手流畅度
       const patch = { dragPosX: clientX, dragPosY: clientY, ...reorderPatch };
       this.setData(patch);
     };
