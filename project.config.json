@@ -1,4 +1,5 @@
 {
+  "cloudbaseCloudEnvId": "cardboard-miniprogram-6a13aab073",
   "setting": {
     "es6": true,
     "postcss": true,
@@ -12,7 +13,16 @@
       "outputPath": ""
     },
     "useCompilerPlugins": false,
-    "minifyWXML": true
+    "minifyWXML": true,
+    "compileWorklet": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "minifyWXSS": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
   },
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
@@ -20,8 +30,9 @@
     "ignore": [],
     "include": []
   },
-  "appid": "wx6c484b4cfa055d73",
+  "appid": "wxa37d7e08891c4e4a",
   "editorSetting": {},
-  "cloudfunctionRoot": "cloudfunctions",
-  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+  "cloudfunctionRoot": "cloudfunctions/",
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
+  "libVersion": "3.12.0"
 }
