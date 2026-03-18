@@ -30,8 +30,9 @@ exports.main = async (event, context) => {
     };
   }
 
-  const { OPENID } = cloud.getWXContext();
-  if (!OPENID) {
+  const wxContext = cloud.getWXContext();
+  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  if (!currentUserId) {
     return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
   }
 
@@ -53,7 +54,7 @@ exports.main = async (event, context) => {
         roomId,
         currentPlayerIndex,
         round: currentRound,
-        userId: OPENID
+        userId: currentUserId
       })
       .limit(1)
       .get();
@@ -69,7 +70,7 @@ exports.main = async (event, context) => {
           roomId,
           currentPlayerIndex,
           round: currentRound,
-          userId: OPENID,
+          userId: currentUserId,
           score: s,
           createdAt: now,
           updatedAt: now

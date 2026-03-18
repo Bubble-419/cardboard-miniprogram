@@ -22,7 +22,8 @@ exports.main = async (event, context) => {
     };
   }
 
-  const { OPENID } = cloud.getWXContext();
+  const wxContext = cloud.getWXContext();
+  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
@@ -37,13 +38,13 @@ exports.main = async (event, context) => {
 
     const room = roomRes.data[0];
     const creatorId = room.creatorId || room.creator_id;
-    const isCreator = !creatorId || String(creatorId) === String(OPENID);
+    const isCreator = !creatorId || String(creatorId) === String(currentUserId);
     const membersRes = creatorId && !isCreator
-      ? await db.collection('roomMembers').where({ roomId, userId: OPENID }).limit(1).get()
+      ? await db.collection('roomMembers').where({ roomId, userId: currentUserId }).limit(1).get()
       : { data: [] };
     const isMember = membersRes.data && membersRes.data.length > 0;
     if (!isCreator && !isMember) {
-      console.warn('[updateRoomState] 无权限', { roomCreatorId: creatorId, callerOpenId: OPENID });
+      console.warn('[updateRoomState] 无权限', { roomCreatorId: creatorId, callerOpenId: currentUserId });
       return {
         ok: false,
         errCode: 'NO_PERMISSION',

@@ -71,7 +71,9 @@ exports.main = async (event, context) => {
     };
   }
 
-  const { OPENID } = cloud.getWXContext();
+  const wxContext = cloud.getWXContext();
+  // 跨账号共享时调用方用户需用 FROM_OPENID
+  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
   try {
     // 幂等：根据 clientCreateId 查询是否已创建过房间
@@ -133,7 +135,7 @@ exports.main = async (event, context) => {
         data: {
           roomId,
           status: 'CREATED',
-          creatorId: OPENID,
+          creatorId: currentUserId,
           createdAt: now,
           updatedAt: now,
           clientCreateId
@@ -143,7 +145,7 @@ exports.main = async (event, context) => {
       await transaction.collection(ROOM_MEMBERS_COLLECTION).add({
         data: {
           roomId,
-          userId: OPENID,
+          userId: currentUserId,
           role: 'GOD',
           nickName: '玩家1',
           avatarUrl: null,

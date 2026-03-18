@@ -36,7 +36,9 @@ exports.main = async (event, context) => {
     };
   }
 
-  const { OPENID } = cloud.getWXContext();
+  const wxContext = cloud.getWXContext();
+  // 跨账号共享时调用方用户需用 FROM_OPENID
+  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
@@ -50,7 +52,7 @@ exports.main = async (event, context) => {
 
     const existing = await db
       .collection(ROOM_MEMBERS_COLLECTION)
-      .where({ roomId, userId: OPENID })
+      .where({ roomId, userId: currentUserId })
       .limit(1)
       .get();
 
@@ -84,7 +86,7 @@ exports.main = async (event, context) => {
     await db.collection(ROOM_MEMBERS_COLLECTION).add({
       data: {
         roomId,
-        userId: OPENID,
+        userId: currentUserId,
         role: 'PLAYER',
         nickName,
         avatarUrl: null,

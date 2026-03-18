@@ -22,7 +22,9 @@ exports.main = async (event, context) => {
     };
   }
 
-  const { OPENID } = cloud.getWXContext();
+  const wxContext = cloud.getWXContext();
+  // 跨账号共享时 OPENID 为资源方，调用方用户需用 FROM_OPENID
+  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
@@ -35,7 +37,7 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
-    const isHost = !!(room.creatorId && room.creatorId === OPENID);
+    const isHost = !!(room.creatorId && room.creatorId === currentUserId);
     const roomState = {
       currentPage: room.currentPage || 'addPlayer',
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
@@ -53,7 +55,7 @@ exports.main = async (event, context) => {
         playerIndex: m.playerIndex,
         nickName: m.nickName || `玩家${m.playerIndex}`,
         avatarColor: m.avatarColor || '#5EC159',
-        isMe: m.userId === OPENID,
+        isMe: m.userId === currentUserId,
         userId: m.userId || null
       };
       if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;
