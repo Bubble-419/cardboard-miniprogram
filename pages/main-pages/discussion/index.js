@@ -25,6 +25,10 @@ Page({
     this.loadRoomData(roomId);
   },
 
+  onUnload() {
+    this._stopStatePolling();
+  },
+
   async loadRoomData(roomId) {
     try {
       const res = await wx.cloud.callFunction({
@@ -42,8 +46,56 @@ Page({
       const isHost = result.isHost === true;
 
       this.setData({ members, avatarList, isHost });
+
+      if (!isHost) {
+        this._startStatePolling();
+      } else {
+        this._stopStatePolling();
+      }
     } catch (e) {
       console.warn('loadRoomData', e);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+        const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+        if (page === 'gamepage') {
+          wx.redirectTo({
+            url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
+          });
+        } else if (page === 'statement') {
+          wx.redirectTo({
+            url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+          });
+        } else if (page === 'leaderboard') {
+          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        }
+      } catch (e) {
+        console.warn('discussion state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 1000);
+    poll();
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
