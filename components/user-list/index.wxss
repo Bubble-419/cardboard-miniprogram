@@ -8,7 +8,7 @@
   width: 100%;
   overflow: hidden;
   /* 为激活态外圈与底部指示三角预留空间，避免被 scroll-view 裁切 */
-  padding: 14rpx 0 22rpx;
+  padding: 20rpx 0 22rpx;
 }
 
 .avatar-row {
