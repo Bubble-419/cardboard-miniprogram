@@ -1,0 +1,19 @@
+# ========== 避免污染云环境 / 影响其他项目 ==========
+# 本地私有配置：云环境 ID、开发工具设置等，因人而异，不应提交
+project.private.config.json
+
+# ========== 云函数依赖（部署时云端安装） ==========
+# 不同环境 npm 版本可能不同，提交会增大仓库且易冲突
+cloudfunctions/**/node_modules/
+
+# ========== 小程序 npm 构建产物 ==========
+miniprogram_npm/
+
+# ========== 通用忽略 ==========
+.DS_Store
+*.log
+npm-debug.log*
+.npm
+.idea/
+.vscode/
+*.local
