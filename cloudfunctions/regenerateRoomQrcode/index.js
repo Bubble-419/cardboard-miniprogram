@@ -53,9 +53,10 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
-    const { OPENID } = cloud.getWXContext();
+    const wxContext = cloud.getWXContext();
+    const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
-    if (room.creatorId && room.creatorId !== OPENID) {
+    if (room.creatorId && room.creatorId !== currentUserId) {
       return {
         ok: false,
         errCode: 'NO_PERMISSION',
