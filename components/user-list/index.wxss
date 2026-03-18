@@ -7,7 +7,8 @@
 .avatar-scroll {
   width: 100%;
   overflow: hidden;
-  padding: 8rpx 0;
+  /* 为激活态外圈与底部指示三角预留空间，避免被 scroll-view 裁切 */
+  padding: 14rpx 0 22rpx;
 }
 
 .avatar-row {
@@ -16,6 +17,8 @@
   gap: 12rpx;
   padding: 0 12rpx;
   box-sizing: border-box;
+  /* 绝对定位的 active-indicator 不参与布局，手动补足行高 */
+  padding-bottom: 12rpx;
 }
 
 .avatar-item {
@@ -118,6 +121,7 @@
 .fold .avatar-row {
   gap: 8rpx;
   padding: 0 6rpx;
+  padding-bottom: 10rpx;
 }
 
 .fold .avatar-wrap {

@@ -57,9 +57,13 @@ Page({
       if (result.ok !== true || !result.members || !result.members.length) return;
 
       const members = result.members;
-      const avatarList = members.map(m => ({
+      const { assignAvatarImages } = require('../../../utils/avatars');
+      const enriched = assignAvatarImages(members);
+      const avatarList = enriched.map(m => ({
         id: m.playerIndex,
-        avatar: m.avatarUrl || ''
+        avatar: m.avatarImage || m.avatarUrl || '',
+        nickName: m.nickName,
+        isMe: m.isMe
       }));
       const isHost = result.isHost === true;
 
