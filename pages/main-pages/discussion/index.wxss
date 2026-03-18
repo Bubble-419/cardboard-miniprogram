@@ -1,14 +1,16 @@
 .container {
   min-height: 100vh;
-  background-color: #fafafa;
+  background-color: #ffffff;
   padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .custom-navbar {
-  background-color: #fff;
+  background-color: #ffffff;
   padding-top: env(safe-area-inset-top);
+  flex-shrink: 0;
 }
 
 .navbar-content {
@@ -17,6 +19,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 32rpx;
+  box-sizing: border-box;
 }
 
 .navbar-left {
@@ -24,33 +27,40 @@
   height: 64rpx;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
 }
 
 .back-icon {
   width: 32rpx;
   height: 32rpx;
+  display: block;
 }
 
 .navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #000;
   flex: 1;
   text-align: center;
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #000000;
 }
 
 .navbar-right {
   width: 80rpx;
+  height: 64rpx;
+  flex-shrink: 0;
 }
 
 .section {
   padding: 0 24rpx;
+  box-sizing: border-box;
 }
 
 .top-section {
-  background-color: #fff;
+  background-color: #ffffff;
   padding-top: 16rpx;
   padding-bottom: 16rpx;
+  flex-shrink: 0;
 }
 
 .content-section {
@@ -59,6 +69,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .discussion-title {
@@ -67,18 +79,22 @@
   color: #5EC159;
   margin-bottom: 40rpx;
   text-align: center;
+  line-height: 1.4;
+  display: block;
 }
 
 .discussion-empty-img {
-  width: 100%;
-  flex: 1;
-  min-height: 320rpx;
+  width: 80%;
+  max-width: 600rpx;
+  height: auto;
   display: block;
 }
 
 .footer-section {
   padding: 24rpx 32rpx;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .continue-btn {
@@ -87,13 +103,14 @@
   line-height: 88rpx;
   font-size: 32rpx;
   font-weight: 500;
-  color: #fff;
+  color: #ffffff;
   background-color: #5EC159;
   border-radius: 16rpx;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .continue-btn::after {

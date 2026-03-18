@@ -4,13 +4,13 @@
       <view class="navbar-left">
         <image
           class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
+          src="./images/miniprogram-btn.png"
           mode="aspectFit"
           bindtap="handleGoBack"
         />
       </view>
       <view class="navbar-title"></view>
-      <view class="navbar-right" />
+      <view class="navbar-right"></view>
     </view>
   </view>
 
@@ -19,17 +19,16 @@
       avatarList="{{avatarList}}"
       currentUser="{{currentPlayerIndex}}"
       enableAdd="{{false}}"
-    />
+    ></user-list>
   </view>
 
   <view class="content-section">
     <text class="discussion-title">提出疑问并讨论</text>
     <image
       class="discussion-empty-img"
-      src="{{discussionImgSrc}}"
-      binderror="onDiscussionImageError"
-      mode="aspectFit"
-    />
+      src="./images/discussion.jpg"
+      mode="widthFix"
+    ></image>
   </view>
 
   <view class="footer-section" wx:if="{{isHost}}">
