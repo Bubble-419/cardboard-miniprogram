@@ -4,7 +4,7 @@ Page({
     bg: {
       scene: '',
       user: '',
-      platform: '',
+      // platform: '',  // 当前版本不需要，之后会恢复
       function: ''
     },
     canConfirm: false
@@ -42,7 +42,8 @@ Page({
   },
 
   onNextCard() {
-    const next = Math.min(3, this.data.currentStep + 1);
+    // const next = Math.min(3, this.data.currentStep + 1);  // 原 4 步含平台，当前版本 3 步，之后会恢复
+    const next = Math.min(2, this.data.currentStep + 1);
     this.setData({ currentStep: next });
   },
 
@@ -57,8 +58,10 @@ Page({
   },
 
   updateCanConfirm() {
-    const { scene, user, platform, function: func } = this.data.bg;
-    const can = !!(scene && user && platform && func);
+    // const { scene, user, platform, function: func } = this.data.bg;
+    // const can = !!(scene && user && platform && func);  // 当前版本不需要 platform，之后会恢复
+    const { scene, user, function: func } = this.data.bg;
+    const can = !!(scene && user && func);
     this.setData({ canConfirm: can });
   },
 

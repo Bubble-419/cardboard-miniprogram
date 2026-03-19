@@ -48,8 +48,8 @@ Page({
     } catch (e) {
       console.warn('getSystemInfo for navbar', e);
     }
-    // 88rpx ≈ 44px + 8px 缓冲，确保 user-list 不被 navbar 遮挡
-    const contentOffsetTop = navbarPaddingTop + 52;
+    // 固定 60px，与 gamepage 一致，实测合适且不遮挡；iOS/Android 保持一致
+    const contentOffsetTop = 60;
 
     this.setData({
       roomId,
