@@ -245,7 +245,7 @@
     opacity: 0.85;
   }
   100% {
-    transform: translate(-50%, -50%) scale(2.2);
+    transform: translate(-50%, -50%) scale(3.5);
     opacity: 0;
     border-width: 2rpx;
   }

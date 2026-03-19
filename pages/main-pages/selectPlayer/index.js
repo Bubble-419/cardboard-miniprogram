@@ -202,7 +202,7 @@ Page({
     }
   },
 
-  /** 长按 0.8 秒后才开始倒计时+随机选择 */
+  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 1s） */
   _startLongPressTimer() {
     if (this._longPressTimer) return;
     this._longPressTimer = setTimeout(() => {
@@ -210,7 +210,7 @@ Page({
       if (this.data.activeTouches.length >= this.data.minPlayers && !this.data.isSelecting) {
         this.startSelection();
       }
-    }, 800);
+    }, 100);
   },
 
   _clearLongPressTimer() {
@@ -228,7 +228,7 @@ Page({
       isSelecting: true
     });
     
-    // 启动倒计时
+    // 启动倒计时（1s）
     this.startCountdown();
     
     // 1 秒后随机选择
@@ -237,9 +237,9 @@ Page({
     }, 1000);
   },
 
-  // 启动倒计时
+  // 启动倒计时（1s：显示 1 然后 0）
   startCountdown() {
-    let countdown = 2;
+    let countdown = 1;
     this.setData({
       countdown: countdown
     });
@@ -252,7 +252,7 @@ Page({
         clearInterval(this.countdownTimer);
         this.setData({ countdown: 0 });
       }
-    }, 500);
+    }, 1000);
   },
 
   // 随机选择玩家：被选中的位置播放 3s 水波纹动画（不随手指离开停止），结束后显示几号玩家被选中 + 确认按钮
