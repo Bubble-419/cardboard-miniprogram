@@ -1,5 +1,6 @@
 <view class="container">
-  <view class="custom-navbar">
+  <!-- 悬浮导航：padding 由 JS 动态计算，避免真机顶部留白过多 -->
+  <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
         <image
@@ -14,12 +15,13 @@
     </view>
   </view>
 
-  <!-- 2.1 顶部玩家列表 -->
-  <view class="section top-section">
+  <!-- 2.1 顶部玩家列表：padding-top 由 contentOffsetTop 动态计算，避免 env 真机留白过多 -->
+  <view class="section top-section" style="padding-top: {{contentOffsetTop}}px">
     <user-list
       avatarList="{{avatarList}}"
       currentUser="{{currentPlayerIndex}}"
       enableAdd="{{false}}"
+      isFold="{{true}}"
     />
   </view>
 

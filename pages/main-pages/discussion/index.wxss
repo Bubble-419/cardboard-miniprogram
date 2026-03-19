@@ -7,10 +7,14 @@
   box-sizing: border-box;
 }
 
+/* 悬浮导航：白色背景，与 gamepage 一致，不占布局空间 */
 .custom-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
-  flex-shrink: 0;
 }
 
 .navbar-content {

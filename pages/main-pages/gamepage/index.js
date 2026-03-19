@@ -1,5 +1,7 @@
 Page({
-  data: {
+    data: {
+    navbarPaddingTop: 0,
+    contentOffsetTop: 44,
     roomId: '',
     members: [],
     avatarList: [],
@@ -29,11 +31,30 @@ Page({
       return;
     }
 
+    // 真机 iOS 顶部留白与模拟器不一致，微信可能已预留安全区，用较小值
+    let navbarPaddingTop = 0;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const h = sys.statusBarHeight || 0;
+      if (sys.platform === 'ios') {
+        // 真机 env(safe-area) 易偏大，用 statusBarHeight 并再减 36 控制留白
+        navbarPaddingTop = Math.max(6, h - 36);
+      } else {
+        navbarPaddingTop = h;
+      }
+    } catch (e) {
+      console.warn('getSystemInfo for navbar', e);
+    }
+
+    // 72rpx ≈ 36px + 8px 缓冲，确保 user-list 不被 navbar 遮挡
+    const contentOffsetTop = navbarPaddingTop + 44;
     this.setData({
       roomId,
       currentPlayerIndex,
       scoredCount: 0,
-      myScore: null
+      myScore: null,
+      navbarPaddingTop,
+      contentOffsetTop
     });
 
     this._startScorePolling();
