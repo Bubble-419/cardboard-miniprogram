@@ -18,7 +18,7 @@
   <view class="card-bottom">
     <view class="bottom-header">
       <text class="bottom-title">{{typeInfo.title}}</text>
-      <view class="next-btn" bindtap="onNext">
+      <view class="next-btn {{isLast ? 'next-btn-disabled' : ''}}" bindtap="onNext">
         <text class="next-text">{{typeInfo.nextText}}</text>
       </view>
     </view>

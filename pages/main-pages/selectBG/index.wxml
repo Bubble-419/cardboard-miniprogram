@@ -65,7 +65,7 @@
       -->
       <swiper-item class="card-item">
         <view class="card-padding">
-          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 2}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
+          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 2}}" isLast="{{true}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
         </view>
       </swiper-item>
     </swiper>
