@@ -104,8 +104,13 @@ Page({
         scanType: ['qrCode'],
         onlyFromCamera: true
       });
-      const content = (res && res.result) || '';
-      const roomId = this._parseRoomId(content);
+      // 调试：先完整打印扫码返回，便于确认不同码型的真实返回结构
+      try {
+        console.log('[scanCode success]', JSON.stringify(res));
+      } catch (_) {
+        console.log('[scanCode success raw]', res);
+      }
+      const roomId = this._parseRoomIdFromScanResult(res);
       if (!roomId) {
         wx.showToast({ title: '未能识别房间信息，请扫描正确的房间二维码', icon: 'none' });
         return;
@@ -127,14 +132,76 @@ Page({
   },
 
   /**
+   * 优先解析小程序码的 path（如 pages/room/index?roomId=123），
+   * 再回退到扫码结果字符串解析。
+   */
+  _parseRoomIdFromScanResult(scanRes) {
+    if (!scanRes || typeof scanRes !== 'object') return '';
+    const path = scanRes.path || '';
+    if (path && typeof path === 'string') {
+      const query = path.split('?')[1] || '';
+      const params = this._parseQuery(query);
+      const roomId = (params.roomId || params.rid || this._extractRoomIdFromScene(params.scene) || '').trim();
+      if (roomId) return roomId;
+    }
+    const content = (scanRes.result || '').trim();
+    const byContent = this._parseRoomId(content);
+    if (byContent) return byContent;
+
+    // 有些场景会把信息放在 rawData（或其他字段），这里再兜底一次
+    const rawData = (scanRes.rawData || '').trim();
+    if (rawData) {
+      const byRaw = this._parseRoomId(rawData);
+      if (byRaw) return byRaw;
+    }
+    return '';
+  },
+
+  /**
+   * querystring 转对象：a=1&b=2 => { a: "1", b: "2" }
+   */
+  _parseQuery(query) {
+    const obj = {};
+    if (!query || typeof query !== 'string') return obj;
+    query.split('&').forEach(item => {
+      if (!item) return;
+      const eqIndex = item.indexOf('=');
+      const key = eqIndex >= 0 ? item.slice(0, eqIndex) : item;
+      const value = eqIndex >= 0 ? item.slice(eqIndex + 1) : '';
+      if (!key) return;
+      obj[decodeURIComponent(key)] = decodeURIComponent(value);
+    });
+    return obj;
+  },
+
+  /**
+   * 小程序码常见：scene=roomId%3D12345678 或 scene=rid%3D12345678 或 scene=12345678
+   */
+  _extractRoomIdFromScene(scene) {
+    if (!scene || typeof scene !== 'string') return '';
+    let decoded = scene;
+    try {
+      decoded = decodeURIComponent(scene);
+    } catch (_) {}
+    if (/^\d{8}$/.test(decoded)) return decoded;
+    return this._parseRoomId(decoded);
+  },
+
+  /**
    * 从扫码结果中解析 roomId
    * 支持：rid=xxx、roomId=xxx、URL 中的 roomId 参数、纯 roomId 文本
    */
   _parseRoomId(content) {
     if (!content || typeof content !== 'string') return '';
     const s = content.trim();
+    // scene=xxxx（对扫码结果字符串先拆 scene）
+    let m = s.match(/scene=([^&?#\s]+)/i);
+    if (m) {
+      const byScene = this._extractRoomIdFromScene(m[1]);
+      if (byScene) return byScene;
+    }
     // rid=roomId
-    let m = s.match(/rid=([^&?#\s]+)/i);
+    m = s.match(/rid=([^&?#\s]+)/i);
     if (m) return m[1].trim();
     // roomId=xxx
     m = s.match(/roomId=([^&?#\s]+)/i);
