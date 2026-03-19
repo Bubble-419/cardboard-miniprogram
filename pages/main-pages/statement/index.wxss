@@ -7,7 +7,7 @@
 }
 
 .custom-navbar {
-  background-color: #fff;
+  background-color: #fafafa;
   padding-top: env(safe-area-inset-top);
 }
 

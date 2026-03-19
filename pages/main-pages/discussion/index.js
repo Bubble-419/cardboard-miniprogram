@@ -1,5 +1,7 @@
 Page({
-  data: {
+    data: {
+    navbarPaddingTop: 0,
+    contentOffsetTop: 52,
     roomId: '',
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
@@ -33,10 +35,28 @@ Page({
       return;
     }
 
+    // 真机 iOS 顶部留白与模拟器不一致，与 gamepage 一致计算
+    let navbarPaddingTop = 0;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const h = sys.statusBarHeight || 0;
+      if (sys.platform === 'ios') {
+        navbarPaddingTop = Math.max(6, h - 36);
+      } else {
+        navbarPaddingTop = h;
+      }
+    } catch (e) {
+      console.warn('getSystemInfo for navbar', e);
+    }
+    // 88rpx ≈ 44px + 8px 缓冲，确保 user-list 不被 navbar 遮挡
+    const contentOffsetTop = navbarPaddingTop + 52;
+
     this.setData({
       roomId,
       currentPlayerIndex,
-      currentPlayerName
+      currentPlayerName,
+      navbarPaddingTop,
+      contentOffsetTop
     });
 
     this.loadRoomData(roomId);

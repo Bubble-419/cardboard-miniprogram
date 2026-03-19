@@ -8,17 +8,17 @@
   width: 100%;
   overflow: hidden;
   /* 为激活态外圈与底部指示三角预留空间，避免被 scroll-view 裁切 */
-  padding: 20rpx 0 22rpx;
+  /* padding: 20rpx 0 22rpx; */
 }
 
 .avatar-row {
   display: flex;
   align-items: flex-start;
   gap: 12rpx;
-  padding: 0 12rpx;
+  padding: 5rpx;
   box-sizing: border-box;
   /* 绝对定位的 active-indicator 不参与布局，手动补足行高 */
-  padding-bottom: 12rpx;
+  /* padding-bottom: 12rpx; */
 }
 
 .avatar-item {

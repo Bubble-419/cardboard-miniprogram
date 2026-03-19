@@ -1,5 +1,5 @@
 <view class="container">
-  <view class="custom-navbar">
+  <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
         <image
@@ -14,12 +14,13 @@
     </view>
   </view>
 
-  <view class="section top-section">
+  <view class="section top-section" style="padding-top: {{contentOffsetTop}}px">
     <user-list
       avatarList="{{avatarList}}"
       currentUser="{{currentPlayerIndex}}"
       enableAdd="{{false}}"
-    ></user-list>
+      isFold="{{true}}"
+    />
   </view>
 
   <view class="content-section">

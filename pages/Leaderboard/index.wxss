@@ -4,9 +4,10 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* 与页面顶部渐变同色，避免白色块 */
 .custom-navbar {
-  background-color: rgba(255, 255, 255, 0.95);
-  padding-top: env(safe-area-inset-top);
+  background-color: #f8fbfa;
+  padding-top: max(0px, calc(env(safe-area-inset-top, 0) - 15px));
 }
 
 .navbar-content {

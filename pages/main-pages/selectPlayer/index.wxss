@@ -5,12 +5,15 @@
   overflow: hidden;
 }
 
-/* 自定义导航栏 */
+/* 自定义导航栏：悬浮叠加，与页面背景一致 */
 .custom-navbar {
-  background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
+  background-color: #f8fbfa;
+  padding-top: max(0px, calc(env(safe-area-inset-top, 0) - 18px));
 }
 
 .navbar-content {
@@ -76,10 +79,10 @@
   line-height: 1.6;
 }
 
-/* 提示文字（不可触摸区域） */
+/* 提示文字（不可触摸区域）：top 需大于 navbar 高度，避免被遮挡 */
 .instruction-text {
   position: absolute;
-  top: 142rpx;
+  top: 280rpx;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -96,7 +99,7 @@
 /* 触摸交互区域（限制在文字和按钮之间） */
 .touch-area {
   position: absolute;
-  top: 300rpx;
+  top: 440rpx;
   left: 0;
   right: 0;
   bottom: 250rpx;
