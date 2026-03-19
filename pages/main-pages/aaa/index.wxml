@@ -26,7 +26,7 @@
         <view class="room-code-wrapper" bindtap="onRoomCodeTap">
           <view class="room-code-box">
             <block wx:for="{{8}}" wx:key="index">
-              <view class="room-code-slot {{(index === 3) ? 'room-code-slot-gap' : ''}}">
+              <view class="room-code-slot {{(index === 3) ? 'room-code-slot-gap' : ''}} {{inputFocused && inputRoomId.length < 8 && inputRoomId.length === index ? 'room-code-slot-active' : ''}}">
                 <text class="room-code-char">
                   {{ inputRoomId[index] || '' }}
                 </text>
@@ -37,12 +37,12 @@
             class="room-code-input"
             type="number"
             maxlength="8"
+            cursor-color="transparent"
             focus="{{inputFocused}}"
             value="{{inputRoomId}}"
             bindinput="onInputRoomId"
+            bindfocus="onRoomCodeFocus"
             bindblur="onRoomCodeBlur"
-            placeholder="请输入 8 位房间号"
-            placeholder-class="room-code-placeholder"
           />
         </view>
         <view class="join-btn-row">
