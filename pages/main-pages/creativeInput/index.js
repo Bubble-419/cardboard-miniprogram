@@ -5,14 +5,14 @@ Page({
   data: {
     roomId: '',
     members: [],
-    memberCount: 0,
+    memberCount: 0, // 仅用于 canViewSummary 判断，不展示
     isHost: false,
     myPlayerIndex: null,
     myNickName: '',
     myAvatar: '',
     ideaText: '',
     submitted: false,
-    submittedCount: 0,
+    submittedCount: 0, // 仅用于 canViewSummary 判断，不展示
     canViewSummary: false
   },
 
@@ -51,7 +51,7 @@ Page({
       const me = members.find(m => m.isMe);
       this.setData({
         members,
-        memberCount: members.length,
+        memberCount: members.length, // 不展示，仅用于 canViewSummary
         isHost: result.isHost === true,
         myPlayerIndex: me ? me.playerIndex : null,
         myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
@@ -74,7 +74,7 @@ Page({
       const submittedCount = list.length;
       const mine = list.find(i => i.playerIndex === this.data.myPlayerIndex);
       this.setData({
-        submittedCount,
+        submittedCount, // 不展示，仅用于 canViewSummary
         submitted: !!mine,
         ideaText: mine ? (mine.ideaText || '') : this.data.ideaText
       });

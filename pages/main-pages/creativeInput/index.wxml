@@ -12,6 +12,7 @@
   <view class="content">
     <text class="title">令你印象深刻的创意</text>
     <text class="hint">请填写一个你最有印象的创意点</text>
+    <!-- 不显示已提交人数：主屏/副屏均不展示 -->
     <!-- <view class="progress">已提交 {{submittedCount}} / {{memberCount}}</view> -->
 
     <textarea
