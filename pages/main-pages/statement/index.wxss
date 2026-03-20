@@ -14,11 +14,10 @@
 
 .custom-navbar {
   background-color: #fafafa;
-  padding-top: env(safe-area-inset-top);
 }
 
 .navbar-content {
-  height: 8rpx;
+  height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -62,7 +61,7 @@
 }
 
 .instruction {
-  padding: 48rpx 40rpx 44rpx;
+  padding: 72rpx 40rpx 44rpx;
   text-align: center;
 }
 
@@ -86,6 +85,14 @@
   align-items: center;
   justify-content: center;
   gap: 24rpx;
+}
+
+.statement-loading {
+  width: 100%;
+  margin: 72rpx auto 0;
+  text-align: center;
+  font-size: 30rpx;
+  color: #9ab69a;
 }
 
 .statement-btn {

@@ -6,7 +6,6 @@ Page({
     memberCount: 0,
     passCount: 0,
     members: [],
-    nextPlayer: null,
     isHost: false,
     isWaiting: false
   },
@@ -55,31 +54,14 @@ Page({
       if (result.ok !== true || !result.members || !result.members.length) return;
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
-      const nextPlayer = this._resolveNextPlayer(members, this.data.currentPlayerIndex);
       this.setData({
         members,
-        nextPlayer,
         memberCount: this.data.memberCount || members.length,
         isHost: result.isHost === true
       });
     } catch (e) {
       console.warn('playSuccess loadRoomData', e);
     }
-  },
-
-  _resolveNextPlayer(members, currentPlayerIndex) {
-    const list = members || [];
-    if (!list.length) return null;
-    const count = list.length;
-    const nextIndex = ((currentPlayerIndex || 1) % count) + 1;
-    const next = list.find(m => m.playerIndex === nextIndex);
-    if (!next) return null;
-    return {
-      playerIndex: next.playerIndex,
-      nickName: next.nickName || `玩家${next.playerIndex}`,
-      isMe: next.isMe === true,
-      avatar: next.avatarImage || next.avatarUrl || ''
-    };
   },
 
   _startStatePolling() {

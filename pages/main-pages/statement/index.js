@@ -1,5 +1,6 @@
 Page({
   data: {
+    navbarPaddingTop: 0,
     roomId: '',
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
@@ -7,7 +8,8 @@ Page({
     members: [],
     isWaiting: false, // 普通玩家等待：请用实体表态卡进行表态
     selectedPassCount: null,
-    passCountOptions: [0, 1, 2, 3, 4, 5]
+    passCountOptions: [],
+    isPassOptionsReady: false
   },
 
   onLoad(options) {
@@ -24,7 +26,16 @@ Page({
       return;
     }
 
+    let navbarPaddingTop = 0;
+    try {
+      const sys = wx.getSystemInfoSync();
+      navbarPaddingTop = sys.statusBarHeight || 0;
+    } catch (e) {
+      console.warn('statement getSystemInfoSync', e);
+    }
+
     this.setData({
+      navbarPaddingTop,
       roomId,
       currentPlayerIndex,
       currentPlayerName,
@@ -136,17 +147,24 @@ Page({
           memberCount,
           members: result.members,
           passCountOptions,
-          selectedPassCount: nextSelected
+          selectedPassCount: nextSelected,
+          isPassOptionsReady: true
         });
       }
     } catch (e) {
       console.warn('loadMemberCount', e);
+      this.setData({
+        passCountOptions: this._buildPassCountOptions(0),
+        isPassOptionsReady: true
+      });
     }
   },
 
   _buildPassCountOptions(memberCount) {
-    // 按房间人数动态生成 0~N；若人数不可用，兜底为 0~5
-    const max = Number.isFinite(memberCount) && memberCount > 0 ? memberCount : 5;
+    // 玩家本人不参与表态：按房间人数动态生成 0~(N-1)；若人数不可用，兜底为 0~5
+    const max = Number.isFinite(memberCount) && memberCount > 0
+      ? Math.max(0, memberCount - 1)
+      : 5;
     return Array.from({ length: max + 1 }, (_, idx) => idx);
   },
 

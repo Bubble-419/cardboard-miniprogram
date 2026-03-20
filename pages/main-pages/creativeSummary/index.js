@@ -6,7 +6,8 @@ Page({
     roomId: '',
     members: [],
     isHost: false,
-    summaryList: []
+    summaryList: [],
+    canRestartRound: false
   },
 
   onLoad(options) {
@@ -25,6 +26,10 @@ Page({
     if (roomId) this.loadData(roomId);
   },
 
+  onUnload() {
+    this._stopStatePolling();
+  },
+
   async loadData(roomId) {
     await this.loadRoomData(roomId);
     await this.loadSummary(roomId);
@@ -40,12 +45,49 @@ Page({
       if (result.ok !== true || !result.members || !result.members.length) return;
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
+      const isHost = result.isHost === true;
       this.setData({
         members,
-        isHost: result.isHost === true
+        isHost
       });
+      if (isHost) {
+        this._stopStatePolling();
+      } else {
+        this._startStatePolling();
+      }
     } catch (e) {
       console.warn('creativeSummary loadRoomData', e);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        if (page === 'auth') {
+          wx.reLaunch({ url: '/pages/auth/index' });
+        }
+      } catch (e) {
+        console.warn('creativeSummary state poll', e);
+      }
+    };
+    this._statePollTimer = setInterval(poll, 1000);
+    poll();
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
@@ -70,7 +112,16 @@ Page({
           ideaText: idea ? (idea.ideaText || '') : ''
         };
       });
-      this.setData({ summaryList });
+      const members = this.data.members || [];
+      const hasAllMembers = members.length > 0 && summaryList.length === members.length;
+      const allFilled = hasAllMembers && summaryList.every(item => {
+        const text = (item.ideaText || '').trim();
+        return text.length > 0;
+      });
+      this.setData({
+        summaryList,
+        canRestartRound: allFilled
+      });
     } catch (e) {
       console.warn('creativeSummary loadSummary', e);
     }
@@ -78,6 +129,10 @@ Page({
 
   async handleFinish() {
     if (!this.data.isHost) return;
+    if (!this.data.canRestartRound) {
+      wx.showToast({ title: '请等待所有玩家填写完成', icon: 'none' });
+      return;
+    }
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     try {

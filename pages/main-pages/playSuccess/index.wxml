@@ -17,16 +17,6 @@
     </view>
     <text class="main-text">恭喜出牌成功</text>
     <text class="sub-text">通过人数 {{passCount}} / {{memberCount}}</text>
-    <view class="next-player-wrap" wx:if="{{nextPlayer}}">
-      <text class="next-player-title">下一位翻牌玩家</text>
-      <view class="next-player-card">
-        <image class="next-player-avatar" src="{{nextPlayer.avatar}}" mode="aspectFill" />
-        <view class="next-player-meta">
-          <text class="next-player-name">{{nextPlayer.playerIndex}}号玩家</text>
-          <text class="next-player-me" wx:if="{{nextPlayer.isMe}}">（我）</text>
-        </view>
-      </view>
-    </view>
   </view>
 
   <view class="footer" wx:if="{{isHost && !isWaiting}}">

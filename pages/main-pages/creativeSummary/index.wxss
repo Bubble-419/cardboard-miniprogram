@@ -127,6 +127,11 @@
   padding: 0;
 }
 
+.finish-btn-disabled {
+  background: #b6d8b5;
+  color: #eef7ee;
+}
+
 .finish-btn::after {
   border: none;
 }

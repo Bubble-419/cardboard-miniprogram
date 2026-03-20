@@ -3,7 +3,7 @@ Page({
     activeTouches: [],
     playerCount: 0,
     minPlayers: 0,
-    countdown: 3,
+    countdown: 1,
     isSelecting: false,
     selectedTouchId: null,
     roomId: '',
@@ -203,7 +203,7 @@ Page({
     }
   },
 
-  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 3s） */
+  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 1s） */
   _startLongPressTimer() {
     if (this._longPressTimer) return;
     this._longPressTimer = setTimeout(() => {
@@ -229,18 +229,18 @@ Page({
       isSelecting: true
     });
     
-    // 启动倒计时（3s）
+    // 启动倒计时（1s）
     this.startCountdown();
     
-    // 3 秒后随机选择
+    // 1 秒后随机选择
     this.selectionTimer = setTimeout(() => {
       this.selectRandomPlayer();
-    }, 3000);
+    }, 1000);
   },
 
-  // 启动倒计时（3s：显示 3、2、1 然后 0）
+  // 启动倒计时（1s：显示 1 然后 0）
   startCountdown() {
-    let countdown = 3;
+    let countdown = 1;
     this.setData({
       countdown: countdown
     });
