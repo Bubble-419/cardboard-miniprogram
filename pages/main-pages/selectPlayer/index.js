@@ -2,8 +2,8 @@ Page({
   data: {
     activeTouches: [],
     playerCount: 0,
-    minPlayers: 4,
-    countdown: 5,
+    minPlayers: 0,
+    countdown: 3,
     isSelecting: false,
     selectedTouchId: null,
     roomId: '',
@@ -191,18 +191,19 @@ Page({
   // 更新玩家数量
   updatePlayerCount() {
     const count = this.data.activeTouches.length;
+    const minPlayers = this.data.minPlayers || 0;
     this.setData({
       playerCount: count
     });
 
-    if (count >= this.data.minPlayers && !this.data.isSelecting) {
+    if (minPlayers > 0 && count >= minPlayers && !this.data.isSelecting) {
       this._startLongPressTimer();
     } else {
       this._clearLongPressTimer();
     }
   },
 
-  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 1s） */
+  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 3s） */
   _startLongPressTimer() {
     if (this._longPressTimer) return;
     this._longPressTimer = setTimeout(() => {
@@ -228,18 +229,18 @@ Page({
       isSelecting: true
     });
     
-    // 启动倒计时（1s）
+    // 启动倒计时（3s）
     this.startCountdown();
     
-    // 1 秒后随机选择
+    // 3 秒后随机选择
     this.selectionTimer = setTimeout(() => {
       this.selectRandomPlayer();
-    }, 1000);
+    }, 3000);
   },
 
-  // 启动倒计时（1s：显示 1 然后 0）
+  // 启动倒计时（3s：显示 3、2、1 然后 0）
   startCountdown() {
-    let countdown = 1;
+    let countdown = 3;
     this.setData({
       countdown: countdown
     });
