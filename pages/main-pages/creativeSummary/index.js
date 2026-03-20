@@ -21,26 +21,26 @@ Page({
     this.loadData(roomId);
   },
 
-  async onShow() {
+  onShow() {
     const roomId = this.data.roomId || '';
-    if (roomId) {
-      await this.loadRoomData(roomId);
-      this._startWatch(roomId);
-    }
-  },
-
-  onUnload() {
-    this._stopWatch();
+    if (roomId) this.loadData(roomId);
   },
 
   onUnload() {
     this._stopStatePolling();
+    this._stopSummaryPolling();
   },
 
   async loadData(roomId) {
     await this.loadRoomData(roomId);
     await this.loadSummary(roomId);
-    this._startWatch(roomId);
+
+    if (this.data.isHost) {
+      this._stopStatePolling();
+    } else {
+      this._startStatePolling();
+    }
+    this._startSummaryPolling(roomId);
   },
 
   async loadRoomData(roomId) {
@@ -53,18 +53,51 @@ Page({
       if (result.ok !== true || !result.members || !result.members.length) return;
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
-      const isHost = result.isHost === true;
       this.setData({
         members,
-        isHost
+        isHost: result.isHost === true
       });
-      if (isHost) {
-        this._stopStatePolling();
-      } else {
-        this._startStatePolling();
-      }
     } catch (e) {
       console.warn('creativeSummary loadRoomData', e);
+    }
+  },
+
+  async loadSummary(roomId) {
+    try {
+      const db = await this._getDB();
+      const res = await db.collection(this._ideaCollection).where({
+        roomId,
+        entryType: this._ideaEntryType
+      }).get();
+      const ideas = (res && res.data) || [];
+      const ideaMap = {};
+      ideas.forEach(item => {
+        ideaMap[item.playerIndex] = item;
+      });
+
+      const summaryList = (this.data.members || []).map(m => {
+        const idea = ideaMap[m.playerIndex];
+        return {
+          playerIndex: m.playerIndex,
+          isMe: m.isMe === true,
+          avatar: m.avatarImage || m.avatarUrl || '',
+          ideaText: idea ? (idea.ideaText || '') : ''
+        };
+      });
+
+      const members = this.data.members || [];
+      const hasAllMembers = members.length > 0 && summaryList.length === members.length;
+      const allFilled = hasAllMembers && summaryList.every(item => {
+        const text = (item.ideaText || '').trim();
+        return text.length > 0;
+      });
+
+      this.setData({
+        summaryList,
+        canRestartRound: allFilled
+      });
+    } catch (e) {
+      console.warn('creativeSummary loadSummary', e);
     }
   },
 
@@ -99,114 +132,18 @@ Page({
     }
   },
 
-  async loadSummary(roomId) {
-    try {
-      const db = await this._getDB();
-      const res = await db.collection(this._ideaCollection).where({
-        roomId,
-        entryType: this._ideaEntryType
-      }).get();
-      const ideas = (res && res.data) || [];
-<<<<<<< HEAD
-      const ideaMap = {};
-      ideas.forEach(item => {
-        ideaMap[item.playerIndex] = item;
-      });
-      const summaryList = (this.data.members || []).map(m => {
-        const idea = ideaMap[m.playerIndex];
-        return {
-          playerIndex: m.playerIndex,
-          isMe: m.isMe === true,
-          avatar: m.avatarImage || m.avatarUrl || '',
-          ideaText: idea ? (idea.ideaText || '') : ''
-        };
-      });
-      const members = this.data.members || [];
-      const hasAllMembers = members.length > 0 && summaryList.length === members.length;
-      const allFilled = hasAllMembers && summaryList.every(item => {
-        const text = (item.ideaText || '').trim();
-        return text.length > 0;
-      });
-      this.setData({
-        summaryList,
-        canRestartRound: allFilled
-      });
-=======
-      this._applyIdeasToSummary(ideas);
->>>>>>> origin/back2
-    } catch (e) {
-      console.warn('creativeSummary loadSummary', e);
-    }
-  },
-
-  _applyIdeasToSummary(ideas) {
-    const ideaMap = {};
-    (ideas || []).forEach(item => {
-      ideaMap[item.playerIndex] = item;
-    });
-    const summaryList = (this.data.members || []).map(m => {
-      const idea = ideaMap[m.playerIndex];
-      return {
-        playerIndex: m.playerIndex,
-        isMe: m.isMe === true,
-        avatar: m.avatarImage || m.avatarUrl || '',
-        ideaText: idea ? (idea.ideaText || '') : ''
-      };
-    });
-    this.setData({ summaryList });
-  },
-
-  async _startWatch(roomId) {
-    this._stopWatch();
-    let db;
-    try {
-      db = await this._getDB();
-    } catch (e) {
-      return;
-    }
-    const collection = db.collection(this._ideaCollection);
-    if (typeof collection.watch !== 'function') {
-      this._startPolling(roomId);
-      return;
-    }
-    try {
-      this._watcher = collection.where({
-        roomId,
-        entryType: this._ideaEntryType
-      }).watch({
-        onChange: (snapshot) => {
-          const docs = (snapshot && snapshot.docs) || [];
-          this._applyIdeasToSummary(docs);
-        },
-        onError: (err) => {
-          console.warn('creativeSummary watch error', err);
-          this._startPolling(roomId);
-        }
-      });
-    } catch (e) {
-      console.warn('creativeSummary watch init', e);
-      this._startPolling(roomId);
-    }
-  },
-
-  _stopWatch() {
-    if (this._watcher && typeof this._watcher.close === 'function') {
-      try {
-        this._watcher.close();
-      } catch (e) {}
-      this._watcher = null;
-    }
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
-  },
-
-  _startPolling(roomId) {
-    this._stopWatch();
-    this._pollTimer = setInterval(() => {
+  _startSummaryPolling(roomId) {
+    this._stopSummaryPolling();
+    this._summaryPollTimer = setInterval(() => {
       if (this.data.roomId) this.loadSummary(roomId);
     }, 2000);
+  },
+
+  _stopSummaryPolling() {
+    if (this._summaryPollTimer) {
+      clearInterval(this._summaryPollTimer);
+      this._summaryPollTimer = null;
+    }
   },
 
   async handleFinish() {
@@ -215,6 +152,7 @@ Page({
       wx.showToast({ title: '请等待所有玩家填写完成', icon: 'none' });
       return;
     }
+
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     try {
