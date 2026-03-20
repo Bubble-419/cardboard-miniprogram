@@ -20,7 +20,7 @@
 
   <!-- 提示文案 -->
   <view class="instruction-text">
-    <text class="instruction-line">选择首位出牌玩家</text>
+    <text class="instruction-line">选择首位翻牌玩家</text>
   </view>
 
   <!-- 环形玩家布局 -->

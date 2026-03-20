@@ -12,16 +12,16 @@
     </view>
   </view>
 
-  <!-- 普通玩家：等待房主在主屏抽取首位玩家 -->
+  <!-- 普通玩家：等待房主在主屏抽取首位翻牌玩家 -->
   <view class="empty-wait-state" wx:if="{{isWaiting}}">
-    <text class="empty-wait-text">请在主屏上参与抽取首位玩家</text>
+    <text class="empty-wait-text">请在主屏上参与抽取首位翻牌玩家</text>
   </view>
 
   <!-- 房主：触摸交互区域 -->
   <block wx:else>
   <view class="instruction-text" wx:if="{{!selectedPlayerIndex}}">
     <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
-    <text class="instruction-line">由系统随机选出首位出牌的玩家</text>
+    <text class="instruction-line">由系统随机选出首位翻牌玩家</text>
   </view>
 
   <!-- 触摸交互区域（限制在文字和按钮之间） -->
@@ -66,7 +66,7 @@
     <!-- 3s 动画结束后显示几号玩家被选中 -->
     <view class="selected-player-display" wx:if="{{selectionAnimationDone && selectedPlayerIndex}}">
       <text class="selected-player-text">{{selectedPlayerIndex}} 号玩家</text>
-      <text class="selected-player-hint">被选为首位出牌</text>
+      <text class="selected-player-hint">被选为首位翻牌</text>
     </view>
   </view>
 

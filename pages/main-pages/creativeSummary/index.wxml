@@ -1,0 +1,31 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left" bindtap="handleGoBack">
+        <text class="back-chevron">‹</text>
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="content">
+    <text class="title">令你印象深刻的创意汇总</text>
+    <text class="sub-title">一起看看每位玩家最有印象的创意</text>
+
+    <scroll-view class="list-wrap" scroll-y="true">
+      <view class="idea-card" wx:for="{{summaryList}}" wx:key="playerIndex">
+        <view class="player-row">
+          <image class="avatar" src="{{item.avatar}}" mode="aspectFill" />
+          <text class="player-name">{{item.playerIndex}}号玩家</text>
+          <text class="player-me" wx:if="{{item.isMe}}">（我）</text>
+        </view>
+        <text class="idea-text">{{item.ideaText || '（待填写）'}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="footer" wx:if="{{isHost}}">
+    <button class="finish-btn" bindtap="handleFinish">完成</button>
+  </view>
+</view>

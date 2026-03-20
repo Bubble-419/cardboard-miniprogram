@@ -58,6 +58,10 @@ Page({
     this.setData({ inputFocused: true });
   },
 
+  onRoomCodeFocus() {
+    this.setData({ inputFocused: true });
+  },
+
   onRoomCodeBlur() {
     this.setData({ inputFocused: false });
   },

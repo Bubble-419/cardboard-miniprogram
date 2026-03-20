@@ -373,7 +373,7 @@ Page({
     }
 
     wx.showToast({
-      title: '已确认首位玩家',
+      title: '已确认首位翻牌玩家',
       icon: 'success',
       duration: 800
     });
