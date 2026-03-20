@@ -15,11 +15,11 @@
     </view>
   </view>
 
-  <!-- 2.1 顶部玩家列表：padding-top 由 contentOffsetTop 动态计算，避免 env 真机留白过多 -->
+  <!-- 2.1 顶部玩家列表：仅展示，不参与流程控制、不高亮当前玩家 -->
   <view class="section top-section" style="padding-top: {{contentOffsetTop}}px">
     <user-list
       avatarList="{{avatarList}}"
-      currentUser="{{currentPlayerIndex}}"
+      currentUser=""
       enableAdd="{{false}}"
       isFold="{{true}}"
     />
