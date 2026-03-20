@@ -130,6 +130,9 @@ Page({
       wx.showToast({ title: '提交成功', icon: 'success' });
       this.setData({ submitted: true });
       this.loadIdeas(roomId);
+      wx.redirectTo({
+        url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
+      });
     } catch (e) {
       console.error('creativeInput handleSubmit', e);
       wx.showToast({ title: '提交失败', icon: 'none' });
