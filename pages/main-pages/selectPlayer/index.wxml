@@ -45,9 +45,9 @@
       <view class="ripple-circle ripple-3"></view>
     </view>
 
-    <!-- 选中后的水波纹荡开效果（3s，绿色），动画结束后隐藏 -->
+    <!-- 选中后的水波纹荡开效果（绿色），动画结束后保持显示 -->
     <view 
-      wx:if="{{selectedPlayerIndex && selectedPosition && !selectionAnimationDone}}"
+      wx:if="{{selectedPlayerIndex && selectedPosition}}"
       class="ripple ripple-water-spread visible"
       style="left: {{selectedPosition.x}}px; top: {{selectedPosition.y}}px;"
     >

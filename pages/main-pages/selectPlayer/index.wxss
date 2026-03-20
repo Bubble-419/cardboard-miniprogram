@@ -207,38 +207,38 @@
     inset 0 0 20rpx rgba(94, 193, 89, 0.15);
 }
 
-/* 水波纹持续 3s，5 个环错开 0.35s 依次荡开 */
+/* 水波纹循环播放，5 个环错开 0.35s 依次荡开 */
 .water-ring.ring-1 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread-3s 3s ease-out forwards;
+  animation: water-spread-loop 3s ease-out infinite;
 }
 
 .water-ring.ring-2 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread-3s 3s ease-out 0.35s forwards;
+  animation: water-spread-loop 3s ease-out 0.35s infinite;
 }
 
 .water-ring.ring-3 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread-3s 3s ease-out 0.7s forwards;
+  animation: water-spread-loop 3s ease-out 0.7s infinite;
 }
 
 .water-ring.ring-4 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread-3s 3s ease-out 1.05s forwards;
+  animation: water-spread-loop 3s ease-out 1.05s infinite;
 }
 
 .water-ring.ring-5 {
   width: 120rpx;
   height: 120rpx;
-  animation: water-spread-3s 3s ease-out 1.4s forwards;
+  animation: water-spread-loop 3s ease-out 1.4s infinite;
 }
 
-@keyframes water-spread-3s {
+@keyframes water-spread-loop {
   0% {
     transform: translate(-50%, -50%) scale(0.3);
     opacity: 1;
@@ -247,10 +247,15 @@
   40% {
     opacity: 0.85;
   }
-  100% {
+  90% {
     transform: translate(-50%, -50%) scale(3.5);
-    opacity: 0;
-    border-width: 2rpx;
+    opacity: 0.5;
+    border-width: 4rpx;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 1;
+    border-width: 8rpx;
   }
 }
 
