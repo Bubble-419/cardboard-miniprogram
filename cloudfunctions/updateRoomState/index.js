@@ -12,7 +12,15 @@ const ROOMS_COLLECTION = 'rooms';
  * 仅房间创建者可调用
  */
 exports.main = async (event, context) => {
-  const { roomId, currentPage, currentPlayerIndex, currentPlayerName, incrementRound } = event || {};
+  const {
+    roomId,
+    currentPage,
+    currentPlayerIndex,
+    currentPlayerName,
+    incrementRound,
+    passCount,
+    memberCount
+  } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
     return {
@@ -67,6 +75,12 @@ exports.main = async (event, context) => {
     };
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
+    if (passCount != null && Number.isFinite(Number(passCount))) {
+      updateData.currentPassCount = Number(passCount);
+    }
+    if (memberCount != null && Number.isFinite(Number(memberCount))) {
+      updateData.currentMemberCount = Number(memberCount);
+    }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
       data: updateData

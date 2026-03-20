@@ -5,6 +5,7 @@ Page({
     currentPlayerName: '玩家1',
     memberCount: 0,
     passCount: 0,
+    votersCount: 0,
     members: [],
     isHost: false,
     isWaiting: false
@@ -32,11 +33,11 @@ Page({
       currentPlayerName,
       memberCount: Number.isFinite(memberCount) ? memberCount : 0,
       passCount: Number.isFinite(passCount) ? passCount : 0,
+      votersCount: this._getVotersCount(memberCount),
       isWaiting: !!isWaiting
     });
 
     this.loadRoomData(roomId);
-    if (!isWaiting) return;
     this._startStatePolling();
   },
 
@@ -54,9 +55,12 @@ Page({
       if (result.ok !== true || !result.members || !result.members.length) return;
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
+      const counts = this._resolveCounts(result, members.length);
       this.setData({
         members,
-        memberCount: this.data.memberCount || members.length,
+        memberCount: counts.memberCount,
+        passCount: counts.passCount,
+        votersCount: this._getVotersCount(counts.memberCount),
         isHost: result.isHost === true
       });
     } catch (e) {
@@ -78,6 +82,17 @@ Page({
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+        if (page === 'playfail') {
+          const nextMembers = Array.isArray(result.members) ? result.members : this.data.members;
+          const counts = this._resolveCounts(result, nextMembers.length);
+          this.setData({
+            members: nextMembers,
+            memberCount: counts.memberCount,
+            passCount: counts.passCount,
+            votersCount: this._getVotersCount(counts.memberCount)
+          });
+          return;
+        }
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'gamepage') {
           wx.redirectTo({
@@ -95,6 +110,7 @@ Page({
         console.warn('playFail state poll', e);
       }
     };
+    poll();
     this._statePollTimer = setInterval(poll, 1000);
   },
 
@@ -103,6 +119,29 @@ Page({
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;
     }
+  },
+
+  _getVotersCount(memberCount) {
+    const total = Number.isFinite(Number(memberCount)) ? Number(memberCount) : 0;
+    return Math.max(0, total - 1);
+  },
+
+  _resolveCounts(result, fallbackMemberCount) {
+    const roomState = (result && result.roomState) || {};
+    const fallbackCountNum = Number(fallbackMemberCount);
+    const roomStateMemberCountNum = Number(roomState.memberCount);
+    const memberCount = Number.isFinite(fallbackCountNum) && fallbackCountNum > 0
+      ? fallbackCountNum
+      : (Number.isFinite(roomStateMemberCountNum) && roomStateMemberCountNum > 0
+        ? roomStateMemberCountNum
+        : this.data.memberCount);
+    const passCountRaw = Number.isFinite(Number(roomState.passCount))
+      ? Number(roomState.passCount)
+      : this.data.passCount;
+    return {
+      memberCount,
+      passCount: Math.max(0, passCountRaw)
+    };
   },
 
   async handleContinue() {

@@ -41,7 +41,9 @@ exports.main = async (event, context) => {
     const roomState = {
       currentPage: room.currentPage || 'addPlayer',
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
-      currentPlayerName: room.currentPlayerName || '玩家1'
+      currentPlayerName: room.currentPlayerName || '玩家1',
+      passCount: room.currentPassCount != null ? room.currentPassCount : null,
+      memberCount: room.currentMemberCount != null ? room.currentMemberCount : null
     };
 
     const membersRes = await db

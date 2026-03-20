@@ -105,7 +105,7 @@ Page({
   async handleScanJoin() {
     try {
       const res = await wx.scanCode({
-        scanType: ['qrCode'],
+        // 不限制码型，避免部分机型/版本下小程序码（WX_CODE）被过滤
         onlyFromCamera: true
       });
       // 调试：先完整打印扫码返回，便于确认不同码型的真实返回结构
@@ -114,9 +114,29 @@ Page({
       } catch (_) {
         console.log('[scanCode success raw]', res);
       }
+      console.log('[scanCode]', {
+        scanType: res && res.scanType,
+        path: res && res.path,
+        result: res && res.result,
+        rawData: res && res.rawData
+      });
+
+      // 当前小程序码优先：有 path 就按内部码处理（优先 path，而不是 result）
+      if (res && res.path) {
+        const handled = await this._handleMiniProgramPathScan(res.path);
+        if (handled) return;
+      }
+
+      // 兼容部分机型：scanType=WX_CODE 但不返回 path，尝试从 result 推断 path
+      const inferredPath = this._inferPathFromScanResult(res);
+      if (inferredPath) {
+        const handled = await this._handleMiniProgramPathScan(inferredPath);
+        if (handled) return;
+      }
+
       const roomId = this._parseRoomIdFromScanResult(res);
-      if (!roomId) {
-        wx.showToast({ title: '未能识别房间信息，请扫描正确的房间二维码', icon: 'none' });
+      if (!this._isValidRoomId(roomId)) {
+        wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
       await this._joinRoomAndGo(roomId);
@@ -133,6 +153,89 @@ Page({
         icon: 'none'
       });
     }
+  },
+
+  /**
+   * 扫到当前小程序码时优先处理 path：
+   * 1) 若能提取 roomId，则直接加入房间并跳转；
+   * 2) 若提取不到 roomId，则按 path 直接打开页面（让目标页自行处理 scene）。
+   */
+  async _handleMiniProgramPathScan(path) {
+    const normalizedUrl = this._normalizeScannedPathToUrl(path);
+    if (!normalizedUrl) return false;
+
+    const roomId = this._parseRoomIdFromPath(path) || this._parseRoomId(path);
+    if (this._isValidRoomId(roomId)) {
+      await this._joinRoomAndGo(roomId);
+      return true;
+    }
+
+    await this._openScannedPath(normalizedUrl);
+    return true;
+  },
+
+  _normalizeScannedPathToUrl(path) {
+    if (!path || typeof path !== 'string') return '';
+    return `/${path.replace(/^\/+/, '')}`;
+  },
+
+  _openScannedPath(url) {
+    return new Promise((resolve) => {
+      wx.navigateTo({
+        url,
+        success: () => resolve(true),
+        fail: () => {
+          wx.reLaunch({
+            url,
+            success: () => resolve(true),
+            fail: () => {
+              wx.showToast({ title: '扫码跳转失败', icon: 'none' });
+              resolve(false);
+            }
+          });
+        }
+      });
+    });
+  },
+
+  _inferPathFromScanResult(scanRes) {
+    if (!scanRes || typeof scanRes !== 'object') return '';
+    const result = ((scanRes.result || '') + '').trim();
+    if (!result) return '';
+
+    // 1) result 本身是小程序路径：pages/xxx 或 /pages/xxx
+    if (/^\/?pages\//i.test(result)) {
+      return result;
+    }
+
+    // 2) result 包含 pages/xxx 路径片段（例如被包在其他内容中）
+    const pagesMatch = result.match(/\/?pages\/[^\s"'<>]*/i);
+    if (pagesMatch && pagesMatch[0]) {
+      return pagesMatch[0];
+    }
+
+    // 3) result 是可解析 URL，尝试取 path 参数
+    try {
+      const u = new URL(result);
+      const pathParam = u.searchParams.get('path');
+      if (pathParam && /^\/?pages\//i.test(pathParam)) {
+        return pathParam;
+      }
+    } catch (_) {}
+
+    // 4) 只有 scene/rid/roomId/8位房间号时，兜底拼到 addPlayer 页
+    if (/scene=|rid=|roomId=|\b\d{8}\b/i.test(result)) {
+      const query = /[=&]/.test(result)
+        ? `scene=${encodeURIComponent(result)}`
+        : `scene=${encodeURIComponent(`rid=${result}`)}`;
+      return `pages/main-pages/addPlayer/index?${query}`;
+    }
+
+    return '';
+  },
+
+  _isValidRoomId(roomId) {
+    return /^\d{8}$/.test(roomId || '');
   },
 
   /**

@@ -55,20 +55,27 @@ Page({
     this._stopStatePolling();
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, incrementRound) {
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, incrementRound, extra) {
     const roomId = this.data.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return false;
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
       if (incrementRound === true) data.incrementRound = true;
-      await wx.cloud.callFunction({
+      if (extra && typeof extra === 'object') {
+        if (extra.passCount != null) data.passCount = extra.passCount;
+        if (extra.memberCount != null) data.memberCount = extra.memberCount;
+      }
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data
       });
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('updateRoomState', e);
+      return false;
     }
   },
 
@@ -94,14 +101,28 @@ Page({
         } else if (page === 'playsuccess') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          const memberCountFromMembers = Array.isArray(result.members) ? result.members.length : 0;
+          const passCount = Number.isFinite(Number(result.roomState.passCount))
+            ? Number(result.roomState.passCount)
+            : 0;
+          const memberCount = Number.isFinite(Number(result.roomState.memberCount))
+            ? Number(result.roomState.memberCount)
+            : memberCountFromMembers;
           wx.redirectTo({
-            url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+            url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&passCount=${passCount}&memberCount=${memberCount}&isWaiting=1`
           });
         } else if (page === 'playfail') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          const memberCountFromMembers = Array.isArray(result.members) ? result.members.length : 0;
+          const passCount = Number.isFinite(Number(result.roomState.passCount))
+            ? Number(result.roomState.passCount)
+            : 0;
+          const memberCount = Number.isFinite(Number(result.roomState.memberCount))
+            ? Number(result.roomState.memberCount)
+            : memberCountFromMembers;
           wx.redirectTo({
-            url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+            url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&passCount=${passCount}&memberCount=${memberCount}&isWaiting=1`
           });
         } else if (page === 'discussion') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
@@ -121,6 +142,7 @@ Page({
         console.warn('state poll', e);
       }
     };
+    poll();
     this._statePollTimer = setInterval(poll, 1000);
   },
 
@@ -198,16 +220,38 @@ Page({
 
     // 通过人数 >= 表态玩家半数（向上取整）：成功；否则：失败
     if (passCount >= successThreshold) {
-      this._updateRoomState('playSuccess', currentPlayerIndex, currentPlayerName);
-      wx.redirectTo({
-        url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
+      this._updateRoomState(
+        'playSuccess',
+        currentPlayerIndex,
+        currentPlayerName,
+        false,
+        { passCount, memberCount: total }
+      ).then((ok) => {
+        if (!ok) {
+          wx.showToast({ title: '同步失败，请重试', icon: 'none' });
+          return;
+        }
+        wx.redirectTo({
+          url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
+        });
       });
       return;
     }
 
-    this._updateRoomState('playFail', currentPlayerIndex, currentPlayerName);
-    wx.redirectTo({
-      url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
+    this._updateRoomState(
+      'playFail',
+      currentPlayerIndex,
+      currentPlayerName,
+      false,
+      { passCount, memberCount: total }
+    ).then((ok) => {
+      if (!ok) {
+        wx.showToast({ title: '同步失败，请重试', icon: 'none' });
+        return;
+      }
+      wx.redirectTo({
+        url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
+      });
     });
   }
 });

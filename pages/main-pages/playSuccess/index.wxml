@@ -16,7 +16,7 @@
       <view class="success-core">✓</view>
     </view>
     <text class="main-text">恭喜出牌成功</text>
-    <text class="sub-text">通过人数 {{passCount}} / {{memberCount}}</text>
+    <text class="sub-text">通过人数 {{passCount}} / {{votersCount}}</text>
   </view>
 
   <view class="footer" wx:if="{{isHost && !isWaiting}}">
