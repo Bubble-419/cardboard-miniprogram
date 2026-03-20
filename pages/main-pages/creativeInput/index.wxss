@@ -45,6 +45,7 @@
   padding: 24rpx 40rpx;
   display: flex;
   flex-direction: column;
+  align-items: center;
 }
 
 .title {
@@ -70,6 +71,9 @@
 
 .idea-input {
   margin-top: 24rpx;
+  width: 100%;
+  max-width: 680rpx;
+  align-self: center;
   min-height: 280rpx;
   background: #fff;
   border: 2rpx solid #d6ecd5;
@@ -86,6 +90,8 @@
 
 .action-row {
   margin-top: 24rpx;
+  width: 100%;
+  max-width: 680rpx;
 }
 
 .submit-btn,

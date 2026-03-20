@@ -37,7 +37,7 @@
     </view>
 
     <view class="statement-buttons">
-      <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
+      <block wx:for="{{passCountOptions}}" wx:key="*this">
         <view
           class="statement-btn {{selectedPassCount === item ? 'statement-btn-active' : ''}}"
           bindtap="onStatementTap"

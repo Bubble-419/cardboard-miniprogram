@@ -6,7 +6,8 @@ Page({
     memberCount: 0,
     members: [],
     isWaiting: false, // 普通玩家等待：请用实体表态卡进行表态
-    selectedPassCount: null
+    selectedPassCount: null,
+    passCountOptions: [0, 1, 2, 3, 4, 5]
   },
 
   onLoad(options) {
@@ -127,11 +128,26 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.members && result.members.length) {
-        this.setData({ memberCount: result.members.length, members: result.members });
+        const memberCount = result.members.length;
+        const passCountOptions = this._buildPassCountOptions(memberCount);
+        const selectedPassCount = this.data.selectedPassCount;
+        const nextSelected = passCountOptions.includes(selectedPassCount) ? selectedPassCount : null;
+        this.setData({
+          memberCount,
+          members: result.members,
+          passCountOptions,
+          selectedPassCount: nextSelected
+        });
       }
     } catch (e) {
       console.warn('loadMemberCount', e);
     }
+  },
+
+  _buildPassCountOptions(memberCount) {
+    // 按房间人数动态生成 0~N；若人数不可用，兜底为 0~5
+    const max = Number.isFinite(memberCount) && memberCount > 0 ? memberCount : 5;
+    return Array.from({ length: max + 1 }, (_, idx) => idx);
   },
 
   handleGoBack() {
