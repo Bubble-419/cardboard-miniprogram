@@ -67,8 +67,8 @@
     <!-- <view class="selected-player-display" wx:if="{{selectionAnimationDone && selectedPlayerIndex}}">
       <text class="selected-player-text">{{selectedPlayerIndex}} 号玩家</text>
       <text class="selected-player-hint">被选为首位翻牌</text>
-    </view>
-  </view> -->
+    </view> -->
+  </view> 
 
   <!-- 玩家数量显示（选中后隐藏） -->
   <view class="player-count" wx:if="{{!selectedPlayerIndex}}">
