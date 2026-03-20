@@ -73,8 +73,8 @@
   <!-- 玩家数量显示（选中后隐藏） -->
   <view class="player-count" wx:if="{{!selectedPlayerIndex}}">
     <text class="count-number">{{playerCount}}</text>
-    <text class="count-divider">/</text>
-    <text class="count-total">{{minPlayers}}</text>
+    <text class="count-divider" wx:if="{{minPlayers > 0}}">/</text>
+    <text class="count-total" wx:if="{{minPlayers > 0}}">{{minPlayers}}</text>
   </view>
 
     <!-- 底部：未选中时显示跳过按钮，选中后显示重新选择+确认 -->

@@ -28,14 +28,6 @@
       <button class="submit-btn" bindtap="handleSubmit">提交</button>
     </view>
 
-    <view class="host-row" wx:if="{{isHost}}">
-      <button
-        class="summary-btn {{canViewSummary ? '' : 'summary-btn-disabled'}}"
-        disabled="{{!canViewSummary}}"
-        bindtap="handleViewSummary"
-      >查看汇总</button>
-    </view>
-
     <view class="wait-tip" wx:if="{{!isHost && submitted}}">
       <text>已提交，等待主屏查看汇总...</text>
     </view>
