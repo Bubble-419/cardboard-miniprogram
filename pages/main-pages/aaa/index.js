@@ -141,24 +141,39 @@ Page({
    */
   _parseRoomIdFromScanResult(scanRes) {
     if (!scanRes || typeof scanRes !== 'object') return '';
-    const path = scanRes.path || '';
-    if (path && typeof path === 'string') {
-      const query = path.split('?')[1] || '';
-      const params = this._parseQuery(query);
-      const roomId = (params.roomId || params.rid || this._extractRoomIdFromScene(params.scene) || '').trim();
+
+    // 小程序码优先：从 path 里提取 scene / rid / roomId
+    const pathRoomId = this._parseRoomIdFromPath(scanRes.path || '');
+    if (pathRoomId) return pathRoomId;
+
+    // 依次尝试 path/result/rawData，兼容不同码型返回结构
+    const candidates = [
+      scanRes.path || '',
+      scanRes.result || '',
+      scanRes.rawData || ''
+    ];
+    for (let i = 0; i < candidates.length; i++) {
+      const text = (candidates[i] || '').trim();
+      if (!text) continue;
+      const roomId = this._parseRoomId(text);
       if (roomId) return roomId;
     }
-    const content = (scanRes.result || '').trim();
-    const byContent = this._parseRoomId(content);
-    if (byContent) return byContent;
-
-    // 有些场景会把信息放在 rawData（或其他字段），这里再兜底一次
-    const rawData = (scanRes.rawData || '').trim();
-    if (rawData) {
-      const byRaw = this._parseRoomId(rawData);
-      if (byRaw) return byRaw;
-    }
     return '';
+  },
+
+  _parseRoomIdFromPath(path) {
+    if (!path || typeof path !== 'string') return '';
+    const qIndex = path.indexOf('?');
+    if (qIndex < 0) return this._parseRoomId(path);
+    const query = path.slice(qIndex + 1);
+    const params = this._parseQuery(query);
+    const roomId = (
+      params.roomId ||
+      params.rid ||
+      this._extractRoomIdFromScene(params.scene) ||
+      ''
+    ).trim();
+    return roomId;
   },
 
   /**
@@ -173,9 +188,20 @@ Page({
       const key = eqIndex >= 0 ? item.slice(0, eqIndex) : item;
       const value = eqIndex >= 0 ? item.slice(eqIndex + 1) : '';
       if (!key) return;
-      obj[decodeURIComponent(key)] = decodeURIComponent(value);
+      const safeKey = this._safeDecodeURIComponent(key);
+      const safeValue = this._safeDecodeURIComponent(value);
+      obj[safeKey] = safeValue;
     });
     return obj;
+  },
+
+  _safeDecodeURIComponent(value) {
+    if (typeof value !== 'string') return '';
+    try {
+      return decodeURIComponent(value);
+    } catch (_) {
+      return value;
+    }
   },
 
   /**
@@ -183,10 +209,7 @@ Page({
    */
   _extractRoomIdFromScene(scene) {
     if (!scene || typeof scene !== 'string') return '';
-    let decoded = scene;
-    try {
-      decoded = decodeURIComponent(scene);
-    } catch (_) {}
+    let decoded = this._safeDecodeURIComponent(scene);
     if (/^\d{8}$/.test(decoded)) return decoded;
     return this._parseRoomId(decoded);
   },
@@ -198,8 +221,48 @@ Page({
   _parseRoomId(content) {
     if (!content || typeof content !== 'string') return '';
     const s = content.trim();
+
+    // 优先对原字符串匹配 rid/roomId，兼容 path 未 decode 的情况
+    let m = s.match(/(?:^|[?&])rid=([^&?#\s]+)/i) || s.match(/rid=([^&?#\s]+)/i);
+    if (m) return this._safeDecodeURIComponent(m[1]).trim();
+    m = s.match(/(?:^|[?&])roomId=([^&?#\s]+)/i) || s.match(/roomId=([^&?#\s]+)/i);
+    if (m) return this._safeDecodeURIComponent(m[1]).trim();
+
+    // 对字符串做多轮 decode，兼容 scene 双重编码
+    const decodedCandidates = [s];
+    let decoded = s;
+    for (let i = 0; i < 2; i++) {
+      try {
+        const next = decodeURIComponent(decoded);
+        if (!next || next === decoded) break;
+        decodedCandidates.push(next);
+        decoded = next;
+      } catch (_) {
+        break;
+      }
+    }
+
+    for (let i = 0; i < decodedCandidates.length; i++) {
+      const text = decodedCandidates[i];
+      // scene=xxxx（对扫码结果字符串先拆 scene）
+      let mm = text.match(/scene=([^&?#\s]+)/i);
+      if (mm) {
+        const byScene = this._extractRoomIdFromScene(mm[1]);
+        if (byScene) return byScene;
+      }
+      // rid=roomId
+      mm = text.match(/rid=([^&?#\s]+)/i);
+      if (mm) return mm[1].trim();
+      // roomId=xxx
+      mm = text.match(/roomId=([^&?#\s]+)/i);
+      if (mm) return mm[1].trim();
+      // 纯 roomId：8 位数字
+      mm = text.match(/\b(\d{8})\b/);
+      if (mm) return mm[1];
+    }
+
     // scene=xxxx（对扫码结果字符串先拆 scene）
-    let m = s.match(/scene=([^&?#\s]+)/i);
+    m = s.match(/scene=([^&?#\s]+)/i);
     if (m) {
       const byScene = this._extractRoomIdFromScene(m[1]);
       if (byScene) return byScene;

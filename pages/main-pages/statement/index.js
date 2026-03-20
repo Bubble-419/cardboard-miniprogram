@@ -193,10 +193,11 @@ Page({
     const roomIdEnc = encodeURIComponent(roomId);
     const nameEnc = encodeURIComponent(currentPlayerName || `玩家${currentPlayerIndex}`);
     const total = memberCount || (members && members.length) || 0;
-    const halfFloor = Math.floor(total / 2);
+    const voters = Math.max(0, total - 1); // 表态玩家数 = 总人数 - 1（当前翻牌玩家不参与表态）
+    const successThreshold = Math.ceil(voters / 2); // 通过人数达到半数（向上取整）即成功
 
-    // 通过人数大于半数：出牌成功空状态页；否则：出牌失败空状态页
-    if (passCount > halfFloor) {
+    // 通过人数 >= 表态玩家半数（向上取整）：成功；否则：失败
+    if (passCount >= successThreshold) {
       this._updateRoomState('playSuccess', currentPlayerIndex, currentPlayerName);
       wx.redirectTo({
         url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
