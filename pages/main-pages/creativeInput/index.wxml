@@ -1,0 +1,43 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left" bindtap="handleGoBack">
+        <text class="back-chevron">‹</text>
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="content">
+    <text class="title">令你印象深刻的创意</text>
+    <text class="hint">请填写一个你最有印象的创意点</text>
+    <view class="progress">已提交 {{submittedCount}} / {{memberCount}}</view>
+
+    <textarea
+      class="idea-input"
+      value="{{ideaText}}"
+      bindinput="onIdeaInput"
+      maxlength="120"
+      placeholder="请输入你印象最深的创意..."
+      placeholder-class="idea-placeholder"
+      auto-height="true"
+    />
+
+    <view class="action-row">
+      <button class="submit-btn" bindtap="handleSubmit">提交</button>
+    </view>
+
+    <view class="host-row" wx:if="{{isHost}}">
+      <button
+        class="summary-btn {{canViewSummary ? '' : 'summary-btn-disabled'}}"
+        disabled="{{!canViewSummary}}"
+        bindtap="handleViewSummary"
+      >查看汇总</button>
+    </view>
+
+    <view class="wait-tip" wx:if="{{!isHost && submitted}}">
+      <text>已提交，等待主屏查看汇总...</text>
+    </view>
+  </view>
+</view>

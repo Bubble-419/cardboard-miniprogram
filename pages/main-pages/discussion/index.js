@@ -132,10 +132,19 @@ Page({
           wx.redirectTo({
             url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
           });
-        } else if (page === 'leaderboard') {
+        } else if (page === 'creativeinput') {
           wx.redirectTo({
-            url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`
+            url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`
           });
+        } else if (page === 'creativesummary') {
+          wx.redirectTo({
+            url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
+          });
+        // 排行榜流程临时下线，本次不使用
+        // } else if (page === 'leaderboard') {
+        //   wx.redirectTo({
+        //     url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`
+        //   });
         }
       } catch (e) {
         console.warn('discussion state poll error:', e);

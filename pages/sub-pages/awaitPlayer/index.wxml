@@ -5,7 +5,7 @@
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit"></image>
       </view>
-      <view class="navbar-title">确认首位出牌玩家</view>
+      <view class="navbar-title">确认首位翻牌玩家</view>
       <view class="navbar-right">
         <view class="navbar-icon">⋯</view>
         <view class="navbar-icon">○</view>
@@ -36,7 +36,7 @@
     <!-- 主提示文字 -->
     <view class="main-text">
       <text class="main-text-line">请到主屏幕上抽取</text>
-      <text class="main-text-line">首位出牌玩家</text>
+      <text class="main-text-line">首位翻牌玩家</text>
     </view>
 
     <!-- 副提示文字 -->

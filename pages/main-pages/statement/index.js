@@ -5,7 +5,8 @@ Page({
     currentPlayerName: '玩家1',
     memberCount: 0,
     members: [],
-    isWaiting: false // 普通玩家等待：请用实体表态卡进行表态
+    isWaiting: false, // 普通玩家等待：请用实体表态卡进行表态
+    selectedPassCount: null
   },
 
   onLoad(options) {
@@ -78,14 +79,31 @@ Page({
           wx.redirectTo({
             url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
           });
+        } else if (page === 'playsuccess') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({
+            url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+          });
+        } else if (page === 'playfail') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
+          wx.redirectTo({
+            url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+          });
         } else if (page === 'discussion') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
           wx.redirectTo({
             url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`
           });
-        } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        } else if (page === 'creativeinput') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
+        } else if (page === 'creativesummary') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
+        // 排行榜流程临时下线，本次不使用
+        // } else if (page === 'leaderboard') {
+        //   wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
@@ -121,32 +139,40 @@ Page({
   },
 
   onStatementTap(e) {
-    const type = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.type;
-    if (!type) return;
+    const passCountRaw = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.passcount;
+    if (passCountRaw == null) return;
+    const passCount = parseInt(passCountRaw, 10);
+    if (!Number.isFinite(passCount)) return;
+    this.setData({ selectedPassCount: passCount });
+  },
+
+  handleConfirm() {
+    const passCount = this.data.selectedPassCount;
+    if (passCount == null) {
+      wx.showToast({ title: '请选择通过人数', icon: 'none' });
+      return;
+    }
 
     const { roomId, currentPlayerIndex, currentPlayerName, memberCount, members } = this.data;
     if (!roomId) return;
 
     const roomIdEnc = encodeURIComponent(roomId);
     const nameEnc = encodeURIComponent(currentPlayerName || `玩家${currentPlayerIndex}`);
+    const total = memberCount || (members && members.length) || 0;
+    const halfFloor = Math.floor(total / 2);
 
-    if (type === 'partial_pass' || type === 'all_question') {
-      this._updateRoomState('discussion', currentPlayerIndex, currentPlayerName);
+    // 通过人数大于半数：出牌成功空状态页；否则：出牌失败空状态页
+    if (passCount > halfFloor) {
+      this._updateRoomState('playSuccess', currentPlayerIndex, currentPlayerName);
       wx.redirectTo({
-        url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}`
+        url: `/pages/main-pages/playSuccess/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
       });
       return;
     }
 
-    const count = memberCount || 1;
-    const nextIndex = (currentPlayerIndex % count) + 1;
-    const nextMember = (members || []).find(m => m.playerIndex === nextIndex);
-    const nextPlayerName = nextMember ? (nextMember.nickName || `玩家${nextIndex}`) : `玩家${nextIndex}`;
-    const isCyclingBack = nextIndex === 1;
-
-    this._updateRoomState('gamepage', nextIndex, nextPlayerName, isCyclingBack);
+    this._updateRoomState('playFail', currentPlayerIndex, currentPlayerName);
     wx.redirectTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${nextIndex}`
+      url: `/pages/main-pages/playFail/index?roomId=${roomIdEnc}&currentPlayerIndex=${currentPlayerIndex}&currentPlayerName=${nameEnc}&passCount=${passCount}&memberCount=${total}`
     });
   }
 });

@@ -39,14 +39,12 @@
 
   <!-- 2.3 底部评分与操作区：与中部卡片同宽的白底圆角卡片 -->
   <view class="section bottom-section">
+    <!-- 打分功能临时下线：保留原结构，后续可恢复
     <view class="score-card">
-      <!-- 顶部信息栏：左侧标题 + 右侧进度，绿色 -->
       <view class="score-info-bar">
         <text class="score-info-title">{{currentPlayerName}} 此次行动评分</text>
         <text class="score-info-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
       </view>
-
-      <!-- 评分按钮区：0～5 分，等宽横向排列 -->
       <view class="score-row">
         <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
           <view
@@ -62,6 +60,7 @@
         </block>
       </view>
     </view>
+    -->
 
     <view class="action-row" wx:if="{{isHost}}">
       <view class="end-game-btn" bindtap="handleEndGame">

@@ -12,7 +12,8 @@ Page({
     myScore: null,
     scoredCount: 0,
     totalRequired: 0,
-    canStartVote: false,
+    // 打分功能下线后，房主可直接开始表态
+    canStartVote: true,
     isSubmittingScore: false,
     imageError: false,
     isHost: false,
@@ -57,20 +58,24 @@ Page({
       contentOffsetTop
     });
 
-    this._startScorePolling();
-    this._loadAndRefresh(roomId, currentPlayerIndex);
+    // 打分功能临时下线：保留原调用，后续恢复时可直接启用
+    // this._startScorePolling();
+    // this._loadAndRefresh(roomId, currentPlayerIndex);
+    this.loadRoomData(roomId);
   },
 
   onUnload() {
-    this._stopScorePolling();
+    // 打分功能临时下线：保留原调用
+    // this._stopScorePolling();
     this._stopStatePolling();
   },
 
   onShow() {
-    const { roomId, currentPlayerIndex } = this.data;
-    if (roomId && currentPlayerIndex != null) {
-      this.refreshScoreCount(roomId, currentPlayerIndex);
-    }
+    // 打分功能临时下线：保留原逻辑，后续恢复时可直接启用
+    // const { roomId, currentPlayerIndex } = this.data;
+    // if (roomId && currentPlayerIndex != null) {
+    //   this.refreshScoreCount(roomId, currentPlayerIndex);
+    // }
   },
 
   _startScorePolling() {
@@ -93,7 +98,8 @@ Page({
 
   async _loadAndRefresh(roomId, currentPlayerIndex) {
     await this.loadRoomData(roomId);
-    await this.refreshScoreCount(roomId, currentPlayerIndex);
+    // 打分功能临时下线：保留原调用
+    // await this.refreshScoreCount(roomId, currentPlayerIndex);
   },
 
   async loadRoomData(roomId) {
@@ -175,8 +181,13 @@ Page({
           wx.redirectTo({
             url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`
           });
-        } else if (page === 'leaderboard') {
-          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        } else if (page === 'creativeinput') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
+        } else if (page === 'creativesummary') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
+        // 排行榜流程临时下线，本次不使用
+        // } else if (page === 'leaderboard') {
+        //   wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('gamepage state poll', e);
@@ -215,10 +226,11 @@ Page({
   },
 
   updateCanStartVote() {
-    const { scoredCount, totalRequired, members } = this.data;
-    const requiredScores = members.length ? Math.max(0, members.length - 1) : totalRequired;
-    const canStartVote = requiredScores === 0 || scoredCount >= requiredScores;
-    this.setData({ canStartVote });
+    // 打分功能临时下线：保留原逻辑，先固定为可开始表态
+    // const { scoredCount, totalRequired, members } = this.data;
+    // const requiredScores = members.length ? Math.max(0, members.length - 1) : totalRequired;
+    // const canStartVote = requiredScores === 0 || scoredCount >= requiredScores;
+    this.setData({ canStartVote: true });
   },
 
   onImageError() {
@@ -233,57 +245,53 @@ Page({
   },
 
   async onScoreTap(e) {
-    const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
-    if (score == null) return;
-    if (this.data.isSubmittingScore) return;
-    // 轮到主屏出牌时不能给自己打分
-    if (this.data.isMyScoringTurn) return;
-
-    const { roomId, currentPlayerIndex } = this.data;
-    if (!roomId) return;
-
-    const numericScore = parseInt(score, 10);
-    // 乐观更新：本地先高亮选中的分数，提升点击响应速度
-    this.setData({
-      myScore: numericScore,
-      isSubmittingScore: true
-    });
-
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'submitGameScore',
-        data: {
-          roomId,
-          currentPlayerIndex,
-          score: numericScore
-        }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok === true) {
-        if (result.scoredCount != null) {
-          this.setData({
-            scoredCount: result.scoredCount
-          });
-        }
-        this.updateCanStartVote();
-      } else {
-        // 提交失败还原本地状态
-        this.setData({
-          myScore: null
-        });
-        wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
-      }
-    } catch (e) {
-      console.error('submitGameScore', e);
-      this.setData({
-        myScore: null
-      });
-      wx.showToast({ title: '提交失败', icon: 'none' });
-    } finally {
-      this.setData({
-        isSubmittingScore: false
-      });
-    }
+    // 打分功能临时下线：保留原实现，后续可恢复
+    // const score = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.score;
+    // if (score == null) return;
+    // if (this.data.isSubmittingScore) return;
+    // if (this.data.isMyScoringTurn) return;
+    // const { roomId, currentPlayerIndex } = this.data;
+    // if (!roomId) return;
+    // const numericScore = parseInt(score, 10);
+    // this.setData({
+    //   myScore: numericScore,
+    //   isSubmittingScore: true
+    // });
+    // try {
+    //   const res = await wx.cloud.callFunction({
+    //     name: 'submitGameScore',
+    //     data: {
+    //       roomId,
+    //       currentPlayerIndex,
+    //       score: numericScore
+    //     }
+    //   });
+    //   const result = (res && res.result) || {};
+    //   if (result.ok === true) {
+    //     if (result.scoredCount != null) {
+    //       this.setData({
+    //         scoredCount: result.scoredCount
+    //       });
+    //     }
+    //     this.updateCanStartVote();
+    //   } else {
+    //     this.setData({
+    //       myScore: null
+    //     });
+    //     wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+    //   }
+    // } catch (e) {
+    //   console.error('submitGameScore', e);
+    //   this.setData({
+    //     myScore: null
+    //   });
+    //   wx.showToast({ title: '提交失败', icon: 'none' });
+    // } finally {
+    //   this.setData({
+    //     isSubmittingScore: false
+    //   });
+    // }
+    return;
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
@@ -322,13 +330,14 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         const roomId = this.data.roomId || getApp().globalData.roomId || '';
+        // 排行榜流程临时下线，改为结束后填写创意
         const url = roomId
-          ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}`
+          ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
           : '/pages/auth/index';
         try {
-          await this._updateRoomState('leaderboard');
+          await this._updateRoomState('creativeInput');
         } catch (e) {
-          console.warn('updateRoomState leaderboard', e);
+          console.warn('updateRoomState creativeInput', e);
         }
         wx.redirectTo({ url });
       }

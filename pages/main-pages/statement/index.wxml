@@ -30,15 +30,31 @@
 
   <!-- 房主：表态操作区 -->
   <block wx:else>
-  <view class="instruction">
-    <text class="instruction-line">请用表态卡对{{currentPlayerName}}的行动表态</text>
-    <text class="instruction-line">选择表态统计结果</text>
-  </view>
+  <view class="host-content">
+    <view class="instruction">
+      <text class="instruction-line">请用表态卡对出牌玩家的行动表态</text>
+      <text class="instruction-line">选择共几人给出通过牌</text>
+    </view>
 
-  <view class="statement-buttons">
-    <view class="statement-btn statement-btn-pass" bindtap="onStatementTap" data-type="all_pass">全部通过</view>
-    <view class="statement-btn statement-btn-partial" bindtap="onStatementTap" data-type="partial_pass">部分通过</view>
-    <view class="statement-btn statement-btn-question" bindtap="onStatementTap" data-type="all_question">全部疑问</view>
+    <view class="statement-buttons">
+      <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
+        <view
+          class="statement-btn {{selectedPassCount === item ? 'statement-btn-active' : ''}}"
+          bindtap="onStatementTap"
+          data-passcount="{{item}}"
+        >
+          {{item}}
+        </view>
+      </block>
+    </view>
+
+    <view class="confirm-wrap">
+      <button
+        class="confirm-btn {{selectedPassCount == null ? 'confirm-btn-disabled' : ''}}"
+        disabled="{{selectedPassCount == null}}"
+        bindtap="handleConfirm"
+      >确认</button>
+    </view>
   </view>
   </block>
 </view>
