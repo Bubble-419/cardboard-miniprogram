@@ -203,7 +203,7 @@ Page({
     }
   },
 
-  /** 长按 0.1 秒后开始倒计时+随机选择（总等待 1s） */
+  /** 长按 0.05 秒后开始倒计时+随机选择（总等待约 0.5s） */
   _startLongPressTimer() {
     if (this._longPressTimer) return;
     this._longPressTimer = setTimeout(() => {
@@ -211,7 +211,7 @@ Page({
       if (this.data.activeTouches.length >= this.data.minPlayers && !this.data.isSelecting) {
         this.startSelection();
       }
-    }, 100);
+    }, 50);
   },
 
   _clearLongPressTimer() {
@@ -229,16 +229,16 @@ Page({
       isSelecting: true
     });
     
-    // 启动倒计时（1s）
+    // 启动倒计时（0.5s）
     this.startCountdown();
     
-    // 1 秒后随机选择
+    // 0.5 秒后随机选择
     this.selectionTimer = setTimeout(() => {
       this.selectRandomPlayer();
-    }, 1000);
+    }, 500);
   },
 
-  // 启动倒计时（1s：显示 1 然后 0）
+  // 启动倒计时（0.5s：显示 1 然后 0）
   startCountdown() {
     let countdown = 1;
     this.setData({
@@ -253,7 +253,7 @@ Page({
         clearInterval(this.countdownTimer);
         this.setData({ countdown: 0 });
       }
-    }, 1000);
+    }, 500);
   },
 
   // 随机选择玩家：被选中的位置播放 3s 水波纹动画（不随手指离开停止），结束后显示几号玩家被选中 + 确认按钮
@@ -346,10 +346,10 @@ Page({
     });
   },
 
-  /** 跳过：直接随机选出一名玩家并显示结果 */
+  /** 跳过：直接随机选出一名玩家并跳转 gamepage */
   handleSkip() {
     if (this.data.selectedPlayerIndex) return;
-    const { members } = this.data;
+    const { members, roomId } = this.data;
     let currentPlayerIndex = 1;
     if (members && members.length > 0) {
       const mIndex = Math.floor(Math.random() * members.length);
@@ -362,6 +362,7 @@ Page({
       selectionAnimationDone: true,
       isSelecting: false
     });
+    this.navigateToGamepage(roomId, currentPlayerIndex);
   },
 
   // 添加玩家

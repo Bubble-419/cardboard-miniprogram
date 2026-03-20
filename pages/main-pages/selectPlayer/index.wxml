@@ -45,9 +45,9 @@
       <view class="ripple-circle ripple-3"></view>
     </view>
 
-    <!-- 选中后的水波纹荡开效果（3s，绿色），动画结束后隐藏 -->
+    <!-- 选中后的水波纹荡开效果（绿色），动画结束后保持显示 -->
     <view 
-      wx:if="{{selectedPlayerIndex && selectedPosition && !selectionAnimationDone}}"
+      wx:if="{{selectedPlayerIndex && selectedPosition}}"
       class="ripple ripple-water-spread visible"
       style="left: {{selectedPosition.x}}px; top: {{selectedPosition.y}}px;"
     >
@@ -68,7 +68,11 @@
       <text class="selected-player-text">{{selectedPlayerIndex}} 号玩家</text>
       <text class="selected-player-hint">被选为首位翻牌</text>
     </view> -->
+<<<<<<< HEAD
   </view>
+=======
+  </view> 
+>>>>>>> origin/main
 
   <!-- 玩家数量显示（选中后隐藏） -->
   <view class="player-count" wx:if="{{!selectedPlayerIndex}}">
