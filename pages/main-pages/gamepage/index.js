@@ -17,6 +17,7 @@ Page({
     isSubmittingScore: false,
     imageError: false,
     isHost: false,
+    selectedBG: null,
     // 规则图：jpg 兼容性好，体验版可正常显示
     bgImageSrc: '/assets/icons/bg.jpg'
   },
@@ -55,7 +56,8 @@ Page({
       scoredCount: 0,
       myScore: null,
       navbarPaddingTop,
-      contentOffsetTop
+      contentOffsetTop,
+      selectedBG: getApp().globalData.selectedBG || null
     });
 
     // 打分功能临时下线：保留原调用，后续恢复时可直接启用
@@ -131,6 +133,7 @@ Page({
       const myPlayerIndex = me ? me.playerIndex : null;
       const isMyScoringTurn = myPlayerIndex != null && this.data.currentPlayerIndex === myPlayerIndex;
       const isHost = result.isHost === true;
+      const selectedBG = this.data.selectedBG || getApp().globalData.selectedBG || null;
 
       this.setData({
         members,
@@ -139,7 +142,8 @@ Page({
         currentPlayerName,
         myPlayerIndex,
         isMyScoringTurn,
-        isHost
+        isHost,
+        selectedBG
       });
 
       this.updateCanStartVote();

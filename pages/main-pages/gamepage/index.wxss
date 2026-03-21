@@ -60,6 +60,52 @@
   flex-shrink: 0;
 }
 
+.scenario-wrap {
+  margin-top: 12rpx;
+  width: 100%;
+}
+
+.scenario-track {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.scenario-chip {
+  flex: 0 0 auto;
+  min-height: 56rpx;
+  padding: 0 2.4vw;
+  border: 2rpx solid #5EC159;
+  border-radius: 999rpx;
+  background-color: #fff;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.scenario-chip-label {
+  font-size: 24rpx;
+  color: #5EC159;
+  font-weight: 600;
+}
+
+.scenario-chip-text {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+  color: #2d7e2b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scenario-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* 中部出牌展示区：灰底容器 */
 .card-section {
   flex: 1;

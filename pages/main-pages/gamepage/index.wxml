@@ -23,6 +23,26 @@
       enableAdd="{{false}}"
       isFold="{{true}}"
     />
+    <view
+      class="scenario-wrap"
+      wx:if="{{selectedBG && (selectedBG.scene || selectedBG.user || selectedBG.function)}}"
+    >
+      <view class="scenario-track">
+        <view class="scenario-chip" wx:if="{{selectedBG.scene}}">
+          <text class="scenario-chip-label">场景</text>
+          <text class="scenario-chip-text">{{selectedBG.scene}}</text>
+        </view>
+        <view class="scenario-chip" wx:if="{{selectedBG.user}}">
+          <text class="scenario-chip-label">用户</text>
+          <text class="scenario-chip-text">{{selectedBG.user}}</text>
+        </view>
+        <view class="scenario-chip" wx:if="{{selectedBG.function}}">
+          <text class="scenario-chip-label">功能</text>
+          <text class="scenario-chip-text">{{selectedBG.function}}</text>
+        </view>
+        <view class="scenario-spacer"></view>
+      </view>
+    </view>
   </view>
 
   <!-- 2.2 中部出牌展示区：灰底 + 图片 -->
