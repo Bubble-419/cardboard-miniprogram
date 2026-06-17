@@ -77,6 +77,11 @@ Page({
     }
 
     getApp().globalData.roomId = roomId;
+    try {
+      wx.setStorageSync('joinedRoomId', roomId);
+    } catch (e) {
+      console.warn('setStorage joinedRoomId failed', e);
+    }
 
     this.setData({
       roomId,

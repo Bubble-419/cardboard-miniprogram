@@ -2,34 +2,86 @@
   <view class="content">
     <view class="title-section">
       <text class="main-title">脑暴工作坊</text>
-      <text class="sub-title">创建或加入房间，开始头脑风暴</text>
+      <text class="sub-title">{{isJoinedRoom ? '您已加入房间，可随时进入' : '创建或加入房间，开始头脑风暴'}}</text>
     </view>
 
-    <view class="action-cards">
-      <view
-        class="action-card action-card-primary"
-        bindtap="handleCreateRoom"
-      >
-        <view class="card-icon create-icon">✨</view>
-        <text class="card-title">创建房间</text>
-        <text class="card-desc">新建脑暴房间，邀请成员扫码加入</text>
-        <view class="card-btn {{loading ? 'card-btn-disabled' : ''}}">
-          {{loading ? '创建中…' : '立即创建'}}
+    <!-- 个人角色状态 -->
+    <view class="role-status">
+      <text class="role-status-label">当前状态</text>
+      <text class="role-status-text">{{roleLabel}}</text>
+    </view>
+
+    <!-- 状态 01：未加入房间 -->
+    <block wx:if="{{!isJoinedRoom}}">
+      <view class="scan-entry" bindtap="handleScanJoin">
+        <view class="scan-icon-wrap">
+          <text class="scan-icon">📲</text>
+        </view>
+        <text class="scan-label">扫码加入房间</text>
+      </view>
+
+      <view class="link-section">
+        <view
+          class="primary-btn {{loading ? 'primary-btn-disabled' : ''}}"
+          bindtap="handleOpenJoinModal"
+        >
+          {{loading ? '处理中…' : '创建/加入房间'}}
+        </view>
+      </view>
+    </block>
+
+    <!-- 状态 02：已加入房间 -->
+    <block wx:else>
+      <view class="room-card">
+        <text class="room-card-title">房间信息</text>
+        <view class="room-info-row">
+          <text class="room-info-label">房间名称</text>
+          <text class="room-info-value">{{roomName}}</text>
+        </view>
+        <view class="room-info-row">
+          <text class="room-info-label">简介</text>
+          <text class="room-info-value room-info-desc">{{roomDesc}}</text>
+        </view>
+        <view class="room-info-row">
+          <text class="room-info-label">{{timeLabel}}</text>
+          <text class="room-info-value">{{roomTimeText}}</text>
         </view>
       </view>
 
-      <view class="action-card action-card-join">
-        <view class="card-icon join-icon">📲</view>
-        <text class="card-title">加入房间</text>
-        <text class="card-desc">扫描二维码或输入房间号加入已有房间</text>
-        <!-- 验证码风格 8 位房间号输入：点击整块区域即可聚焦输入 -->
+      <view class="link-section">
+        <view class="primary-btn" bindtap="handleViewRoom">查看房间</view>
+      </view>
+    </block>
+  </view>
+</view>
+
+<!-- 创建/加入房间弹窗 -->
+<view class="modal-mask" wx:if="{{showJoinModal}}" bindtap="handleCloseJoinModal">
+  <view class="modal-panel" catchtap="noop">
+    <view class="modal-header">
+      <text class="modal-title">创建/加入房间</text>
+      <text class="modal-close" bindtap="handleCloseJoinModal">×</text>
+    </view>
+
+    <view class="modal-body">
+      <view
+        class="modal-action-card modal-action-primary"
+        bindtap="handleCreateRoom"
+      >
+        <view class="modal-card-icon">✨</view>
+        <text class="modal-card-title">创建房间</text>
+        <text class="modal-card-desc">新建脑暴房间，邀请成员扫码加入</text>
+      </view>
+
+      <view class="modal-action-card">
+        <view class="modal-card-icon">🔢</view>
+        <text class="modal-card-title">输入房间号加入</text>
+        <text class="modal-card-desc">输入 8 位数字房间号加入已有房间</text>
         <view class="room-code-wrapper" bindtap="onRoomCodeTap">
           <view class="room-code-box">
             <block wx:for="{{8}}" wx:key="index">
               <view class="room-code-slot {{(index === 3) ? 'room-code-slot-gap' : ''}} {{inputFocused && inputRoomId.length < 8 && inputRoomId.length === index ? 'room-code-slot-active' : ''}}">
-                <text class="room-code-char">
-                  {{ inputRoomId[index] || '' }}
-                </text>
+                <text class="room-code-char">{{ inputRoomId[index] || '' }}</text>
               </view>
             </block>
           </view>
@@ -44,9 +96,6 @@
             bindfocus="onRoomCodeFocus"
             bindblur="onRoomCodeBlur"
           />
-        </view>
-        <view class="join-btn-row">
-          <view class="card-btn card-btn-outline" data-action="scan" bindtap="handleJoinAction">扫码加入</view>
         </view>
       </view>
     </view>

@@ -1,15 +1,157 @@
+const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
+const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
+
 Page({
   data: {
+    isJoinedRoom: false,
+    role: '',
+    roleLabel: '未加入房间',
+    roomId: '',
+    roomName: '',
+    roomDesc: '',
+    roomTimeText: '',
+    timeLabel: '创建/加入时间',
     loading: false,
+    showJoinModal: false,
     inputRoomId: '',
     inputFocused: false
   },
 
-  onLoad() {},
+  onLoad() {
+    this.loadJoinedRoomState();
+  },
 
-  /**
-   * 创建房间：调用云函数创建房间，跳转到 addPlayer 添加成员
-   */
+  onShow() {
+    this.loadJoinedRoomState();
+  },
+
+  noop() {},
+
+  handleOpenJoinModal() {
+    if (this.data.loading) return;
+    this.setData({ showJoinModal: true, inputRoomId: '', inputFocused: false });
+  },
+
+  handleCloseJoinModal() {
+    this.setData({ showJoinModal: false, inputFocused: false });
+  },
+
+  handleViewRoom() {
+    const { roomId } = this.data;
+    if (!roomId) {
+      wx.showToast({ title: '房间信息缺失', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    });
+  },
+
+  async loadJoinedRoomState() {
+    const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
+      || getApp().globalData.roomId
+      || '';
+
+    if (!roomId) {
+      this._setNotJoinedState();
+      return;
+    }
+
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+
+      if (result.ok !== true) {
+        this._clearJoinedRoom(roomId);
+        return;
+      }
+
+      const isMember = (result.members || []).some(m => m.isMe);
+      if (!isMember) {
+        this._clearJoinedRoom(roomId);
+        return;
+      }
+
+      const isHost = result.isHost === true || result.role === 'GOD';
+      const role = isHost ? 'host' : 'member';
+      const joinedAt = result.joinedAt;
+      const createdAt = result.createdAt;
+      const timeTs = isHost ? (createdAt || joinedAt) : (joinedAt || createdAt);
+
+      getApp().globalData.roomId = roomId;
+      wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+
+      this.setData({
+        isJoinedRoom: true,
+        role,
+        roleLabel: isHost ? '房主' : '成员',
+        roomId,
+        roomName: result.workshopName || '脑暴工作坊',
+        roomDesc: (result.workshopDesc || '').trim() || DEFAULT_ROOM_DESC,
+        roomTimeText: this._formatTime(timeTs),
+        timeLabel: isHost ? '创建时间' : '加入时间'
+      });
+    } catch (err) {
+      console.error('loadJoinedRoomState fail', err);
+      if (roomId) {
+        this.setData({
+          isJoinedRoom: true,
+          role: 'member',
+          roleLabel: '成员',
+          roomId,
+          roomName: '脑暴工作坊',
+          roomDesc: DEFAULT_ROOM_DESC,
+          roomTimeText: '',
+          timeLabel: '加入时间'
+        });
+      } else {
+        this._setNotJoinedState();
+      }
+    }
+  },
+
+  _setNotJoinedState() {
+    this.setData({
+      isJoinedRoom: false,
+      role: '',
+      roleLabel: '未加入房间',
+      roomId: '',
+      roomName: '',
+      roomDesc: '',
+      roomTimeText: '',
+      timeLabel: '创建/加入时间'
+    });
+  },
+
+  _clearJoinedRoom(roomId) {
+    const stored = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY);
+    if (stored === roomId) {
+      wx.removeStorageSync(JOINED_ROOM_STORAGE_KEY);
+    }
+    if (getApp().globalData.roomId === roomId) {
+      getApp().globalData.roomId = null;
+    }
+    this._setNotJoinedState();
+  },
+
+  _formatTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '—';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  },
+
+  _persistRoomAndRefresh(roomId) {
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    this.setData({ showJoinModal: false, inputRoomId: '', inputFocused: false });
+    return this.loadJoinedRoomState();
+  },
+
   async handleCreateRoom() {
     if (this.data.loading) return;
 
@@ -37,11 +179,9 @@ Page({
         wx.showToast({ title: '未返回房间号', icon: 'none' });
         return;
       }
-      getApp().globalData.roomId = roomId;
 
-      wx.navigateTo({
-        url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      });
+      wx.showToast({ title: '创建成功', icon: 'success', duration: 1500 });
+      await this._persistRoomAndRefresh(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
       wx.showToast({
@@ -53,7 +193,6 @@ Page({
     }
   },
 
-  /** 点击输入区域时聚焦，便于在体验版等环境下能点击输入 */
   onRoomCodeTap() {
     this.setData({ inputFocused: true });
   },
@@ -68,30 +207,16 @@ Page({
 
   onInputRoomId(e) {
     const raw = (e.detail && e.detail.value) || '';
-    // 只保留数字，最多 8 位
     const digits = raw.replace(/\D/g, '').slice(0, 8);
     this.setData({ inputRoomId: digits });
 
-    // 自动触发：当达到 8 位数字时尝试加入房间
     if (digits.length === 8) {
       this._autoJoinIfValid(digits);
     }
   },
 
-  /** 加入房间：根据 data-action 区分扫码或输入 */
-  handleJoinAction(e) {
-    const action = e.currentTarget.dataset.action;
-    if (action === 'scan') {
-      this.handleScanJoin();
-    }
-  },
-
-  /**
-   * 输入满 8 位数字后自动校验并尝试加入房间
-   */
   _autoJoinIfValid(roomId) {
     if (!/^\d{8}$/.test(roomId)) return;
-    // 避免重复触发：若正在 loading，则不再发起
     if (this._autoJoining) return;
     this._autoJoining = true;
     this._joinRoomAndGo(roomId).finally(() => {
@@ -99,35 +224,22 @@ Page({
     });
   },
 
-  /**
-   * 扫码加入房间：调起扫码，解析 roomId 后调用 roomJoin 并跳转 addPlayer
-   */
   async handleScanJoin() {
     try {
       const res = await wx.scanCode({
-        // 不限制码型，避免部分机型/版本下小程序码（WX_CODE）被过滤
         onlyFromCamera: true
       });
-      // 调试：先完整打印扫码返回，便于确认不同码型的真实返回结构
       try {
         console.log('[scanCode success]', JSON.stringify(res));
       } catch (_) {
         console.log('[scanCode success raw]', res);
       }
-      console.log('[scanCode]', {
-        scanType: res && res.scanType,
-        path: res && res.path,
-        result: res && res.result,
-        rawData: res && res.rawData
-      });
 
-      // 当前小程序码优先：有 path 就按内部码处理（优先 path，而不是 result）
       if (res && res.path) {
         const handled = await this._handleMiniProgramPathScan(res.path);
         if (handled) return;
       }
 
-      // 兼容部分机型：scanType=WX_CODE 但不返回 path，尝试从 result 推断 path
       const inferredPath = this._inferPathFromScanResult(res);
       if (inferredPath) {
         const handled = await this._handleMiniProgramPathScan(inferredPath);
@@ -142,10 +254,7 @@ Page({
       await this._joinRoomAndGo(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
-        wx.showToast({
-          title: '已取消扫码',
-          icon: 'none'
-        });
+        wx.showToast({ title: '已取消扫码', icon: 'none' });
         return;
       }
       wx.showToast({
@@ -155,11 +264,6 @@ Page({
     }
   },
 
-  /**
-   * 扫到当前小程序码时优先处理 path：
-   * 1) 若能提取 roomId，则直接加入房间并跳转；
-   * 2) 若提取不到 roomId，则按 path 直接打开页面（让目标页自行处理 scene）。
-   */
   async _handleMiniProgramPathScan(path) {
     const normalizedUrl = this._normalizeScannedPathToUrl(path);
     if (!normalizedUrl) return false;
@@ -203,18 +307,15 @@ Page({
     const result = ((scanRes.result || '') + '').trim();
     if (!result) return '';
 
-    // 1) result 本身是小程序路径：pages/xxx 或 /pages/xxx
     if (/^\/?pages\//i.test(result)) {
       return result;
     }
 
-    // 2) result 包含 pages/xxx 路径片段（例如被包在其他内容中）
     const pagesMatch = result.match(/\/?pages\/[^\s"'<>]*/i);
     if (pagesMatch && pagesMatch[0]) {
       return pagesMatch[0];
     }
 
-    // 3) result 是可解析 URL，尝试取 path 参数
     try {
       const u = new URL(result);
       const pathParam = u.searchParams.get('path');
@@ -223,7 +324,6 @@ Page({
       }
     } catch (_) {}
 
-    // 4) 只有 scene/rid/roomId/8位房间号时，兜底拼到 addPlayer 页
     if (/scene=|rid=|roomId=|\b\d{8}\b/i.test(result)) {
       const query = /[=&]/.test(result)
         ? `scene=${encodeURIComponent(result)}`
@@ -238,18 +338,12 @@ Page({
     return /^\d{8}$/.test(roomId || '');
   },
 
-  /**
-   * 优先解析小程序码的 path（如 pages/room/index?roomId=123），
-   * 再回退到扫码结果字符串解析。
-   */
   _parseRoomIdFromScanResult(scanRes) {
     if (!scanRes || typeof scanRes !== 'object') return '';
 
-    // 小程序码优先：从 path 里提取 scene / rid / roomId
     const pathRoomId = this._parseRoomIdFromPath(scanRes.path || '');
     if (pathRoomId) return pathRoomId;
 
-    // 依次尝试 path/result/rawData，兼容不同码型返回结构
     const candidates = [
       scanRes.path || '',
       scanRes.result || '',
@@ -279,9 +373,6 @@ Page({
     return roomId;
   },
 
-  /**
-   * querystring 转对象：a=1&b=2 => { a: "1", b: "2" }
-   */
   _parseQuery(query) {
     const obj = {};
     if (!query || typeof query !== 'string') return obj;
@@ -307,31 +398,22 @@ Page({
     }
   },
 
-  /**
-   * 小程序码常见：scene=roomId%3D12345678 或 scene=rid%3D12345678 或 scene=12345678
-   */
   _extractRoomIdFromScene(scene) {
     if (!scene || typeof scene !== 'string') return '';
-    let decoded = this._safeDecodeURIComponent(scene);
+    const decoded = this._safeDecodeURIComponent(scene);
     if (/^\d{8}$/.test(decoded)) return decoded;
     return this._parseRoomId(decoded);
   },
 
-  /**
-   * 从扫码结果中解析 roomId
-   * 支持：rid=xxx、roomId=xxx、URL 中的 roomId 参数、纯 roomId 文本
-   */
   _parseRoomId(content) {
     if (!content || typeof content !== 'string') return '';
     const s = content.trim();
 
-    // 优先对原字符串匹配 rid/roomId，兼容 path 未 decode 的情况
     let m = s.match(/(?:^|[?&])rid=([^&?#\s]+)/i) || s.match(/rid=([^&?#\s]+)/i);
     if (m) return this._safeDecodeURIComponent(m[1]).trim();
     m = s.match(/(?:^|[?&])roomId=([^&?#\s]+)/i) || s.match(/roomId=([^&?#\s]+)/i);
     if (m) return this._safeDecodeURIComponent(m[1]).trim();
 
-    // 对字符串做多轮 decode，兼容 scene 双重编码
     const decodedCandidates = [s];
     let decoded = s;
     for (let i = 0; i < 2; i++) {
@@ -347,50 +429,38 @@ Page({
 
     for (let i = 0; i < decodedCandidates.length; i++) {
       const text = decodedCandidates[i];
-      // scene=xxxx（对扫码结果字符串先拆 scene）
       let mm = text.match(/scene=([^&?#\s]+)/i);
       if (mm) {
         const byScene = this._extractRoomIdFromScene(mm[1]);
         if (byScene) return byScene;
       }
-      // rid=roomId
       mm = text.match(/rid=([^&?#\s]+)/i);
       if (mm) return mm[1].trim();
-      // roomId=xxx
       mm = text.match(/roomId=([^&?#\s]+)/i);
       if (mm) return mm[1].trim();
-      // 纯 roomId：8 位数字
       mm = text.match(/\b(\d{8})\b/);
       if (mm) return mm[1];
     }
 
-    // scene=xxxx（对扫码结果字符串先拆 scene）
     m = s.match(/scene=([^&?#\s]+)/i);
     if (m) {
       const byScene = this._extractRoomIdFromScene(m[1]);
       if (byScene) return byScene;
     }
-    // rid=roomId
     m = s.match(/rid=([^&?#\s]+)/i);
     if (m) return m[1].trim();
-    // roomId=xxx
     m = s.match(/roomId=([^&?#\s]+)/i);
     if (m) return m[1].trim();
-    // URL 形式
     try {
       const url = s.startsWith('http') ? s : `https://x/?${s}`;
       const u = new URL(url);
       const rid = u.searchParams.get('rid') || u.searchParams.get('roomId');
       if (rid) return rid;
     } catch (_) {}
-    // 纯 roomId：只支持 8 位数字
     if (/^\d{8}$/.test(s)) return s;
     return '';
   },
 
-  /**
-   * 调用 roomJoin 加入房间，成功后跳转 addPlayer
-   */
   async _joinRoomAndGo(roomId) {
     wx.showLoading({ title: '加入中…' });
     try {
@@ -404,15 +474,13 @@ Page({
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
       }
-      getApp().globalData.roomId = roomId;
+
       wx.showToast({
         title: '加入成功',
         icon: 'success',
         duration: 1500
       });
-      wx.navigateTo({
-        url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      });
+      await this._persistRoomAndRefresh(roomId);
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });

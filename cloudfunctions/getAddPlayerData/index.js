@@ -52,7 +52,10 @@ exports.main = async (event, context) => {
       .orderBy('playerIndex', 'asc')
       .get();
 
-    const members = (membersRes.data || []).map(m => {
+    const rawMembers = membersRes.data || [];
+    const myMember = rawMembers.find(m => m.userId === currentUserId) || null;
+
+    const members = rawMembers.map(m => {
       const out = {
         playerIndex: m.playerIndex,
         nickName: m.nickName || `玩家${m.playerIndex}`,
@@ -69,6 +72,11 @@ exports.main = async (event, context) => {
       qrcodeFileID: room.qrcodeFileID || null,
       members,
       isHost,
+      role: myMember && myMember.role ? myMember.role : (isHost ? 'GOD' : 'PLAYER'),
+      workshopName: room.workshopName || '脑暴工作坊',
+      workshopDesc: room.workshopDesc || '',
+      createdAt: room.createdAt || null,
+      joinedAt: myMember && myMember.joinedAt ? myMember.joinedAt : null,
       roomState
     };
   } catch (e) {
