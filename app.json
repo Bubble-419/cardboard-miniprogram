@@ -3,6 +3,7 @@
     "pages/main-pages/aaa/index",
     "pages/auth/index",
     "pages/main-pages/addPlayer/index",
+    "pages/main-pages/brainstormMode/index",
     "pages/main-pages/gamepage/index",
     "pages/main-pages/statement/index",
     "pages/main-pages/creativeInput/index",

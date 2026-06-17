@@ -1,0 +1,9 @@
+{
+  "name": "roomKickMember",
+  "version": "1.0.0",
+  "description": "房主踢出房间成员",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

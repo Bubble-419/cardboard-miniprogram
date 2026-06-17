@@ -1,0 +1,9 @@
+{
+  "name": "roomDissolve",
+  "version": "1.0.0",
+  "description": "房主解散房间",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

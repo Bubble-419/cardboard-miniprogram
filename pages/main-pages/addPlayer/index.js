@@ -43,6 +43,10 @@ Page({
     memberSlots: [],
     isFromScan: false,
     isHost: true,
+    memberCount: 0,
+    hasSelectedMode: false,
+    selectedModeTitle: '',
+    selectedModeDesc: '',
     isDragging: false,
     draggingSlotIndex: null,
     /** 跟手：浮动头像用 px 定位，手指位置 = 头像位置 */
@@ -53,7 +57,8 @@ Page({
     dragFromIndex: null,
     dropTargetIndex: null,
     // 进入可拖拽态的短暂动画标记（用于视觉反馈）
-    dragEnterAnimating: false
+    dragEnterAnimating: false,
+    showQRCodeModal: false
   },
 
   onLoad(options) {
@@ -125,6 +130,9 @@ Page({
     if (!this.data.isHost && this.data.roomId && this._statePollTimer && typeof this._statePollFn === 'function') {
       this._statePollFn();
     }
+    if (this.data.roomId) {
+      this.loadRoomData(this.data.roomId, { silent: true });
+    }
   },
 
   onUnload() {
@@ -133,6 +141,32 @@ Page({
     this._clearLongPressTimer();
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
+  },
+
+  _applyRoomMeta(result, dedupedMembers) {
+    const memberCount = result.memberCount != null
+      ? result.memberCount
+      : (dedupedMembers || []).length;
+    return {
+      memberCount,
+      hasSelectedMode: result.hasSelectedMode === true,
+      selectedModeTitle: result.selectedModeTitle || '',
+      selectedModeDesc: result.selectedModeDesc || '',
+      workshopName: result.workshopName || this.data.workshopName
+    };
+  },
+
+  _handleMembershipLost() {
+    try {
+      wx.removeStorageSync('joinedRoomId');
+    } catch (e) {
+      console.warn('removeStorage joinedRoomId failed', e);
+    }
+    getApp().globalData.roomId = null;
+    wx.showToast({ title: '您已不在该房间', icon: 'none' });
+    setTimeout(() => {
+      wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+    }, 1500);
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
@@ -350,6 +384,13 @@ Page({
 
       const rawMembers = result.members || [];
       const deduped = this._dedupeMembersById(rawMembers);
+      const isStillMember = deduped.some((m) => m.isMe);
+      if (!result.isHost && !isStillMember) {
+        this._handleMembershipLost();
+        return null;
+      }
+
+      const roomMeta = this._applyRoomMeta(result, deduped);
       const withAvatars = this._assignAvatarImages(deduped);
       const members = this._expandMembersToSlots(withAvatars);
       const memberSlots = this.buildMemberSlots(members);
@@ -370,7 +411,7 @@ Page({
           const localFilledCount = localExpanded.filter((m) => !!m).length;
           // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
           let expanded;
-          if (deduped.length > localFilledCount) {
+          if (deduped.length !== localFilledCount) {
             expanded = this._expandMembersToSlots(withAvatars);
           } else if (localFilledCount > 0) {
             const serverById = new Map();
@@ -391,7 +432,11 @@ Page({
           } else {
             expanded = this._expandMembersToSlots(withAvatars);
           }
-          this.setData({ members: expanded, memberSlots: this.buildMemberSlots(expanded) });
+          this.setData({
+            members: expanded,
+            memberSlots: this.buildMemberSlots(expanded),
+            ...roomMeta
+          });
         }
         return result;
       }
@@ -441,7 +486,8 @@ Page({
         members,
         memberSlots,
         isHost,
-        roomState
+        roomState,
+        ...roomMeta
       });
       return { isHost: result.isHost };
     } catch (err) {
@@ -507,6 +553,49 @@ Page({
 
   onSlotTap() {},
 
+  _showKickConfirm(member) {
+    const isHost = this.data.isHost;
+    const isDragging = this.data.isDragging;
+    if (isHost !== true || isDragging === true) return;
+    this._clearLongPressTimer();
+    this._slotTouchStart = null;
+    this._lastTouch = null;
+
+    wx.showModal({
+      title: '踢出成员',
+      content: `确定将「${member.nickName}」移出房间吗？`,
+      confirmText: '踢出',
+      confirmColor: '#dc2626',
+      success: (res) => {
+        if (res.confirm) this._kickMember(member);
+      }
+    });
+  },
+
+  async _kickMember(member) {
+    const roomId = this.data.roomId || getApp().globalData.roomId;
+    if (!roomId || !member || !member.userId) return;
+
+    wx.showLoading({ title: '处理中…' });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'roomKickMember',
+        data: { roomId, targetUserId: member.userId }
+      });
+      const result = (res && res.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '踢出失败', icon: 'none' });
+        return;
+      }
+      wx.showToast({ title: '已踢出', icon: 'success' });
+      this.loadRoomData(roomId, { silent: true });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: err.errMsg || '踢出失败', icon: 'none' });
+    }
+  },
+
   onSlotTouchStart(e) {
     if (!this.data.isHost) return;
     const index = e.currentTarget.dataset.index;
@@ -528,7 +617,15 @@ Page({
     this._clearLongPressTimer();
     this._longPressTimer = setTimeout(() => {
       this._longPressTimer = null;
-      this._enterDragMode(index, slot);
+      // 长按其他成员（非自己）且为房主时 → 显示踢出确认
+      if (this.data.isHost && slot.member && !slot.member.isMe) {
+        this._showKickConfirm(slot.member);
+        return;
+      }
+      // 长按自己（房主） → 进入拖拽模式
+      if (this.data.isHost && slot.member && slot.member.isMe) {
+        this._enterDragMode(index, slot);
+      }
     }, LONG_PRESS_ENTER_DRAG_MS);
   },
 
@@ -873,23 +970,144 @@ Page({
     wx.navigateBack({
       fail: () => {
         wx.reLaunch({
-          url: '/pages/main-pages/setRoom/index'
+          url: '/pages/main-pages/aaa/index'
         });
       }
     });
   },
 
-  async handleComplete() {
+  handleGoBrainstormMode() {
     const roomId = this.data.roomId || '';
-    if (roomId) getApp().globalData.roomId = roomId;
-    console.log('[主屏] handleComplete 开始，准备更新状态为 auth');
-    const updateRes = await this._updateRoomState('auth');
-    if (updateRes && updateRes.ok !== true) {
-      console.error('[主屏] updateRoomState 失败，副屏可能无法跟随', updateRes);
-      wx.showToast({ title: '状态同步失败，副屏可能无法跟随', icon: 'none' });
+    if (!roomId) return;
+    wx.navigateTo({
+      url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`
+    });
+  },
+
+  async handleContinueBrainstorm() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间参数错误', icon: 'none' });
+      return;
+    }
+    if (!this.data.hasSelectedMode) {
+      wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+      return;
+    }
+    if (this.data.isHost) {
+      const updateRes = await this._updateRoomState('gamepage');
+      if (updateRes && updateRes.ok !== true) {
+        wx.showToast({ title: '状态同步失败', icon: 'none' });
+      }
     }
     wx.navigateTo({
-      url: '/pages/auth/index'
+      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=1`
     });
-  }
+  },
+
+  handleExitBrainstorm() {
+    wx.showModal({
+      title: '退出脑暴',
+      content: '退出后将清除当前已选脑暴模式，成员需重新等待房主选择。',
+      confirmText: '退出',
+      success: async (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: '处理中…' });
+        try {
+          const callRes = await wx.cloud.callFunction({
+            name: 'roomClearBrainstormMode',
+            data: { roomId: this.data.roomId }
+          });
+          const result = (callRes && callRes.result) || {};
+          wx.hideLoading();
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
+            return;
+          }
+          wx.showToast({ title: '已退出脑暴', icon: 'success' });
+          this.loadRoomData(this.data.roomId, { silent: true });
+        } catch (err) {
+          wx.hideLoading();
+          wx.showToast({ title: err.errMsg || '操作失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  handleDissolveRoom() {
+    wx.showModal({
+      title: '解散房间',
+      content: '解散后所有成员将被移出，此操作不可撤销。',
+      confirmText: '解散',
+      confirmColor: '#dc2626',
+      success: async (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: '解散中…' });
+        try {
+          const callRes = await wx.cloud.callFunction({
+            name: 'roomDissolve',
+            data: { roomId: this.data.roomId }
+          });
+          const result = (callRes && callRes.result) || {};
+          wx.hideLoading();
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '解散失败', icon: 'none' });
+            return;
+          }
+          try {
+            wx.removeStorageSync('joinedRoomId');
+          } catch (e) {
+            console.warn('removeStorage joinedRoomId failed', e);
+          }
+          getApp().globalData.roomId = null;
+          wx.showToast({ title: '房间已解散', icon: 'success' });
+          setTimeout(() => {
+            wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+          }, 1200);
+        } catch (err) {
+          wx.hideLoading();
+          wx.showToast({ title: err.errMsg || '解散失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  handleLeaveRoom() {
+    wx.showModal({
+      title: '退出房间',
+      content: '确定要退出当前房间吗？',
+      confirmText: '退出',
+      confirmColor: '#dc2626',
+      success: async (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: '退出中…' });
+        try {
+          const callRes = await wx.cloud.callFunction({
+            name: 'roomLeave',
+            data: { roomId: this.data.roomId }
+          });
+          const result = (callRes && callRes.result) || {};
+          wx.hideLoading();
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
+            return;
+          }
+          try {
+            wx.removeStorageSync('joinedRoomId');
+          } catch (e) {
+            console.warn('removeStorage joinedRoomId failed', e);
+          }
+          getApp().globalData.roomId = null;
+          wx.showToast({ title: '已退出房间', icon: 'success' });
+          setTimeout(() => {
+            wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+          }, 1200);
+        } catch (err) {
+          wx.hideLoading();
+          wx.showToast({ title: err.errMsg || '退出失败', icon: 'none' });
+        }
+      }
+    });
+  },
+
 });

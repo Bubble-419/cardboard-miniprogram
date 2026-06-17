@@ -25,12 +25,23 @@
   <view class="instruction-section">
     <view class="instruction-lines">
       <text class="instruction-title">请各成员扫码进入游戏</text>
-      <text class="instruction-subtitle">长按后拖动可调整成员顺序</text>
+      <text class="instruction-subtitle" wx:if="{{isHost}}">长按后拖动可调整成员顺序；长按其他成员头像可踢出</text>
+      <text class="instruction-subtitle" wx:else>等待房主选择脑暴模式</text>
       <view wx:if="{{roomId}}" class="room-id-wrap">
         <text class="room-id-label">房间号：</text>
         <text class="room-id-value" selectable>{{formattedRoomId || roomId}}</text>
       </view>
+      <view class="member-count-wrap">
+        <text class="member-count-label">当前人数：</text>
+        <text class="member-count-value">{{memberCount}}</text>
+      </view>
     </view>
+  </view>
+
+  <view class="mode-banner" wx:if="{{hasSelectedMode}}">
+    <text class="mode-banner-label">当前脑暴模式</text>
+    <text class="mode-banner-title">{{selectedModeTitle}}</text>
+    <text class="mode-banner-desc" wx:if="{{selectedModeDesc}}">{{selectedModeDesc}}</text>
   </view>
 
   <view
@@ -102,6 +113,8 @@
               class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}} {{isDragging && (item.index === draggingSlotIndex || item.index === dropTargetIndex) ? 'avatar-origin-hidden' : ''}}"
               src="{{item.member.avatarImage}}"
               mode="aspectFill"
+              data-index="{{item.index}}"
+              
             />
             <view
               wx:if="{{isDragging && item.index === dropTargetIndex}}"
@@ -155,9 +168,31 @@
     ></view>
   </view>
 
-  <view class="footer-wrap" wx:if="{{isHost}}">
+  <view class="footer-wrap">
     <view class="footer">
-      <button class="primary-btn" bindtap="handleComplete">完成</button>
+      <!-- 房主：未选模式 -->
+      <block wx:if="{{isHost && !hasSelectedMode}}">
+        <button class="primary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
+        <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
+      </block>
+      <!-- 房主：已选模式 -->
+      <block wx:elif="{{isHost && hasSelectedMode}}">
+        <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
+        <view class="footer-btn-row">
+          <button class="secondary-btn" bindtap="handleExitBrainstorm">退出脑暴</button>
+          <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
+        </view>
+      </block>
+      <!-- 成员：未选模式 -->
+      <block wx:elif="{{!isHost && !hasSelectedMode}}">
+        <button class="primary-btn" bindtap="handleGoBrainstormMode">查看脑暴模式</button>
+        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
+      </block>
+      <!-- 成员：已选模式 -->
+      <block wx:else>
+        <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
+        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
+      </block>
     </view>
   </view>
 </view>

@@ -1,0 +1,22 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">脑暴模式</view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="content">
+    <text class="placeholder-title">脑暴模式页</text>
+    <text class="placeholder-desc">模式选择与配置将在下一步实现</text>
+    <text class="placeholder-room" wx:if="{{roomId}}">房间号：{{roomId}}</text>
+  </view>
+</view>

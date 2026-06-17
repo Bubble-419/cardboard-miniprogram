@@ -67,16 +67,24 @@ exports.main = async (event, context) => {
       return out;
     });
 
+    const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
+    const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
+
     return {
       ok: true,
       qrcodeFileID: room.qrcodeFileID || null,
       members,
+      memberCount: members.length,
       isHost,
       role: myMember && myMember.role ? myMember.role : (isHost ? 'GOD' : 'PLAYER'),
       workshopName: room.workshopName || '脑暴工作坊',
       workshopDesc: room.workshopDesc || '',
       createdAt: room.createdAt || null,
       joinedAt: myMember && myMember.joinedAt ? myMember.joinedAt : null,
+      hasSelectedMode,
+      selectedModeId,
+      selectedModeTitle: room.selectedModeTitle || '',
+      selectedModeDesc: room.selectedModeDesc || '',
       roomState
     };
   } catch (e) {

@@ -1,0 +1,9 @@
+{
+  "name": "roomLeave",
+  "version": "1.0.0",
+  "description": "成员退出房间",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

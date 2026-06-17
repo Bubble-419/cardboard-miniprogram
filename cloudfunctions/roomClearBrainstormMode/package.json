@@ -1,0 +1,9 @@
+{
+  "name": "roomClearBrainstormMode",
+  "version": "1.0.0",
+  "description": "房主清除已选脑暴模式",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

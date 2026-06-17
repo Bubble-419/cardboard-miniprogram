@@ -147,6 +147,56 @@
   word-break: break-all;
 }
 
+.member-count-wrap {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.member-count-label {
+  font-size: 26rpx;
+  color: #6b7280;
+}
+
+.member-count-value {
+  font-size: 32rpx;
+  color: #5ec159;
+  font-weight: 700;
+}
+
+.mode-banner {
+  flex-shrink: 0;
+  margin: 0 54rpx 16rpx;
+  padding: 24rpx 28rpx;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border-radius: 16rpx;
+  border: 2rpx solid rgba(94, 193, 89, 0.25);
+  box-sizing: border-box;
+}
+
+.mode-banner-label {
+  display: block;
+  font-size: 24rpx;
+  color: #6b7280;
+  margin-bottom: 8rpx;
+}
+
+.mode-banner-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4rpx;
+}
+
+.mode-banner-desc {
+  display: block;
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
 .content-area {
   flex: 1;
   min-height: 0;
@@ -609,8 +659,17 @@
   padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.footer-btn-row {
+  display: flex;
+  gap: 20rpx;
+}
+
+.footer-btn-row .secondary-btn {
+  flex: 1;
 }
 
 .primary-btn {
@@ -620,20 +679,46 @@
   background: linear-gradient(135deg, #5ec159 0%, #4db84a 100%);
   color: #ffffff;
   border-radius: 24rpx;
-  font-size: 40rpx;
+  font-size: 32rpx;
   font-weight: 400;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
-  letter-spacing: 4rpx;
+  letter-spacing: 2rpx;
   box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.3);
 }
 
-.primary-btn::after {
+.secondary-btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  background: #ffffff;
+  color: #374151;
+  border-radius: 24rpx;
+  font-size: 32rpx;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #e5e7eb;
+}
+
+.danger-btn {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.25);
+  background: #fff7f7;
+}
+
+.primary-btn::after,
+.secondary-btn::after {
   border: none;
 }
 
 .primary-btn:active {
+  opacity: 0.85;
+}
+
+.secondary-btn:active {
   opacity: 0.85;
 }
