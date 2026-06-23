@@ -1,0 +1,9 @@
+{
+  "name": "roomSetBrainstormMode",
+  "version": "1.0.0",
+  "description": "房主选择脑暴模式",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

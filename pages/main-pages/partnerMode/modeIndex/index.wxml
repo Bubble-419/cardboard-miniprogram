@@ -1,0 +1,23 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">{{pageTitle}}</view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="content">
+    <!-- TODO: 合伙人模式首页内容待开发 -->
+    <text class="placeholder-title">{{pageTitle}}</text>
+    <text class="placeholder-desc">游戏页开发中，敬请期待</text>
+    <text class="placeholder-note">此页为 modeIndex 占位页，后续将替换为合伙人模式的完整游戏流程</text>
+  </view>
+</view>
