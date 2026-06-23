@@ -1,0 +1,175 @@
+const { saveHistoryScenario } = require('../../../../utils/partnerScenarios');
+
+const PARTNER_CARD_DEFS = [
+  { type: 'scene', label: '场景' },
+  { type: 'user', label: '用户' },
+  { type: 'platform', label: '平台' },
+  { type: 'function', label: '功能' }
+];
+
+Page({
+  data: {
+    roomId: '',
+    cards: [],
+    canConfirm: false,
+    isHost: true,
+    isWaiting: false
+  },
+
+  onLoad(options) {
+    const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
+    const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+
+    if (roomId) {
+      getApp().globalData.roomId = roomId;
+    }
+
+    const bg = getApp().globalData.selectedBG;
+    if (!bg || !bg.scene || !bg.user || !bg.function) {
+      wx.showToast({ title: '请先选择情境', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1200);
+      return;
+    }
+
+    if (!bg.platform) {
+      wx.showToast({ title: '情境信息不完整', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1200);
+      return;
+    }
+
+    const cards = PARTNER_CARD_DEFS.map((item) => ({
+      ...item,
+      value: (bg[item.type] || '').trim()
+    })).filter((item) => item.value);
+
+    const canConfirm = cards.length === PARTNER_CARD_DEFS.length;
+
+    this.setData({
+      roomId,
+      cards,
+      canConfirm,
+      isWaiting: !!isWaiting
+    });
+
+    if (isWaiting) {
+      this.setData({ isHost: false });
+      this._startStatePolling();
+      return;
+    }
+    this._fetchHostStatus();
+  },
+
+  onUnload() {
+    this._stopStatePolling();
+  },
+
+  async _fetchHostStatus() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) {
+      this.setData({ isHost: true });
+      return;
+    }
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true) {
+        const isHost = result.isHost === true;
+        this.setData({ isHost, roomId });
+        if (isHost) {
+          this._updateRoomState('confirmBG');
+        } else {
+          this._startStatePolling();
+        }
+      }
+    } catch (e) {
+      this.setData({ isHost: true });
+    }
+  },
+
+  async _updateRoomState(currentPage) {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage }
+      });
+    } catch (e) {
+      console.warn('updateRoomState', e);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'selectproblem') {
+          wx.redirectTo({
+            url: `/pages/sub-pages/selectProblem/index?roomId=${roomIdEnc}`
+          });
+        } else if (page === 'selectbg' || page === 'confirmbg' || page === 'auth') {
+          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('confirmBG state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
+    }
+  },
+
+  handleConfirm() {
+    if (!this.data.isHost || !this.data.canConfirm) return;
+
+    const bg = getApp().globalData.selectedBG;
+    if (!bg) {
+      wx.showToast({ title: '情境数据丢失', icon: 'none' });
+      return;
+    }
+
+    saveHistoryScenario(bg);
+
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    this._updateRoomState('selectProblem');
+
+    const url = roomId
+      ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/selectProblem/index';
+    wx.redirectTo({ url });
+  },
+
+  handleGoBack() {
+    wx.navigateBack({
+      fail: () => {
+        const roomId = this.data.roomId || '';
+        if (roomId) {
+          wx.redirectTo({
+            url: `/pages/main-pages/partnerMode/modeIndex/index?roomId=${encodeURIComponent(roomId)}`
+          });
+        } else {
+          wx.navigateBack();
+        }
+      }
+    });
+  }
+});

@@ -1,0 +1,48 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">确认情境</view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <!-- 成员等待 -->
+  <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
+    <text class="wait-title">确认情境</text>
+    <text class="wait-desc">等待房主确认情境</text>
+  </view>
+
+  <!-- 房主确认 -->
+  <block wx:else>
+    <scroll-view class="cards-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+      <view class="cards-stack">
+        <view class="confirm-card" wx:for="{{cards}}" wx:key="type">
+          <view class="confirm-card-inner">
+            <view class="type-badge">
+              <text class="type-badge-text">{{item.label}}</text>
+            </view>
+            <text class="card-value">{{item.value}}</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="footer">
+      <button
+        class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
+        disabled="{{!canConfirm}}"
+        bindtap="handleConfirm"
+      >
+        确认情境
+      </button>
+    </view>
+  </block>
+</view>

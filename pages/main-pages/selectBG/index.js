@@ -1,5 +1,3 @@
-const { saveHistoryScenario } = require('../../../utils/partnerScenarios');
-
 const STEPS_WITH_PLATFORM = [
   { type: 'scene', label: '场景' },
   { type: 'user', label: '用户' },
@@ -106,11 +104,17 @@ Page({
     }
     app.globalData.selectedBG = bg;
 
+    const roomId = app.globalData.roomId || '';
     if (this.data.includePlatform) {
-      saveHistoryScenario(bg);
+      const query = roomId
+        ? `?roomId=${encodeURIComponent(roomId)}`
+        : '';
+      wx.redirectTo({
+        url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
+      });
+      return;
     }
 
-    const roomId = app.globalData.roomId || '';
     const url = roomId
       ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
       : '/pages/main-pages/selectPlayer/index';

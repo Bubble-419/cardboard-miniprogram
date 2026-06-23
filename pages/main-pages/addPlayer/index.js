@@ -228,8 +228,8 @@ Page({
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
 
-        if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
-          console.log('[副屏轮询] 主屏在 auth/selectbg/selectproblem，跳转 awaitBG');
+        if (page === 'auth' || page === 'selectbg' || page === 'confirmbg' || page === 'selectproblem') {
+          console.log('[副屏轮询] 主屏在 auth/selectbg/confirmbg/selectproblem，跳转 awaitBG');
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectmode') {
           console.log('[副屏轮询] 主屏在 selectmode，跳转 awaitMode');

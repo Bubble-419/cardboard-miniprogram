@@ -112,7 +112,7 @@ Page({
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
+        if (page === 'auth' || page === 'selectbg' || page === 'confirmbg' || page === 'selectproblem') {
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectmode') {
           wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
@@ -195,9 +195,9 @@ Page({
     app.globalData.selectedBG = { ...scenario.bg };
     app.globalData.gameMode = 'partner';
 
-    this._updateRoomState('selectPlayer');
-    wx.redirectTo({
-      url: `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    const query = `?roomId=${encodeURIComponent(roomId)}`;
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
     });
   },
 

@@ -6,6 +6,7 @@
     "pages/main-pages/brainstormMode/index",
     "pages/main-pages/halliGalli/modeIndex/index",
     "pages/main-pages/partnerMode/modeIndex/index",
+    "pages/main-pages/partnerMode/confirmBG/index",
     "pages/main-pages/spyMode/modeIndex/index",
     "pages/main-pages/gamepage/index",
     "pages/main-pages/statement/index",
