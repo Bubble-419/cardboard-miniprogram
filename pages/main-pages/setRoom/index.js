@@ -20,7 +20,7 @@ Page({
       });
       setTimeout(() => {
         wx.reLaunch({
-          url: '/pages/auth/index'
+          url: '/pages/main-pages/halliGalli/modeIndex/index'
         });
       }, 1500);
       return;
@@ -38,7 +38,7 @@ Page({
     wx.navigateBack({
       fail: () => {
         wx.reLaunch({
-          url: '/pages/auth/index'
+          url: '/pages/main-pages/halliGalli/modeIndex/index'
         });
       }
     });

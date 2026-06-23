@@ -1,4 +1,5 @@
 {
-  "navigationBarTitleText": "德国心脏病模式",
-  "navigationStyle": "custom"
+  "navigationBarTitleText": "选择情境",
+  "navigationStyle": "custom",
+  "usingComponents": {}
 }

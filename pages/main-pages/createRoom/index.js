@@ -25,9 +25,7 @@ Page({
   handleGoBack() {
     wx.navigateBack({
       fail: () => {
-        wx.switchTab({
-          url: '/pages/auth/index'
-        });
+        wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
       }
     });
   },

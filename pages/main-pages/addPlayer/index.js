@@ -77,7 +77,7 @@ Page({
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.reLaunch({ url: '/pages/auth/index' }), 1500);
+      setTimeout(() => wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' }), 1500);
       return;
     }
 
@@ -254,6 +254,12 @@ Page({
         } else if (page === 'leaderboard') {
           console.log('[副屏轮询] 主屏在 leaderboard，跳转 leaderboard');
           wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
+        } else if (page === 'creativeinput') {
+          console.log('[副屏轮询] 主屏在 creativeInput，跳转 creativeInput');
+          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
+        } else if (page === 'creativesummary') {
+          console.log('[副屏轮询] 主屏在 creativeSummary，跳转 creativeSummary');
+          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
         } else {
           console.log('[副屏轮询] 主屏在 addPlayer，保持当前页', { page });
         }

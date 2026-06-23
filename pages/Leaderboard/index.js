@@ -43,6 +43,8 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${encodeURIComponent(roomId)}` });
+        } else if (page === 'creativeinput') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}` });
         }
       } catch (e) {
         console.warn('leaderboard state poll', e);
@@ -92,7 +94,7 @@ Page({
   },
 
   handleBack() {
-    wx.reLaunch({ url: '/pages/auth/index' });
+    wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
   },
 
   async handleNewGame() {
@@ -120,6 +122,6 @@ Page({
     gd.selectedProblem = null;
     gd.selectedMode = null;
     gd.selectedBG = null;
-    wx.reLaunch({ url: '/pages/auth/index' });
+    wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
   }
 });

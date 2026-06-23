@@ -66,6 +66,10 @@ Page({
     }
   },
 
+  onUnload() {
+    this._stopStatePolling();
+  },
+
   async loadRoomData(roomId, opts = {}) {
     const silent = opts && opts.silent === true;
     if (!silent) wx.showLoading({ title: '加载中…' });
@@ -93,6 +97,12 @@ Page({
         currentUser: me ? me.id : null,
         isHost: result.isHost === true
       });
+
+      if (result.isHost === true) {
+        this._stopStatePolling();
+      } else {
+        this._startStatePolling();
+      }
     } catch (err) {
       if (!silent) {
         wx.hideLoading();
@@ -111,6 +121,43 @@ Page({
         isMe: m.isMe === true
       };
     });
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'gamepage') {
+          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          wx.redirectTo({ url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+        } else if (page === 'creativeinput') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
+        } else if (page === 'creativesummary') {
+          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('brainstormMode state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
+    }
   },
 
   onSwiperChange(e) {

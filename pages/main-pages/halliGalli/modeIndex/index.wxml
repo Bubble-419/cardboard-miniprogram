@@ -1,23 +1,32 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
-      </view>
-      <view class="navbar-title">{{pageTitle}}</view>
-      <view class="navbar-right"></view>
+  <!-- 普通玩家：等待房主选择情境 -->
+  <view class="content" wx:if="{{!isHost || isWaiting}}">
+    <view class="title-section">
+      <text class="main-title">脑暴工作坊</text>
+      <text class="sub-title wait-hint">等待房主选择情境</text>
+    </view>
+    <view class="empty-state">
+      <text class="empty-state-text">等待房主选择情境</text>
     </view>
   </view>
 
-  <view class="content">
-    <!-- TODO: 德国心脏病模式首页内容待开发 -->
-    <text class="placeholder-title">{{pageTitle}}</text>
-    <text class="placeholder-desc">游戏页开发中，敬请期待</text>
-    <text class="placeholder-note">此页为 modeIndex 占位页，后续将替换为德国心脏病模式的完整游戏流程</text>
+  <!-- 房主：情境选择卡片 -->
+  <view class="content" wx:else>
+    <view class="title-section">
+      <text class="main-title">脑暴工作坊</text>
+      <text class="sub-title">请选择情境类型</text>
+    </view>
+    <view class="role-cards">
+      <view class="role-card" bindtap="selectPresetScenario">
+        <view class="card-icon preset-icon">📺</view>
+        <text class="role-title">已设定情境</text>
+        <text class="role-description">选择线下大屏上已展示的情境，直接进入游戏页面</text>
+      </view>
+      <view class="role-card" bindtap="selectCustomScenario">
+        <view class="card-icon custom-icon">✏️</view>
+        <text class="role-title">自定义情境</text>
+        <text class="role-description">自行选择情境卡（场景、用户、平台、功能），创建专属脑暴情境</text>
+      </view>
+    </view>
   </view>
 </view>

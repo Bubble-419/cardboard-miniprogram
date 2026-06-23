@@ -19,6 +19,7 @@ Page({
     const currentPlayerName = (options && options.currentPlayerName) ?
       decodeURIComponent(options.currentPlayerName) : `玩家${currentPlayerIndex}`;
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+    const isSubScreen = options && (options.isSubScreen === '1' || options.isSubScreen === true);
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
@@ -39,10 +40,10 @@ Page({
       roomId,
       currentPlayerIndex,
       currentPlayerName,
-      isWaiting: !!isWaiting
+      isWaiting: !!(isWaiting || isSubScreen)
     });
 
-    if (isWaiting) {
+    if (isWaiting || isSubScreen) {
       this._startStatePolling();
       return;
     }

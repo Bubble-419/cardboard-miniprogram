@@ -147,12 +147,11 @@ Page({
       });
 
       this.updateCanStartVote();
-      this._updateRoomState('gamepage', this.data.currentPlayerIndex, currentPlayerName);
-
-      if (!result.isHost) {
-        this._startStatePolling();
-      } else {
+      if (result.isHost === true) {
+        this._updateRoomState('gamepage', this.data.currentPlayerIndex, currentPlayerName);
         this._stopStatePolling();
+      } else {
+        this._startStatePolling();
       }
     } catch (e) {
       console.error('loadRoomData', e);
@@ -337,7 +336,7 @@ Page({
         // 排行榜流程临时下线，改为结束后填写创意
         const url = roomId
           ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
-          : '/pages/auth/index';
+          : '/pages/main-pages/halliGalli/modeIndex/index';
         try {
           await this._updateRoomState('creativeInput');
         } catch (e) {
