@@ -61,6 +61,7 @@ App({
     selectedProblem: null,
     selectedMode: null,
     selectedPlayer: null,
+    gameMode: null,
     selectedBG: null,
     workshopName: "工作坊名称"
   }

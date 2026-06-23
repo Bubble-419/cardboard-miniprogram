@@ -25,7 +25,7 @@
       <view class="role-card" bindtap="selectCustomScenario">
         <view class="card-icon custom-icon">✏️</view>
         <text class="role-title">自定义情境</text>
-        <text class="role-description">自行选择情境卡（场景、用户、平台、功能），创建专属脑暴情境</text>
+        <text class="role-description">自行选择情境卡（场景、用户、功能），创建专属脑暴情境</text>
       </view>
     </view>
   </view>

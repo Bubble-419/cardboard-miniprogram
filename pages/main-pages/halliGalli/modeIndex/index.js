@@ -19,6 +19,7 @@ Page({
     if (roomId) {
       getApp().globalData.roomId = roomId;
     }
+    getApp().globalData.gameMode = 'halliGalli';
 
     this.setData({
       roomId,
@@ -142,12 +143,13 @@ Page({
     });
   },
 
-  /** 自定义情境：自行选择情境卡（场景、用户、平台、功能） */
+  /** 自定义情境：自行选择情境卡（场景、用户、功能；不含平台） */
   selectCustomScenario() {
     if (!this.data.isHost) return;
+    getApp().globalData.gameMode = 'halliGalli';
     this._updateRoomState('selectBG');
     wx.redirectTo({
-      url: '/pages/main-pages/selectBG/index'
+      url: '/pages/main-pages/selectBG/index?mode=halliGalli'
     });
   },
 

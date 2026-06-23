@@ -1,4 +1,5 @@
 {
   "navigationBarTitleText": "合伙人模式",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {}
 }

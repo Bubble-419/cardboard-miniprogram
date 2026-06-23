@@ -16,23 +16,15 @@
   <!-- 步骤条 -->
   <view class="stepper">
     <view class="stepper-line"></view>
-    <view class="step-item {{currentStep === 0 ? 'active' : ''}}" data-step="0" bindtap="onTapStep">
-      <view class="step-circle {{currentStep === 0 ? 'active' : ''}}">1</view>
-      <text class="step-text">场景</text>
-    </view>
-    <view class="step-item {{currentStep === 1 ? 'active' : ''}}" data-step="1" bindtap="onTapStep">
-      <view class="step-circle {{currentStep === 1 ? 'active' : ''}}">2</view>
-      <text class="step-text">用户</text>
-    </view>
-    <!-- 当前版本不需要，之后会恢复
-    <view class="step-item {{currentStep === 2 ? 'active' : ''}}" data-step="2" bindtap="onTapStep">
-      <view class="step-circle {{currentStep === 2 ? 'active' : ''}}">3</view>
-      <text class="step-text">平台</text>
-    </view>
-    -->
-    <view class="step-item {{currentStep === 2 ? 'active' : ''}}" data-step="2" bindtap="onTapStep">
-      <view class="step-circle {{currentStep === 2 ? 'active' : ''}}">3</view>
-      <text class="step-text">功能</text>
+    <view
+      class="step-item {{currentStep === index ? 'active' : ''}}"
+      wx:for="{{steps}}"
+      wx:key="type"
+      data-step="{{index}}"
+      bindtap="onTapStep"
+    >
+      <view class="step-circle {{currentStep === index ? 'active' : ''}}">{{index + 1}}</view>
+      <text class="step-text">{{item.label}}</text>
     </view>
   </view>
 
@@ -46,26 +38,16 @@
       next-margin="54rpx"
       easing-function="easeOutCubic"
     >
-      <swiper-item class="card-item">
+      <swiper-item class="card-item" wx:for="{{steps}}" wx:key="type">
         <view class="card-padding">
-          <bg-card type="scene" value="{{bg.scene}}" active="{{currentStep === 0}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
-        </view>
-      </swiper-item>
-      <swiper-item class="card-item">
-        <view class="card-padding">
-          <bg-card type="user" value="{{bg.user}}" active="{{currentStep === 1}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
-        </view>
-      </swiper-item>
-      <!-- 当前版本不需要，之后会恢复
-      <swiper-item class="card-item">
-        <view class="card-padding">
-          <bg-card type="platform" value="{{bg.platform}}" active="{{currentStep === 2}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
-        </view>
-      </swiper-item>
-      -->
-      <swiper-item class="card-item">
-        <view class="card-padding">
-          <bg-card type="function" value="{{bg.function}}" active="{{currentStep === 2}}" isLast="{{true}}" bind:input="onCardInput" bind:next="onNextCard"></bg-card>
+          <bg-card
+            type="{{item.type}}"
+            value="{{bg[item.type]}}"
+            active="{{currentStep === index}}"
+            isLast="{{index === steps.length - 1}}"
+            bind:input="onCardInput"
+            bind:next="onNextCard"
+          ></bg-card>
         </view>
       </swiper-item>
     </swiper>
