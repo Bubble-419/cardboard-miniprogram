@@ -8,6 +8,7 @@ Page({
     selectedTouchId: null,
     roomId: '',
     members: [],
+    selectedModeId: '',
     isHost: true,
     isWaiting: false // 普通玩家等待房主在主屏抽取首位玩家
   },
@@ -67,6 +68,10 @@ Page({
         if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+        } else if (page === 'confirmfirstplayer') {
+          wx.redirectTo({
+            url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isWaiting=1`
+          });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
@@ -99,11 +104,17 @@ Page({
         data: { roomId }
       });
       const result = (res && res.result) || {};
-      if (result.ok === true && result.members && result.members.length) {
-        this.setData({
-          members: result.members,
-          minPlayers: result.members.length
-        });
+      if (result.ok === true) {
+        const selectedModeId = result.selectedModeId || '';
+        if (selectedModeId === 'partner') {
+          getApp().globalData.gameMode = 'partner';
+        }
+        const update = { selectedModeId };
+        if (result.members && result.members.length) {
+          update.members = result.members;
+          update.minPlayers = result.members.length;
+        }
+        this.setData(update);
       }
     } catch (e) {
       console.warn('loadMembers', e);
@@ -309,10 +320,18 @@ Page({
     }
   },
 
+  _isPartnerMode() {
+    return getApp().globalData.gameMode === 'partner' || this.data.selectedModeId === 'partner';
+  },
+
   confirmSelection() {
     const { selectedPlayerIndex, roomId } = this.data;
     if (selectedPlayerIndex == null) return;
-    this.navigateToGamepage(roomId, selectedPlayerIndex);
+    if (this._isPartnerMode()) {
+      this.navigateToConfirmFirstPlayer(roomId, selectedPlayerIndex);
+    } else {
+      this.navigateToGamepage(roomId, selectedPlayerIndex);
+    }
   },
 
   reselectSelection() {
@@ -330,6 +349,29 @@ Page({
       selectedPosition: null,
       selectionAnimationDone: false,
       isSelecting: false
+    });
+  },
+
+  navigateToConfirmFirstPlayer(roomId, currentPlayerIndex) {
+    if (!roomId) {
+      roomId = getApp().globalData.roomId || '';
+    }
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    const members = this.data.members || [];
+    const current = members.find((m) => m.playerIndex === currentPlayerIndex);
+    const currentPlayerName = current
+      ? (current.nickName || `玩家${currentPlayerIndex}`)
+      : `玩家${currentPlayerIndex}`;
+    getApp().globalData.selectedPlayer = {
+      currentPlayerIndex,
+      currentPlayerName
+    };
+    this._updateRoomState('confirmFirstPlayer', currentPlayerIndex, currentPlayerName);
+    wx.redirectTo({
+      url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
     });
   },
 
@@ -366,7 +408,11 @@ Page({
       selectionAnimationDone: true,
       isSelecting: false
     });
-    this.navigateToGamepage(roomId, currentPlayerIndex);
+    if (this._isPartnerMode()) {
+      this.navigateToConfirmFirstPlayer(roomId, currentPlayerIndex);
+    } else {
+      this.navigateToGamepage(roomId, currentPlayerIndex);
+    }
   },
 
   // 添加玩家

@@ -245,6 +245,11 @@ Page({
         } else if (page === 'selectplayer') {
           console.log('[副屏轮询] 主屏在 selectplayer，跳转 awaitPlayer');
           wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
+        } else if (page === 'confirmfirstplayer') {
+          console.log('[副屏轮询] 主屏在 confirmFirstPlayer，跳转 confirmFirstPlayer');
+          wx.redirectTo({
+            url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isWaiting=1`
+          });
         } else if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           console.log('[副屏轮询] 主屏在 gamepage，跳转 gamepage');
@@ -1031,6 +1036,10 @@ Page({
       selectplayer: {
         path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
         nextPage: 'selectPlayer'
+      },
+      confirmfirstplayer: {
+        path: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}`,
+        nextPage: 'confirmFirstPlayer'
       },
       creativeinput: {
         path: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,

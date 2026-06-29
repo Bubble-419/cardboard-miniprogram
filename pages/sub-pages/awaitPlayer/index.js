@@ -41,6 +41,10 @@ Page({
       if (page === 'gamepage') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
         wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+      } else if (page === 'confirmfirstplayer') {
+        wx.redirectTo({
+          url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isWaiting=1`
+        });
       } else if (page === 'statement') {
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
         const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);

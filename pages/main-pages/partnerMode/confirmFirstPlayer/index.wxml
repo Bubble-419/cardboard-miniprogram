@@ -1,0 +1,93 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        ></image>
+      </view>
+      <view class="navbar-title">确认首位出牌玩家</view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <!-- 成员等待 -->
+  <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
+    <text class="wait-title">确认首位出牌玩家</text>
+    <text class="wait-desc">等待房主确认首位出牌玩家</text>
+  </view>
+
+  <!-- 房主确认 -->
+  <block wx:else>
+    <view class="instruction-section">
+      <text class="instruction-title">选择首位出牌玩家</text>
+      <text class="instruction-subtitle" wx:if="{{selectedPlayerName}}">已选：{{selectedPlayerName}}</text>
+      <text class="instruction-subtitle" wx:else>点击成员头像选择首位出牌玩家</text>
+    </view>
+
+    <view class="content-area">
+      <view class="main-stage">
+        <view class="circle-wrap">
+          <view class="deco-ring deco-ring-1"></view>
+          <view class="deco-ring deco-ring-2"></view>
+          <view class="deco-ring deco-ring-3"></view>
+          <view class="deco-ring deco-ring-inner"></view>
+          <view class="deco-glow"></view>
+          <view class="deco-particle deco-particle-1"></view>
+          <view class="deco-particle deco-particle-2"></view>
+          <view class="deco-particle deco-particle-3"></view>
+          <view class="deco-particle deco-particle-4"></view>
+          <view class="deco-particle deco-particle-5"></view>
+          <view class="deco-particle deco-particle-6"></view>
+
+          <view class="center-area">
+            <view class="center-card">
+              <text class="center-label">首位出牌</text>
+              <text class="center-name" wx:if="{{selectedPlayerName}}">{{selectedPlayerName}}</text>
+              <text class="center-hint" wx:else>请点击头像</text>
+            </view>
+          </view>
+
+          <block wx:for="{{memberSlots}}" wx:key="index">
+            <view
+              class="avatar-slot {{item.member && item.member.playerIndex === selectedPlayerIndex ? 'avatar-slot-selected' : ''}} {{item.member && item.member.isMe ? 'avatar-slot-me' : ''}}"
+              style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
+              data-index="{{item.index}}"
+              bindtap="onSlotTap"
+            >
+              <image
+                wx:if="{{item.member && item.member.avatarImage}}"
+                class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
+                src="{{item.member.avatarImage}}"
+                mode="aspectFill"
+              />
+              <view
+                wx:if="{{!item.member}}"
+                class="avatar-placeholder avatar-placeholder-animate"
+              ></view>
+
+              <view wx:if="{{item.member}}" class="avatar-name-wrap">
+                <text class="avatar-name">{{item.member.nickName}}</text>
+                <text class="avatar-name avatar-me-label" wx:if="{{item.member.isMe}}">（我）</text>
+              </view>
+              <text wx:else class="avatar-name placeholder-name">空位</text>
+            </view>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <view class="footer">
+      <button
+        class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
+        disabled="{{!canConfirm}}"
+        bindtap="handleConfirm"
+      >
+        开始脑暴
+      </button>
+    </view>
+  </block>
+</view>
