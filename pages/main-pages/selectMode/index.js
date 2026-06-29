@@ -16,6 +16,7 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 
 Page({
   data: {
@@ -50,7 +51,8 @@ Page({
     ],
     selectedModeId: 1,
     goalSliderValue: 0,
-    goalLabels: ['数量优先', '质量优先']
+    goalLabels: ['数量优先', '质量优先'],
+    isHost: false
   },
 
   onLoad(options) {
@@ -67,13 +69,16 @@ Page({
 
     this._syncCategoriesFromBG(normalizeBG(app.globalData.selectedBG));
     this.loadRoomData();
-    this._updateRoomState('selectMode');
   },
 
   onShow() {
     if (this.data.roomId) {
       this.loadRoomData();
     }
+  },
+
+  onUnload() {
+    this._stopStatePolling();
   },
 
   _syncCategoriesFromBG(bg) {
@@ -112,13 +117,51 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
+      const isHost = result.isHost === true;
+
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
-        currentUser: me ? me.id : null
+        currentUser: me ? me.id : null,
+        isHost
       });
+
+      if (isHost) {
+        this._updateRoomState('selectMode');
+        this._stopStatePolling();
+      } else {
+        this._startStatePolling();
+      }
     } catch (e) {
       console.warn('selectMode loadRoomData', e);
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        navigateByRoomState(result.roomState.currentPage, result.roomState, roomId);
+      } catch (e) {
+        console.warn('selectMode state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 

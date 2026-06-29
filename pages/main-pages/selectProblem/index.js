@@ -5,6 +5,7 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -138,11 +139,7 @@ Page({
         });
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'selectmode') {
-          wx.redirectTo({ url: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}` });
-        }
+        navigateByRoomState(result.roomState.currentPage, result.roomState, roomId);
       } catch (e) {
         console.warn('selectProblem state poll', e);
       }

@@ -2,6 +2,7 @@ const {
   getSubmitStatus,
   submitProblem: saveProblem
 } = require('../../../utils/roomDesignProblems');
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -152,6 +153,8 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         if (page === 'selectproblem') {
           this._goSelectProblem();
+        } else {
+          navigateByRoomState(page, result.roomState, roomId);
         }
       } catch (e) {
         console.warn('submitProblem poll', e);

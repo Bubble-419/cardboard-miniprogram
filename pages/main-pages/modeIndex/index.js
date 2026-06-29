@@ -4,6 +4,7 @@
  * 入口参数：roomId, modeId (halliGalli | partner | spy)
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
@@ -123,29 +124,7 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'submitproblem') {
-          wx.redirectTo({ url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectproblem') {
-          wx.redirectTo({ url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}` });
-        } else if (page === 'auth' || page === 'selectbg' || page === 'confirmbg') {
-          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectmode') {
-          wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectplayer') {
-          wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
-        } else if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
-        } else if (page === 'statement') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
-          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
-        } else if (page === 'creativeinput') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-        } else if (page === 'creativesummary') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
-        }
+        navigateByRoomState(page, result.roomState, roomId);
       } catch (e) {
         console.warn('modeIndex state poll', e);
       }

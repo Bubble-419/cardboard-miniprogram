@@ -4,6 +4,7 @@ const {
   dedupeMembersById,
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
+const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 
 Page({
   data: {
@@ -168,16 +169,14 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const roomIdEnc = encodeURIComponent(roomId);
           wx.redirectTo({
             url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
           });
-        } else if (page === 'selectplayer') {
-          wx.redirectTo({
-            url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}`
-          });
+        } else {
+          navigateByRoomState(page, result.roomState, roomId);
         }
       } catch (e) {
         console.warn('confirmFirstPlayer state poll', e);

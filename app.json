@@ -3,6 +3,7 @@
     "pages/main-pages/aaa/index",
     "pages/auth/index",
     "pages/main-pages/addPlayer/index",
+    "pages/sub-pages/subAwait/index",
     "pages/main-pages/brainstormMode/index",
     "pages/main-pages/modeIndex/index",
     "pages/main-pages/partnerMode/confirmBG/index",
@@ -20,9 +21,6 @@
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectMode/index",
     "pages/main-pages/selectPlayer/index",
-    "pages/sub-pages/awaitBG/index",
-    "pages/sub-pages/awaitMode/index",
-    "pages/sub-pages/awaitPlayer/index",
     "pages/inspiration/index",
     "pages/leaderboard/index"
   ],

@@ -126,10 +126,10 @@ Page({
           if (res.data && res.data.length > 0) {
             const currentState = res.data[0].currentPage;
             
-            // 如果状态变为 selectMode，跳转到 awaitMode 页面
+            // 如果状态变为 selectMode，跳转到 subAwait 页面
             if (currentState === 'selectMode') {
               wx.redirectTo({
-                url: '/pages/sub-pages/awaitMode/index'
+                url: '/pages/sub-pages/subAwait/index'
               });
             }
           }

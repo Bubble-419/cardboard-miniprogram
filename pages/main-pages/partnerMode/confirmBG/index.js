@@ -1,5 +1,6 @@
 const { saveHistoryScenario } = require('../../../../utils/partnerScenarios');
 const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
+const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -125,8 +126,8 @@ Page({
           wx.redirectTo({
             url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
           });
-        } else if (page === 'selectbg' || page === 'confirmbg' || page === 'auth') {
-          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
+        } else {
+          navigateByRoomState(page, result.roomState, roomId);
         }
       } catch (e) {
         console.warn('confirmBG state poll', e);

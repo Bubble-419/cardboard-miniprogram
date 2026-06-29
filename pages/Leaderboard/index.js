@@ -1,3 +1,5 @@
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+
 Page({
   data: {
     roomId: '',
@@ -41,11 +43,7 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'auth' || page === 'selectbg' || page === 'selectproblem') {
-          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${encodeURIComponent(roomId)}` });
-        } else if (page === 'creativeinput') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}` });
-        }
+        navigateByRoomState(page, result.roomState, roomId);
       } catch (e) {
         console.warn('leaderboard state poll', e);
       }

@@ -1,3 +1,5 @@
+const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
 const AVATAR_SIZE = 80;   // 头像直径 rpx
@@ -228,51 +230,8 @@ Page({
           return;
         }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-
-        if (page === 'submitproblem') {
-          console.log('[副屏轮询] 主屏在 submitproblem，跳转 submitProblem');
-          wx.redirectTo({ url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectproblem') {
-          console.log('[副屏轮询] 主屏在 selectproblem，跳转 selectProblem');
-          wx.redirectTo({ url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}` });
-        } else if (page === 'auth' || page === 'selectbg' || page === 'confirmbg') {
-          console.log('[副屏轮询] 主屏在 auth/selectbg/confirmbg，跳转 awaitBG');
-          wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectmode') {
-          console.log('[副屏轮询] 主屏在 selectmode，跳转 awaitMode');
-          wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
-        } else if (page === 'selectplayer') {
-          console.log('[副屏轮询] 主屏在 selectplayer，跳转 awaitPlayer');
-          wx.redirectTo({ url: `/pages/sub-pages/awaitPlayer/index?roomId=${roomIdEnc}` });
-        } else if (page === 'confirmfirstplayer') {
-          console.log('[副屏轮询] 主屏在 confirmFirstPlayer，跳转 confirmFirstPlayer');
-          wx.redirectTo({
-            url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isWaiting=1`
-          });
-        } else if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          console.log('[副屏轮询] 主屏在 gamepage，跳转 gamepage');
-          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
-        } else if (page === 'statement') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
-          console.log('[副屏轮询] 主屏在 statement，跳转 statement');
-          wx.redirectTo({ url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1` });
-        } else if (page === 'discussion') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
-          console.log('[副屏轮询] 主屏在 discussion，跳转 discussion');
-          wx.redirectTo({ url: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}` });
-        } else if (page === 'leaderboard') {
-          console.log('[副屏轮询] 主屏在 leaderboard，跳转 leaderboard');
-          wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
-        } else if (page === 'creativeinput') {
-          console.log('[副屏轮询] 主屏在 creativeInput，跳转 creativeInput');
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-        } else if (page === 'creativesummary') {
-          console.log('[副屏轮询] 主屏在 creativeSummary，跳转 creativeSummary');
-          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
+        if (navigateByRoomState(page, result.roomState, roomId)) {
+          console.log('[副屏轮询] 已跟随主屏跳转', { page });
         } else {
           console.log('[副屏轮询] 主屏在 addPlayer，保持当前页', { page });
         }
