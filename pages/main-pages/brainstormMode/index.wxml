@@ -1,5 +1,4 @@
 <view class="container">
-  <!-- 自定义导航栏 -->
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
@@ -18,7 +17,6 @@
   <!-- 队伍信息：成员列表 -->
   <view class="team-section">
     <view class="team-info">
-      <text class="section-label">{{workshopName}}</text>
       <user-list
         avatarList="{{avatarList}}"
         currentUser="{{currentUser}}"
@@ -29,57 +27,42 @@
     </view>
   </view>
 
-  <!-- 成员等待提示 -->
   <view class="wait-tip" wx:if="{{!isHost}}">
-    <text>等待房主完成</text>
+    <text class="wait-tip-text">等待房主选择脑暴模式</text>
   </view>
 
-  <!-- 脑暴模式可选列表（横向滑动卡片） -->
-  <view class="mode-section">
-    <view class="mode-hint" wx:if="{{isHost}}">左右滑动浏览，点击卡片进入对应模式</view>
-    <view class="mode-hint" wx:else>房主选择模式后，将自动进入游戏</view>
+  <scroll-view class="mode-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="mode-section">
+      <view class="section-header">
+        <text class="section-title">脑暴模式</text>
+        <text class="section-subtitle" wx:if="{{isHost}}">点击选择一种模式</text>
+        <text class="section-subtitle" wx:else>房主确认后将进入游戏</text>
+      </view>
 
-    <view class="cards-wrap">
-      <swiper
-        class="mode-swiper"
-        current="{{currentCardIndex}}"
-        bindchange="onSwiperChange"
-        previous-margin="54rpx"
-        next-margin="54rpx"
-        easing-function="easeOutCubic"
-      >
-        <swiper-item
-          class="mode-swiper-item"
+      <view class="mode-list">
+        <view
+          class="mode-item {{selectedModeId === item.id ? 'selected' : ''}} {{isHost ? '' : 'readonly'}}"
           wx:for="{{brainstormModes}}"
           wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="onSelectMode"
         >
-          <view class="card-padding">
-            <view
-              class="mode-card {{isHost ? 'mode-card-selectable' : 'mode-card-readonly'}}"
-              data-id="{{item.id}}"
-              bindtap="onSelectMode"
-            >
-              <view class="mode-card-icon-wrap">
-                <image class="mode-card-icon" src="{{item.icon}}" mode="aspectFit"></image>
-              </view>
-              <text class="mode-card-title">{{item.title}}</text>
-              <text class="mode-card-desc">{{item.description}}</text>
-              <view class="mode-card-action" wx:if="{{isHost}}">
-                <text>选择此模式</text>
-              </view>
+          <view class="mode-radio" wx:if="{{isHost}}">
+            <view class="radio-outer {{selectedModeId === item.id ? 'selected' : ''}}">
+              <view class="radio-inner" wx:if="{{selectedModeId === item.id}}"></view>
             </view>
           </view>
-        </swiper-item>
-      </swiper>
-    </view>
 
-    <!-- 卡片指示器 -->
-    <view class="swiper-dots">
-      <view
-        class="dot {{currentCardIndex === index ? 'active' : ''}}"
-        wx:for="{{brainstormModes}}"
-        wx:key="id"
-      ></view>
+          <view class="mode-icon-wrap">
+            <image class="mode-icon" src="{{item.icon}}" mode="aspectFit"></image>
+          </view>
+
+          <view class="mode-info">
+            <text class="mode-title">{{item.title}}</text>
+            <text class="mode-desc">{{item.description}}</text>
+          </view>
+        </view>
+      </view>
     </view>
-  </view>
+  </scroll-view>
 </view>

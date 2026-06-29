@@ -43,7 +43,7 @@ Page({
     avatarList: [],
     currentUser: null,
     brainstormModes: BRAINSTORM_MODES,
-    currentCardIndex: 0,
+    selectedModeId: null,
     isSelecting: false
   },
 
@@ -160,13 +160,6 @@ Page({
     }
   },
 
-  onSwiperChange(e) {
-    const current = e.detail && e.detail.current;
-    if (current != null) {
-      this.setData({ currentCardIndex: current });
-    }
-  },
-
   /** 房主点击模式卡片：保存选择并跳转至对应模式游戏页 */
   async onSelectMode(e) {
     if (!this.data.isHost) {
@@ -179,7 +172,7 @@ Page({
     const mode = this.data.brainstormModes.find((item) => item.id === modeId);
     if (!mode) return;
 
-    this.setData({ isSelecting: true });
+    this.setData({ isSelecting: true, selectedModeId: modeId });
     wx.showLoading({ title: '进入模式…' });
 
     try {
@@ -197,7 +190,7 @@ Page({
 
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '选择失败', icon: 'none' });
-        this.setData({ isSelecting: false });
+        this.setData({ isSelecting: false, selectedModeId: null });
         return;
       }
 
@@ -210,13 +203,13 @@ Page({
       wx.navigateTo({
         url: `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`,
         complete: () => {
-          this.setData({ isSelecting: false });
+          this.setData({ isSelecting: false, selectedModeId: null });
         }
       });
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });
-      this.setData({ isSelecting: false });
+      this.setData({ isSelecting: false, selectedModeId: null });
     }
   },
 
