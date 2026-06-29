@@ -240,7 +240,7 @@ Page({
         } else if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           console.log('[副屏轮询] 主屏在 gamepage，跳转 gamepage');
-          wx.redirectTo({ url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
@@ -1007,7 +1007,7 @@ Page({
       }
     }
     wx.navigateTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=1`
+      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=1`
     });
   },
 

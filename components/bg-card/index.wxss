@@ -93,12 +93,6 @@
   letter-spacing: 2rpx;
 }
 
-.next-btn-disabled {
-  background-color: #c0c0c0 !important;
-  opacity: 0.7;
-  pointer-events: none;
-}
-
 .desc {
   font-size: 24rpx;
   color: #979797;

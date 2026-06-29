@@ -126,7 +126,7 @@ Page({
 
         if (page === 'gamepage') {
           wx.redirectTo({
-            url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
+            url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
           });
         } else if (page === 'statement') {
           wx.redirectTo({
@@ -199,7 +199,7 @@ Page({
     }
 
     wx.redirectTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
+      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
     });
   },
 

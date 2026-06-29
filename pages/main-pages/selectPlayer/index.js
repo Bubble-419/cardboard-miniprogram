@@ -66,7 +66,7 @@ Page({
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'gamepage') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
+          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
         } else if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const name = encodeURIComponent(result.roomState.currentPlayerName || `玩家${idx}`);
@@ -346,7 +346,7 @@ Page({
     const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
     this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
     wx.redirectTo({
-      url: `/pages/main-pages/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
+      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
     });
   },
 

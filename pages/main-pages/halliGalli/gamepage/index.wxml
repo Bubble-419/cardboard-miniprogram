@@ -15,7 +15,7 @@
     </view>
   </view>
 
-  <!-- 2.1 顶部玩家列表：仅展示，不参与流程控制、不高亮当前玩家 -->
+  <!-- 顶部玩家列表 -->
   <view class="section top-section" style="padding-top: {{contentOffsetTop}}px">
     <user-list
       avatarList="{{avatarList}}"
@@ -45,7 +45,7 @@
     </view>
   </view>
 
-  <!-- 2.2 中部出牌展示区：灰底 + 图片 -->
+  <!-- 中部出牌展示区 -->
   <view class="section card-section">
     <view class="card-container">
       <image
@@ -57,41 +57,8 @@
     </view>
   </view>
 
-  <!-- 2.3 底部评分与操作区：与中部卡片同宽的白底圆角卡片 -->
-  <view class="section bottom-section">
-    <!-- 打分功能临时下线：保留原结构，后续可恢复
-    <view class="score-card">
-      <view class="score-info-bar">
-        <text class="score-info-title">{{currentPlayerName}} 此次行动评分</text>
-        <text class="score-info-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
-      </view>
-      <view class="score-row">
-        <block wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this">
-          <view
-            class="score-btn {{myScore === item ? 'score-btn-active' : ''}} {{isMyScoringTurn ? 'score-btn-disabled' : ''}}"
-            data-score="{{item}}"
-            bindtap="onScoreTap"
-          >
-            <view class="score-btn-inner">
-              <text class="score-num">{{item}}</text>
-              <text class="score-unit">分</text>
-            </view>
-          </view>
-        </block>
-      </view>
-    </view>
-    -->
-
-    <view class="action-row" wx:if="{{isHost}}">
-      <view class="end-game-btn" bindtap="handleEndGame">
-        <text class="end-game-line">结束</text>
-        <text class="end-game-line">游戏</text>
-      </view>
-      <button
-        class="action-btn {{canStartVote ? '' : 'action-btn-disabled'}}"
-        disabled="{{!canStartVote}}"
-        bindtap="handleStartVote"
-      >开始表态</button>
-    </view>
+  <!-- 底部操作区：房主结束游戏 -->
+  <view class="section bottom-section" wx:if="{{isHost}}">
+    <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
   </view>
 </view>

@@ -50,7 +50,7 @@ Component({
       type: Boolean,
       value: false
     },
-    // 是否为最后一张卡牌（最后一张时「下一张」按钮置灰禁止）
+    // 是否为最后一张卡牌（最后一张时隐藏「下一张」按钮）
     isLast: {
       type: Boolean,
       value: false
@@ -84,7 +84,6 @@ Component({
     },
 
     onNext() {
-      if (this.properties.isLast) return;
       this.triggerEvent('next', { type: this.data.type });
     }
   }
