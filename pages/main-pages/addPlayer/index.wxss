@@ -96,6 +96,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: anim-slide-down 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .instruction-lines {
@@ -117,34 +118,6 @@
   color: #6b7280;
   line-height: 1.5;
   text-align: center;
-}
-
-.room-id-wrap {
-  margin-top: 16rpx;
-  padding: 12rpx 24rpx;
-  background-color: #f3f4f6;
-  border-radius: 12rpx;
-  flex-direction: row;
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.room-id-label {
-  font-size: 26rpx;
-  color: #6b7280;
-}
-
-.room-id-value {
-  font-size: 40rpx;
-  color: #111827;
-  font-weight: 700;
-  letter-spacing: 4rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 8rpx;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 2rpx rgba(17, 24, 39, 0.04);
-  word-break: break-all;
 }
 
 .member-count-wrap {
@@ -202,6 +175,8 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  animation: anim-fade-scale 0.55s ease-out both;
+  animation-delay: 0.05s;
 }
 
 .content-area-dragging {
@@ -379,6 +354,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  position: relative;
   box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.06), inset 0 0 0 1rpx rgba(255, 255, 255, 0.8);
 }
 
@@ -651,6 +627,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: anim-slide-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: 0.1s;
 }
 
 .footer {
@@ -687,6 +665,7 @@
   border: none;
   letter-spacing: 2rpx;
   box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.3);
+  animation: btn-glow-pulse 2.8s ease-in-out infinite;
 }
 
 .secondary-btn {
@@ -721,4 +700,151 @@
 
 .secondary-btn:active {
   opacity: 0.85;
+}
+
+/* =============================================
+   入场动效
+   ============================================= */
+@keyframes anim-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-28rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes anim-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(28rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes anim-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* =============================================
+   轨道光点：沿内环公转
+   ============================================= */
+.orbit-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  animation: orbit-spin 9s linear infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.orbit-dot {
+  position: absolute;
+  width: 14rpx;
+  height: 14rpx;
+  background: #5ec159;
+  border-radius: 50%;
+  /* 内环半径 140rpx，光点半尺寸 7rpx */
+  left: 133rpx;
+  top: -7rpx;
+  box-shadow:
+    0 0 12rpx 4rpx rgba(94, 193, 89, 0.7),
+    0 0 24rpx 8rpx rgba(94, 193, 89, 0.3);
+  animation: orbit-dot-glow 9s linear infinite;
+}
+
+/* 光点拖尾：用第二个光点模拟，延迟半圈 */
+.orbit-wrap::after {
+  content: '';
+  position: absolute;
+  width: 8rpx;
+  height: 8rpx;
+  background: rgba(94, 193, 89, 0.45);
+  border-radius: 50%;
+  left: 136rpx;
+  top: -4rpx;
+  box-shadow: 0 0 8rpx rgba(94, 193, 89, 0.4);
+}
+
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes orbit-dot-glow {
+  0%, 100% { opacity: 0.75; }
+  50%       { opacity: 1; }
+}
+
+/* =============================================
+   二维码扫描线
+   ============================================= */
+.scan-line {
+  position: absolute;
+  left: 10rpx;
+  right: 10rpx;
+  height: 4rpx;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(94, 193, 89, 0.4) 20%,
+    rgba(94, 193, 89, 1) 50%,
+    rgba(94, 193, 89, 0.4) 80%,
+    transparent 100%
+  );
+  border-radius: 2rpx;
+  pointer-events: none;
+  z-index: 5;
+  animation: scan-sweep 2.8s ease-in-out infinite;
+}
+
+@keyframes scan-sweep {
+  0%   { top: 14rpx;  opacity: 0; }
+  6%   { opacity: 1; }
+  94%  { opacity: 1; }
+  100% { top: 196rpx; opacity: 0; }
+}
+
+/* =============================================
+   主按钮呼吸光晕
+   ============================================= */
+@keyframes btn-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 8rpx 36rpx rgba(94, 193, 89, 0.55),
+      0 0 0 6rpx rgba(94, 193, 89, 0.1);
+  }
+}
+
+/* =============================================
+   人数数字跳动（新成员加入时触发）
+   ============================================= */
+@keyframes count-bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.65); }
+  60%  { transform: scale(0.88); }
+  80%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+.count-bounce {
+  animation: count-bounce 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  display: inline-block;
 }

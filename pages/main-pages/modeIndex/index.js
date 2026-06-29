@@ -20,11 +20,20 @@ Page({
     isHost: true,
     isWaiting: false,
     scenarios: [],
+    offlineScenario: null,
+    customScenarios: [],
     selectedScenarioId: null,
-    actionMode: 'add'
+    actionMode: 'add',
+    navbarPaddingTop: 0
   },
 
   onLoad(options) {
+    try {
+      const sysInfo = wx.getSystemInfoSync();
+      this.setData({ navbarPaddingTop: sysInfo.statusBarHeight || 44 });
+    } catch (e) {
+      this.setData({ navbarPaddingTop: 44 });
+    }
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const modeId = (options && options.modeId) || 'partner';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
@@ -61,7 +70,10 @@ Page({
   },
 
   _loadScenarios() {
-    this.setData({ scenarios: getScenariosForMode(this.data.modeId) });
+    const scenarios = getScenariosForMode(this.data.modeId);
+    const offlineScenario = scenarios.find((s) => s.isOffline || s.id === 'offline') || null;
+    const customScenarios = scenarios.filter((s) => !s.isOffline && s.id !== 'offline');
+    this.setData({ scenarios, offlineScenario, customScenarios });
   },
 
   async _fetchHostStatus() {
@@ -149,6 +161,21 @@ Page({
       selectedScenarioId: nextId,
       actionMode: nextId ? 'select' : 'add'
     });
+  },
+
+  /** 新设计：点击卡片箭头直接选中并确认 */
+  onCardArrow(e) {
+    if (!this.data.isHost) return;
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this.setData({ selectedScenarioId: id, actionMode: 'select' });
+    this._confirmSelectedScenario();
+  },
+
+  /** 新增情境入口 */
+  handleAddScenario() {
+    if (!this.data.isHost) return;
+    this._goAddScenario();
   },
 
   handleFooterAction() {

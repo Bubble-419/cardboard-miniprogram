@@ -1,3 +1,4 @@
+/* ===== 容器 ===== */
 .container {
   min-height: 100vh;
   background-color: #f8fbfa;
@@ -5,9 +6,9 @@
   flex-direction: column;
 }
 
+/* ===== 导航栏 ===== */
 .custom-navbar {
-  background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
+  background-color: transparent;
   flex-shrink: 0;
 }
 
@@ -20,42 +21,35 @@
 }
 
 .navbar-left {
-  width: 174rpx;
+  width: 80rpx;
   display: flex;
   align-items: center;
 }
 
 .back-icon {
-  width: 32rpx;
-  height: 32rpx;
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #000000;
-  text-align: center;
-  flex: 1;
-}
+.navbar-title { flex: 1; }
 
-.navbar-right {
-  width: 174rpx;
-}
+.navbar-right { width: 80rpx; }
 
+/* ===== 等待视图 ===== */
 .wait-wrap {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 24rpx;
   padding: 40rpx;
 }
 
 .wait-title {
   font-size: 44rpx;
-  font-weight: bold;
+  font-weight: 700;
   color: #5ec159;
-  margin-bottom: 16rpx;
 }
 
 .wait-desc {
@@ -63,95 +57,154 @@
   color: #9ca3af;
 }
 
+/* ===== 滚动区 ===== */
 .cards-scroll {
   flex: 1;
   height: 0;
-  padding: 24rpx 42rpx 0;
   box-sizing: border-box;
 }
 
-.cards-stack {
+/* ===== 卡片叠放区 ===== */
+.cards-deck {
+  /*
+    透视容器：让子卡片的 scale 变换有参考点
+    padding-bottom 为底部按钮留出空间
+  */
+  padding: 24rpx 44rpx 280rpx;
   display: flex;
   flex-direction: column;
-  gap: 28rpx;
-  padding-bottom: 32rpx;
 }
 
-.confirm-card {
-  width: 100%;
-}
-
-.confirm-card-inner {
+/*
+  每个 slot 的 height = 步进高度
+  = 让后一张卡从底部露出（叠压效果）
+  步进 = 卡片高 × 0.56 ≈ 258rpx
+  最后一张 slot 高度 = 完整卡片高度
+*/
+.deck-slot {
   position: relative;
-  min-height: 200rpx;
-  background-color: #ffffff;
-  border: 8rpx solid #5ec159;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48rpx 32rpx 36rpx;
-  box-sizing: border-box;
-  box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.12);
+  height: 258rpx;    /* 步进高度：卡片叠压 ~42% */
+  flex-shrink: 0;
 }
 
-.type-badge {
+.deck-slot:last-child {
+  height: 462rpx;    /* 最后一张完整显示 */
+}
+
+/* ===== 单张卡片 ===== */
+.deck-card {
   position: absolute;
-  right: 24rpx;
-  top: -4rpx;
-  padding: 10rpx 20rpx;
-  background-color: #5ec159;
-  border-radius: 16rpx;
+  left: 0;
+  right: 0;
+  top: 0;
+  /* 高度 = 宽度 × (211/305.61) ≈ 69%
+     宽度 ≈ 750 - 88(padding) = 662rpx
+     高度 ≈ 662 × 0.69 = 457rpx → 取 462rpx */
+  height: 462rpx;
+  border-radius: 25rpx;
+  overflow: hidden;
+  /* transform-origin: top center 让 scale 从顶部展开，
+     产生透视感：背面卡更小且位于同一顶部基准线 */
+  transform-origin: top center;
+  /* transition 让页面初次渲染时有轻微进场感 */
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* 白色底层 */
+.deck-bg {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  border-radius: 25rpx;
+}
+
+/* Union 绿色边框 SVG */
+.deck-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
 }
 
-.type-badge-text {
-  font-size: 26rpx;
+/*
+  右上角类型标签
+  Figma: x=258.13/305.61=84.5% from left → ~11% from right
+         y=4.28/211=2%
+*/
+.deck-label {
+  position: absolute;
+  top: 10rpx;
+  right: 36rpx;
+  font-size: 28rpx;
+  font-weight: 400;
   color: #ffffff;
-  font-weight: 500;
-  line-height: 1.2;
+  z-index: 3;
+  letter-spacing: 2rpx;
 }
 
-.card-value {
-  font-size: 44rpx;
+/* IxDL 水印：完全居中，不遮挡点击 */
+.deck-watermark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 370rpx;
+  height: 128rpx;
+  z-index: 2;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+/*
+  已填写的值文字
+  Figma: 垂直中心 = 92.47 + 27/2 = 105.97 / 211 ≈ 50.2% → 完全居中
+  颜色 #5EC159，SemiBold，27px → 54rpx
+*/
+.deck-value {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 54rpx;
   font-weight: 600;
   color: #5ec159;
   text-align: center;
-  line-height: 1.35;
+  line-height: 1.25;
+  z-index: 3;
   word-break: break-all;
-  padding: 0 16rpx;
 }
 
+/* ===== 底部确认按钮 ===== */
 .footer {
-  flex-shrink: 0;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   padding: 24rpx 54rpx;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: transparent;
+  background: linear-gradient(to top, rgba(248, 251, 250, 1) 60%, transparent);
 }
 
 .confirm-btn {
   width: 100%;
   height: 96rpx;
-  background-color: #c0c0c0;
-  color: #ffffff;
+  background-color: #d0e8d0;
+  color: #9ec89e;
   border-radius: 24rpx;
-  font-size: 44rpx;
-  font-weight: 400;
+  font-size: 32rpx;
+  font-weight: 500;
   border: none;
   letter-spacing: 4rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.confirm-btn::after {
-  border: none;
-}
+.confirm-btn::after { border: none; }
 
 .confirm-btn.enabled {
-  background-color: #5ec159;
+  background: linear-gradient(135deg, #5ec159, #4db84a);
+  color: #ffffff;
+  box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.35);
 }
 
-.confirm-btn.enabled:active {
-  opacity: 0.9;
-}
+.confirm-btn.enabled:active { opacity: 0.9; }

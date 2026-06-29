@@ -1,5 +1,6 @@
 <view class="container">
-  <view class="custom-navbar">
+  <!-- 自定义导航栏 -->
+  <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
         <image
@@ -9,40 +10,62 @@
           bindtap="handleGoBack"
         ></image>
       </view>
-      <view class="navbar-title">确认情境</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right"></view>
     </view>
   </view>
 
-  <!-- 成员等待 -->
+  <!-- 成员等待视图 -->
   <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
     <text class="wait-title">确认情境</text>
-    <text class="wait-desc">等待房主确认情境</text>
+    <text class="wait-desc">等待房主确认情境…</text>
   </view>
 
-  <!-- 房主确认 -->
+  <!-- 房主确认视图 -->
   <block wx:else>
     <scroll-view class="cards-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-      <view class="cards-stack">
-        <view class="confirm-card" wx:for="{{cards}}" wx:key="type">
-          <view class="confirm-card-inner">
-            <view class="type-badge">
-              <text class="type-badge-text">{{item.label}}</text>
-            </view>
-            <text class="card-value">{{item.value}}</text>
+      <view class="cards-deck">
+        <!--
+          cards 数组按 [场景,用户,平台,功能] 排列
+          index 0 = 最底层(背面)，index 3 = 最顶层(正面)
+          透视感：scale 0.94→1.0，opacity 0.65→1.0，shadow 递增
+        -->
+        <view
+          class="deck-slot"
+          wx:for="{{cards}}"
+          wx:key="type"
+          style="z-index: {{index + 1}};"
+        >
+          <view
+            class="deck-card"
+            style="
+              transform: scale({{0.94 + index * 0.02}});
+              opacity: {{0.65 + index * 0.12}};
+              box-shadow: 0 {{4 + index * 4}}rpx {{12 + index * 8}}rpx rgba(94,193,89,{{0.06 + index * 0.04}});
+            "
+          >
+            <!-- 白色底层 -->
+            <view class="deck-bg"></view>
+            <!-- Union 绿色边框 SVG -->
+            <image class="deck-frame" src="/assets/bgCard/union-green.svg" mode="scaleToFill" />
+            <!-- 右上角 tab 标签 -->
+            <text class="deck-label">{{item.label}}</text>
+            <!-- IxDL 水印 -->
+            <image class="deck-watermark" src="/assets/bgCard/icon-center.svg" mode="aspectFit" />
+            <!-- 已填写的值 —— 垂直+水平居中 -->
+            <text class="deck-value">{{item.value}}</text>
           </view>
         </view>
       </view>
     </scroll-view>
 
+    <!-- 确认按钮 -->
     <view class="footer">
       <button
         class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
         disabled="{{!canConfirm}}"
         bindtap="handleConfirm"
-      >
-        确认情境
-      </button>
+      >确认情境</button>
     </view>
   </block>
 </view>

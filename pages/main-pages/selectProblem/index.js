@@ -275,11 +275,11 @@ Page({
     getApp().globalData.selectedProblem = problem;
 
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    await this._updateRoomState('selectMode');
+    await this._updateRoomState('selectPlayer');
 
     const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
     wx.navigateTo({
-      url: `/pages/main-pages/selectMode/index${query}`
+      url: `/pages/main-pages/selectPlayer/index${query}`
     });
   },
 

@@ -1,103 +1,164 @@
-<view class="container">
-  <view class="content">
-    <view class="title-section">
-      <text class="main-title">脑暴工作坊</text>
-      <text class="sub-title">{{isJoinedRoom ? '您已加入房间，可随时进入' : '创建或加入房间，开始头脑风暴'}}</text>
+<view class="page">
+  <!-- 顶部用户信息 -->
+  <view class="main-header" style="padding-top: {{headerPaddingTop}}px">
+    <view class="user-info">
+      <view class="avatar-wrap">
+        <image class="user-avatar" src="{{userAvatarUrl}}" mode="aspectFill" />
+        <view class="online-dot" />
+      </view>
+      <text class="user-name">{{userNickName}}</text>
     </view>
-
-    <!-- 个人角色状态 -->
-    <view class="role-status">
-      <text class="role-status-label">当前状态</text>
-      <text class="role-status-text">{{roleLabel}}</text>
-    </view>
-
-    <!-- 状态 01：未加入房间 -->
-    <block wx:if="{{!isJoinedRoom}}">
-      <view class="scan-entry" bindtap="handleScanJoin">
-        <view class="scan-icon-wrap">
-          <text class="scan-icon">📲</text>
-        </view>
-        <text class="scan-label">扫码加入房间</text>
-      </view>
-
-      <view class="link-section">
-        <view
-          class="primary-btn {{loading ? 'primary-btn-disabled' : ''}}"
-          bindtap="handleOpenJoinModal"
-        >
-          {{loading ? '处理中…' : '创建/加入房间'}}
-        </view>
-      </view>
-    </block>
-
-    <!-- 状态 02：已加入房间 -->
-    <block wx:else>
-      <view class="room-card">
-        <text class="room-card-title">房间信息</text>
-        <view class="room-info-row">
-          <text class="room-info-label">房间名称</text>
-          <text class="room-info-value">{{roomName}}</text>
-        </view>
-        <view class="room-info-row">
-          <text class="room-info-label">简介</text>
-          <text class="room-info-value room-info-desc">{{roomDesc}}</text>
-        </view>
-        <view class="room-info-row">
-          <text class="room-info-label">{{timeLabel}}</text>
-          <text class="room-info-value">{{roomTimeText}}</text>
-        </view>
-      </view>
-
-      <view class="link-section">
-        <view class="primary-btn" bindtap="handleViewRoom">查看房间</view>
-      </view>
-    </block>
   </view>
-</view>
 
-<!-- 创建/加入房间弹窗 -->
-<view class="modal-mask" wx:if="{{showJoinModal}}" bindtap="handleCloseJoinModal">
-  <view class="modal-panel" catchtap="noop">
-    <view class="modal-header">
-      <text class="modal-title">创建/加入房间</text>
-      <text class="modal-close" bindtap="handleCloseJoinModal">×</text>
+  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+    <!-- Hero 标题区 -->
+    <view class="hero-section">
+      <view class="hero-text">
+        <view class="hero-title">
+          <text class="hero-title-bold">脑暴</text>
+          <text class="hero-title-bold">工作坊</text>
+        </view>
+        <text class="hero-subtitle">创建或加入房间，快速开启共创</text>
+      </view>
+      <image class="hero-illustration" src="/assets/home/hero-illustration.svg" mode="aspectFit" />
     </view>
 
-    <view class="modal-body">
-      <view
-        class="modal-action-card modal-action-primary"
-        bindtap="handleCreateRoom"
-      >
-        <view class="modal-card-icon">✨</view>
-        <text class="modal-card-title">创建房间</text>
-        <text class="modal-card-desc">新建脑暴房间，邀请成员扫码加入</text>
-      </view>
-
-      <view class="modal-action-card">
-        <view class="modal-card-icon">🔢</view>
-        <text class="modal-card-title">输入房间号加入</text>
-        <text class="modal-card-desc">输入 8 位数字房间号加入已有房间</text>
-        <view class="room-code-wrapper" bindtap="onRoomCodeTap">
-          <view class="room-code-box">
-            <block wx:for="{{8}}" wx:key="index">
-              <view class="room-code-slot {{(index === 3) ? 'room-code-slot-gap' : ''}} {{inputFocused && inputRoomId.length < 8 && inputRoomId.length === index ? 'room-code-slot-active' : ''}}">
-                <text class="room-code-char">{{ inputRoomId[index] || '' }}</text>
-              </view>
-            </block>
+    <!-- 主控制卡片 -->
+    <view class="action-section">
+      <view class="control-card">
+        <view class="card-top-row">
+          <view class="workshop-info">
+            <text class="workshop-name">{{isJoinedRoom ? roomName : '工作坊名称'}}</text>
+            <text class="workshop-desc">{{isJoinedRoom ? roomDesc : '集思广益，激发无限灵感'}}</text>
           </view>
-          <input
-            class="room-code-input"
-            type="number"
-            maxlength="8"
-            cursor-color="transparent"
-            focus="{{inputFocused}}"
-            value="{{inputRoomId}}"
-            bindinput="onInputRoomId"
-            bindfocus="onRoomCodeFocus"
-            bindblur="onRoomCodeBlur"
-          />
+          <view class="status-bar">
+            <text class="status-label">当前状态</text>
+            <view class="status-pill">
+              <view class="status-dot" />
+              <text class="status-text">{{roleLabel}}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 未加入：创建 / 扫码 -->
+        <view class="btn-grid" wx:if="{{!isJoinedRoom}}">
+          <view
+            class="action-btn action-btn-primary {{loading ? 'action-btn-disabled' : ''}}"
+            bindtap="handleCreateRoom"
+          >
+            <view class="btn-icon-wrap btn-icon-wrap-light">
+              <image class="btn-icon" src="/assets/home/icon-create-room.svg" mode="aspectFit" />
+            </view>
+            <view class="btn-text-group">
+              <text class="btn-title btn-title-light">{{loading ? '处理中…' : '创建房间'}}</text>
+              <text class="btn-desc btn-desc-light">发起新的共创脑暴</text>
+            </view>
+          </view>
+          <view class="action-btn action-btn-outline" bindtap="handleScanJoin">
+            <view class="btn-icon-wrap">
+              <image class="btn-icon" src="/assets/home/icon-scan-join.svg" mode="aspectFit" />
+            </view>
+            <view class="btn-text-group">
+              <text class="btn-title btn-title-green">扫码加入</text>
+              <text class="btn-desc">扫描邀请码加入</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 已加入：查看房间 -->
+        <view class="btn-grid btn-grid-single" wx:else>
+          <view class="action-btn action-btn-primary action-btn-full" bindtap="handleViewRoom">
+            <view class="btn-text-group btn-text-group-center">
+              <text class="btn-title btn-title-light">查看房间</text>
+              <text class="btn-desc btn-desc-light" wx:if="{{roomTimeText}}">{{timeLabel}} {{roomTimeText}}</text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
-  </view>
+
+    <!-- 历史工作坊 -->
+    <view class="history-section">
+      <view class="history-header">
+        <text class="history-title">历史工作坊</text>
+        <view class="history-sort" wx:if="{{historyWorkshops.length > 0}}">
+          <text class="history-sort-text">时间</text>
+          <image class="history-sort-icon" src="/assets/home/icon-sort-time.svg" mode="aspectFit" />
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view class="history-empty" wx:if="{{historyWorkshops.length === 0}}">
+        <image class="empty-illustration" src="/assets/home/empty-history-6f27f1.png" mode="aspectFit" />
+        <text class="empty-title">暂无历史工作坊</text>
+        <text class="empty-desc">加入或创建房间，开始你的脑暴之旅吧！</text>
+      </view>
+
+      <!-- 有历史数据（视觉占位，暂无业务逻辑） -->
+      <view class="history-grid" wx:else>
+        <view class="history-column">
+          <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 0}}">
+            <view class="history-card">
+              <view class="history-card-header">
+                <view class="history-card-title-wrap">
+                  <text class="history-card-name">{{item.name}}</text>
+                </view>
+                <view class="history-card-meta">
+                  <text class="history-card-creator">{{item.creator}}</text>
+                  <text class="history-card-time">{{item.time}}</text>
+                </view>
+              </view>
+              <view class="history-card-body">
+                <view class="ai-summary-label">
+                  <text class="ai-summary-text">AI总结</text>
+                  <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" />
+                </view>
+                <text class="ai-summary-content">{{item.summary}}</text>
+              </view>
+              <image
+                wx:if="{{item.hasCover}}"
+                class="history-card-cover"
+                src="{{item.cover}}"
+                mode="aspectFill"
+              />
+            </view>
+          </block>
+        </view>
+        <view class="history-column">
+          <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 1}}">
+            <view class="history-card">
+              <view class="history-card-header">
+                <view class="history-card-title-wrap">
+                  <text class="history-card-name">{{item.name}}</text>
+                </view>
+                <view class="history-card-meta">
+                  <text class="history-card-creator">{{item.creator}}</text>
+                  <text class="history-card-time">{{item.time}}</text>
+                </view>
+              </view>
+              <view class="history-card-body">
+                <view class="ai-summary-label">
+                  <text class="ai-summary-text">AI总结</text>
+                  <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" />
+                </view>
+                <text class="ai-summary-content">{{item.summary}}</text>
+              </view>
+              <image
+                wx:if="{{item.hasCover}}"
+                class="history-card-cover"
+                src="{{item.cover}}"
+                mode="aspectFill"
+              />
+            </view>
+          </block>
+        </view>
+      </view>
+
+      <view class="history-footer" wx:if="{{historyWorkshops.length > 0}}">
+        <view class="footer-divider" />
+        <text class="footer-text">没有更多了</text>
+        <view class="footer-divider" />
+      </view>
+    </view>
+  </scroll-view>
 </view>

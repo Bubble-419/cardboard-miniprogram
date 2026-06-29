@@ -1,68 +1,117 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
+  <!-- 等待视图（非房主 / 等待中） -->
+  <block wx:if="{{!isHost || isWaiting}}">
+    <view class="wait-page">
+      <view class="wait-header" style="padding-top: {{navbarPaddingTop}}px">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="handleGoBack" />
       </view>
-      <view class="navbar-title">{{modeTitle}}</view>
-      <view class="navbar-right"></view>
-    </view>
-  </view>
-
-  <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
-    <view class="title-section">
-      <text class="main-title">{{modeTitle}}</text>
-      <text class="sub-title wait-hint">等待房主选择情境</text>
-    </view>
-    <view class="empty-state">
-      <text class="empty-state-text">等待房主选择情境</text>
-    </view>
-  </view>
-
-  <block wx:else>
-    <view class="header-section">
-      <text class="page-title">{{modeTitle}}</text>
-      <text class="page-subtitle">请选择情境类型</text>
-    </view>
-
-    <scroll-view class="scenario-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-      <view class="scenario-grid">
-        <view
-          class="scenario-card {{selectedScenarioId === item.id ? 'selected' : ''}}"
-          wx:for="{{scenarios}}"
-          wx:key="id"
-          data-id="{{item.id}}"
-          bindtap="onTapScenario"
-        >
-          <view class="scenario-card-badge badge-{{item.type}}">
-            <text wx:if="{{item.type === 'offline'}}">线下</text>
-            <text wx:elif="{{item.type === 'case'}}">案例</text>
-            <text wx:else>历史</text>
+      <view class="wait-body">
+        <view class="mode-badge-row">
+          <view class="mode-icon-wrap">
+            <image class="mode-icon" src="/assets/modeIndex/icon-mode-badge.svg" mode="aspectFit" />
           </view>
-          <text class="scenario-card-title">{{item.title}}</text>
-          <text class="scenario-card-summary">{{item.summary}}</text>
-          <view class="scenario-tags" wx:if="{{item.bg}}">
-            <text class="scenario-tag" wx:if="{{item.bg.scene}}">{{item.bg.scene}}</text>
-            <text class="scenario-tag" wx:if="{{item.bg.user}}">{{item.bg.user}}</text>
-            <text class="scenario-tag" wx:if="{{item.bg.platform}}">{{item.bg.platform}}</text>
+          <text class="mode-badge-text">{{modeTitle}}</text>
+        </view>
+        <text class="wait-title">选择情境</text>
+        <text class="wait-hint">等待房主选择情境…</text>
+      </view>
+    </view>
+  </block>
+
+  <!-- 房主视图 -->
+  <block wx:else>
+    <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+      <!-- 页面头部 -->
+      <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+        <view class="nav-row">
+          <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="handleGoBack" />
+        </view>
+        <view class="mode-badge-row">
+          <view class="mode-icon-wrap">
+            <image class="mode-icon" src="/assets/modeIndex/icon-mode-badge.svg" mode="aspectFit" />
+          </view>
+          <text class="mode-badge-text">{{modeTitle}}</text>
+        </view>
+        <view class="title-block">
+          <text class="page-main-title">选择情境</text>
+          <text class="page-subtitle">选择一个情境开始游戏，或新建自定义情境</text>
+        </view>
+      </view>
+
+      <!-- 主内容区 -->
+      <view class="main-content">
+        <!-- 线下情境卡片（halliGalli 模式才有） -->
+        <view
+          wx:if="{{offlineScenario}}"
+          class="offline-card"
+          data-id="{{offlineScenario.id}}"
+          bindtap="onCardArrow"
+        >
+          <view class="offline-card-inner">
+            <view class="offline-icon-wrap">
+              <image class="offline-icon" src="/assets/modeIndex/icon-offline-bg.svg" mode="aspectFit" />
+            </view>
+            <view class="offline-details">
+              <view class="badge badge-blue">
+                <text class="badge-text">线下</text>
+              </view>
+              <text class="offline-title">线下情境</text>
+              <text class="offline-desc">选择线下大屏上已展示的情境，直接进入游戏</text>
+            </view>
+            <view class="arrow-wrap arrow-wrap-blue">
+              <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-blue.svg" mode="aspectFit" />
+            </view>
+          </view>
+        </view>
+
+        <!-- 我的自定义情境 -->
+        <view class="custom-section">
+          <view class="section-header-row">
+            <view class="section-indicator"></view>
+            <text class="section-title">我的自定义情境</text>
+          </view>
+
+          <view class="scenario-list">
+            <!-- 每个情境卡片 -->
+            <view
+              class="scenario-item"
+              wx:for="{{customScenarios}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="onCardArrow"
+            >
+              <view class="scenario-item-inner">
+                <view class="scenario-left">
+                  <view class="badge badge-green">
+                    <text class="badge-text">{{item.type === 'history' ? '历史' : '案例'}}</text>
+                  </view>
+                  <text class="scenario-title">{{item.title}}</text>
+                  <view class="scenario-tags" wx:if="{{item.bg}}">
+                    <text class="scenario-tag" wx:if="{{item.bg.scene}}">{{item.bg.scene}}</text>
+                    <text class="scenario-tag" wx:if="{{item.bg.user}}">{{item.bg.user}}</text>
+                    <text class="scenario-tag" wx:if="{{item.bg.platform}}">{{item.bg.platform}}</text>
+                  </view>
+                </view>
+                <view class="arrow-wrap arrow-wrap-green">
+                  <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-green.svg" mode="aspectFit" />
+                </view>
+              </view>
+            </view>
+
+            <!-- 新增情境 -->
+            <view class="scenario-item add-item" bindtap="handleAddScenario">
+              <view class="scenario-item-inner">
+                <view class="scenario-left">
+                  <text class="add-title">新增情境</text>
+                </view>
+                <view class="arrow-wrap arrow-wrap-gray">
+                  <image class="arrow-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
+                </view>
+              </view>
+            </view>
           </view>
         </view>
       </view>
     </scroll-view>
-
-    <view class="footer">
-      <button
-        class="footer-btn {{actionMode === 'select' ? 'footer-btn-select' : 'footer-btn-add'}}"
-        bindtap="handleFooterAction"
-      >
-        <text wx:if="{{actionMode === 'select'}}">选择</text>
-        <text wx:else>新增 +</text>
-      </button>
-    </view>
   </block>
 </view>

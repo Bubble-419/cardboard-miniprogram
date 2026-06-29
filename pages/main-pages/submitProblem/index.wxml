@@ -7,19 +7,6 @@
     </view>
   </view>
 
-  <view class="team-section">
-    <view class="team-info">
-      <text class="workshop-name">{{workshopName}}</text>
-      <user-list
-        avatarList="{{avatarList}}"
-        currentUser="{{currentUser}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{true}}"
-      />
-    </view>
-  </view>
-
   <view class="progress-bar" wx:if="{{totalMembers > 0}}">
     <text class="progress-text">已提交 {{submittedCount}}/{{totalMembers}}</text>
   </view>

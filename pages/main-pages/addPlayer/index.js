@@ -37,7 +37,6 @@ const AVATAR_IMAGES = [
 Page({
   data: {
     roomId: '',
-    formattedRoomId: '',
     workshopName: '脑暴工作坊',
     qrcodeUrl: '',
     qrcodeStatus: 'loading',
@@ -46,6 +45,7 @@ Page({
     isFromScan: false,
     isHost: true,
     memberCount: 0,
+    memberCountBounce: false,
     hasSelectedMode: false,
     selectedModeId: '',
     selectedModeTitle: '',
@@ -93,7 +93,6 @@ Page({
 
     this.setData({
       roomId,
-      formattedRoomId: this._formatRoomId(roomId),
       isFromScan: !!scene
     });
 
@@ -116,17 +115,6 @@ Page({
         }
       });
     }
-  },
-
-  /**
-   * 将 8 位数字房间号格式化为 0000-0000 形式，仅用于展示
-   */
-  _formatRoomId(roomId) {
-    if (!roomId || typeof roomId !== 'string') return '';
-    const digits = roomId.replace(/\D/g, '');
-    if (digits.length <= 4) return digits;
-    const padded = digits.padStart(8, '0').slice(-8);
-    return `${padded.slice(0, 4)}-${padded.slice(4)}`;
   },
 
   onShow() {
@@ -158,6 +146,16 @@ Page({
       selectedModeDesc: result.selectedModeDesc || '',
       workshopName: result.workshopName || this.data.workshopName
     };
+  },
+
+  _triggerCountBounceIfNeeded(newCount) {
+    if (newCount > this.data.memberCount) {
+      this.setData({ memberCountBounce: true });
+      clearTimeout(this._countBounceTimer);
+      this._countBounceTimer = setTimeout(() => {
+        this.setData({ memberCountBounce: false });
+      }, 600);
+    }
   },
 
   _handleMembershipLost() {
@@ -410,6 +408,7 @@ Page({
           } else {
             expanded = this._expandMembersToSlots(withAvatars);
           }
+          this._triggerCountBounceIfNeeded(roomMeta.memberCount);
           this.setData({
             members: expanded,
             memberSlots: this.buildMemberSlots(expanded),
@@ -458,6 +457,7 @@ Page({
         }
       }
 
+      this._triggerCountBounceIfNeeded(roomMeta.memberCount);
       this.setData({
         qrcodeUrl,
         qrcodeStatus,
@@ -989,8 +989,8 @@ Page({
         nextPage: 'confirmBG'
       },
       selectmode: {
-        path: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}`,
-        nextPage: 'selectMode'
+        path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
+        nextPage: 'selectPlayer'
       },
       selectplayer: {
         path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,

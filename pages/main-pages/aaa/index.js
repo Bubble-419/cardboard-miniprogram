@@ -1,8 +1,12 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
+const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
 
 Page({
   data: {
+    headerPaddingTop: 24,
+    userNickName: '微信用户',
+    userAvatarUrl: DEFAULT_AVATAR,
     isJoinedRoom: false,
     role: '',
     roleLabel: '未加入房间',
@@ -12,28 +16,23 @@ Page({
     roomTimeText: '',
     timeLabel: '创建/加入时间',
     loading: false,
-    showJoinModal: false,
-    inputRoomId: '',
-    inputFocused: false
+    historyWorkshops: []
   },
 
   onLoad() {
+    let headerPaddingTop = 24;
+    try {
+      const sys = wx.getSystemInfoSync();
+      headerPaddingTop = (sys.statusBarHeight || 0) + 24;
+    } catch (e) {
+      console.warn('getSystemInfo for header', e);
+    }
+    this.setData({ headerPaddingTop });
     this.loadJoinedRoomState();
   },
 
   onShow() {
     this.loadJoinedRoomState();
-  },
-
-  noop() {},
-
-  handleOpenJoinModal() {
-    if (this.data.loading) return;
-    this.setData({ showJoinModal: true, inputRoomId: '', inputFocused: false });
-  },
-
-  handleCloseJoinModal() {
-    this.setData({ showJoinModal: false, inputFocused: false });
   },
 
   handleViewRoom() {
@@ -80,6 +79,8 @@ Page({
       const joinedAt = result.joinedAt;
       const createdAt = result.createdAt;
       const timeTs = isHost ? (createdAt || joinedAt) : (joinedAt || createdAt);
+      const me = (result.members || []).find(m => m.isMe);
+      const userPatch = this._getUserDisplayFromMember(me);
 
       getApp().globalData.roomId = roomId;
       wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
@@ -92,7 +93,8 @@ Page({
         roomName: result.workshopName || '脑暴工作坊',
         roomDesc: (result.workshopDesc || '').trim() || DEFAULT_ROOM_DESC,
         roomTimeText: this._formatTime(timeTs),
-        timeLabel: isHost ? '创建时间' : '加入时间'
+        timeLabel: isHost ? '创建时间' : '加入时间',
+        ...userPatch
       });
     } catch (err) {
       console.error('loadJoinedRoomState fail', err);
@@ -122,8 +124,30 @@ Page({
       roomName: '',
       roomDesc: '',
       roomTimeText: '',
-      timeLabel: '创建/加入时间'
+      timeLabel: '创建/加入时间',
+      userNickName: '微信用户',
+      userAvatarUrl: DEFAULT_AVATAR
     });
+  },
+
+  _getUserDisplayFromMember(member) {
+    if (!member) {
+      return {
+        userNickName: '微信用户',
+        userAvatarUrl: DEFAULT_AVATAR
+      };
+    }
+    let avatarUrl = member.avatarUrl || member.avatarImage || '';
+    if (!avatarUrl && member.avatarIndex != null) {
+      try {
+        const { AVATAR_IMAGES } = require('../../../utils/avatars');
+        avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
+      } catch (_) {}
+    }
+    return {
+      userNickName: member.nickName || '微信用户',
+      userAvatarUrl: avatarUrl || DEFAULT_AVATAR
+    };
   },
 
   _clearJoinedRoom(roomId) {
@@ -148,8 +172,15 @@ Page({
   _persistRoomAndRefresh(roomId) {
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
-    this.setData({ showJoinModal: false, inputRoomId: '', inputFocused: false });
     return this.loadJoinedRoomState();
+  },
+
+  _goToRoomPage(roomId) {
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    wx.navigateTo({
+      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    });
   },
 
   async handleCreateRoom() {
@@ -181,7 +212,7 @@ Page({
       }
 
       wx.showToast({ title: '创建成功', icon: 'success', duration: 1500 });
-      await this._persistRoomAndRefresh(roomId);
+      this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
       wx.showToast({
@@ -191,37 +222,6 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
-  },
-
-  onRoomCodeTap() {
-    this.setData({ inputFocused: true });
-  },
-
-  onRoomCodeFocus() {
-    this.setData({ inputFocused: true });
-  },
-
-  onRoomCodeBlur() {
-    this.setData({ inputFocused: false });
-  },
-
-  onInputRoomId(e) {
-    const raw = (e.detail && e.detail.value) || '';
-    const digits = raw.replace(/\D/g, '').slice(0, 8);
-    this.setData({ inputRoomId: digits });
-
-    if (digits.length === 8) {
-      this._autoJoinIfValid(digits);
-    }
-  },
-
-  _autoJoinIfValid(roomId) {
-    if (!/^\d{8}$/.test(roomId)) return;
-    if (this._autoJoining) return;
-    this._autoJoining = true;
-    this._joinRoomAndGo(roomId).finally(() => {
-      this._autoJoining = false;
-    });
   },
 
   async handleScanJoin() {
