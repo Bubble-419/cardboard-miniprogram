@@ -1,33 +1,43 @@
 /**
- * 合伙人模式 - 模式首页（情境选择）
- * 路径：pages/main-pages/partnerMode/modeIndex/
+ * 共用模式首页 - 情境选择
+ * 路径：pages/main-pages/modeIndex/
+ * 入口参数：roomId, modeId (halliGalli | partner | spy)
  */
-const { getAllScenarios } = require('../../../../utils/partnerScenarios');
+const { getScenariosForMode } = require('../../../utils/partnerScenarios');
+
+const MODE_META = {
+  halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
+  partner: { title: '合伙人模式', gameMode: 'partner' },
+  spy: { title: '谁是卧底模式', gameMode: 'spy' }
+};
 
 Page({
   data: {
     roomId: '',
     modeId: 'partner',
+    modeTitle: '合伙人模式',
     isHost: true,
     isWaiting: false,
     scenarios: [],
     selectedScenarioId: null,
-    actionMode: 'add' // add | select
+    actionMode: 'add'
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const modeId = (options && options.modeId) || 'partner';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+    const meta = MODE_META[modeId] || MODE_META.partner;
 
     if (roomId) {
       getApp().globalData.roomId = roomId;
     }
-    getApp().globalData.gameMode = 'partner';
+    getApp().globalData.gameMode = meta.gameMode;
 
     this.setData({
       roomId,
       modeId,
+      modeTitle: meta.title,
       isWaiting: !!isWaiting
     });
 
@@ -50,7 +60,7 @@ Page({
   },
 
   _loadScenarios() {
-    this.setData({ scenarios: getAllScenarios() });
+    this.setData({ scenarios: getScenariosForMode(this.data.modeId) });
   },
 
   async _fetchHostStatus() {
@@ -131,7 +141,7 @@ Page({
           wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
         }
       } catch (e) {
-        console.warn('partnerMode state poll', e);
+        console.warn('modeIndex state poll', e);
       }
     };
     poll();
@@ -167,10 +177,12 @@ Page({
 
   _goAddScenario() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+    getApp().globalData.gameMode = mode;
     this._updateRoomState('selectBG');
     const query = roomId
-      ? `?mode=partner&roomId=${encodeURIComponent(roomId)}`
-      : '?mode=partner';
+      ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
+      : `?mode=${mode}`;
     wx.navigateTo({
       url: `/pages/main-pages/selectBG/index${query}`
     });
@@ -185,19 +197,50 @@ Page({
     const scenario = (this.data.scenarios || []).find(
       (item) => item.id === this.data.selectedScenarioId
     );
-    if (!scenario || !scenario.bg) {
+    if (!scenario) {
       wx.showToast({ title: '请选择情境', icon: 'none' });
       return;
     }
 
     const app = getApp();
     app.globalData = app.globalData || {};
-    app.globalData.selectedBG = { ...scenario.bg };
-    app.globalData.gameMode = 'partner';
+    const roomIdEnc = encodeURIComponent(roomId);
 
-    const query = `?roomId=${encodeURIComponent(roomId)}`;
-    wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
+    // 德国心脏病：线下情境 → 直接进入选玩家
+    if (scenario.isOffline || scenario.id === 'offline') {
+      app.globalData.gameMode = 'halliGalli';
+      this._updateRoomState('selectPlayer');
+      wx.redirectTo({
+        url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
+      });
+      return;
+    }
+
+    if (!scenario.bg) {
+      wx.showToast({ title: '情境数据无效', icon: 'none' });
+      return;
+    }
+
+    // 合伙人：确认情境页 → 选择问题
+    if (this.data.modeId === 'partner') {
+      app.globalData.selectedBG = { ...scenario.bg };
+      app.globalData.gameMode = 'partner';
+      wx.navigateTo({
+        url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
+      });
+      return;
+    }
+
+    // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
+    const bg = { ...scenario.bg };
+    if (this.data.modeId === 'halliGalli') {
+      delete bg.platform;
+    }
+    app.globalData.selectedBG = bg;
+    app.globalData.gameMode = this.data.modeId;
+    this._updateRoomState('selectPlayer');
+    wx.redirectTo({
+      url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
     });
   },
 

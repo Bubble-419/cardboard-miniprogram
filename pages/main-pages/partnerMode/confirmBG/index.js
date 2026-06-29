@@ -164,7 +164,7 @@ Page({
         const roomId = this.data.roomId || '';
         if (roomId) {
           wx.redirectTo({
-            url: `/pages/main-pages/partnerMode/modeIndex/index?roomId=${encodeURIComponent(roomId)}`
+            url: `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
           });
         } else {
           wx.navigateBack();

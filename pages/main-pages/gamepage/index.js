@@ -336,7 +336,7 @@ Page({
         // 排行榜流程临时下线，改为结束后填写创意
         const url = roomId
           ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
-          : '/pages/main-pages/halliGalli/modeIndex/index';
+          : '/pages/main-pages/modeIndex/index?modeId=halliGalli';
         try {
           await this._updateRoomState('creativeInput');
         } catch (e) {

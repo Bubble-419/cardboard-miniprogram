@@ -10,28 +10,29 @@ const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662249.png'
 ];
 
-/** 脑暴模式配置：pagePath 为各模式首页 modeIndex，位于 pages/main-pages/<模式名>/modeIndex/ */
+/** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
+const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const BRAINSTORM_MODES = [
   {
     id: 'halliGalli',
     title: '德国心脏病模式',
     description: '快节奏卡牌对决，在限时竞速中碰撞创意火花',
     icon: '/assets/icons/display.png',
-    pagePath: '/pages/main-pages/halliGalli/modeIndex/index'
+    pagePath: MODE_INDEX_PATH
   },
   {
     id: 'partner',
     title: '合伙人模式',
     description: '两两组队协作，共同打磨并提交最佳创意方案',
     icon: '/assets/icons/share.png',
-    pagePath: '/pages/main-pages/partnerMode/modeIndex/index'
+    pagePath: MODE_INDEX_PATH
   },
   {
     id: 'spy',
     title: '谁是卧底模式',
     description: '在描述与推理中隐藏差异，激发多元视角与灵感',
     icon: '/assets/icons/question-mark.png',
-    pagePath: '/pages/main-pages/spyMode/modeIndex/index'
+    pagePath: MODE_INDEX_PATH
   }
 ];
 

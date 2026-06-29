@@ -196,7 +196,7 @@ Page({
   handleGoBack() {
     wx.navigateBack({
       fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
       }
     });
   },

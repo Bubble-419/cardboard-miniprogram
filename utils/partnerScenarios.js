@@ -73,6 +73,14 @@ function saveHistoryScenario(bg) {
   }
 }
 
+const OFFLINE_SCENARIO = {
+  id: 'offline',
+  type: 'offline',
+  title: '线下情境',
+  summary: '选择线下大屏上已展示的情境，直接进入游戏',
+  isOffline: true
+};
+
 function getAllScenarios() {
   const history = getHistoryScenarios().map((item, index) => ({
     ...item,
@@ -85,10 +93,21 @@ function getAllScenarios() {
   })).concat(history);
 }
 
+/** 按游戏模式返回情境列表；halliGalli 在首位插入线下情境 */
+function getScenariosForMode(modeId) {
+  const list = getAllScenarios();
+  if (modeId === 'halliGalli') {
+    return [OFFLINE_SCENARIO, ...list];
+  }
+  return list;
+}
+
 module.exports = {
   CASE_SCENARIOS,
+  OFFLINE_SCENARIO,
   getHistoryScenarios,
   saveHistoryScenario,
   getAllScenarios,
+  getScenariosForMode,
   buildScenarioSummary: _buildSummary
 };

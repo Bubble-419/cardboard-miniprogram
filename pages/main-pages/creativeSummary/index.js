@@ -115,7 +115,7 @@ Page({
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
         if (page === 'auth') {
-          wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+          wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
         }
       } catch (e) {
         console.warn('creativeSummary state poll', e);
@@ -163,13 +163,13 @@ Page({
     } catch (e) {
       console.warn('creativeSummary handleFinish updateRoomState', e);
     }
-    wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
   },
 
   handleGoBack() {
     wx.navigateBack({
       fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
       }
     });
   },

@@ -9,15 +9,14 @@
           bindtap="handleGoBack"
         ></image>
       </view>
-      <view class="navbar-title">合伙人模式</view>
+      <view class="navbar-title">{{modeTitle}}</view>
       <view class="navbar-right"></view>
     </view>
   </view>
 
-  <!-- 成员：等待房主 -->
   <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
     <view class="title-section">
-      <text class="main-title">合伙人模式</text>
+      <text class="main-title">{{modeTitle}}</text>
       <text class="sub-title wait-hint">等待房主选择情境</text>
     </view>
     <view class="empty-state">
@@ -25,10 +24,9 @@
     </view>
   </view>
 
-  <!-- 房主：情境卡片列表 -->
   <block wx:else>
     <view class="header-section">
-      <text class="page-title">合伙人模式</text>
+      <text class="page-title">{{modeTitle}}</text>
       <text class="page-subtitle">请选择情境类型</text>
     </view>
 
@@ -41,8 +39,10 @@
           data-id="{{item.id}}"
           bindtap="onTapScenario"
         >
-          <view class="scenario-card-badge {{item.type === 'case' ? 'badge-case' : 'badge-history'}}">
-            <text>{{item.type === 'case' ? '案例' : '历史'}}</text>
+          <view class="scenario-card-badge badge-{{item.type}}">
+            <text wx:if="{{item.type === 'offline'}}">线下</text>
+            <text wx:elif="{{item.type === 'case'}}">案例</text>
+            <text wx:else>历史</text>
           </view>
           <text class="scenario-card-title">{{item.title}}</text>
           <text class="scenario-card-summary">{{item.summary}}</text>

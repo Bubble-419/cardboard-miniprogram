@@ -77,7 +77,7 @@ Page({
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' }), 1500);
+      setTimeout(() => wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' }), 1500);
       return;
     }
 

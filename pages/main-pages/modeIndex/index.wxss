@@ -161,6 +161,11 @@
   color: #6b7280;
 }
 
+.badge-offline {
+  background-color: #e8f4fd;
+  color: #3b82f6;
+}
+
 .scenario-card-title {
   font-size: 30rpx;
   font-weight: 600;

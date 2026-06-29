@@ -94,7 +94,7 @@ Page({
   },
 
   handleBack() {
-    wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
   },
 
   async handleNewGame() {
@@ -122,6 +122,6 @@ Page({
     gd.selectedProblem = null;
     gd.selectedMode = null;
     gd.selectedBG = null;
-    wx.reLaunch({ url: '/pages/main-pages/halliGalli/modeIndex/index' });
+    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
   }
 });
