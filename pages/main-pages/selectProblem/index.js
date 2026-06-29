@@ -1,62 +1,118 @@
+const { listProblems, updateProblemText } = require('../../../utils/roomDesignProblems');
+
+const AVATAR_IMAGES = [
+  '/assets/avatar/Frame 2085662241.png',
+  '/assets/avatar/Frame 2085662242.png',
+  '/assets/avatar/Frame 2085662243.png',
+  '/assets/avatar/Frame 2085662244.png',
+  '/assets/avatar/Frame 2085662245.png',
+  '/assets/avatar/Frame 2085662246.png',
+  '/assets/avatar/Frame 2085662247.png',
+  '/assets/avatar/Frame 2085662248.png',
+  '/assets/avatar/Frame 2085662249.png'
+];
+
+const DEFAULT_CATEGORIES = [
+  { id: 1, key: 'scene', name: '场景', icon: '/assets/icons/display.png', selected: false },
+  { id: 2, key: 'user', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
+  { id: 3, key: 'platform', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
+  { id: 4, key: 'function', name: '功能', icon: '/assets/icons/share.png', selected: false }
+];
+
 Page({
   data: {
-    workshopName: "工作坊名称",
-    players: [1, 2, 3, 4, 5, 6], // 玩家数量
+    roomId: '',
+    workshopName: '脑暴工作坊',
     avatarList: [],
     currentUser: null,
-    // 分类标签区域，后续会根据 selectBG 页面选择的情境进行覆盖
-    categories: [
-      { id: 1, key: 'scene', name: "场景", icon: "/assets/icons/display.png", selected: false },
-      { id: 2, key: 'user', name: "用户", icon: "/assets/icons/wearable.png", selected: false },
-      { id: 3, key: 'platform', name: "平台", icon: "/assets/icons/passenger.png", selected: false },
-      { id: 4, key: 'function', name: "功能", icon: "/assets/icons/share.png", selected: false }
-    ],
-    problems: [
-      { 
-        id: 1, 
-        text: "调节看不到：吹发中 UI 在背后，用户无法直观看到风量与温度。", 
-        selected: true 
-      },
-      { 
-        id: 2, 
-        text: "档位信息不清晰：希望变冷按钮有明确反馈、档位状态能被感知。", 
-        selected: false 
-      },
-      { 
-        id: 3, 
-        text: "希望更自由调节风档：不满足于传统\"死档位\"，希望能有滑动/细粒度控制。", 
-        selected: false 
-      },
-      { 
-        id: 4, 
-        text: "调节看不到：吹发中 UI 在背后，用户无法直观看到风量与温度。", 
-        selected: false 
-      },
-      { 
-        id: 5, 
-        text: "模式繁多、操作繁琐：要按多次才找到合适模式，用户容易放弃调节。", 
-        selected: false 
-      },
-      { 
-        id: 6, 
-        text: "调节看不到：吹发中 UI 在背后，用户无法直观看到风量与温度。", 
-        selected: false 
-      },
-      { 
-        id: 7, 
-        text: "AI总结：希望更自由调节风档：不满足于传统\"死档位\"，希望能有滑动/细粒度控制。", 
-        selected: false,
-        isAISummary: true
-      }
-    ],
-    selectedProblemId: 1,
+    isHost: false,
+    categories: DEFAULT_CATEGORIES,
+    problems: [],
+    selectedProblemId: null,
     countdown: 5,
-    // 当前正在内联编辑的问题 ID
     editingProblemId: ''
   },
 
+  onLoad(options) {
+    const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
+    if (roomId) {
+      getApp().globalData.roomId = roomId;
+    }
+    this.setData({ roomId });
+    this._applySelectedBGCategories();
+    this.loadRoomData();
+    this.loadSubmittedProblems();
+    this.startCountdown();
+    this.startProblemCheck();
+  },
+
+  onShow() {
+    this.loadSubmittedProblems();
+  },
+
+  onUnload() {
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    if (this.problemCheckTimer) clearInterval(this.problemCheckTimer);
+    this._stopStatePolling();
+  },
+
+  _applySelectedBGCategories() {
+    const bg = getApp().globalData.selectedBG;
+    if (!bg) return;
+    const categories = DEFAULT_CATEGORIES.map((item) => {
+      let name = item.name;
+      if (item.key === 'scene' && bg.scene) name = bg.scene;
+      if (item.key === 'user' && bg.user) name = bg.user;
+      if (item.key === 'platform' && bg.platform) name = bg.platform;
+      if (item.key === 'function' && bg.function) name = bg.function;
+      return { ...item, name };
+    }).filter((item) => !(item.key === 'platform' && !bg.platform));
+    this.setData({ categories });
+  },
+
+  async loadRoomData() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) return;
+
+      const avatarList = (result.members || []).map((m, i) => {
+        const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
+        return {
+          id: m.userId || String(m.playerIndex),
+          nickName: m.nickName || `玩家${m.playerIndex}`,
+          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
+          isMe: m.isMe === true
+        };
+      });
+      const me = avatarList.find((item) => item.isMe);
+      const isHost = result.isHost === true;
+
+      this.setData({
+        workshopName: result.workshopName || '脑暴工作坊',
+        avatarList,
+        currentUser: me ? me.id : null,
+        isHost
+      });
+
+      if (isHost) {
+        this._updateRoomState('selectProblem');
+        this._stopStatePolling();
+      } else {
+        this._startStatePolling();
+      }
+    } catch (e) {
+      console.warn('loadRoomData', e);
+    }
+  },
+
   async _updateRoomState(currentPage) {
-    const roomId = getApp().globalData.roomId || '';
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     try {
       await wx.cloud.callFunction({
@@ -68,301 +124,167 @@ Page({
     }
   },
 
-  onLoad() {
-    this._updateRoomState('selectProblem');
-    const app = getApp();
-    if (app.globalData.workshopName) {
-      this.setData({
-        workshopName: app.globalData.workshopName
-      });
-    }
-
-    // 使用 selectBG 页面选择的情境信息覆盖分类标签文案
-    if (app.globalData.selectedBG) {
-      const bg = app.globalData.selectedBG || {};
-      const categories = this.data.categories.map(item => {
-        let name = item.name;
-        if (item.key === 'scene' && bg.scene) name = bg.scene;
-        if (item.key === 'user' && bg.user) name = bg.user;
-        if (item.key === 'platform' && bg.platform) name = bg.platform;
-        if (item.key === 'function' && bg.function) name = bg.function;
-        return { ...item, name };
-      });
-      this.setData({ categories });
-    }
-
-    // 初始化头像列表
-    this.initAvatarList();
-    
-    // 加载玩家提交的问题
-    this.loadSubmittedProblems();
-    
-    // 启动倒计时
-    this.startCountdown();
-    
-    // 启动定时器，定期检查新提交的问题
-    this.startProblemCheck();
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        const roomIdEnc = encodeURIComponent(roomId);
+        if (page === 'selectmode') {
+          wx.redirectTo({ url: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}` });
+        }
+      } catch (e) {
+        console.warn('selectProblem state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
   },
 
-  onShow() {
-    // 页面显示时也刷新问题列表
-    this.loadSubmittedProblems();
-  },
-
-  initAvatarList() {
-    const avatars = (this.data.players || []).map((id) => ({
-      id,
-      avatar: '/assets/avatar.png'
-    }));
-    this.setData({
-      avatarList: avatars,
-      currentUser: avatars.length ? avatars[0].id : null
-    });
-  },
-
-  onUnload() {
-    // 清除倒计时
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-    }
-    // 清除问题检查定时器
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
   startCountdown() {
     this.countdownTimer = setInterval(() => {
       if (this.data.countdown > 0) {
-        this.setData({
-          countdown: this.data.countdown - 1
-        });
+        this.setData({ countdown: this.data.countdown - 1 });
       } else {
         clearInterval(this.countdownTimer);
       }
     }, 1000);
   },
 
-  // 加载玩家提交的问题（从云数据库）
-  loadSubmittedProblems() {
-    const db = wx.cloud.database();
-    
-    // 从云数据库查询所有问题，按提交时间倒序排列
-    // 注意：需要在云开发控制台为 designProblems 集合创建索引，字段：submitTime，排序：desc
-    db.collection('designProblems')
-      .orderBy('submitTime', 'desc')
-      .get({
-        success: (res) => {
-          console.log('从云数据库获取问题:', res.data);
-          
-          // 将云数据库的问题转换为页面需要的格式
-          const newProblems = res.data.map((item, index) => ({
-            id: item._id || `problem_${index}`, // 使用云数据库的 _id 作为唯一标识
-            text: item.text,
-            selected: false,
-            isAISummary: false
-          }));
-          
-          // 如果有提交的问题，使用提交的问题；否则保留默认问题
-          if (newProblems.length > 0) {
-            // 检查是否有新问题（通过比较问题数量或ID）
-            const currentProblemIds = this.data.problems.map(p => p.id);
-            const newProblemIds = newProblems.map(p => p.id);
-            
-            // 检查是否有新问题或问题列表有变化
-            const hasNewProblems = newProblemIds.some(id => !currentProblemIds.includes(id));
-            const hasRemovedProblems = currentProblemIds.some(id => !newProblemIds.includes(id));
-            const lengthChanged = newProblems.length !== this.data.problems.length;
-            
-            // 如果问题列表有变化，更新列表
-            if (hasNewProblems || hasRemovedProblems || lengthChanged) {
-              // 保持当前选中的问题ID（如果新列表中有的话）
-              let newSelectedId = this.data.selectedProblemId;
-              if (!newProblemIds.includes(newSelectedId)) {
-                newSelectedId = newProblems.length > 0 ? newProblems[0].id : null;
-              }
-              
-              this.setData({
-                problems: newProblems,
-                selectedProblemId: newSelectedId
-              });
-            }
-          }
-        },
-        fail: (err) => {
-          console.error('从云数据库获取问题失败:', err);
-          // 如果查询失败，保持当前问题列表不变
-        }
-      });
+  async loadSubmittedProblems() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      const problemList = await listProblems(roomId);
+      const newProblems = problemList.map((item) => ({
+        id: item.id,
+        text: item.text,
+        selected: item.id === this.data.selectedProblemId,
+        isAISummary: false
+      }));
+
+      if (newProblems.length === 0) return;
+
+      const currentIds = this.data.problems.map((p) => p.id);
+      const newIds = newProblems.map((p) => p.id);
+      const changed = newProblems.length !== this.data.problems.length
+        || newIds.some((id) => !currentIds.includes(id));
+
+      if (!changed) return;
+
+      let selectedProblemId = this.data.selectedProblemId;
+      if (!selectedProblemId || !newIds.includes(selectedProblemId)) {
+        selectedProblemId = newProblems[0].id;
+      }
+
+      const problems = newProblems.map((item) => ({
+        ...item,
+        selected: item.id === selectedProblemId
+      }));
+
+      this.setData({ problems, selectedProblemId });
+    } catch (e) {
+      console.warn('loadSubmittedProblems', e);
+    }
   },
 
-  // 启动问题检查定时器
   startProblemCheck() {
-    // 清除之前的定时器（如果存在）
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
-    }
-    // 每500毫秒检查一次新提交的问题（提高响应速度）
+    if (this.problemCheckTimer) clearInterval(this.problemCheckTimer);
     this.problemCheckTimer = setInterval(() => {
       this.loadSubmittedProblems();
-    }, 500);
-  },
-
-  // 刷新问题列表（供外部调用）
-  refreshProblems() {
-    this.loadSubmittedProblems();
+    }, 1500);
   },
 
   selectCategory(e) {
+    if (!this.data.isHost) return;
     const categoryId = e.currentTarget.dataset.id;
-    const categories = this.data.categories.map(item => {
-      return {
-        ...item,
-        selected: item.id === categoryId
-      };
-    });
-    
-    this.setData({
-      categories
-    });
-    
-    // TODO: 根据分类筛选问题列表
+    const categories = this.data.categories.map((item) => ({
+      ...item,
+      selected: item.id === categoryId
+    }));
+    this.setData({ categories });
   },
 
   selectProblem(e) {
+    if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
-    const problems = this.data.problems.map(item => {
-      return {
-        ...item,
-        selected: item.id === problemId
-      };
-    });
-    
-    this.setData({
-      problems,
-      selectedProblemId: problemId
-    });
+    const problems = this.data.problems.map((item) => ({
+      ...item,
+      selected: item.id === problemId
+    }));
+    this.setData({ problems, selectedProblemId: problemId });
   },
 
-  // 点击编辑按钮，进入内联编辑状态
   onEditProblem(e) {
+    if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
-    this.setData({
-      editingProblemId: problemId
-    });
+    this.setData({ editingProblemId: problemId });
   },
 
-  // 内联编辑输入时更新本地数据
   onProblemInput(e) {
     const id = e.currentTarget.dataset.id;
     const value = e.detail.value;
-    const problems = this.data.problems.map(item => {
-      if (item.id === id) {
-        return { ...item, text: value };
-      }
-      return item;
-    });
+    const problems = this.data.problems.map((item) => (
+      item.id === id ? { ...item, text: value } : item
+    ));
     this.setData({ problems });
   },
 
-  // 失焦时同步到云数据库
-  onProblemBlur(e) {
+  async onProblemBlur(e) {
+    if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
     const text = (e.detail.value || '').trim();
-    if (!id) return;
+    this.setData({ editingProblemId: '' });
+    if (!id || !text) return;
 
-    const problems = this.data.problems.map(item => {
-      if (item.id === id) {
-        return { ...item, text };
-      }
-      return item;
-    });
-    this.setData({
-      problems,
-      editingProblemId: ''
-    });
+    const problems = this.data.problems.map((item) => (
+      item.id === id ? { ...item, text } : item
+    ));
+    this.setData({ problems });
 
-    // 本地示例数据（非云文档）不做云端更新
-    if (typeof id === 'string' && id.indexOf('problem_') === 0) {
-      return;
+    try {
+      await updateProblemText(id, text);
+    } catch (err) {
+      console.error('更新设计问题失败', err);
+      wx.showToast({ title: '更新失败', icon: 'none' });
     }
-
-    if (!text) {
-      wx.showToast({
-        title: '问题内容不能为空',
-        icon: 'none'
-      });
-      return;
-    }
-
-    const db = wx.cloud.database();
-    db.collection('designProblems')
-      .doc(id)
-      .update({
-        data: { text }
-      })
-      .then(() => {
-        wx.showToast({
-          title: '已更新',
-          icon: 'success',
-          duration: 800
-        });
-      })
-      .catch(err => {
-        console.error('更新设计问题失败:', err);
-        wx.showToast({
-          title: '更新失败，请稍后重试',
-          icon: 'none'
-        });
-      });
   },
 
-  confirmSelection() {
+  async confirmSelection() {
+    if (!this.data.isHost) return;
     if (!this.data.selectedProblemId) {
-      wx.showToast({
-        title: '请选择一个设计问题',
-        icon: 'none'
-      });
+      wx.showToast({ title: '请选择一个设计问题', icon: 'none' });
       return;
     }
 
-    const problem = this.data.problems.find(p => p.id === this.data.selectedProblemId);
+    const problem = this.data.problems.find((p) => p.id === this.data.selectedProblemId);
     getApp().globalData.selectedProblem = problem;
-    
-    // 更新云数据库中的游戏状态，通知所有副屏跳转到 awaitMode
-    const db = wx.cloud.database();
-    db.collection('gameState').add({
-      data: {
-        currentPage: 'selectMode',
-        updateTime: db.serverDate()
-      },
-      success: () => {
-        console.log('游戏状态已更新为 selectMode');
-        // 跳转到 selectMode 页面
-        wx.navigateTo({
-          url: '/pages/main-pages/selectMode/index'
-        });
-      },
-      fail: (err) => {
-        console.error('更新游戏状态失败:', err);
-        // 即使更新失败也跳转
-    wx.navigateTo({
-          url: '/pages/main-pages/selectMode/index'
-        });
-      }
-    });
-  },
 
-  addPlayer() {
-    // 添加玩家功能
-    wx.showToast({
-      title: '添加玩家功能',
-      icon: 'none'
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    await this._updateRoomState('selectMode');
+
+    const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
+    wx.navigateTo({
+      url: `/pages/main-pages/selectMode/index${query}`
     });
   },
 
   goBack() {
     wx.navigateBack();
   }
-})
-
+});

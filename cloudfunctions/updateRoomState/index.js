@@ -6,6 +6,8 @@ cloud.init({
 
 const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
+const PROBLEMS_COLLECTION = 'designProblems';
+const DESIGN_PROBLEM_ENTRY = 'designProblem';
 
 /**
  * 房主更新房间当前页面状态，供普通玩家跟随跳转
@@ -19,7 +21,8 @@ exports.main = async (event, context) => {
     currentPlayerName,
     incrementRound,
     passCount,
-    memberCount
+    memberCount,
+    resetDesignProblems
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -66,6 +69,21 @@ exports.main = async (event, context) => {
     }
     if (currentPage === 'auth') {
       currentRound = 1;
+    }
+
+    if (resetDesignProblems === true) {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可开始提交问题'
+        };
+      }
+      try {
+        await db.collection(PROBLEMS_COLLECTION).where({ roomId, entryType: DESIGN_PROBLEM_ENTRY }).remove();
+      } catch (clearErr) {
+        console.warn('[updateRoomState] clear design problems skipped', clearErr);
+      }
     }
 
     const updateData = {

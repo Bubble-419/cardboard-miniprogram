@@ -228,8 +228,14 @@ Page({
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
 
-        if (page === 'auth' || page === 'selectbg' || page === 'confirmbg' || page === 'selectproblem') {
-          console.log('[副屏轮询] 主屏在 auth/selectbg/confirmbg/selectproblem，跳转 awaitBG');
+        if (page === 'submitproblem') {
+          console.log('[副屏轮询] 主屏在 submitproblem，跳转 submitProblem');
+          wx.redirectTo({ url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}` });
+        } else if (page === 'selectproblem') {
+          console.log('[副屏轮询] 主屏在 selectproblem，跳转 selectProblem');
+          wx.redirectTo({ url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}` });
+        } else if (page === 'auth' || page === 'selectbg' || page === 'confirmbg') {
+          console.log('[副屏轮询] 主屏在 auth/selectbg/confirmbg，跳转 awaitBG');
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
         } else if (page === 'selectmode') {
           console.log('[副屏轮询] 主屏在 selectmode，跳转 awaitMode');

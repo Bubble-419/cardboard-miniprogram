@@ -38,8 +38,10 @@ Page({
       if (result.ok !== true || !result.roomState) return;
       const page = (result.roomState.currentPage || '').toLowerCase();
       const roomIdEnc = encodeURIComponent(roomId);
-      if (page === 'selectproblem') {
-        wx.redirectTo({ url: `/pages/sub-pages/selectProblem/index?roomId=${roomIdEnc}` });
+      if (page === 'submitproblem') {
+        wx.redirectTo({ url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}` });
+      } else if (page === 'selectproblem') {
+        wx.redirectTo({ url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}` });
       } else if (page === 'selectmode') {
         wx.redirectTo({ url: `/pages/sub-pages/awaitMode/index?roomId=${roomIdEnc}` });
       } else if (page === 'selectplayer') {

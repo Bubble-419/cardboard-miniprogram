@@ -57,7 +57,46 @@
   justify-content: center;
 }
 
-/* 工作坊区域 */
+/* 工作坊与成员区域 */
+.team-section {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 42rpx;
+  min-height: 72rpx;
+  background-color: #ffffff;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.team-info {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+.workshop-name {
+  font-size: 32rpx;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.wait-tip {
+  flex-shrink: 0;
+  margin: 20rpx 42rpx 0;
+  padding: 18rpx 28rpx;
+  background-color: #e9f5e9;
+  border-radius: 20rpx;
+  text-align: center;
+}
+
+.wait-tip-text {
+  font-size: 28rpx;
+  color: #5ec159;
+}
+
+/* 工作坊区域（旧样式保留兼容） */
 .workshop-section {
   display: flex;
   align-items: center;
@@ -227,9 +266,16 @@
   color: #565656;
 }
 
-.problem-text.ai-text::before {
-  content: "AI总结：";
-  color: #5ec159;
+.problem-item.readonly {
+  opacity: 0.92;
+}
+
+.problem-textarea {
+  width: 100%;
+  min-height: 80rpx;
+  font-size: 28rpx;
+  color: #374151;
+  line-height: 1.5;
 }
 
 .check-icon {
@@ -381,4 +427,14 @@
 
 .edit-save::after {
   border: none;
+}
+
+.empty-state {
+  padding: 80rpx 20rpx;
+  text-align: center;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #9ca3af;
 }

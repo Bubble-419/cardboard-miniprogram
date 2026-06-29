@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "提交设计问题",
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "user-list": "/components/user-list/index"
+  }
 }
-

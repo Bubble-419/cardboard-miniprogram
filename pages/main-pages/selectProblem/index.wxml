@@ -1,48 +1,55 @@
 <view class="container">
-  <!-- 自定义导航栏 -->
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
       </view>
-      <view class="navbar-title"></view>
-      <view class="navbar-right">
-        <view class="navbar-icon">⋯</view>
-        <view class="navbar-icon">○</view>
-      </view>
+      <view class="navbar-title">选择设计问题</view>
+      <view class="navbar-right"></view>
     </view>
   </view>
 
-  <!-- 工作坊名称和玩家区域 -->
-  <view class="workshop-section">
-    <view class="workshop-info">
+  <view class="team-section">
+    <view class="team-info">
       <text class="workshop-name">{{workshopName}}</text>
-        <user-list avatarList="{{avatarList}}" currentUser="{{currentUser}}" enableAdd="{{true}}" isFold="{{true}}" bind:addtap="addPlayer"></user-list>
+      <user-list
+        avatarList="{{avatarList}}"
+        currentUser="{{currentUser}}"
+        enableAdd="{{false}}"
+        isFold="{{true}}"
+        showName="{{true}}"
+      />
     </view>
   </view>
 
-  <!-- 分类标签 -->
+  <view class="wait-tip" wx:if="{{!isHost}}">
+    <text class="wait-tip-text">等待房主选择设计问题</text>
+  </view>
+
   <view class="categories-section">
-    <view class="category-item {{item.selected ? 'selected' : ''}}" 
-          wx:for="{{categories}}" 
-          wx:key="id"
-          data-id="{{item.id}}"
-          bindtap="selectCategory">
+    <view
+      class="category-item {{item.selected ? 'selected' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="selectCategory"
+    >
       <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
       <text class="category-name">{{item.name}}</text>
     </view>
   </view>
 
-  <!-- 问题列表 -->
-  <scroll-view class="problems-container" scroll-y="true">
-    <view class="problem-item {{item.selected ? 'selected' : ''}} {{item.isAISummary ? 'ai-summary' : ''}}"
-          wx:for="{{problems}}"
-          wx:key="id"
-          data-id="{{item.id}}"
-          bindtap="selectProblem">
+  <scroll-view class="problems-container" scroll-y enhanced show-scrollbar="{{false}}">
+    <view
+      class="problem-item {{item.selected ? 'selected' : ''}} {{!isHost ? 'readonly' : ''}}"
+      wx:for="{{problems}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="selectProblem"
+    >
       <view class="problem-content">
-        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" wx:if="{{!item.isAISummary}}"></image>
-        <block wx:if="{{editingProblemId === item.id}}">
+        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit"></image>
+        <block wx:if="{{isHost && editingProblemId === item.id}}">
           <textarea
             class="problem-textarea"
             value="{{item.text}}"
@@ -53,9 +60,9 @@
             bindblur="onProblemBlur"
           />
         </block>
-        <text wx:else class="problem-text {{item.isAISummary ? 'ai-text' : ''}}">{{item.text}}</text>
+        <text wx:else class="problem-text">{{item.text}}</text>
       </view>
-      <view class="right-actions" wx:if="{{item.selected}}">
+      <view class="right-actions" wx:if="{{isHost && item.selected}}">
         <view class="edit-icon" data-id="{{item.id}}" catchtap="onEditProblem">
           <image class="edit-img" src="/assets/icons/edit.svg" mode="aspectFit"></image>
         </view>
@@ -64,12 +71,14 @@
         </view>
       </view>
     </view>
+
+    <view class="empty-state" wx:if="{{problems.length === 0}}">
+      <text class="empty-text">等待成员提交设计问题…</text>
+    </view>
   </scroll-view>
 
-  <!-- 底部确认按钮 -->
-  <view class="footer">
+  <view class="footer" wx:if="{{isHost}}">
     <view class="countdown" wx:if="{{countdown > 0}}">{{countdown}}s</view>
     <button class="confirm-btn" bindtap="confirmSelection">确认问题</button>
   </view>
 </view>
-

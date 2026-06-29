@@ -1,4 +1,5 @@
 const { saveHistoryScenario } = require('../../../../utils/partnerScenarios');
+const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -116,9 +117,13 @@ Page({
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'selectproblem') {
+        if (page === 'submitproblem') {
           wx.redirectTo({
-            url: `/pages/sub-pages/selectProblem/index?roomId=${roomIdEnc}`
+            url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`
+          });
+        } else if (page === 'selectproblem') {
+          wx.redirectTo({
+            url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
           });
         } else if (page === 'selectbg' || page === 'confirmbg' || page === 'auth') {
           wx.redirectTo({ url: `/pages/sub-pages/awaitBG/index?roomId=${roomIdEnc}` });
@@ -138,7 +143,7 @@ Page({
     }
   },
 
-  handleConfirm() {
+  async handleConfirm() {
     if (!this.data.isHost || !this.data.canConfirm) return;
 
     const bg = getApp().globalData.selectedBG;
@@ -150,12 +155,40 @@ Page({
     saveHistoryScenario(bg);
 
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    this._updateRoomState('selectProblem');
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
 
-    const url = roomId
-      ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/selectProblem/index';
-    wx.redirectTo({ url });
+    wx.showLoading({ title: '进入提交…' });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'submitProblem',
+          resetDesignProblems: true
+        }
+      });
+      const result = (res && res.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
+        return;
+      }
+      try {
+        await clearRoomProblems(roomId);
+      } catch (clearErr) {
+        console.warn('clearRoomProblems', clearErr);
+      }
+      wx.redirectTo({
+        url: `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
+      });
+    } catch (e) {
+      wx.hideLoading();
+      console.error('handleConfirm', e);
+      wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
+    }
   },
 
   handleGoBack() {
