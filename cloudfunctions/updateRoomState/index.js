@@ -22,7 +22,8 @@ exports.main = async (event, context) => {
     incrementRound,
     passCount,
     memberCount,
-    resetDesignProblems
+    resetDesignProblems,
+    selectedBG
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -98,6 +99,22 @@ exports.main = async (event, context) => {
     }
     if (memberCount != null && Number.isFinite(Number(memberCount))) {
       updateData.currentMemberCount = Number(memberCount);
+    }
+    if (selectedBG && typeof selectedBG === 'object') {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可保存情境'
+        };
+      }
+      const bgData = {
+        scene: selectedBG.scene || '',
+        user: selectedBG.user || '',
+        function: selectedBG.function || ''
+      };
+      if (selectedBG.platform) bgData.platform = selectedBG.platform;
+      updateData.selectedBG = bgData;
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

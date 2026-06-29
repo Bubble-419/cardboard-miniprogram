@@ -167,7 +167,8 @@ Page({
         data: {
           roomId,
           currentPage: 'submitProblem',
-          resetDesignProblems: true
+          resetDesignProblems: true,
+          selectedBG: bg
         }
       });
       const result = (res && res.result) || {};

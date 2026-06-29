@@ -85,6 +85,7 @@ exports.main = async (event, context) => {
       selectedModeId,
       selectedModeTitle: room.selectedModeTitle || '',
       selectedModeDesc: room.selectedModeDesc || '',
+      selectedBG: room.selectedBG || null,
       roomState
     };
   } catch (e) {

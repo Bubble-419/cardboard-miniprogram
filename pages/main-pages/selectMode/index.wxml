@@ -1,39 +1,39 @@
 <view class="container">
-  <!-- 自定义导航栏 -->
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
       </view>
       <view class="navbar-title">选择模式&目标</view>
-      <view class="navbar-right">
-        <view class="navbar-icon">⋯</view>
-        <view class="navbar-icon">○</view>
-      </view>
+      <view class="navbar-right"></view>
     </view>
   </view>
 
-  <!-- 工作坊名称和玩家区域 -->
-  <view class="workshop-section">
-    <view class="workshop-info">
-      <text class="workshop-name">{{workshopName}}</text>
-        <user-list avatarList="{{avatarList}}" currentUser="{{currentUser}}" enableAdd="{{true}}" isFold="{{true}}" bind:addtap="addPlayer"></user-list>
+  <view class="team-section">
+    <view class="team-info">
+      <user-list
+        avatarList="{{avatarList}}"
+        currentUser="{{currentUser}}"
+        enableAdd="{{false}}"
+        isFold="{{true}}"
+        showName="{{true}}"
+      />
     </view>
   </view>
 
-  <!-- 分类标签 -->
   <view class="categories-section">
-    <view class="category-item {{item.selected ? 'selected' : ''}}" 
-          wx:for="{{categories}}" 
-          wx:key="id"
-          data-id="{{item.id}}"
-          bindtap="selectCategory">
+    <view
+      class="category-item {{item.selected ? 'selected' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="selectCategory"
+    >
       <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
       <text class="category-name">{{item.name}}</text>
     </view>
   </view>
 
-  <!-- 选中的问题显示 -->
   <view class="selected-problem-section" wx:if="{{selectedProblem}}">
     <view class="selected-problem-card">
       <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit"></image>
@@ -41,15 +41,16 @@
     </view>
   </view>
 
-  <!-- 脑暴模式选择 -->
   <view class="mode-section">
     <view class="section-title">脑暴模式</view>
     <view class="mode-list">
-      <view class="mode-item {{item.selected ? 'selected' : ''}} {{item.disabled ? 'disabled' : ''}}"
-            wx:for="{{brainstormModes}}"
-            wx:key="id"
-            data-id="{{item.id}}"
-            bindtap="selectMode">
+      <view
+        class="mode-item {{item.selected ? 'selected' : ''}} {{item.disabled ? 'disabled' : ''}}"
+        wx:for="{{brainstormModes}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="selectMode"
+      >
         <view class="mode-content">
           <view class="mode-radio">
             <view class="radio-outer {{item.selected ? 'selected' : ''}}">
@@ -65,11 +66,10 @@
     </view>
   </view>
 
-  <!-- 脑暴目标滑块 -->
   <view class="goal-section">
     <view class="section-title">脑暴目标</view>
     <view class="slider-container">
-      <slider 
+      <slider
         class="goal-slider"
         value="{{goalSliderValue}}"
         min="0"
@@ -88,9 +88,7 @@
     </view>
   </view>
 
-  <!-- 底部下一步按钮 -->
   <view class="footer">
     <button class="next-btn" bindtap="nextStep">下一步</button>
   </view>
 </view>
-

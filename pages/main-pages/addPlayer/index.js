@@ -45,6 +45,7 @@ Page({
     isHost: true,
     memberCount: 0,
     hasSelectedMode: false,
+    selectedModeId: '',
     selectedModeTitle: '',
     selectedModeDesc: '',
     isDragging: false,
@@ -150,6 +151,7 @@ Page({
     return {
       memberCount,
       hasSelectedMode: result.hasSelectedMode === true,
+      selectedModeId: result.selectedModeId || '',
       selectedModeTitle: result.selectedModeTitle || '',
       selectedModeDesc: result.selectedModeDesc || '',
       workshopName: result.workshopName || this.data.workshopName
@@ -996,6 +998,82 @@ Page({
     });
   },
 
+  /** 根据已选模式与房间进度，解析「继续脑暴」跳转目标 */
+  _resolveContinueBrainstormTarget(roomId, selectedModeId, roomState) {
+    const roomIdEnc = encodeURIComponent(roomId);
+    const modeId = selectedModeId || 'halliGalli';
+    const state = roomState || {};
+    const page = (state.currentPage || 'addPlayer').toLowerCase();
+    const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
+    const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
+
+    const resumeRoutes = {
+      submitproblem: {
+        path: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
+        nextPage: 'submitProblem'
+      },
+      selectproblem: {
+        path: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
+        nextPage: 'selectProblem'
+      },
+      selectbg: {
+        path: `/pages/main-pages/selectBG/index?mode=${modeId === 'partner' ? 'partner' : 'halliGalli'}&roomId=${roomIdEnc}`,
+        nextPage: 'selectBG'
+      },
+      confirmbg: {
+        path: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
+        nextPage: 'confirmBG'
+      },
+      selectmode: {
+        path: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}`,
+        nextPage: 'selectMode'
+      },
+      selectplayer: {
+        path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
+        nextPage: 'selectPlayer'
+      },
+      creativeinput: {
+        path: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
+        nextPage: 'creativeInput'
+      },
+      creativesummary: {
+        path: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
+        nextPage: 'creativeSummary'
+      },
+      statement: {
+        path: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+        nextPage: 'statement'
+      },
+      discussion: {
+        path: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+        nextPage: 'discussion'
+      }
+    };
+
+    if (page === 'gamepage' && modeId === 'halliGalli') {
+      return {
+        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
+        nextPage: 'gamepage'
+      };
+    }
+
+    if (page !== 'addplayer' && resumeRoutes[page]) {
+      return resumeRoutes[page];
+    }
+
+    if (modeId === 'halliGalli') {
+      return {
+        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=1`,
+        nextPage: 'gamepage'
+      };
+    }
+
+    return {
+      path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
+      nextPage: 'auth'
+    };
+  },
+
   async handleContinueBrainstorm() {
     const roomId = this.data.roomId || '';
     if (!roomId) {
@@ -1006,15 +1084,29 @@ Page({
       wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
       return;
     }
-    if (this.data.isHost) {
-      const updateRes = await this._updateRoomState('gamepage');
+
+    const selectedModeId = this.data.selectedModeId || 'halliGalli';
+    const target = this._resolveContinueBrainstormTarget(
+      roomId,
+      selectedModeId,
+      this.data.roomState
+    );
+
+    getApp().globalData.gameMode = selectedModeId;
+
+    if (this.data.isHost && target.nextPage) {
+      const state = this.data.roomState || {};
+      const updateRes = await this._updateRoomState(
+        target.nextPage,
+        state.currentPlayerIndex,
+        state.currentPlayerName
+      );
       if (updateRes && updateRes.ok !== true) {
         wx.showToast({ title: '状态同步失败', icon: 'none' });
       }
     }
-    wx.navigateTo({
-      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=1`
-    });
+
+    wx.navigateTo({ url: target.path });
   },
 
   handleExitBrainstorm() {

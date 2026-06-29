@@ -11,7 +11,6 @@
 
   <view class="team-section">
     <view class="team-info">
-      <text class="workshop-name">{{workshopName}}</text>
       <user-list
         avatarList="{{avatarList}}"
         currentUser="{{currentUser}}"

@@ -57,74 +57,29 @@
   justify-content: center;
 }
 
-/* 工作坊区域 */
-.workshop-section {
+/* 工作坊与成员区域 */
+.team-section {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 42rpx;
-  height: 72rpx;
+  min-height: 72rpx;
   background-color: #ffffff;
+  border-bottom: 1rpx solid #f0f0f0;
 }
 
-.workshop-info {
+.team-info {
   display: flex;
   align-items: center;
   gap: 20rpx;
   flex: 1;
+  min-width: 0;
 }
 
 .workshop-name {
   font-size: 32rpx;
   color: #374151;
-}
-
-.players-group {
-  display: flex;
-  align-items: center;
-  gap: -18rpx;
-}
-
-.player-avatar {
-  width: 72rpx;
-  height: 72rpx;
-  margin-left: -18rpx;
-  position: relative;
-}
-
-.player-avatar:first-child {
-  margin-left: 0;
-}
-
-.avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 20rpx;
-}
-
-.add-player-btn {
-  width: 72rpx;
-  height: 72rpx;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.add-player-bg {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background-color: #e9f5e9;
-  border-radius: 20rpx;
-}
-
-.add-player-icon {
-  position: relative;
-  z-index: 1;
-  font-size: 40rpx;
-  color: #5ec159;
-  font-weight: 300;
+  flex-shrink: 0;
 }
 
 /* 分类标签区域 */
@@ -163,6 +118,9 @@
   font-weight: 500;
   color: #5ec159;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 选中的问题区域 */

@@ -95,13 +95,15 @@ Page({
     }
   },
 
-  async _updateRoomState(currentPage) {
+  async _updateRoomState(currentPage, selectedBG) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     try {
+      const data = { roomId, currentPage };
+      if (selectedBG) data.selectedBG = selectedBG;
       await wx.cloud.callFunction({
         name: 'updateRoomState',
-        data: { roomId, currentPage }
+        data
       });
     } catch (e) {
       console.warn('updateRoomState', e);
@@ -242,7 +244,7 @@ Page({
     }
     app.globalData.selectedBG = bg;
     app.globalData.gameMode = this.data.modeId;
-    this._updateRoomState('selectPlayer');
+    this._updateRoomState('selectPlayer', bg);
     wx.redirectTo({
       url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
     });

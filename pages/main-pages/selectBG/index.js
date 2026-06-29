@@ -94,7 +94,7 @@ Page({
     this.setData({ canConfirm: can });
   },
 
-  confirmBG() {
+  async confirmBG() {
     if (!this.data.canConfirm) return;
     const app = getApp();
     app.globalData = app.globalData || {};
@@ -105,6 +105,21 @@ Page({
     app.globalData.selectedBG = bg;
 
     const roomId = app.globalData.roomId || '';
+    if (roomId) {
+      try {
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: {
+            roomId,
+            currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
+            selectedBG: bg
+          }
+        });
+      } catch (e) {
+        console.warn('updateRoomState selectedBG', e);
+      }
+    }
+
     if (this.data.includePlatform) {
       const query = roomId
         ? `?roomId=${encodeURIComponent(roomId)}`

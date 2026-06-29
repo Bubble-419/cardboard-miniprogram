@@ -1,4 +1,10 @@
 const { listProblems, updateProblemText } = require('../../../utils/roomDesignProblems');
+const {
+  DEFAULT_CATEGORIES,
+  buildCategoriesFromBG,
+  applyBGToApp,
+  normalizeBG
+} = require('../../../utils/scenarioCategories');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -10,13 +16,6 @@ const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662247.png',
   '/assets/avatar/Frame 2085662248.png',
   '/assets/avatar/Frame 2085662249.png'
-];
-
-const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', name: '功能', icon: '/assets/icons/share.png', selected: false }
 ];
 
 Page({
@@ -39,7 +38,7 @@ Page({
       getApp().globalData.roomId = roomId;
     }
     this.setData({ roomId });
-    this._applySelectedBGCategories();
+    this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData();
     this.loadSubmittedProblems();
     this.startCountdown();
@@ -48,6 +47,9 @@ Page({
 
   onShow() {
     this.loadSubmittedProblems();
+    if (this.data.roomId) {
+      this.loadRoomData();
+    }
   },
 
   onUnload() {
@@ -56,18 +58,12 @@ Page({
     this._stopStatePolling();
   },
 
-  _applySelectedBGCategories() {
-    const bg = getApp().globalData.selectedBG;
-    if (!bg) return;
-    const categories = DEFAULT_CATEGORIES.map((item) => {
-      let name = item.name;
-      if (item.key === 'scene' && bg.scene) name = bg.scene;
-      if (item.key === 'user' && bg.user) name = bg.user;
-      if (item.key === 'platform' && bg.platform) name = bg.platform;
-      if (item.key === 'function' && bg.function) name = bg.function;
-      return { ...item, name };
-    }).filter((item) => !(item.key === 'platform' && !bg.platform));
-    this.setData({ categories });
+  _syncCategoriesFromBG(bg) {
+    const normalized = normalizeBG(bg);
+    if (normalized) {
+      applyBGToApp(normalized);
+    }
+    this.setData({ categories: buildCategoriesFromBG(normalized) });
   },
 
   async loadRoomData() {
@@ -92,6 +88,12 @@ Page({
       });
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
+      const roomBG = normalizeBG(result.selectedBG)
+        || normalizeBG(getApp().globalData.selectedBG);
+
+      if (roomBG) {
+        this._syncCategoriesFromBG(roomBG);
+      }
 
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
