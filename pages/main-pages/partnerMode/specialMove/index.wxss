@@ -377,7 +377,162 @@
   line-height: 1.4;
 }
 
-/* 反面随机拼卡片（对齐 gamepage） */
+/* 全场静默：转盘底部提示 */
+.silent-hint-section {
+  padding: 0 40rpx 20rpx;
+  text-align: center;
+}
+
+.silent-hint-line {
+  display: block;
+  font-size: 28rpx;
+  color: #565656;
+  line-height: 1.6;
+}
+
+.silent-hint-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #383838;
+  margin-bottom: 4rpx;
+}
+
+/* 全场静默：进行中页面 */
+.silent-main {
+  padding: 0 20rpx;
+}
+
+.silent-card {
+  position: relative;
+}
+
+.silent-badge {
+  position: absolute;
+  left: 24rpx;
+  top: 24rpx;
+  z-index: 2;
+  padding: 8rpx 24rpx;
+  background: #5ec159;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+}
+
+.silent-card-body {
+  flex: 1;
+  height: 0;
+  padding: 88rpx 24rpx 24rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.silent-timer {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #5ec159;
+  margin-bottom: 16rpx;
+}
+
+.silent-main-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #5ec159;
+  text-align: center;
+  line-height: 1.3;
+  margin-bottom: 20rpx;
+}
+
+.silent-desc {
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.4);
+  text-align: center;
+  line-height: 1.4;
+  margin-bottom: 4rpx;
+}
+
+.action-cell-muted {
+  background: #e7e7e7;
+  min-height: 160rpx;
+  justify-content: flex-end;
+}
+
+.inspiration-bar {
+  margin: 4rpx 8rpx 8rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.inspiration-badge-wrap {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #e3fae2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inspiration-badge {
+  font-size: 36rpx;
+}
+
+.inspiration-input-fake {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 24rpx;
+  background: #fff;
+  border: 1rpx solid #d7d7d7;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.inspiration-placeholder {
+  font-size: 28rpx;
+  color: #b0b0b0;
+}
+
+.inspiration-submit {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #5ec159;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inspiration-arrow {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.end-silent-btn {
+  flex: 1;
+  height: 112rpx;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 28rpx;
+  background: #5ec159;
+  color: #fff;
+  font-size: 48rpx;
+  letter-spacing: 4rpx;
+  line-height: 112rpx;
+}
+
+.end-silent-btn::after {
+  border: none;
+}
+
 .card-area {
   flex: 1;
   min-height: 0;

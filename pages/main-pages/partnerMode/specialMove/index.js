@@ -21,6 +21,14 @@ const WHEEL_PIECES = [
 
 const SUGGESTED_QUESTIONS = ['智能穿戴设备', '如何提升体验'];
 
+const SILENT_DURATION_SEC = 5 * 60;
+
+const SILENT_HINT_LINES = [
+  '选择全场静默',
+  '将会获得5min的安静思考时间',
+  '期间所有玩家需要保持分贝40dB以下'
+];
+
 const HELP_METHOD_OPTIONS = [
   { id: 'reverse', title: '反面随机拼', desc: '将卡牌置于反面，随机拼成卡组' },
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
@@ -41,6 +49,9 @@ Page({
     wheelActions: WHEEL_ACTIONS,
     wheelPieces: WHEEL_PIECES,
     helpMethodOptions: HELP_METHOD_OPTIONS,
+    silentHintLines: SILENT_HINT_LINES,
+    silentRemainingSec: SILENT_DURATION_SEC,
+    silentTimerText: '05:00',
     suggestedQuestions: SUGGESTED_QUESTIONS,
     randomDeckCards: [1, 2, 3, 4, 5]
   },
@@ -60,6 +71,44 @@ Page({
     getApp().globalData.roomId = roomId;
     this.setData({ roomId, currentPlayerIndex });
     this.loadRoomData();
+  },
+
+  onUnload() {
+    this.clearSilentTimer();
+  },
+
+  formatSilentTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  },
+
+  startSilentTimer() {
+    this.clearSilentTimer();
+    let remaining = SILENT_DURATION_SEC;
+    this.setData({
+      silentRemainingSec: remaining,
+      silentTimerText: this.formatSilentTime(remaining)
+    });
+    this._silentTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        this.clearSilentTimer();
+        this.handleEndSilent();
+        return;
+      }
+      this.setData({
+        silentRemainingSec: remaining,
+        silentTimerText: this.formatSilentTime(remaining)
+      });
+    }, 1000);
+  },
+
+  clearSilentTimer() {
+    if (this._silentTimer) {
+      clearInterval(this._silentTimer);
+      this._silentTimer = null;
+    }
   },
 
   async loadRoomData() {
@@ -109,6 +158,15 @@ Page({
       this.setData({ viewMode: 'wheel' });
       return;
     }
+    if (viewMode === 'silent') {
+      this.clearSilentTimer();
+      this.setData({
+        viewMode: 'wheel',
+        silentRemainingSec: SILENT_DURATION_SEC,
+        silentTimerText: this.formatSilentTime(SILENT_DURATION_SEC)
+      });
+      return;
+    }
     wx.navigateBack();
   },
 
@@ -155,6 +213,12 @@ Page({
       return;
     }
 
+    if (selectedAction === 'silent') {
+      this.setData({ viewMode: 'silent' });
+      this.startSilentTimer();
+      return;
+    }
+
     wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
   },
 
@@ -163,6 +227,13 @@ Page({
   },
 
   handleAdoptDeck() {
+    const { roomId, currentPlayerIndex } = this.data;
+    if (!roomId) return;
+    safeOpenUrl(buildGamepageUrl(roomId, currentPlayerIndex, 'partner'));
+  },
+
+  handleEndSilent() {
+    this.clearSilentTimer();
     const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;
     safeOpenUrl(buildGamepageUrl(roomId, currentPlayerIndex, 'partner'));
