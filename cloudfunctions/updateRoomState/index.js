@@ -92,6 +92,12 @@ exports.main = async (event, context) => {
       currentRound,
       updatedAt: Date.now()
     };
+    const page = updateData.currentPage;
+    if (event.clearBrainstormProgress === true) {
+      updateData.brainstormProgressPage = null;
+    } else if (page && page !== 'addPlayer') {
+      updateData.brainstormProgressPage = page;
+    }
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
     if (passCount != null && Number.isFinite(Number(passCount))) {

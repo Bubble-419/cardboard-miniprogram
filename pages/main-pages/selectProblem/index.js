@@ -5,7 +5,7 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -107,6 +107,12 @@ Page({
         this._updateRoomState('selectProblem');
         this._stopStatePolling();
       } else {
+        const roomState = result.roomState || {};
+        const page = roomState.currentPage || 'selectProblem';
+        navigateByRoomState(page, roomState, roomId);
+        if (isAwaitPage((page || '').toLowerCase())) {
+          return;
+        }
         this._startStatePolling();
       }
     } catch (e) {

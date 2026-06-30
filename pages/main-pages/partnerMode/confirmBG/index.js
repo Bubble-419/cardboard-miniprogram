@@ -1,4 +1,8 @@
-const { saveHistoryScenario } = require('../../../../utils/partnerScenarios');
+const {
+  saveHistoryScenario,
+  shouldSaveSelectedBGToHistory,
+  isValidPartnerBG
+} = require('../../../../utils/partnerScenarios');
 const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 
@@ -26,16 +30,36 @@ Page({
       getApp().globalData.roomId = roomId;
     }
 
-    const bg = getApp().globalData.selectedBG;
-    if (!bg || !bg.scene || !bg.user || !bg.function) {
-      wx.showToast({ title: '请先选择情境', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1200);
+    if (isWaiting) {
+      this.setData({ roomId, isWaiting: true, isHost: false });
+      this._startStatePolling();
       return;
     }
 
-    if (!bg.platform) {
-      wx.showToast({ title: '情境信息不完整', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1200);
+    this._initPage(roomId);
+  },
+
+  async _initPage(roomId) {
+    let bg = getApp().globalData.selectedBG;
+    if (!isValidPartnerBG(bg, { requirePlatform: true })) {
+      bg = await this._fetchSelectedBGFromRoom(roomId);
+      if (bg) {
+        getApp().globalData.selectedBG = bg;
+      }
+    }
+
+    if (!isValidPartnerBG(bg, { requirePlatform: true })) {
+      wx.showToast({ title: '请先选择情境', icon: 'none' });
+      setTimeout(() => {
+        const id = roomId || getApp().globalData.roomId || '';
+        if (id) {
+          wx.redirectTo({
+            url: `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(id)}&modeId=partner`
+          });
+        } else {
+          wx.navigateBack();
+        }
+      }, 800);
       return;
     }
 
@@ -50,15 +74,27 @@ Page({
       roomId,
       cards,
       canConfirm,
-      isWaiting: !!isWaiting
+      isWaiting: false
     });
 
-    if (isWaiting) {
-      this.setData({ isHost: false });
-      this._startStatePolling();
-      return;
-    }
     this._fetchHostStatus();
+  },
+
+  async _fetchSelectedBGFromRoom(roomId) {
+    if (!roomId) return null;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true && result.selectedBG) {
+        return result.selectedBG;
+      }
+    } catch (e) {
+      console.warn('fetchSelectedBGFromRoom', e);
+    }
+    return null;
   },
 
   onUnload() {
@@ -81,7 +117,8 @@ Page({
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
         if (isHost) {
-          this._updateRoomState('confirmBG');
+          const bg = getApp().globalData.selectedBG;
+          this._updateRoomState('confirmBG', bg);
         } else {
           this._startStatePolling();
         }
@@ -91,13 +128,15 @@ Page({
     }
   },
 
-  async _updateRoomState(currentPage) {
+  async _updateRoomState(currentPage, selectedBG) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     try {
+      const data = { roomId, currentPage };
+      if (selectedBG) data.selectedBG = selectedBG;
       await wx.cloud.callFunction({
         name: 'updateRoomState',
-        data: { roomId, currentPage }
+        data
       });
     } catch (e) {
       console.warn('updateRoomState', e);
@@ -153,7 +192,10 @@ Page({
       return;
     }
 
-    saveHistoryScenario(bg);
+    const bgSource = getApp().globalData.selectedBGSource;
+    if (shouldSaveSelectedBGToHistory(bgSource)) {
+      saveHistoryScenario(bg);
+    }
 
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {

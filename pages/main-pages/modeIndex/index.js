@@ -164,6 +164,7 @@ Page({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
     getApp().globalData.gameMode = mode;
+    getApp().globalData.selectedBGSource = 'custom';
     this._updateRoomState('selectBG');
     const query = roomId
       ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
@@ -189,6 +190,7 @@ Page({
 
     const app = getApp();
     app.globalData = app.globalData || {};
+    app.globalData.selectedBGSource = scenario.type || 'case';
     const roomIdEnc = encodeURIComponent(roomId);
 
     // 德国心脏病：线下情境 → 直接进入选玩家
@@ -210,6 +212,7 @@ Page({
     if (this.data.modeId === 'partner') {
       app.globalData.selectedBG = { ...scenario.bg };
       app.globalData.gameMode = 'partner';
+      this._updateRoomState('confirmBG', app.globalData.selectedBG);
       wx.navigateTo({
         url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
       });

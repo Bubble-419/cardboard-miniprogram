@@ -33,6 +33,8 @@ exports.main = async (event, context) => {
         selectedModeId: null,
         selectedModeTitle: null,
         selectedModeDesc: null,
+        currentPage: 'addPlayer',
+        brainstormProgressPage: null,
         updatedAt: Date.now()
       }
     });

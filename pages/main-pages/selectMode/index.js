@@ -16,7 +16,7 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 
 Page({
   data: {
@@ -130,6 +130,12 @@ Page({
         this._updateRoomState('selectMode');
         this._stopStatePolling();
       } else {
+        const roomState = result.roomState || {};
+        const page = roomState.currentPage || 'selectMode';
+        navigateByRoomState(page, roomState, roomId);
+        if (isAwaitPage(page)) {
+          return;
+        }
         this._startStatePolling();
       }
     } catch (e) {

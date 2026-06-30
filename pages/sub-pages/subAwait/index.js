@@ -1,7 +1,8 @@
 const {
   getSceneUI,
   resolveSubScreenNavigation,
-  navigateByRoomState
+  navigateByRoomState,
+  shouldSkipStaleSubScreenRedirect
 } = require('../../../utils/subAwaitRoutes');
 
 Page({
@@ -74,7 +75,9 @@ Page({
       if (!nav) return;
 
       if (nav.action === 'redirect') {
-        navigateByRoomState(page, result.roomState, roomId);
+        if (!shouldSkipStaleSubScreenRedirect(page)) {
+          navigateByRoomState(page, result.roomState, roomId);
+        }
       } else if (nav.action === 'await') {
         this.applyScene(nav.scene);
       }

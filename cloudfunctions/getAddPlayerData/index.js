@@ -38,8 +38,21 @@ exports.main = async (event, context) => {
 
     const room = roomRes.data[0];
     const isHost = !!(room.creatorId && room.creatorId === currentUserId);
+    const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
+    const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
+
+    let currentPage = room.currentPage || 'addPlayer';
+    // 房主回到房间大厅时 currentPage 可能为 addPlayer，用 brainstormProgressPage 恢复脑暴进度
+    if (
+      hasSelectedMode &&
+      (currentPage === 'addPlayer' || !room.currentPage) &&
+      room.brainstormProgressPage
+    ) {
+      currentPage = room.brainstormProgressPage;
+    }
+
     const roomState = {
-      currentPage: room.currentPage || 'addPlayer',
+      currentPage,
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
       currentPlayerName: room.currentPlayerName || '玩家1',
       passCount: room.currentPassCount != null ? room.currentPassCount : null,
@@ -66,9 +79,6 @@ exports.main = async (event, context) => {
       if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;
       return out;
     });
-
-    const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
-    const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
 
     return {
       ok: true,

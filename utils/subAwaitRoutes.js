@@ -41,6 +41,32 @@ const SCENE_UI = {
   }
 };
 
+/** 副屏进度序：用于 subAwait 忽略滞后的「回跳」导航 */
+const PAGE_PROGRESS_RANK = {
+  addplayer: 0,
+  auth: 10,
+  selectbg: 10,
+  confirmbg: 10,
+  submitproblem: 20,
+  selectproblem: 30,
+  selectmode: 40,
+  selectplayer: 50,
+  confirmfirstplayer: 60,
+  gamepage: 70,
+  creativeinput: 80,
+  creativesummary: 90,
+  statement: 100,
+  discussion: 110,
+  leaderboard: 120
+};
+
+const SCENE_PROGRESS_RANK = {
+  bg: 10,
+  mode: 40,
+  player: 50,
+  confirmFirstPlayer: 60
+};
+
 function getSceneUI(scene) {
   return SCENE_UI[scene] || SCENE_UI.bg;
 }
@@ -51,6 +77,32 @@ function isAwaitPage(page) {
 
 function getSceneForPage(page) {
   return AWAIT_PAGE_TO_SCENE[(page || '').toLowerCase()] || 'bg';
+}
+
+function getPageProgressRank(page) {
+  return PAGE_PROGRESS_RANK[(page || '').toLowerCase()] ?? -1;
+}
+
+function getSceneProgressRank(scene) {
+  return SCENE_PROGRESS_RANK[scene] ?? 0;
+}
+
+function getCurrentSubAwaitScene() {
+  const pages = getCurrentPages();
+  const current = pages[pages.length - 1];
+  if (current && current.route === SUB_AWAIT_ROUTE && current.data) {
+    return current.data.scene || 'bg';
+  }
+  return '';
+}
+
+/** subAwait 已处于较新等待态时，忽略滞后的业务页回跳（如 selectMode 时误跳 selectProblem） */
+function shouldSkipStaleSubScreenRedirect(targetPage) {
+  if (getCurrentRoute() !== SUB_AWAIT_ROUTE) return false;
+  const scene = getCurrentSubAwaitScene();
+  const sceneRank = getSceneProgressRank(scene);
+  const targetRank = getPageProgressRank(targetPage);
+  return sceneRank > 0 && targetRank >= 0 && targetRank < sceneRank;
 }
 
 function getCurrentRoute() {
@@ -111,7 +163,24 @@ function applySubAwaitScene(scene) {
   return false;
 }
 
-/** 打开 subAwait：已在该页则只切换 scene，否则 reLaunch 避免 redirectTo 失败导致退回首页 */
+let _navLock = false;
+let _subAwaitNavLock = false;
+let _pendingSubAwaitUrl = '';
+
+function _releaseNavLock(delay = 1200) {
+  setTimeout(() => {
+    _navLock = false;
+  }, delay);
+}
+
+function _releaseSubAwaitLock(delay = 2000) {
+  setTimeout(() => {
+    _subAwaitNavLock = false;
+    _pendingSubAwaitUrl = '';
+  }, delay);
+}
+
+/** 打开 subAwait：已在该页则只切换 scene；否则 redirectTo，避免重复 reLaunch 超时 */
 function openSubAwait(roomId, scene) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) {
@@ -125,16 +194,33 @@ function openSubAwait(roomId, scene) {
   }
 
   const url = buildSubAwaitUrl(id, scene);
-  wx.reLaunch({
+
+  if (_subAwaitNavLock) {
+    if (_pendingSubAwaitUrl === url) {
+      return false;
+    }
+    return false;
+  }
+
+  _subAwaitNavLock = true;
+  _pendingSubAwaitUrl = url;
+
+  const finish = () => _releaseSubAwaitLock();
+
+  wx.redirectTo({
     url,
+    success: finish,
     fail: (err) => {
-      console.warn('reLaunch subAwait failed', err, url);
+      console.warn('redirectTo subAwait failed, fallback reLaunch', err);
+      wx.reLaunch({
+        url,
+        complete: finish
+      });
     }
   });
+
   return true;
 }
-
-let _navLock = false;
 
 function safeOpenUrl(url) {
   const targetRoute = normalizeRoute(url);
@@ -145,23 +231,13 @@ function safeOpenUrl(url) {
 
   if (_navLock) return false;
   _navLock = true;
-  setTimeout(() => {
-    _navLock = false;
-  }, 800);
 
   wx.redirectTo({
     url,
+    success: () => _releaseNavLock(),
     fail: (err) => {
-      console.warn('redirectTo failed, try reLaunch', err, url);
-      wx.reLaunch({
-        url,
-        fail: (err2) => console.warn('reLaunch failed', err2, url)
-      });
-    },
-    complete: () => {
-      setTimeout(() => {
-        _navLock = false;
-      }, 300);
+      console.warn('redirectTo failed, fallback reLaunch', err, url);
+      wx.reLaunch({ url, complete: () => _releaseNavLock() });
     }
   });
   return true;
@@ -177,6 +253,9 @@ function navigateByRoomState(page, roomState, roomId) {
   }
 
   if (nav.action === 'redirect') {
+    if (shouldSkipStaleSubScreenRedirect(page)) {
+      return false;
+    }
     return safeOpenUrl(nav.url);
   }
 
@@ -190,6 +269,9 @@ module.exports = {
   getSceneUI,
   isAwaitPage,
   getSceneForPage,
+  getPageProgressRank,
+  getSceneProgressRank,
+  shouldSkipStaleSubScreenRedirect,
   getCurrentRoute,
   buildSubAwaitUrl,
   resolveSubScreenNavigation,

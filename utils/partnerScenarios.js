@@ -73,6 +73,11 @@ function saveHistoryScenario(bg) {
   }
 }
 
+/** 仅用户自行新增的情境才写入历史，案例/历史/线下情境不重复保存 */
+function shouldSaveSelectedBGToHistory(source) {
+  return source === 'custom';
+}
+
 const OFFLINE_SCENARIO = {
   id: 'offline',
   type: 'offline',
@@ -102,12 +107,36 @@ function getScenariosForMode(modeId) {
   return list;
 }
 
+/** 合伙人流程中，恢复进度前需已选情境的页面 */
+const PARTNER_PAGES_NEED_BG = [
+  'confirmbg',
+  'submitproblem',
+  'selectproblem',
+  'selectmode',
+  'selectplayer',
+  'confirmfirstplayer'
+];
+
+function isValidPartnerBG(bg, options = {}) {
+  const { requirePlatform = false } = options;
+  if (!bg || !bg.scene || !bg.user || !bg.function) return false;
+  if (requirePlatform && !bg.platform) return false;
+  return true;
+}
+
+function partnerPageNeedsBG(page) {
+  return PARTNER_PAGES_NEED_BG.includes((page || '').toLowerCase());
+}
+
 module.exports = {
   CASE_SCENARIOS,
   OFFLINE_SCENARIO,
   getHistoryScenarios,
   saveHistoryScenario,
+  shouldSaveSelectedBGToHistory,
   getAllScenarios,
   getScenariosForMode,
-  buildScenarioSummary: _buildSummary
+  buildScenarioSummary: _buildSummary,
+  isValidPartnerBG,
+  partnerPageNeedsBG
 };
