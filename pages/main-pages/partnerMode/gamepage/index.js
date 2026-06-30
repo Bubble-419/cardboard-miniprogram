@@ -4,8 +4,19 @@
  */
 const { assignAvatarImages } = require('../../../../utils/avatars');
 const { buildStatementUrl, buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
-const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
+const {
+  PHASE_PLAY,
+  PHASE_DISCUSSION,
+  normalizePartnerGamePhase,
+  isDiscussionPhase,
+} = require('../../../../utils/partnerGamePhase');
+const {
+  getNextPlayerTurn,
+  buildPartnerAvatarList,
+  resolveCurrentPlayerFromRoom
+} = require('../../../../utils/partnerPlayerTurn');
 
 Page({
   data: {
@@ -13,10 +24,11 @@ Page({
     isHost: false,
     avatarList: [],
     currentPlayerIndex: 1,
-    currentPlayerKey: null,
     currentPlayerName: '玩家1',
+    members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
+    gamepagePhase: PHASE_PLAY,
     cardIndex: 0,
     insertedImages: [],
     scoreOptions: [0, 1, 2, 3, 4, 5],
@@ -50,9 +62,15 @@ Page({
     getApp().globalData.roomId = roomId;
     getApp().globalData.gameMode = 'partner';
 
+    const initialPhase = options && options.phase === PHASE_DISCUSSION
+      ? PHASE_DISCUSSION
+      : PHASE_PLAY;
+
     this.setData({
       roomId,
-      currentPlayerIndex
+      currentPlayerIndex,
+      gamepagePhase: initialPhase,
+      cardIndex: 0
     });
 
     this.loadRoomData();
@@ -65,6 +83,42 @@ Page({
   onUnload() {
     this._stopScorePolling();
     this._stopStatePolling();
+  },
+
+  _applyRoomContext(result, options = {}) {
+    const members = assignAvatarImages(result.members || this.data.members || []);
+    const roomState = result.roomState || {};
+    const player = resolveCurrentPlayerFromRoom(
+      members,
+      roomState,
+      options.fallbackPlayerIndex != null
+        ? options.fallbackPlayerIndex
+        : this.data.currentPlayerIndex
+    );
+    const roomPhase = normalizePartnerGamePhase(
+      roomState.partnerGamePhase || this.data.gamepagePhase
+    );
+    const playerChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
+    const phaseChanged = roomPhase !== this.data.gamepagePhase;
+
+    const patch = {
+      members,
+      avatarList: buildPartnerAvatarList(members),
+      currentPlayerIndex: player.currentPlayerIndex,
+      currentPlayerName: player.currentPlayerName,
+      isCurrentPlayer: player.isCurrentPlayer,
+      gamepagePhase: roomPhase,
+      totalRequired: Math.max(0, members.length - 1)
+    };
+
+    if (playerChanged || phaseChanged || options.resetTurnUi) {
+      patch.cardIndex = 0;
+      patch.selectedScore = null;
+      patch.canStartStatement = false;
+    }
+
+    this.setData(patch);
+    return { playerChanged, phaseChanged, members, player, roomPhase };
   },
 
   async loadRoomData() {
@@ -81,40 +135,26 @@ Page({
       }
 
       const members = assignAvatarImages(result.members);
-      const currentPlayerIndex = this.data.currentPlayerIndex;
-      const current = members.find((m) => m.playerIndex === currentPlayerIndex);
-      const me = members.find((m) => m.isMe);
-      const currentPlayerName = current
-        ? (current.nickName || `玩家${currentPlayerIndex}`)
-        : `玩家${currentPlayerIndex}`;
-      const isCurrentPlayer = !!(me && me.playerIndex === currentPlayerIndex);
-
-      const avatarList = members.map((m) => ({
-        id: m.userId || String(m.playerIndex),
-        avatar: m.avatarImage || '',
-        nickName: m.nickName,
-        isMe: m.isMe
-      }));
-
       const app = getApp();
       const selectedProblem = resolveSelectedDesignProblem(app, result);
       const selectedProblemText = selectedProblem && selectedProblem.text
         ? selectedProblem.text
         : '';
 
+      const { player } = this._applyRoomContext(result, {
+        fallbackPlayerIndex: this.data.currentPlayerIndex,
+        resetTurnUi: true
+      });
+
       this.setData({
-        members,
-        avatarList,
-        currentPlayerKey: current ? (current.userId || String(current.playerIndex)) : null,
-        currentPlayerName,
-        isCurrentPlayer,
         isHost: result.isHost === true,
-        selectedProblemText,
-        totalRequired: Math.max(0, members.length - 1)
+        selectedProblemText
       });
 
       if (result.isHost === true) {
-        await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
+        await this._updateRoomState('gamepage', player.currentPlayerIndex, player.currentPlayerName, {
+          partnerGamePhase: this.data.gamepagePhase
+        });
         this._stopStatePolling();
       } else {
         this._startStatePolling();
@@ -144,6 +184,7 @@ Page({
         ? result.totalRequired
         : this.data.totalRequired;
       const canStartStatement = isHost
+        && !isDiscussionPhase(this.data.gamepagePhase)
         && totalRequired > 0
         && scoredCount >= totalRequired;
 
@@ -182,15 +223,19 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage') return;
+        if (page === 'gamepage') {
+          const { playerChanged, phaseChanged } = this._applyRoomContext(result);
+          if (playerChanged || phaseChanged) {
+            this.refreshScoreStatus();
+          }
+          return;
+        }
         if (page === 'statement') {
           const idx = result.roomState.currentPlayerIndex != null
             ? result.roomState.currentPlayerIndex
             : this.data.currentPlayerIndex;
           const name = result.roomState.currentPlayerName || this.data.currentPlayerName;
-          wx.redirectTo({
-            url: buildStatementUrl(roomId, idx, name, { isWaiting: true })
-          });
+          safeOpenUrl(buildStatementUrl(roomId, idx, name, { isWaiting: true }));
           return;
         }
         navigateByRoomState(page, result.roomState, roomId);
@@ -209,13 +254,19 @@ Page({
     }
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra) {
     const roomId = this.data.roomId || '';
     if (!roomId) return false;
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
+      if (extra && extra.partnerGamePhase != null) {
+        data.partnerGamePhase = extra.partnerGamePhase;
+      }
+      if (extra && extra.incrementRound === true) {
+        data.incrementRound = true;
+      }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
       return result.ok === true;
@@ -288,6 +339,7 @@ Page({
         scoredCount,
         totalRequired,
         canStartStatement: this.data.isHost
+          && !isDiscussionPhase(this.data.gamepagePhase)
           && totalRequired > 0
           && scoredCount >= totalRequired
       });
@@ -304,7 +356,7 @@ Page({
   },
 
   async handleStartStatement() {
-    if (!this.data.canStartStatement) return;
+    if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
 
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
     const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
@@ -313,9 +365,36 @@ Page({
       return;
     }
 
-    wx.redirectTo({
-      url: buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName)
+    safeOpenUrl(buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName));
+  },
+
+  async handleEndDiscussion() {
+    if (!this.data.isHost) {
+      wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
+      return;
+    }
+
+    const { roomId, members, currentPlayerIndex } = this.data;
+    const { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
+    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, {
+      partnerGamePhase: PHASE_PLAY,
+      incrementRound
     });
+    if (!ok) {
+      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      return;
+    }
+
+    this.setData({
+      currentPlayerIndex: nextIndex,
+      currentPlayerName: nextName,
+      gamepagePhase: PHASE_PLAY,
+      cardIndex: 0,
+      selectedScore: null,
+      canStartStatement: false,
+      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex))
+    });
+    this.refreshScoreStatus();
   },
 
   handleGoRoom() {

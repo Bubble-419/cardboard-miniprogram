@@ -24,7 +24,8 @@ exports.main = async (event, context) => {
     memberCount,
     resetDesignProblems,
     selectedBG,
-    selectedDesignProblem
+    selectedDesignProblem,
+    partnerGamePhase
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -139,6 +140,19 @@ exports.main = async (event, context) => {
           id: selectedDesignProblem.id || '',
           text
         };
+      }
+    }
+    if (partnerGamePhase != null && partnerGamePhase !== '') {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可更新游戏阶段'
+        };
+      }
+      const phase = String(partnerGamePhase);
+      if (phase === 'play' || phase === 'discussion') {
+        updateData.partnerGamePhase = phase;
       }
     }
 

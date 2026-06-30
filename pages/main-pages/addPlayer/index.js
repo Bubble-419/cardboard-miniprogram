@@ -1,4 +1,4 @@
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, safeOpenUrl } = require('../../../utils/subAwaitRoutes');
 const {
   saveLocalBrainstormProgress,
   clearLocalBrainstormProgress,
@@ -1048,7 +1048,9 @@ Page({
         nextPage: 'confirmFirstPlayer'
       },
       gamepage: {
-        path: buildGamepageUrl(roomId, idx, modeId),
+        path: buildGamepageUrl(roomId, idx, modeId, {
+          phase: state.partnerGamePhase === 'discussion' ? 'discussion' : undefined
+        }),
         nextPage: 'gamepage'
       },
       creativeinput: {
@@ -1166,12 +1168,7 @@ Page({
       }
     }
 
-    wx.redirectTo({
-      url: target.path,
-      fail: () => {
-        wx.navigateTo({ url: target.path });
-      }
-    });
+    safeOpenUrl(target.path);
   },
 
   handleExitBrainstorm() {

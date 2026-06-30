@@ -141,7 +141,9 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
   const redirectMap = {
     submitproblem: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
     selectproblem: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
-    gamepage: buildGamepageUrl(roomId, idx, modeId),
+    gamepage: buildGamepageUrl(roomId, idx, modeId, {
+      phase: state.partnerGamePhase === 'discussion' ? 'discussion' : undefined
+    }),
     statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
     discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,

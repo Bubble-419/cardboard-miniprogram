@@ -30,7 +30,7 @@
     <view class="user-section">
       <user-list
         avatarList="{{avatarList}}"
-        currentUser="{{currentPlayerKey}}"
+        currentUser="{{currentPlayerIndex}}"
         enableAdd="{{false}}"
         isFold="{{true}}"
         showName="{{false}}"
@@ -49,9 +49,33 @@
         next-margin="40rpx"
         easing-function="easeOutCubic"
       >
-        <!-- 卡片 1：出牌并解释 -->
+        <!-- 卡片 1：出牌并解释 / 提出疑问并讨论 -->
         <swiper-item class="card-swiper-item">
-          <view class="game-card game-card-active">
+          <view class="game-card game-card-active" wx:if="{{gamepagePhase === 'discussion'}}">
+            <view class="discussion-card-body">
+              <text class="discussion-title">提出疑问并讨论</text>
+              <view class="discussion-divider"></view>
+              <scroll-view class="discussion-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                <text class="card-section-title">第一轮-出牌解释</text>
+                <view class="card-bullet-list">
+                  <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                </view>
+                <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                <view class="card-bullet-list">
+                  <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                </view>
+                <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
+                  <view class="discussion-photo-icon"></view>
+                </view>
+                <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                <view class="discussion-report-hint">
+                  <text class="discussion-report-title">玩家行动报告</text>
+                  <text class="discussion-report-sub">下拉查看</text>
+                </view>
+              </scroll-view>
+            </view>
+          </view>
+          <view class="game-card game-card-active" wx:else>
             <view class="action-card-body">
               <text class="action-title">出牌并解释</text>
               <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
@@ -152,7 +176,16 @@
 
   <!-- 底部操作 -->
   <view class="page-footer">
-    <view class="bottom-actions">
+    <view class="bottom-actions" wx:if="{{gamepagePhase === 'discussion'}}">
+      <button
+        class="end-discussion-btn {{isHost ? '' : 'end-discussion-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleEndDiscussion"
+      >
+        结束讨论
+      </button>
+    </view>
+    <view class="bottom-actions" wx:else>
       <button class="special-btn" bindtap="handleSpecialMove">
         <text class="special-btn-line">特殊</text>
         <text class="special-btn-line">行动</text>

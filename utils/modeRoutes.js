@@ -7,12 +7,16 @@ function getSelectedModeId(fallback) {
     || 'halliGalli';
 }
 
-function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId) {
+function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId);
   const idx = currentPlayerIndex != null ? currentPlayerIndex : 1;
   const modeId = selectedModeId || getSelectedModeId();
   if (modeId === 'partner') {
-    return `/pages/main-pages/partnerMode/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
+    let url = `/pages/main-pages/partnerMode/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
+    if (options.phase === 'discussion') {
+      url += '&phase=discussion';
+    }
+    return url;
   }
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
