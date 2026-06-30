@@ -16,22 +16,22 @@ const BRAINSTORM_MODES = [
   {
     id: 'halliGalli',
     title: '德国心脏病模式',
-    description: '快节奏卡牌对决，在限时竞速中碰撞创意火花',
-    icon: '/assets/icons/display.png',
+    description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
+    coverImage: '/assets/brainstormMode/mode-cover-halligalli.png',
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'partner',
     title: '合伙人模式',
-    description: '两两组队协作，共同打磨并提交最佳创意方案',
-    icon: '/assets/icons/share.png',
+    description: '团队协作，\n共同打磨并提交最佳创意方案',
+    coverImage: '/assets/brainstormMode/mode-cover-partner.png',
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'spy',
     title: '谁是卧底模式',
-    description: '在描述与推理中隐藏差异，激发多元视角与灵感',
-    icon: '/assets/icons/question-mark.png',
+    description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
+    coverImage: '/assets/brainstormMode/mode-cover-spy.png',
     pagePath: MODE_INDEX_PATH
   }
 ];
@@ -45,10 +45,19 @@ Page({
     currentUser: null,
     brainstormModes: BRAINSTORM_MODES,
     selectedModeId: null,
-    isSelecting: false
+    isSelecting: false,
+    navbarPaddingTop: 0
   },
 
   onLoad(options) {
+    let navbarPaddingTop = 44;
+    try {
+      const sys = wx.getSystemInfoSync();
+      navbarPaddingTop = (sys.statusBarHeight || 0) + 16;
+    } catch (e) {
+      console.warn('getSystemInfo for navbar', e);
+    }
+
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isHost = options && (options.isHost === '1' || options.isHost === true);
     if (!roomId) {
@@ -57,7 +66,7 @@ Page({
       return;
     }
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId, isHost: !!isHost });
+    this.setData({ roomId, isHost: !!isHost, navbarPaddingTop });
     this.loadRoomData(roomId);
   },
 
@@ -161,19 +170,31 @@ Page({
     }
   },
 
-  /** 房主点击模式卡片：保存选择并跳转至对应模式游戏页 */
-  async onSelectMode(e) {
+  /** 点击模式卡片：仅切换视觉选中状态 */
+  onTapMode(e) {
     if (!this.data.isHost) {
       wx.showToast({ title: '等待房主选择', icon: 'none' });
       return;
     }
+    const modeId = e.currentTarget.dataset.id;
+    this.setData({ selectedModeId: modeId });
+  },
+
+  /** 点击"确认模式"按钮：调用云函数并跳转到对应模式页 */
+  async onConfirmMode() {
+    if (!this.data.isHost) return;
     if (this.data.isSelecting) return;
 
-    const modeId = e.currentTarget.dataset.id;
+    const modeId = this.data.selectedModeId;
+    if (!modeId) {
+      wx.showToast({ title: '请先选择一种模式', icon: 'none' });
+      return;
+    }
+
     const mode = this.data.brainstormModes.find((item) => item.id === modeId);
     if (!mode) return;
 
-    this.setData({ isSelecting: true, selectedModeId: modeId });
+    this.setData({ isSelecting: true });
     wx.showLoading({ title: '进入模式…' });
 
     try {
@@ -191,7 +212,7 @@ Page({
 
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '选择失败', icon: 'none' });
-        this.setData({ isSelecting: false, selectedModeId: null });
+        this.setData({ isSelecting: false });
         return;
       }
 
@@ -204,13 +225,13 @@ Page({
       wx.navigateTo({
         url: `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`,
         complete: () => {
-          this.setData({ isSelecting: false, selectedModeId: null });
+          this.setData({ isSelecting: false });
         }
       });
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });
-      this.setData({ isSelecting: false, selectedModeId: null });
+      this.setData({ isSelecting: false });
     }
   },
 

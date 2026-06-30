@@ -218,9 +218,10 @@ Page({
     app.globalData = app.globalData || {};
     const roomIdEnc = encodeURIComponent(roomId);
 
-    // 德国心脏病：线下情境 → 直接进入选玩家
+    // 线下情境：跳过情境填写，直接进入选玩家
     if (scenario.isOffline || scenario.id === 'offline') {
-      app.globalData.gameMode = 'halliGalli';
+      const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+      app.globalData.gameMode = offlineMode;
       this._updateRoomState('selectPlayer');
       wx.redirectTo({
         url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`

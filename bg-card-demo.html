@@ -237,77 +237,140 @@
     text-align: justify;
   }
 
-  /* ===== Summary Panel ===== */
-  .summary-panel {
+  /* ===== Deck Panel（四张堆叠） ===== */
+  .deck-panel {
     display: none;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
-    animation: fadeUp 0.5s ease both;
+    gap: 40px;
   }
-  .summary-panel.visible { display: flex; }
+  .deck-panel.visible { display: flex; }
 
-  .summary-title {
-    font-size: 20px;
+  .deck-header {
+    text-align: center;
+  }
+  .deck-header h2 {
+    font-size: 22px;
     font-weight: 700;
     color: #1f2937;
+    letter-spacing: 0.02em;
+  }
+  .deck-header p {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #6b7280;
   }
 
-  .summary-card {
+  /* 堆叠容器：相对定位，高度由 JS 设置 */
+  .deck-wrap {
+    position: relative;
     width: 305px;
+  }
+
+  /* 每张卡的插槽（绝对定位，top 由 JS 设置） */
+  .deck-slot-item {
+    position: absolute;
+    left: 0; right: 0;
+    height: 211px;
+  }
+
+  /* 单张堆叠卡片主体 */
+  .deck-card-item {
+    position: absolute;
+    inset: 0;
+    border-radius: 12.5px;
+    overflow: hidden;
+    box-shadow: 0 6px 20px rgba(94,193,89,0.18), 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .deck-card-bg {
+    position: absolute;
+    inset: 0;
     background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 4px 16px rgba(94,193,89,0.15);
-    padding: 20px 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    border-radius: 12.5px;
   }
-
-  .summary-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
+  .deck-union-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
   }
-
-  .summary-tag {
-    flex-shrink: 0;
-    font-size: 11px;
+  /* 右上角标签：放在 deck-slot-item 层（不受 overflow:hidden 裁切） */
+  .deck-card-label {
+    position: absolute;
+    top: 5px; right: 10px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #fff;
+    letter-spacing: 0.04em;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .deck-xdl-icon {
+    position: absolute;
+    left: 50%; top: 47.4%;
+    transform: translate(-50%, -50%);
+    width: 186px; height: 64px;
+    opacity: 0.7;
+    z-index: 2;
+  }
+  .deck-card-value {
+    position: absolute;
+    left: 8%; right: 8%;
+    top: 50.2%;
+    transform: translateY(-50%);
+    font-size: 22px;
     font-weight: 600;
     color: #5ec159;
-    background: #dcfce7;
-    border-radius: 6px;
-    padding: 3px 8px;
-    line-height: 1.6;
-    margin-top: 1px;
+    text-align: center;
+    line-height: 1.2;
+    z-index: 3;
+    word-break: break-all;
   }
 
-  .summary-value {
-    font-size: 14px;
-    color: #1f2937;
-    line-height: 1.6;
+  /* 入场动画：从上方落下 */
+  @keyframes cardDrop {
+    from { transform: translateY(-60px); opacity: 0; }
+    60%  { transform: translateY(6px);   opacity: 1; }
+    to   { transform: translateY(0);     opacity: 1; }
   }
 
-  .summary-value.empty {
-    color: #c9c9c9;
-    font-style: italic;
+  /* 底部操作区 */
+  .deck-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
   }
-
-  .restart-btn {
+  .confirm-deck-btn {
     background: linear-gradient(135deg, #5ec159, #4db84a);
     color: #fff;
     border: none;
     border-radius: 10px;
-    padding: 12px 36px;
+    padding: 13px 56px;
     font-size: 15px;
     font-family: inherit;
     font-weight: 500;
     cursor: pointer;
-    letter-spacing: 0.04em;
-    box-shadow: 0 4px 12px rgba(94,193,89,0.3);
+    letter-spacing: 0.1em;
+    box-shadow: 0 4px 14px rgba(94,193,89,0.35);
     transition: transform 0.15s, box-shadow 0.15s;
+    width: 305px;
   }
-  .restart-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(94,193,89,0.35); }
+  .confirm-deck-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(94,193,89,0.4); }
+  .confirm-deck-btn:active { transform: scale(0.97); }
+
+  .restart-btn {
+    background: transparent;
+    color: #9ca3af;
+    border: none;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    text-decoration: underline;
+    transition: color 0.15s;
+  }
+  .restart-btn:hover { color: #5ec159; }
 
   /* ===== Animation Keyframes ===== */
   @keyframes fadeUp {
@@ -386,11 +449,19 @@
   <button class="nav-arrow" id="nextBtn" onclick="navigate(1)">&#8594;</button>
 </div>
 
-<!-- Summary panel (shown after all cards done) -->
-<div class="summary-panel" id="summaryPanel">
-  <p class="summary-title">✅ 情境已完成</p>
-  <div class="summary-card" id="summaryCard"></div>
-  <button class="restart-btn" onclick="restart()">重新填写</button>
+<!-- Deck panel（四张卡片堆叠，全部填完后展示） -->
+<div class="deck-panel" id="deckPanel">
+  <div class="deck-header">
+    <h2>确认情境</h2>
+    <p>四个维度已填写完成，请确认后继续</p>
+  </div>
+  <!-- 堆叠区域，高度与卡片列表由 JS 动态生成 -->
+  <div class="deck-wrap" id="deckWrap"></div>
+  <!-- 底部按钮 -->
+  <div class="deck-actions">
+    <button class="confirm-deck-btn" onclick="confirmDeck()">确认情境</button>
+    <button class="restart-btn" onclick="restart()">重新填写</button>
+  </div>
 </div>
 
 <!-- ==================== SVG Defs ==================== -->
@@ -587,34 +658,65 @@ function goNext(i) {
     currentIndex = i + 1;
     updatePositions(true);
   } else {
-    showSummary();
+    showDeck();
   }
 }
 
-// ==================== Summary ====================
-function showSummary() {
+// ==================== Deck（四张堆叠） ====================
+const DECK_STEP = 130; // px，相邻卡片的垂直间距
+const CARD_H    = 211; // px，单张卡高
+
+function showDeck() {
+  // 隐藏 carousel UI
   document.getElementById('carousel').style.display = 'none';
   document.getElementById('stepDots').style.display = 'none';
   document.querySelector('.nav-arrows').style.display = 'none';
   document.getElementById('progressText').style.display = 'none';
 
-  const card = document.getElementById('summaryCard');
-  card.innerHTML = CARDS.map(c => `
-    <div class="summary-row">
-      <span class="summary-tag">${c.label}</span>
-      <span class="summary-value ${values[c.key] ? '' : 'empty'}">
-        ${values[c.key] || '未填写'}
-      </span>
-    </div>
-  `).join('');
+  const wrap = document.getElementById('deckWrap');
+  const totalH = (CARDS.length - 1) * DECK_STEP + CARD_H; // 3×130 + 211 = 601
+  wrap.style.height = totalH + 'px';
+  wrap.innerHTML = '';
 
-  const panel = document.getElementById('summaryPanel');
+  CARDS.forEach((card, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'deck-slot-item';
+    slot.style.cssText = `
+      top: ${i * DECK_STEP}px;
+      z-index: ${i + 1};
+      animation: cardDrop 0.55s cubic-bezier(0.34,1.3,0.64,1) ${i * 0.12}s both;
+    `;
+    slot.innerHTML = `
+      <div class="deck-card-item">
+        <div class="deck-card-bg"></div>
+        <svg class="deck-union-svg" viewBox="0 0 305.611 211" xmlns="http://www.w3.org/2000/svg">
+          <use href="#unionPath" fill="#5EC159"/>
+        </svg>
+        <svg class="deck-xdl-icon" viewBox="0 0 187 64" xmlns="http://www.w3.org/2000/svg">
+          <use href="#xdlX" fill="#F2F2F2" fill-opacity="0.6"/>
+          <use href="#xdlD" fill="#F2F2F2" fill-opacity="0.6"/>
+          <use href="#xdlL" fill="#F2F2F2" fill-opacity="0.6"/>
+        </svg>
+        <span class="deck-card-value">${values[card.key] || ''}</span>
+      </div>
+      <!-- 标签在 slot 层，不受 overflow:hidden 裁切 -->
+      <span class="deck-card-label">${card.label}</span>
+    `;
+    wrap.appendChild(slot);
+  });
+
+  const panel = document.getElementById('deckPanel');
   panel.classList.add('visible');
+  // fadeUp 整体面板
   panel.style.animation = 'none';
   requestAnimationFrame(() => {
-    panel.style.animation = '';
-    panel.style.animation = 'fadeUp 0.5s ease both';
+    panel.style.animation = 'fadeUp 0.4s ease both';
   });
+}
+
+function confirmDeck() {
+  // 简单提示，实际项目中跳转到下一页
+  alert('✅ 情境已确认！\n' + CARDS.map(c => `${c.label}：${values[c.key] || '（空）'}`).join('\n'));
 }
 
 function restart() {
@@ -624,7 +726,9 @@ function restart() {
   document.getElementById('stepDots').style.display = '';
   document.querySelector('.nav-arrows').style.display = '';
   document.getElementById('progressText').style.display = '';
-  document.getElementById('summaryPanel').classList.remove('visible');
+  const panel = document.getElementById('deckPanel');
+  panel.classList.remove('visible');
+  panel.style.animation = '';
   buildCards();
 }
 

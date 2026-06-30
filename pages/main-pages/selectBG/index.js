@@ -45,7 +45,18 @@ Page({
       getApp().globalData.gameMode = 'partner';
     }
 
-    this.setData({ includePlatform, steps, currentStep: 0 });
+    // 从 confirmBG 点卡跳回时：恢复已填数据 + 定位到对应卡片
+    const savedBG = getApp().globalData.selectedBG || {};
+    const bg = {
+      scene:    savedBG.scene    || '',
+      user:     savedBG.user     || '',
+      platform: savedBG.platform || '',
+      function: savedBG.function || ''
+    };
+    const stepParam = parseInt((options && options.step) || '0', 10);
+    const currentStep = (stepParam >= 0 && stepParam < steps.length) ? stepParam : 0;
+
+    this.setData({ includePlatform, steps, currentStep, bg });
     this.updateCanConfirm();
     this._updateRoomState('selectBG');
   },

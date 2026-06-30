@@ -78,7 +78,7 @@
   align-items: center;
   justify-content: center;
   /* 向下偏移约 10% 的卡片高度，使视觉重心稍低 */
-  padding-top: 136rpx;
+  padding-top: 142rpx;
   z-index: 3;
 }
 

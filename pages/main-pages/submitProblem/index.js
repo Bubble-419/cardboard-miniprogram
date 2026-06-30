@@ -17,10 +17,10 @@ const AVATAR_IMAGES = [
 ];
 
 const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', name: '功能', icon: '/assets/icons/share.png', selected: false }
+  { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
+  { id: 2, key: 'user', label: '用户', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
+  { id: 3, key: 'platform', label: '平台', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
+  { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
 ];
 
 Page({

@@ -1,69 +1,68 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left"></view>
-      <view class="navbar-title">提交设计问题</view>
-      <view class="navbar-right"></view>
-    </view>
-  </view>
-
-  <view class="progress-bar" wx:if="{{totalMembers > 0}}">
-    <text class="progress-text">已提交 {{submittedCount}}/{{totalMembers}}</text>
-  </view>
-
-  <view class="wait-panel" wx:if="{{hasSubmitted}}">
-    <text class="wait-title">已提交设计问题</text>
-    <text class="wait-desc">等待其他成员提交后进入选择问题</text>
-    <text class="wait-problem">{{problemText}}</text>
-  </view>
-
-  <block wx:else>
-    <view class="categories-section">
-      <view
-        class="category-item {{item.selected ? 'selected' : ''}}"
-        wx:for="{{categories}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="selectCategory"
-      >
-        <image class="category-icon" src="{{item.icon}}" mode="aspectFit"></image>
-        <text class="category-name">{{item.name}}</text>
+  <view class="page-body">
+    <view class="top-section">
+      <view class="wait-panel" wx:if="{{hasSubmitted}}">
+        <text class="wait-title">已提交设计问题</text>
+        <text class="wait-desc">等待其他成员提交后进入选择问题</text>
+        <text class="wait-problem">{{problemText}}</text>
       </view>
-    </view>
 
-    <view class="submit-section">
-      <view class="submit-header">
-        <view class="character-icon">
-          <view class="character-face">
-            <view class="eye eye-left"></view>
-            <view class="eye eye-right"></view>
-            <view class="mouth"></view>
+      <block wx:else>
+        <view class="categories-section">
+          <view
+            class="category-item {{item.selected ? 'selected' : ''}}"
+            wx:for="{{categories}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="selectCategory"
+          >
+            <text class="category-label">{{item.label}}</text>
+            <text class="category-value">{{item.name}}</text>
           </view>
         </view>
-        <text class="header-text">匿名提交您的设计问题</text>
-      </view>
 
-      <view class="example-text">
-        <text class="example-label">设计问题示例：</text>
-        <text class="example-content">如何帮助用户在差旅过程中快速进行剃须</text>
-      </view>
+        <view class="input-card">
+          <view class="card-title-section">
+            <text class="card-title">匿名提交您的设计问题</text>
+            <text class="card-subtitle">提交后将进入下一步，由其他成员继续共创</text>
+          </view>
 
-      <view class="input-container">
-        <textarea
-          class="problem-input"
-          placeholder="请输入设计问题..."
-          value="{{problemText}}"
-          maxlength="{{maxLength}}"
-          bindinput="onInput"
-          placeholder-class="input-placeholder"
-        ></textarea>
-        <view class="input-footer">
-          <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
-          <view class="submit-icon" bindtap="submitProblem">
-            <image class="icon-img" src="/assets/icons/submit-arrow.png" mode="aspectFit"></image>
+          <view class="example-box">
+            <view class="example-header-row">
+              <view class="example-icon-wrap">
+                <image class="example-icon" src="/assets/icons/icon-example-hint.svg" mode="aspectFit"></image>
+              </view>
+              <text class="example-label-text">设计问题示例</text>
+            </view>
+            <text class="example-content">如何帮助用户在驾驶过程中快速进行导航切换？</text>
+          </view>
+
+          <view class="form-input-wrap">
+            <view class="textarea-box">
+              <textarea
+                class="problem-input"
+                placeholder="请输入设计问题..."
+                value="{{problemText}}"
+                maxlength="{{maxLength}}"
+                bindinput="onInput"
+                placeholder-class="input-placeholder"
+              ></textarea>
+            </view>
+            <view class="counter-row">
+              <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
+              <view class="submit-circle" bindtap="submitProblem">
+                <image class="submit-arrow-img" src="/assets/icons/icon-submit-arrow.svg" mode="aspectFit"></image>
+              </view>
+            </view>
           </view>
         </view>
+      </block>
+    </view>
+
+    <view class="footer-action" wx:if="{{!hasSubmitted}}">
+      <view class="next-btn" bindtap="submitProblem">
+        <text class="next-btn-text">下一步</text>
       </view>
     </view>
-  </block>
+  </view>
 </view>

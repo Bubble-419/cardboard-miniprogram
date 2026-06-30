@@ -200,6 +200,14 @@ Page({
     }
   },
 
+  handleCardTap(e) {
+    const index = parseInt(e.currentTarget.dataset.index || '0', 10);
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    let url = `/pages/main-pages/selectBG/index?mode=partner&step=${index}`;
+    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
+    wx.redirectTo({ url });
+  },
+
   handleGoBack() {
     wx.navigateBack({
       fail: () => {

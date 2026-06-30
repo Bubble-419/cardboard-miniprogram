@@ -1,8 +1,8 @@
 const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', name: '功能', icon: '/assets/icons/share.png', selected: false }
+  { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
+  { id: 2, key: 'user', label: '用户', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
+  { id: 3, key: 'platform', label: '平台', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
+  { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
 ];
 
 /** 根据已选情境生成分类标签列表 */
@@ -11,7 +11,7 @@ function buildCategoriesFromBG(bg) {
     return DEFAULT_CATEGORIES.map((item) => ({ ...item }));
   }
   return DEFAULT_CATEGORIES.map((item) => {
-    let name = item.name;
+    let name = item.label;
     if (item.key === 'scene' && bg.scene) name = bg.scene;
     if (item.key === 'user' && bg.user) name = bg.user;
     if (item.key === 'platform' && bg.platform) name = bg.platform;
