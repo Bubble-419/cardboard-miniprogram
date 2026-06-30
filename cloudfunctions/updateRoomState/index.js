@@ -25,7 +25,8 @@ exports.main = async (event, context) => {
     resetDesignProblems,
     selectedBG,
     selectedDesignProblem,
-    partnerGamePhase
+    partnerGamePhase,
+    partnerMasterMode
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -154,6 +155,11 @@ exports.main = async (event, context) => {
       if (phase === 'play' || phase === 'discussion') {
         updateData.partnerGamePhase = phase;
       }
+    }
+    if (partnerMasterMode === true) {
+      updateData.partnerMasterMode = true;
+    } else if (partnerMasterMode === false) {
+      updateData.partnerMasterMode = false;
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

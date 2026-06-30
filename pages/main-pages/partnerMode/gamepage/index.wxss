@@ -276,6 +276,21 @@
   overflow: hidden;
 }
 
+.action-title-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12rpx;
+}
+
+.master-mode-badge {
+  padding: 8rpx 24rpx;
+  background: #5ec159;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #fff;
+}
+
 .action-title {
   display: block;
   text-align: center;
@@ -530,6 +545,11 @@
 
 .special-btn::after {
   border: none;
+}
+
+.special-btn-disabled {
+  background: #e7e7e7;
+  color: #c1c1c1;
 }
 
 .statement-btn {

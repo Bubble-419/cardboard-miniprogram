@@ -67,6 +67,7 @@ Page({
       if (extra && typeof extra === 'object') {
         if (extra.partnerGamePhase != null) data.partnerGamePhase = extra.partnerGamePhase;
         if (extra.incrementRound === true) data.incrementRound = true;
+        if (extra.partnerMasterMode != null) data.partnerMasterMode = extra.partnerMasterMode;
       }
       const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
@@ -177,6 +178,7 @@ Page({
 
     const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
       partnerGamePhase,
+      partnerMasterMode: false,
       incrementRound
     });
 

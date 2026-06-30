@@ -29,6 +29,11 @@ const SILENT_HINT_LINES = [
   '期间所有玩家需要保持分贝40dB以下'
 ];
 
+const MASTER_HINT_LINES = [
+  '开启master模式后',
+  '您将可以无限操作卡牌，不受时间和出牌限制。'
+];
+
 const HELP_METHOD_OPTIONS = [
   { id: 'reverse', title: '反面随机拼', desc: '将卡牌置于反面，随机拼成卡组' },
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
@@ -37,6 +42,7 @@ const HELP_METHOD_OPTIONS = [
 Page({
   data: {
     roomId: '',
+    initiatorPlayerIndex: 1,
     currentPlayerIndex: 1,
     avatarList: [],
     selectedProblemText: '',
@@ -50,6 +56,7 @@ Page({
     wheelPieces: WHEEL_PIECES,
     helpMethodOptions: HELP_METHOD_OPTIONS,
     silentHintLines: SILENT_HINT_LINES,
+    masterHintLines: MASTER_HINT_LINES,
     silentRemainingSec: SILENT_DURATION_SEC,
     silentTimerText: '05:00',
     suggestedQuestions: SUGGESTED_QUESTIONS,
@@ -58,7 +65,7 @@ Page({
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const currentPlayerIndex = options.currentPlayerIndex != null
+    const initiatorPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
       : 1;
 
@@ -69,12 +76,14 @@ Page({
     }
 
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId, currentPlayerIndex });
+    this.setData({ roomId, initiatorPlayerIndex, currentPlayerIndex: initiatorPlayerIndex });
     this.loadRoomData();
+    this._startStatePolling();
   },
 
   onUnload() {
     this.clearSilentTimer();
+    this._stopStatePolling();
   },
 
   formatSilentTime(sec) {
@@ -125,7 +134,7 @@ Page({
       const player = resolveCurrentPlayerFromRoom(
         members,
         result.roomState,
-        this.data.currentPlayerIndex
+        this.data.initiatorPlayerIndex
       );
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
 
@@ -137,6 +146,58 @@ Page({
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
+    }
+  },
+
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra) {
+    const roomId = this.data.roomId || '';
+    if (!roomId) return false;
+    try {
+      const data = { roomId, currentPage };
+      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
+      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
+      if (extra && extra.partnerMasterMode != null) {
+        data.partnerMasterMode = extra.partnerMasterMode;
+      }
+      const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
+      const result = (res && res.result) || {};
+      return result.ok === true;
+    } catch (e) {
+      console.warn('updateRoomState', e);
+      return false;
+    }
+  },
+
+  _startStatePolling() {
+    this._stopStatePolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        if (page !== 'gamepage' || result.roomState.partnerMasterMode !== true) return;
+        const idx = result.roomState.currentPlayerIndex != null
+          ? result.roomState.currentPlayerIndex
+          : this.data.initiatorPlayerIndex;
+        safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner'));
+      } catch (e) {
+        console.warn('specialMove state poll', e);
+      }
+    };
+    poll();
+    this._statePollTimer = setInterval(poll, 1500);
+  },
+
+  _stopStatePolling() {
+    if (this._statePollTimer) {
+      clearInterval(this._statePollTimer);
+      this._statePollTimer = null;
     }
   },
 
@@ -219,7 +280,32 @@ Page({
       return;
     }
 
+    if (selectedAction === 'master') {
+      this.activateMasterMode();
+      return;
+    }
+
     wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
+  },
+
+  async activateMasterMode() {
+    const { roomId, initiatorPlayerIndex, members } = this.data;
+    if (!roomId) return;
+
+    const initiator = (members || []).find((m) => m.playerIndex === initiatorPlayerIndex);
+    const initiatorName = initiator
+      ? (initiator.nickName || `玩家${initiatorPlayerIndex}`)
+      : `玩家${initiatorPlayerIndex}`;
+
+    const ok = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
+      partnerMasterMode: true
+    });
+    if (!ok) {
+      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      return;
+    }
+
+    safeOpenUrl(buildGamepageUrl(roomId, initiatorPlayerIndex, 'partner'));
   },
 
   handleCancelAdopt() {

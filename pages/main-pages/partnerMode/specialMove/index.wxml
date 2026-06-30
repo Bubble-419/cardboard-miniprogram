@@ -186,6 +186,14 @@
       >{{item}}</text>
     </view>
 
+    <view class="silent-hint-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'master'}}">
+      <text
+        class="silent-hint-line {{index === 0 ? 'silent-hint-title' : ''}}"
+        wx:for="{{masterHintLines}}"
+        wx:key="*this"
+      >{{item}}</text>
+    </view>
+
     <view class="bottom-actions" wx:if="{{viewMode === 'reverseRandom'}}">
       <button class="cancel-adopt-btn" bindtap="handleCancelAdopt">取消采用</button>
       <button class="adopt-btn" bindtap="handleAdoptDeck">采用卡组</button>

@@ -35,6 +35,7 @@ Page({
     selectedScore: null,
     scoredCount: 0,
     totalRequired: 0,
+    isMasterMode: false,
     canStartStatement: false,
     playHistory: [
       'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -108,6 +109,7 @@ Page({
       currentPlayerName: player.currentPlayerName,
       isCurrentPlayer: player.isCurrentPlayer,
       gamepagePhase: roomPhase,
+      isMasterMode: roomState.partnerMasterMode === true,
       totalRequired: Math.max(0, members.length - 1)
     };
 
@@ -155,10 +157,8 @@ Page({
         await this._updateRoomState('gamepage', player.currentPlayerIndex, player.currentPlayerName, {
           partnerGamePhase: this.data.gamepagePhase
         });
-        this._stopStatePolling();
-      } else {
-        this._startStatePolling();
       }
+      this._startStatePolling();
 
       this.refreshScoreStatus();
       this._startScorePolling();
@@ -224,8 +224,9 @@ Page({
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
         if (page === 'gamepage') {
+          const prevMaster = this.data.isMasterMode;
           const { playerChanged, phaseChanged } = this._applyRoomContext(result);
-          if (playerChanged || phaseChanged) {
+          if (playerChanged || phaseChanged || prevMaster !== this.data.isMasterMode) {
             this.refreshScoreStatus();
           }
           return;
@@ -266,6 +267,9 @@ Page({
       }
       if (extra && extra.incrementRound === true) {
         data.incrementRound = true;
+      }
+      if (extra && extra.partnerMasterMode != null) {
+        data.partnerMasterMode = extra.partnerMasterMode;
       }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
@@ -350,16 +354,21 @@ Page({
   },
 
   handleSpecialMove() {
-    const { roomId, currentPlayerIndex } = this.data;
+    if (this.data.isMasterMode) return;
+    const { roomId, members } = this.data;
     if (!roomId) return;
-    wx.navigateTo({ url: buildSpecialMoveUrl(roomId, currentPlayerIndex) });
+    const me = (members || []).find((m) => m.isMe);
+    const initiatorIndex = me ? me.playerIndex : this.data.currentPlayerIndex;
+    wx.navigateTo({ url: buildSpecialMoveUrl(roomId, initiatorIndex) });
   },
 
   async handleStartStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
 
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
-    const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
+    const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
+      partnerMasterMode: false
+    });
     if (!ok) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
@@ -378,6 +387,7 @@ Page({
     const { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
     const ok = await this._updateRoomState('gamepage', nextIndex, nextName, {
       partnerGamePhase: PHASE_PLAY,
+      partnerMasterMode: false,
       incrementRound
     });
     if (!ok) {
@@ -389,6 +399,7 @@ Page({
       currentPlayerIndex: nextIndex,
       currentPlayerName: nextName,
       gamepagePhase: PHASE_PLAY,
+      isMasterMode: false,
       cardIndex: 0,
       selectedScore: null,
       canStartStatement: false,

@@ -77,6 +77,9 @@
           </view>
           <view class="game-card game-card-active" wx:else>
             <view class="action-card-body">
+              <view class="action-title-row" wx:if="{{isMasterMode}}">
+                <view class="master-mode-badge">MASTER模式</view>
+              </view>
               <text class="action-title">出牌并解释</text>
               <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
               <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
@@ -186,7 +189,11 @@
       </button>
     </view>
     <view class="bottom-actions" wx:else>
-      <button class="special-btn" bindtap="handleSpecialMove">
+      <button
+        class="special-btn {{isMasterMode ? 'special-btn-disabled' : ''}}"
+        disabled="{{isMasterMode}}"
+        bindtap="handleSpecialMove"
+      >
         <text class="special-btn-line">特殊</text>
         <text class="special-btn-line">行动</text>
       </button>
