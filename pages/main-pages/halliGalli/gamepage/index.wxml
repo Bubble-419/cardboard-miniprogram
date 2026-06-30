@@ -1,64 +1,174 @@
 <view class="container">
-  <!-- 悬浮导航：padding 由 JS 动态计算，避免真机顶部留白过多 -->
-  <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        />
+  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+
+    <!-- 顶部：返回+头像堆叠 + 情境格子 -->
+    <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+
+      <!-- Topbar：房间入口图标 + 堆叠头像 + 添加按钮 -->
+      <view class="topbar">
+        <!-- 左：房间页入口图标 -->
+        <view class="room-entry" bindtap="handleGoBack">
+          <image
+            class="room-entry-icon"
+            src="/assets/icons/icon-room-entry.svg"
+            mode="aspectFit"
+          />
+        </view>
+        <!-- 中：堆叠头像（左边距 16rpx 与 Figma 8px 对应） -->
+        <view class="avatar-stack">
+          <view
+            class="avatar-frame {{item.isMe ? 'avatar-me' : ''}}"
+            wx:for="{{avatarList}}"
+            wx:key="id"
+            style="margin-left: {{index > 0 ? '-16rpx' : '0'}}"
+          >
+            <image class="avatar-img" src="{{item.avatar}}" mode="aspectFill" />
+          </view>
+        </view>
+        <!-- 右：添加成员按钮 -->
+        <view class="add-btn" bindtap="handleGoBack">
+          <image class="add-btn-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
+        </view>
       </view>
-      <view class="navbar-title"></view>
-      <view class="navbar-right" />
-    </view>
-  </view>
 
-  <!-- 顶部玩家列表 -->
-  <view class="section top-section" style="padding-top: {{contentOffsetTop}}px">
-    <user-list
-      avatarList="{{avatarList}}"
-      currentUser=""
-      enableAdd="{{false}}"
-      isFold="{{true}}"
-    />
-    <view
-      class="scenario-wrap"
-      wx:if="{{selectedBG && (selectedBG.scene || selectedBG.user || selectedBG.function)}}"
-    >
-      <view class="scenario-track">
-        <view class="scenario-chip" wx:if="{{selectedBG.scene}}">
-          <text class="scenario-chip-label">场景</text>
-          <text class="scenario-chip-text">{{selectedBG.scene}}</text>
+      <!-- 情境格（2列 flex-wrap，与选择设计问题页保持一致） -->
+      <view
+        class="context-grid"
+        wx:if="{{selectedBG && (selectedBG.scene || selectedBG.user || selectedBG.function)}}"
+      >
+        <view class="context-item" wx:if="{{selectedBG.scene}}">
+          <text class="context-label">场景</text>
+          <text class="context-value">{{selectedBG.scene}}</text>
         </view>
-        <view class="scenario-chip" wx:if="{{selectedBG.user}}">
-          <text class="scenario-chip-label">用户</text>
-          <text class="scenario-chip-text">{{selectedBG.user}}</text>
+        <view class="context-item" wx:if="{{selectedBG.user}}">
+          <text class="context-label">用户</text>
+          <text class="context-value">{{selectedBG.user}}</text>
         </view>
-        <view class="scenario-chip" wx:if="{{selectedBG.function}}">
-          <text class="scenario-chip-label">功能</text>
-          <text class="scenario-chip-text">{{selectedBG.function}}</text>
+        <view class="context-item" wx:if="{{selectedBG.platform}}">
+          <text class="context-label">平台</text>
+          <text class="context-value">{{selectedBG.platform}}</text>
         </view>
-        <view class="scenario-spacer"></view>
+        <view class="context-item" wx:if="{{selectedBG.function}}">
+          <text class="context-label">功能</text>
+          <text class="context-value">{{selectedBG.function}}</text>
+        </view>
       </view>
     </view>
-  </view>
 
-  <!-- 中部出牌展示区 -->
-  <view class="section card-section">
-    <view class="card-container">
-      <image
-        class="card-bg-img"
-        src="{{bgImageSrc}}"
-        mode="widthFix"
-        binderror="onBgImageError"
-      />
+    <!-- 规则说明区 -->
+    <view class="rules-section">
+
+      <!-- 标题 -->
+      <view class="rules-header">
+        <text class="rules-title">规则说明</text>
+        <text class="rules-subtitle">开始前，先快速了解本轮玩法</text>
+      </view>
+
+      <!-- 步骤卡片组 -->
+      <view class="steps-card">
+
+        <!-- 第 1 行：步骤 1 & 2 -->
+        <view class="steps-row">
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-deal.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">发牌</text>
+                <text class="step-desc">每位玩家获得3张交互方式卡</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">1</text></view>
+          </view>
+          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-flip.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">翻牌</text>
+                <text class="step-desc">展示本轮控件形态卡</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">2</text></view>
+          </view>
+        </view>
+
+        <!-- 向下箭头 -->
+        <view class="arrow-down-row">
+          <image class="arrow-down" src="/assets/halliGalli/icon-arrow-down.svg" mode="widthFix" />
+        </view>
+
+        <!-- 第 2 行：步骤 3 & 4 -->
+        <view class="steps-row">
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-ring.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">抢铃</text>
+                <text class="step-desc">准备完成后抢铃争取出牌权</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">3</text></view>
+          </view>
+          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-play.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">出牌</text>
+                <text class="step-desc">说明如何与情境信息结合</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">4</text></view>
+          </view>
+        </view>
+
+        <!-- 向下箭头 -->
+        <view class="arrow-down-row">
+          <image class="arrow-down" src="/assets/halliGalli/icon-arrow-down.svg" mode="widthFix" />
+        </view>
+
+        <!-- 第 3 行：步骤 5 & 6 -->
+        <view class="steps-row">
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-vote.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">表决</text>
+                <text class="step-desc">其他玩家投票或提问评分</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">5</text></view>
+          </view>
+          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
+          <view class="step-wrap">
+            <view class="step-card">
+              <image class="step-img" src="/assets/halliGalli/step-judge.png" mode="aspectFill" />
+              <view class="step-text-col">
+                <text class="step-title">判定</text>
+                <text class="step-desc">半数通过即成功，否则失败并摸1张牌</text>
+              </view>
+            </view>
+            <view class="step-badge"><text class="step-num">6</text></view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 规则重点高亮块 -->
+      <view class="key-highlight">
+        <view class="key-icon-wrap">
+          <image class="key-icon" src="/assets/halliGalli/icon-rules-key.svg" mode="aspectFit" />
+        </view>
+        <view class="key-para">
+          <text class="key-line-green">规则重点：超过半数通过=成功；</text>
+          <text class="key-line-dark">未通过=失败并从公区摸 1 张牌</text>
+        </view>
+      </view>
     </view>
-  </view>
 
-  <!-- 底部操作区：房主结束游戏 -->
-  <view class="section bottom-section" wx:if="{{isHost}}">
-    <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
-  </view>
+    <!-- 底部：结束游戏（仅房主） -->
+    <view class="footer-section" wx:if="{{isHost}}">
+      <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
+    </view>
+
+  </scroll-view>
 </view>

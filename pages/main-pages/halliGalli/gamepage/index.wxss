@@ -1,157 +1,347 @@
+/* ===== 容器 ===== */
 .container {
   height: 100vh;
   min-height: 100vh;
-  background-color: #ffffff;
+  background-color: #FAFAFA;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-.custom-navbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background-color: #ffffff;
-}
-
-.navbar-content {
-  height: 8rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32rpx;
-}
-
-.navbar-left {
-  width: 80rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-}
-
-.back-icon {
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #000;
+.main-scroll {
   flex: 1;
-  text-align: center;
+  height: 100%;
 }
 
-.navbar-right {
-  width: 80rpx;
+/* ===== 顶部区（头像 + 情境） ===== */
+.header-section {
+  padding: 0 40rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
 }
 
-.section {
-  padding: 0 24rpx;
+/* Topbar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
 }
 
-.top-section {
-  background-color: #fff;
-  padding-bottom: 8rpx;
+/* 房间页入口图标（左侧） */
+.room-entry {
+  width: 74rpx;
+  height: 74rpx;
+  border-radius: 9999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.scenario-wrap {
-  margin-top: 12rpx;
-  width: 100%;
+.room-entry:active {
+  opacity: 0.75;
 }
 
-.scenario-track {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 8px;
+.room-entry-icon {
+  width: 74rpx;
+  height: 74rpx;
 }
 
-.scenario-chip {
-  flex: 0 0 auto;
-  min-height: 56rpx;
-  padding: 0 2.4vw;
-  border: 2rpx solid #5EC159;
-  border-radius: 999rpx;
-  background-color: #fff;
+/* 添加成员按钮（右侧） */
+.add-btn {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 9999rpx;
+  background-color: #F3F4F6;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.add-btn:active {
+  opacity: 0.75;
+}
+
+.add-btn-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+/* 堆叠头像 */
+.avatar-stack {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  padding-left: 16rpx;
+}
+
+.avatar-frame {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 9999rpx;
+  background-color: #E5E7EB;
+  border: 4rpx solid #FFFFFF;
+  overflow: hidden;
+  flex-shrink: 0;
   box-sizing: border-box;
-  min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
-.scenario-chip-label {
-  font-size: 24rpx;
+.avatar-frame.avatar-me {
+  border-color: #5EC159;
+  z-index: 10;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999rpx;
+}
+
+/* 情境格子（与选择设计问题页一致） */
+.context-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.context-item {
+  width: calc(50% - 4rpx);
+  padding: 4rpx 32rpx;
+  background-color: #E9F5E9;
+  border: 2rpx solid #68D062;
+  border-radius: 32rpx;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.context-label {
+  font-size: 20rpx;
+  font-weight: 500;
   color: #5EC159;
-  font-weight: 600;
+  line-height: 30rpx;
 }
 
-.scenario-chip-text {
-  margin-left: 8rpx;
+.context-value {
   font-size: 24rpx;
-  color: #2d7e2b;
-  white-space: nowrap;
+  font-weight: 500;
+  color: #1E293B;
+  line-height: 32rpx;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.scenario-spacer {
-  flex: 1 1 auto;
+/* ===== 规则说明区 ===== */
+.rules-section {
+  padding: 0 40rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.rules-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.rules-title {
+  font-size: 60rpx;
+  font-weight: 500;
+  color: #1F2937;
+  line-height: 72rpx;
+}
+
+.rules-subtitle {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #9CA3AF;
+  line-height: 40rpx;
+}
+
+/* ===== 步骤卡片组 ===== */
+.steps-card {
+  background: #FFFFFF;
+  border-radius: 48rpx;
+  padding: 32rpx 24rpx;
+  box-shadow: 0px 8rpx 40rpx 0px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* 每行两个步骤 */
+.steps-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  width: 100%;
+}
+
+/* 单个步骤外层（card + badge 叠加） */
+.step-wrap {
+  position: relative;
+  flex: 1;
   min-width: 0;
 }
 
-.card-section {
-  flex: 1;
-  min-height: 0;
-  padding: 0rpx 24rpx 10rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-container {
-  width: 100%;
-  max-height: 100%;
-  background-color: #ffffff;
+/* 步骤卡片 */
+.step-card {
+  background: #F0F7EC;
+  border: 2rpx solid #5EC159;
   border-radius: 24rpx;
+  padding: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+}
+
+.step-img {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 20rpx;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.step-text-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+}
+
+.step-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #287723;
+  line-height: 36rpx;
+}
+
+.step-desc {
+  font-size: 20rpx;
+  font-weight: 500;
+  color: #6B7280;
+  line-height: 28rpx;
+  word-break: break-all;
+}
+
+/* 步骤序号徽章 */
+.step-badge {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 9999rpx;
+  background: #5EC159;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  position: relative;
 }
 
-.card-bg-img {
-  width: 100%;
-  max-height: 100%;
-  height: auto;
-  display: block;
+.step-num {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1;
 }
 
-.bottom-section {
+/* 水平箭头（步骤之间） */
+.arrow-h {
+  width: 38rpx;
+  height: 14rpx;
   flex-shrink: 0;
-  padding: 10rpx 24rpx;
-  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
-  background-color: transparent;
+}
+
+/* 向下箭头（行之间） */
+.arrow-down-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 4rpx 0;
+}
+
+.arrow-down {
+  width: 80%;
+}
+
+/* ===== 规则重点高亮块 ===== */
+.key-highlight {
+  background: #F2FAF5;
+  border: 2rpx solid #E1F2E8;
+  border-radius: 32rpx;
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.key-icon-wrap {
+  width: 96rpx;
+  height: 96rpx;
+  background: #5EC159;
+  border-radius: 9999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.key-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.key-para {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.key-line-green {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #45AD59;
+  line-height: 40rpx;
+}
+
+.key-line-dark {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #374151;
+  line-height: 40rpx;
+}
+
+/* ===== 底部按钮 ===== */
+.footer-section {
+  padding: 0 40rpx calc(48rpx + env(safe-area-inset-bottom));
 }
 
 .end-game-btn {
   width: 100%;
-  height: 96rpx;
+  height: 112rpx;
   font-size: 36rpx;
   font-weight: 500;
-  color: #ffffff;
+  color: #FFFFFF;
   background-color: #5EC159;
-  border-radius: 24rpx;
+  border-radius: 28rpx;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 4rpx;
+  letter-spacing: 8rpx;
+  white-space: nowrap;
 }
 
 .end-game-btn::after {

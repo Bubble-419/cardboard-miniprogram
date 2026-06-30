@@ -5,15 +5,13 @@
 Page({
   data: {
     navbarPaddingTop: 0,
-    contentOffsetTop: 44,
     roomId: '',
     members: [],
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     isHost: false,
-    selectedBG: null,
-    bgImageSrc: '/assets/icons/bg.jpg'
+    selectedBG: null
   },
 
   onLoad(options) {
@@ -40,12 +38,10 @@ Page({
       console.warn('getSystemInfo for navbar', e);
     }
 
-    const contentOffsetTop = 60;
     this.setData({
       roomId,
       currentPlayerIndex,
       navbarPaddingTop,
-      contentOffsetTop,
       selectedBG: getApp().globalData.selectedBG || null
     });
 
@@ -137,12 +133,6 @@ Page({
     if (this._statePollTimer) {
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;
-    }
-  },
-
-  onBgImageError() {
-    if (this.data.bgImageSrc.startsWith('/')) {
-      this.setData({ bgImageSrc: '../../../../assets/icons/bg.jpg' });
     }
   },
 
