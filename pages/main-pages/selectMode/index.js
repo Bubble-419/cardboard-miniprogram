@@ -17,6 +17,7 @@ const {
   normalizeBG
 } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
+const { resolveSelectedDesignProblem } = require('../../../utils/selectedDesignProblem');
 
 Page({
   data: {
@@ -118,12 +119,14 @@ Page({
       }
 
       const isHost = result.isHost === true;
+      const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
 
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
         currentUser: me ? me.id : null,
-        isHost
+        isHost,
+        selectedProblem: selectedProblem || this.data.selectedProblem
       });
 
       if (isHost) {

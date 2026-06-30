@@ -1,4 +1,4 @@
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState } = require('../../utils/subAwaitRoutes');
 
 Page({
   data: {

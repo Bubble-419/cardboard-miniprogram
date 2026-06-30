@@ -1,0 +1,16 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left" bindtap="handleGoBack">
+        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" />
+      </view>
+      <view class="navbar-title">特殊行动</view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="placeholder">
+    <text class="placeholder-title">特殊行动</text>
+    <text class="placeholder-desc">页面开发中，敬请期待</text>
+  </view>
+</view>

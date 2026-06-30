@@ -1,3 +1,5 @@
+const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
+
 Page({
   data: {
     navbarPaddingTop: 0,
@@ -6,7 +8,7 @@ Page({
     currentPlayerName: '玩家1',
     memberCount: 0,
     members: [],
-    isWaiting: false, // 普通玩家等待：请用实体表态卡进行表态
+    isWaiting: false,
     selectedPassCount: null,
     passCountOptions: [],
     isPassOptionsReady: false
@@ -16,8 +18,8 @@ Page({
     const roomId = (options && options.roomId) || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10) : 1;
-    const currentPlayerName = (options && options.currentPlayerName) ?
-      decodeURIComponent(options.currentPlayerName) : `玩家${currentPlayerIndex}`;
+    const currentPlayerName = (options && options.currentPlayerName)
+      ? decodeURIComponent(options.currentPlayerName) : `玩家${currentPlayerIndex}`;
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
     const isSubScreen = options && (options.isSubScreen === '1' || options.isSubScreen === true);
 
@@ -29,8 +31,7 @@ Page({
 
     let navbarPaddingTop = 0;
     try {
-      const sys = wx.getSystemInfoSync();
-      navbarPaddingTop = sys.statusBarHeight || 0;
+      navbarPaddingTop = wx.getSystemInfoSync().statusBarHeight || 0;
     } catch (e) {
       console.warn('statement getSystemInfoSync', e);
     }
@@ -95,9 +96,12 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
+          const idx = result.roomState.currentPlayerIndex != null
+            ? result.roomState.currentPlayerIndex
+            : 1;
+          const modeId = result.selectedModeId || 'partner';
           wx.redirectTo({
-            url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
+            url: buildGamepageUrl(roomId, idx, modeId)
           });
         } else if (page === 'playsuccess') {
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
@@ -135,9 +139,6 @@ Page({
           wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
         } else if (page === 'creativesummary') {
           wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
-        // 排行榜流程临时下线，本次不使用
-        // } else if (page === 'leaderboard') {
-        //   wx.redirectTo({ url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1` });
         }
       } catch (e) {
         console.warn('state poll', e);
@@ -184,7 +185,6 @@ Page({
   },
 
   _buildPassCountOptions(memberCount) {
-    // 玩家本人不参与表态：按房间人数动态生成 0~(N-1)；若人数不可用，兜底为 0~5
     const max = Number.isFinite(memberCount) && memberCount > 0
       ? Math.max(0, memberCount - 1)
       : 5;
@@ -216,10 +216,9 @@ Page({
     const roomIdEnc = encodeURIComponent(roomId);
     const nameEnc = encodeURIComponent(currentPlayerName || `玩家${currentPlayerIndex}`);
     const total = memberCount || (members && members.length) || 0;
-    const voters = Math.max(0, total - 1); // 表态玩家数 = 总人数 - 1（当前翻牌玩家不参与表态）
-    const successThreshold = Math.ceil(voters / 2); // 通过人数达到半数（向上取整）即成功
+    const voters = Math.max(0, total - 1);
+    const successThreshold = Math.ceil(voters / 2);
 
-    // 通过人数 >= 表态玩家半数（向上取整）：成功；否则：失败
     if (passCount >= successThreshold) {
       this._updateRoomState(
         'playSuccess',

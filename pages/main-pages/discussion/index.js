@@ -1,3 +1,5 @@
+const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
+
 Page({
     data: {
     navbarPaddingTop: 0,
@@ -120,17 +122,20 @@ Page({
         const idx = result.roomState.currentPlayerIndex != null
           ? result.roomState.currentPlayerIndex
           : 1;
-        const name = encodeURIComponent(
-          result.roomState.currentPlayerName || `玩家${idx}`
-        );
+        const modeId = result.selectedModeId || getApp().globalData.gameMode || 'partner';
 
         if (page === 'gamepage') {
           wx.redirectTo({
-            url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
+            url: buildGamepageUrl(roomId, idx, modeId)
           });
         } else if (page === 'statement') {
           wx.redirectTo({
-            url: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isWaiting=1`
+            url: buildStatementUrl(
+              roomId,
+              idx,
+              result.roomState.currentPlayerName || `玩家${idx}`,
+              { isWaiting: true }
+            )
           });
         } else if (page === 'creativeinput') {
           wx.redirectTo({
@@ -198,8 +203,9 @@ Page({
       console.warn('updateRoomState error:', e);
     }
 
+    const modeId = getApp().globalData.gameMode || 'partner';
     wx.redirectTo({
-      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
+      url: buildGamepageUrl(roomId, nextIndex, modeId)
     });
   },
 

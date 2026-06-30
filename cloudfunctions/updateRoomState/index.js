@@ -23,7 +23,8 @@ exports.main = async (event, context) => {
     passCount,
     memberCount,
     resetDesignProblems,
-    selectedBG
+    selectedBG,
+    selectedDesignProblem
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -72,6 +73,12 @@ exports.main = async (event, context) => {
       currentRound = 1;
     }
 
+    const updateData = {
+      currentPage: currentPage || 'addPlayer',
+      currentRound,
+      updatedAt: Date.now()
+    };
+
     if (resetDesignProblems === true) {
       if (!isCreator) {
         return {
@@ -85,13 +92,9 @@ exports.main = async (event, context) => {
       } catch (clearErr) {
         console.warn('[updateRoomState] clear design problems skipped', clearErr);
       }
+      updateData.selectedDesignProblem = db.command.remove();
     }
 
-    const updateData = {
-      currentPage: currentPage || 'addPlayer',
-      currentRound,
-      updatedAt: Date.now()
-    };
     const page = updateData.currentPage;
     if (event.clearBrainstormProgress === true) {
       updateData.brainstormProgressPage = null;
@@ -121,6 +124,22 @@ exports.main = async (event, context) => {
       };
       if (selectedBG.platform) bgData.platform = selectedBG.platform;
       updateData.selectedBG = bgData;
+    }
+    if (selectedDesignProblem && typeof selectedDesignProblem === 'object') {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可保存设计问题'
+        };
+      }
+      const text = (selectedDesignProblem.text || '').trim();
+      if (text) {
+        updateData.selectedDesignProblem = {
+          id: selectedDesignProblem.id || '',
+          text
+        };
+      }
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

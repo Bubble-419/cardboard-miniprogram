@@ -49,15 +49,6 @@
 
 .navbar-right {
   width: 80rpx;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 24rpx;
-}
-
-.navbar-icon {
-  font-size: 36rpx;
-  color: #000;
 }
 
 .instruction {
@@ -71,7 +62,6 @@
   font-weight: 500;
   color: #5EC159;
   line-height: 1.6;
-  margin-bottom: 0;
 }
 
 .statement-buttons {
@@ -109,7 +99,6 @@
   background-color: #E3FAE2;
   border: 2rpx solid #5EC159;
   box-shadow: 0 8rpx 20rpx rgba(94, 193, 89, 0.16);
-  transition: all 0.18s ease;
 }
 
 .statement-btn-active {
@@ -117,12 +106,6 @@
   color: #FFFFFF;
   box-shadow: 0 10rpx 24rpx rgba(0, 212, 104, 0.28);
   transform: scale(1.03);
-}
-
-.statement-btn:active {
-  background-color: #5EC159;
-  color: #FFFFFF;
-  transform: scale(0.98);
 }
 
 .confirm-wrap {
@@ -142,8 +125,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  padding: 0;
 }
 
 .confirm-btn-disabled {
@@ -155,7 +136,6 @@
   border: none;
 }
 
-/* 普通玩家等待状态（与 awaitBG 等副屏页面风格一致） */
 .waiting-content {
   flex: 1;
   display: flex;

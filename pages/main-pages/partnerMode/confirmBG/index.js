@@ -1,10 +1,6 @@
-const {
-  saveHistoryScenario,
-  shouldSaveSelectedBGToHistory,
-  isValidPartnerBG
-} = require('../../../../utils/partnerScenarios');
+const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } = require('../../../../utils/partnerScenarios');
 const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
-const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -158,9 +154,7 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'submitproblem') {
-          wx.redirectTo({
-            url: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`
-          });
+          safeOpenUrl(`/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`);
         } else if (page === 'selectproblem') {
           wx.redirectTo({
             url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
@@ -225,9 +219,9 @@ Page({
       } catch (clearErr) {
         console.warn('clearRoomProblems', clearErr);
       }
-      wx.redirectTo({
-        url: `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-      });
+      safeOpenUrl(
+        `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
+      );
     } catch (e) {
       wx.hideLoading();
       console.error('handleConfirm', e);

@@ -281,7 +281,23 @@ Page({
     getApp().globalData.selectedProblem = problem;
 
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    await this._updateRoomState('selectMode');
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'selectMode',
+          selectedDesignProblem: {
+            id: problem.id,
+            text: problem.text
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('updateRoomState selectedDesignProblem', e);
+      wx.showToast({ title: '保存设计问题失败', icon: 'none' });
+      return;
+    }
 
     const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
     wx.navigateTo({

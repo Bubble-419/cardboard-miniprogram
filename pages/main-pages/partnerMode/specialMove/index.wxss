@@ -1,0 +1,56 @@
+.container {
+  min-height: 100vh;
+  background: #fafafa;
+}
+
+.custom-navbar {
+  padding-top: env(safe-area-inset-top);
+  background: #fff;
+}
+
+.navbar-content {
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  padding: 0 42rpx;
+}
+
+.navbar-left {
+  width: 174rpx;
+}
+
+.back-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.navbar-title {
+  flex: 1;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #000;
+}
+
+.navbar-right {
+  width: 174rpx;
+}
+
+.placeholder {
+  padding: 120rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.placeholder-title {
+  font-size: 44rpx;
+  font-weight: 600;
+  color: #5ec159;
+  margin-bottom: 16rpx;
+}
+
+.placeholder-desc {
+  font-size: 28rpx;
+  color: #9ca3af;
+}

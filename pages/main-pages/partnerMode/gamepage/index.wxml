@@ -1,0 +1,169 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="page-body">
+    <!-- 顶部：房间入口 + 设计问题 -->
+    <view class="top-bar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/add-icon.png" mode="aspectFit" />
+      </view>
+      <view class="problem-chip">
+        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" />
+        <text class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}}">{{selectedProblemText || '暂无设计问题'}}</text>
+      </view>
+    </view>
+
+    <!-- 玩家列表（不展示工作坊名称） -->
+    <view class="user-section">
+      <user-list
+        avatarList="{{avatarList}}"
+        currentUser="{{currentPlayerKey}}"
+        enableAdd="{{false}}"
+        isFold="{{true}}"
+        showName="{{false}}"
+      />
+    </view>
+
+    <view class="divider-line"></view>
+
+    <!-- 可滑动卡片 -->
+    <view class="card-area">
+      <swiper
+        class="card-swiper"
+        current="{{cardIndex}}"
+        bindchange="onCardSwiperChange"
+        previous-margin="40rpx"
+        next-margin="40rpx"
+        easing-function="easeOutCubic"
+      >
+        <!-- 卡片 1：出牌并解释 -->
+        <swiper-item class="card-swiper-item">
+          <view class="game-card game-card-active">
+            <view class="action-card-body">
+              <text class="action-title">出牌并解释</text>
+              <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+              <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
+              <view class="action-divider"></view>
+              <view class="action-grid">
+                <view class="action-cell action-cell-filled">
+                  <view class="action-illus action-illus-play"></view>
+                  <text class="action-cell-label">出 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-filled">
+                  <view class="action-illus action-illus-delete"></view>
+                  <text class="action-cell-label">删 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-empty">
+                  <text class="action-cell-label">调整 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-empty">
+                  <text class="action-cell-label">交换 2 张卡牌</text>
+                </view>
+              </view>
+            </view>
+            <view class="score-panel">
+              <view class="score-panel-head">
+                <text class="score-label">此次行动评分</text>
+                <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+              </view>
+              <view class="score-buttons">
+                <view
+                  class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}} {{isCurrentPlayer ? 'score-btn-disabled' : ''}}"
+                  wx:for="{{scoreOptions}}"
+                  wx:key="*this"
+                  data-score="{{item}}"
+                  bindtap="onScoreTap"
+                >
+                  <text class="score-num">{{item}}</text>
+                  <text class="score-unit">分</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </swiper-item>
+
+        <!-- 卡片 2：文字纪要 -->
+        <swiper-item class="card-swiper-item">
+          <view class="game-card game-card-muted">
+            <view class="card-header-row">
+              <text class="card-section-title card-section-title-inline">第一轮-出牌解释</text>
+              <view class="insert-image-btn" catchtap="handleInsertImage">
+                <view class="insert-image-icon"></view>
+                <text class="insert-image-text">插入图片</text>
+              </view>
+            </view>
+            <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+              <view class="card-bullet-list">
+                <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+              </view>
+              <view class="card-photo-wrap" wx:if="{{insertedImages.length}}">
+                <image
+                  class="card-photo"
+                  wx:for="{{insertedImages}}"
+                  wx:key="*this"
+                  src="{{item}}"
+                  mode="aspectFill"
+                />
+              </view>
+              <view class="card-section-title card-section-title-gap">第一轮-疑问讨论</view>
+              <view class="card-bullet-list">
+                <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+              </view>
+            </scroll-view>
+          </view>
+        </swiper-item>
+      </swiper>
+
+      <view class="card-pagination">
+        <view class="pagination-dots">
+          <view class="dot {{cardIndex === 0 ? 'dot-active' : ''}}"></view>
+          <view class="dot {{cardIndex === 1 ? 'dot-active' : ''}}"></view>
+        </view>
+        <text class="pagination-text">{{cardIndex + 1}}/2</text>
+      </view>
+    </view>
+
+    <!-- 灵感记录 -->
+    <view class="inspiration-bar" bindtap="handleGoInspiration">
+      <view class="inspiration-badge-wrap">
+        <text class="inspiration-badge">💡</text>
+      </view>
+      <view class="inspiration-input-fake">
+        <text class="inspiration-placeholder">记录您的灵感...</text>
+      </view>
+      <view class="inspiration-submit">
+        <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+      </view>
+    </view>
+  </view>
+
+  <!-- 底部操作 -->
+  <view class="page-footer">
+    <view class="bottom-actions">
+      <button class="special-btn" bindtap="handleSpecialMove">
+        <text class="special-btn-line">特殊</text>
+        <text class="special-btn-line">行动</text>
+      </button>
+      <button
+        class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
+        disabled="{{!canStartStatement}}"
+        bindtap="handleStartStatement"
+      >
+        开始表态
+      </button>
+    </view>
+  </view>
+</view>

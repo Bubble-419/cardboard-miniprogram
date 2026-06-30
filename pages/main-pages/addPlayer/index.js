@@ -5,6 +5,7 @@ const {
   resolveBrainstormProgress
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
+const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -1047,7 +1048,7 @@ Page({
         nextPage: 'confirmFirstPlayer'
       },
       gamepage: {
-        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
+        path: buildGamepageUrl(roomId, idx, modeId),
         nextPage: 'gamepage'
       },
       creativeinput: {
@@ -1059,7 +1060,7 @@ Page({
         nextPage: 'creativeSummary'
       },
       statement: {
-        path: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+        path: buildStatementUrl(roomId, idx, state.currentPlayerName || `玩家${idx}`),
         nextPage: 'statement'
       },
       discussion: {

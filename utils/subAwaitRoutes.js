@@ -1,3 +1,5 @@
+const { buildGamepageUrl, buildStatementUrl } = require('./modeRoutes');
+
 /** 副屏等待态：停留在 subAwait 并根据 scene 切换 UI */
 const SUB_AWAIT_ROUTE = 'pages/sub-pages/subAwait/index';
 
@@ -129,7 +131,8 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-  const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
+  const playerName = state.currentPlayerName || `玩家${idx}`;
+  const modeId = (getApp().globalData && getApp().globalData.gameMode) || 'partner';
 
   if (isAwaitPage(p)) {
     return { action: 'await', scene: getSceneForPage(p) };
@@ -138,9 +141,9 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
   const redirectMap = {
     submitproblem: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
     selectproblem: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
-    gamepage: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
-    statement: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1`,
-    discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+    gamepage: buildGamepageUrl(roomId, idx, modeId),
+    statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
+    discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
     creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
@@ -222,23 +225,32 @@ function openSubAwait(roomId, scene) {
   return true;
 }
 
-function safeOpenUrl(url) {
+function safeOpenUrl(url, retryCount = 0) {
   const targetRoute = normalizeRoute(url);
   const currentRoute = getCurrentRoute();
   if (currentRoute === targetRoute) {
     return false;
   }
 
-  if (_navLock) return false;
-  _navLock = true;
+  if (_navLock && retryCount === 0) return false;
+  if (retryCount === 0) _navLock = true;
+
+  const finish = () => _releaseNavLock();
+
+  const handleFail = (err, navMethod) => {
+    const errMsg = (err && err.errMsg) || '';
+    if (retryCount < 2 && errMsg.indexOf('not been registered') !== -1) {
+      setTimeout(() => safeOpenUrl(url, retryCount + 1), 320);
+      return;
+    }
+    console.warn(`${navMethod} failed, fallback reLaunch`, err, url);
+    wx.reLaunch({ url, complete: finish });
+  };
 
   wx.redirectTo({
     url,
-    success: () => _releaseNavLock(),
-    fail: (err) => {
-      console.warn('redirectTo failed, fallback reLaunch', err, url);
-      wx.reLaunch({ url, complete: () => _releaseNavLock() });
-    }
+    success: finish,
+    fail: (err) => handleFail(err, 'redirectTo')
   });
   return true;
 }
@@ -277,5 +289,6 @@ module.exports = {
   resolveSubScreenNavigation,
   applySubAwaitScene,
   openSubAwait,
-  navigateByRoomState
+  navigateByRoomState,
+  safeOpenUrl
 };
