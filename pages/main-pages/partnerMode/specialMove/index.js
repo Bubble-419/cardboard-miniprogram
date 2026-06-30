@@ -106,10 +106,6 @@ Page({
       return;
     }
     if (viewMode === 'reverseRandom') {
-      this.setData({ viewMode: 'helpLuck' });
-      return;
-    }
-    if (viewMode === 'helpLuck') {
       this.setData({ viewMode: 'wheel' });
       return;
     }
@@ -120,12 +116,11 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (!id) return;
 
-    const { viewMode } = this.data;
-    if (viewMode === 'helpLuck' && id !== 'helpLuck') {
-      this.setData({ selectedAction: id, viewMode: 'wheel' });
-      return;
+    const patch = { selectedAction: id };
+    if (id === 'helpLuck') {
+      patch.helpMethod = this.data.helpMethod || 'outside';
     }
-    this.setData({ selectedAction: id });
+    this.setData(patch);
   },
 
   onSelectHelpMethod(e) {
@@ -137,24 +132,14 @@ Page({
   handleConfirm() {
     const { viewMode, selectedAction, helpMethod } = this.data;
 
-    if (viewMode === 'wheel') {
-      if (!selectedAction) {
-        wx.showToast({ title: '请选择特殊行动', icon: 'none' });
-        return;
-      }
-      if (selectedAction === 'helpLuck') {
-        this.setData({
-          viewMode: 'helpLuck',
-          helpMethod: 'outside',
-          selectedAction: 'helpLuck'
-        });
-        return;
-      }
-      wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
+    if (viewMode === 'reverseRandom') return;
+
+    if (!selectedAction) {
+      wx.showToast({ title: '请选择特殊行动', icon: 'none' });
       return;
     }
 
-    if (viewMode === 'helpLuck') {
+    if (selectedAction === 'helpLuck') {
       if (helpMethod === 'reverse') {
         this.setData({ viewMode: 'reverseRandom' });
         return;
@@ -167,11 +152,14 @@ Page({
           text: '有什么可以帮您？您仅能提问三次（AI 功能即将上线）'
         }]
       });
+      return;
     }
+
+    wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
   },
 
   handleCancelAdopt() {
-    this.setData({ viewMode: 'helpLuck' });
+    this.setData({ viewMode: 'wheel' });
   },
 
   handleAdoptDeck() {

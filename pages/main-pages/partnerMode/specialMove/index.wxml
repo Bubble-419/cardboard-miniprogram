@@ -37,8 +37,8 @@
 
     <view class="divider-line"></view>
 
-    <!-- 选择特殊行动 / 求助方式（保留转盘） -->
-    <view class="main-content" wx:if="{{viewMode === 'wheel' || viewMode === 'helpLuck'}}">
+    <!-- 选择特殊行动 -->
+    <view class="main-content" wx:if="{{viewMode === 'wheel'}}">
       <view class="section-head">
         <image class="section-back" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="handleGoBack" />
         <text class="section-title">选择特殊行动</text>
@@ -116,7 +116,7 @@
 
   <!-- 底部按钮 -->
   <view class="page-footer">
-    <view class="help-method-section" wx:if="{{viewMode === 'helpLuck'}}">
+    <view class="help-method-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'helpLuck'}}">
       <text class="help-method-label">选择求助方式</text>
       <view class="help-method-list">
         <view
