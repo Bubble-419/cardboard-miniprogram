@@ -1,3 +1,6 @@
 {
+  "usingComponents": {
+    "user-list": "/components/user-list/index"
+  },
   "navigationStyle": "custom"
 }

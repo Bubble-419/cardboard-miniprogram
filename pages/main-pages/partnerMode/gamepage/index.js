@@ -350,9 +350,9 @@ Page({
   },
 
   handleSpecialMove() {
-    const roomId = this.data.roomId || '';
+    const { roomId, currentPlayerIndex } = this.data;
     if (!roomId) return;
-    wx.navigateTo({ url: buildSpecialMoveUrl(roomId) });
+    wx.navigateTo({ url: buildSpecialMoveUrl(roomId, currentPlayerIndex) });
   },
 
   async handleStartStatement() {

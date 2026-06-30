@@ -31,8 +31,10 @@ function buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, option
   return url;
 }
 
-function buildSpecialMoveUrl(roomId) {
-  return `/pages/main-pages/partnerMode/specialMove/index?roomId=${encodeURIComponent(roomId)}`;
+function buildSpecialMoveUrl(roomId, currentPlayerIndex) {
+  const roomIdEnc = encodeURIComponent(roomId);
+  const idx = currentPlayerIndex != null ? currentPlayerIndex : 1;
+  return `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
 
 module.exports = {
