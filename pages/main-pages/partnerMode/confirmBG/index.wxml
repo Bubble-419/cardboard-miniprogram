@@ -23,41 +23,30 @@
 
   <!-- 房主确认视图 -->
   <block wx:else>
-    <scroll-view class="cards-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-      <view class="cards-deck">
+    <!-- 卡片叠放区：纯 CSS 百分比布局，无滚动，自适应屏幕高度 -->
+    <view class="deck-outer">
+      <view class="deck-container">
         <!--
-          cards 数组按 [场景,用户,平台,功能] 排列
-          index 0 = 最底层(背面)，index 3 = 最顶层(正面)
-          透视感：scale 0.94→1.0，opacity 0.65→1.0，shadow 递增
+          4 张卡叠放：step=22%，card-slot height=34%，3×22+34=100
+          透视感：deck-container 开启 perspective，每张卡用 rotateX 递减倾斜
+          水印改为纯文字，避免 <image> 百分比高度在小程序中失效
         -->
         <view
           class="deck-slot"
           wx:for="{{cards}}"
           wx:key="type"
-          style="z-index: {{index + 1}};"
+          style="top: {{index * 22}}%; z-index: {{index + 1}};"
         >
-          <view
-            class="deck-card"
-            style="
-              transform: scale({{0.94 + index * 0.02}});
-              opacity: {{0.65 + index * 0.12}};
-              box-shadow: 0 {{4 + index * 4}}rpx {{12 + index * 8}}rpx rgba(94,193,89,{{0.06 + index * 0.04}});
-            "
-          >
-            <!-- 白色底层 -->
+          <view class="deck-card deck-card-{{index}}">
             <view class="deck-bg"></view>
-            <!-- Union 绿色边框 SVG -->
             <image class="deck-frame" src="/assets/bgCard/union-green.svg" mode="scaleToFill" />
-            <!-- 右上角 tab 标签 -->
             <text class="deck-label">{{item.label}}</text>
-            <!-- IxDL 水印 -->
-            <image class="deck-watermark" src="/assets/bgCard/icon-center.svg" mode="aspectFit" />
-            <!-- 已填写的值 —— 垂直+水平居中 -->
+            <text class="deck-watermark-text">IxDL</text>
             <text class="deck-value">{{item.value}}</text>
           </view>
         </view>
       </view>
-    </scroll-view>
+    </view>
 
     <!-- 确认按钮 -->
     <view class="footer">
