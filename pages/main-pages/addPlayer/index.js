@@ -54,6 +54,7 @@ Page({
     isHost: true,
     memberCount: 0,
     hasSelectedMode: false,
+    brainstormSessionEnded: false,
     selectedModeId: '',
     selectedModeTitle: '',
     selectedModeDesc: '',
@@ -167,6 +168,7 @@ Page({
     return {
       memberCount,
       hasSelectedMode: result.hasSelectedMode === true,
+      brainstormSessionEnded: !!(result.roomState && result.roomState.brainstormSessionEnded),
       selectedModeId: result.selectedModeId || '',
       selectedModeTitle: result.selectedModeTitle || '',
       selectedModeDesc: result.selectedModeDesc || '',
@@ -250,6 +252,17 @@ Page({
           return;
         }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
+        if (page === 'closingend') {
+          console.log('[副屏轮询] 忽略 closingEnd 跳转，保持房间页');
+          return;
+        }
+        if (result.roomState.brainstormSessionEnded === true) {
+          const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+          if (stalePages.includes(page)) {
+            console.log('[副屏轮询] 脑暴已结束，忽略滞后页面', { page });
+            return;
+          }
+        }
         if (navigateByRoomState(page, result.roomState, roomId)) {
           console.log('[副屏轮询] 已跟随主屏跳转', { page });
         } else {
@@ -401,8 +414,15 @@ Page({
       };
       const hasSelectedMode = result.hasSelectedMode === true;
       const resolvedState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
-      if (resolvedState.currentPage && resolvedState.currentPage !== 'addPlayer') {
+      if (
+        !resolvedState.brainstormSessionEnded
+        && resolvedState.currentPage
+        && resolvedState.currentPage !== 'addPlayer'
+      ) {
         saveLocalBrainstormProgress(roomId, resolvedState.currentPage);
+      }
+      if (resolvedState.brainstormSessionEnded) {
+        clearLocalBrainstormProgress(roomId);
       }
 
       if (silent) {
@@ -989,6 +1009,45 @@ Page({
     wx.navigateTo({
       url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`
     });
+  },
+
+  async handleAnotherRound() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间参数错误', icon: 'none' });
+      return;
+    }
+    if (!this.data.isHost) {
+      wx.showToast({ title: '请等待房主开始新一轮', icon: 'none' });
+      return;
+    }
+    if (!this.data.hasSelectedMode) {
+      wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '准备中…', mask: true });
+    clearLocalBrainstormProgress(roomId);
+    try {
+      const updateRes = await this._updateRoomState('selectPlayer', null, null, {
+        brainstormSessionEnded: false,
+        partnerGamePhase: 'play',
+        partnerMasterMode: false,
+        resetClosingVotes: true,
+        clearBrainstormProgress: true,
+        incrementRound: true
+      });
+      if (updateRes && updateRes.ok !== true) {
+        wx.showToast({ title: updateRes.errMsg || '状态同步失败', icon: 'none' });
+        return;
+      }
+      safeOpenUrl(`/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`);
+    } catch (e) {
+      console.warn('handleAnotherRound', e);
+      wx.showToast({ title: '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
   },
 
   /** 根据已选模式与房间进度，解析「继续脑暴」跳转目标 */

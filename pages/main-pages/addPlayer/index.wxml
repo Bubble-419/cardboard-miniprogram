@@ -175,7 +175,15 @@
         <button class="primary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
         <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
       </block>
-      <!-- 房主：已选模式 -->
+      <!-- 房主：脑暴已结束 -->
+      <block wx:elif="{{isHost && hasSelectedMode && brainstormSessionEnded}}">
+        <button class="primary-btn" bindtap="handleAnotherRound">再来一轮</button>
+        <view class="footer-btn-row">
+          <button class="secondary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
+          <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
+        </view>
+      </block>
+      <!-- 房主：已选模式（进行中） -->
       <block wx:elif="{{isHost && hasSelectedMode}}">
         <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
         <view class="footer-btn-row">
@@ -188,7 +196,13 @@
         <button class="primary-btn" bindtap="handleGoBrainstormMode">查看脑暴模式</button>
         <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
       </block>
-      <!-- 成员：已选模式 -->
+      <!-- 成员：脑暴已结束 -->
+      <block wx:elif="{{!isHost && hasSelectedMode && brainstormSessionEnded}}">
+        <button class="primary-btn" bindtap="handleAnotherRound">再来一轮</button>
+        <button class="secondary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
+        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
+      </block>
+      <!-- 成员：已选模式（进行中） -->
       <block wx:else>
         <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
         <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>

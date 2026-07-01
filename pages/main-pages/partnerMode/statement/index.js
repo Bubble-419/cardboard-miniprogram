@@ -1,5 +1,5 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 const {
   PHASE_PLAY,
   PHASE_DISCUSSION,
@@ -51,6 +51,16 @@ Page({
 
     this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
     this._loadMembers(roomId);
+  },
+
+  onShow() {
+    if (this.data.isWaiting && this.data.roomId) {
+      this._startStatePolling();
+    }
+  },
+
+  onHide() {
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -111,16 +121,8 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page !== 'gamepage') return;
-
-        const idx = result.roomState.currentPlayerIndex != null
-          ? result.roomState.currentPlayerIndex
-          : this.data.currentPlayerIndex;
-        const modeId = result.selectedModeId || 'partner';
-        const phase = result.roomState.partnerGamePhase || PHASE_PLAY;
-        safeOpenUrl(buildGamepageUrl(roomId, idx, modeId, {
-          phase: phase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
-        }));
+        if (page === 'statement') return;
+        navigateByRoomState(page, result.roomState, roomId);
       } catch (e) {
         console.warn('statement state poll', e);
       }

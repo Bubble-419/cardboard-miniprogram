@@ -26,7 +26,11 @@ exports.main = async (event, context) => {
     selectedBG,
     selectedDesignProblem,
     partnerGamePhase,
-    partnerMasterMode
+    partnerMasterMode,
+    partnerClosingStep,
+    closingQuestionPlayers,
+    resetClosingVotes,
+    brainstormSessionEnded
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -76,7 +80,7 @@ exports.main = async (event, context) => {
     }
 
     const updateData = {
-      currentPage: currentPage || 'addPlayer',
+      currentPage: (currentPage || 'addPlayer').toLowerCase(),
       currentRound,
       updatedAt: Date.now()
     };
@@ -98,10 +102,19 @@ exports.main = async (event, context) => {
     }
 
     const page = updateData.currentPage;
-    if (event.clearBrainstormProgress === true) {
+    if (page === 'closingstatement') {
+      updateData.closingVotes = {};
+      updateData.closingQuestionPlayers = [];
+    }
+    if (event.clearBrainstormProgress === true || brainstormSessionEnded === true) {
       updateData.brainstormProgressPage = null;
-    } else if (page && page !== 'addPlayer') {
+    } else if (page && page !== 'addplayer') {
       updateData.brainstormProgressPage = page;
+    }
+    if (brainstormSessionEnded === true) {
+      updateData.brainstormSessionEnded = true;
+    } else if (brainstormSessionEnded === false) {
+      updateData.brainstormSessionEnded = false;
     }
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
@@ -144,15 +157,17 @@ exports.main = async (event, context) => {
       }
     }
     if (partnerGamePhase != null && partnerGamePhase !== '') {
-      if (!isCreator) {
-        return {
-          ok: false,
-          errCode: 'NO_PERMISSION',
-          errMsg: '仅房主可更新游戏阶段'
-        };
-      }
       const phase = String(partnerGamePhase);
-      if (phase === 'play' || phase === 'discussion') {
+      if (phase === 'closing') {
+        updateData.partnerGamePhase = phase;
+      } else if (phase === 'play' || phase === 'discussion') {
+        if (!isCreator) {
+          return {
+            ok: false,
+            errCode: 'NO_PERMISSION',
+            errMsg: '仅房主可更新游戏阶段'
+          };
+        }
         updateData.partnerGamePhase = phase;
       }
     }
@@ -160,6 +175,26 @@ exports.main = async (event, context) => {
       updateData.partnerMasterMode = true;
     } else if (partnerMasterMode === false) {
       updateData.partnerMasterMode = false;
+    }
+    if (partnerClosingStep != null && partnerClosingStep !== '') {
+      const step = String(partnerClosingStep);
+      if (step === 'rune' || step === 'review') {
+        if (!isCreator) {
+          return {
+            ok: false,
+            errCode: 'NO_PERMISSION',
+            errMsg: '仅房主可更新收尾步骤'
+          };
+        }
+        updateData.partnerClosingStep = step;
+      }
+    }
+    if (Array.isArray(closingQuestionPlayers)) {
+      updateData.closingQuestionPlayers = closingQuestionPlayers;
+    }
+    if (resetClosingVotes === true) {
+      updateData.closingVotes = {};
+      updateData.closingQuestionPlayers = [];
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

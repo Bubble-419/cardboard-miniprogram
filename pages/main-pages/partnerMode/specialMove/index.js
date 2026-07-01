@@ -1,6 +1,6 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
-const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
+const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
 
@@ -34,6 +34,11 @@ const MASTER_HINT_LINES = [
   '您将可以无限操作卡牌，不受时间和出牌限制。'
 ];
 
+const CLOSING_HINT_LINES = [
+  '选择进入收尾阶段',
+  '如果所有玩家表态通过，将强制结束游戏'
+];
+
 const HELP_METHOD_OPTIONS = [
   { id: 'reverse', title: '反面随机拼', desc: '将卡牌置于反面，随机拼成卡组' },
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
@@ -57,6 +62,7 @@ Page({
     helpMethodOptions: HELP_METHOD_OPTIONS,
     silentHintLines: SILENT_HINT_LINES,
     masterHintLines: MASTER_HINT_LINES,
+    closingHintLines: CLOSING_HINT_LINES,
     silentRemainingSec: SILENT_DURATION_SEC,
     silentTimerText: '05:00',
     suggestedQuestions: SUGGESTED_QUESTIONS,
@@ -78,7 +84,16 @@ Page({
     getApp().globalData.roomId = roomId;
     this.setData({ roomId, initiatorPlayerIndex, currentPlayerIndex: initiatorPlayerIndex });
     this.loadRoomData();
-    this._startStatePolling();
+  },
+
+  onShow() {
+    if (this.data.roomId) {
+      this._startStatePolling();
+    }
+  },
+
+  onHide() {
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -159,6 +174,12 @@ Page({
       if (extra && extra.partnerMasterMode != null) {
         data.partnerMasterMode = extra.partnerMasterMode;
       }
+      if (extra && extra.partnerGamePhase != null) {
+        data.partnerGamePhase = extra.partnerGamePhase;
+      }
+      if (extra && extra.resetClosingVotes === true) {
+        data.resetClosingVotes = true;
+      }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
       return result.ok === true;
@@ -181,11 +202,10 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
         const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page !== 'gamepage' || result.roomState.partnerMasterMode !== true) return;
-        const idx = result.roomState.currentPlayerIndex != null
-          ? result.roomState.currentPlayerIndex
-          : this.data.initiatorPlayerIndex;
-        safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner'));
+        if (page === 'gamepage' && result.roomState.partnerMasterMode !== true) {
+          return;
+        }
+        navigateByRoomState(page, result.roomState, roomId);
       } catch (e) {
         console.warn('specialMove state poll', e);
       }
@@ -285,7 +305,30 @@ Page({
       return;
     }
 
+    if (selectedAction === 'closing') {
+      this.activateClosing();
+      return;
+    }
+
     wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
+  },
+
+  async activateClosing() {
+    const { roomId } = this.data;
+    if (!roomId) return;
+
+    const ok = await this._updateRoomState('closingStatement', null, null, {
+      partnerGamePhase: 'closing',
+      partnerMasterMode: false,
+      resetClosingVotes: true
+    });
+    if (!ok) {
+      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      return;
+    }
+
+    this._stopStatePolling();
+    safeOpenUrl(buildClosingStatementUrl(roomId));
   },
 
   async activateMasterMode() {
@@ -305,6 +348,7 @@ Page({
       return;
     }
 
+    this._stopStatePolling();
     safeOpenUrl(buildGamepageUrl(roomId, initiatorPlayerIndex, 'partner'));
   },
 

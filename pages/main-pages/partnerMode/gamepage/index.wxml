@@ -39,7 +39,118 @@
 
     <view class="divider-line"></view>
 
-    <!-- 可滑动卡片 -->
+    <!-- 收尾阶段 -->
+    <block wx:if="{{gamepagePhase === 'closing'}}">
+      <view class="card-area">
+        <swiper
+          class="card-swiper"
+          current="{{cardIndex}}"
+          bindchange="onCardSwiperChange"
+          previous-margin="40rpx"
+          next-margin="40rpx"
+          easing-function="easeOutCubic"
+        >
+          <swiper-item class="card-swiper-item">
+            <view class="game-card game-card-active closing-card">
+              <view class="closing-badge">收尾阶段</view>
+              <view class="closing-card-body">
+                <text class="closing-card-title">补全符文</text>
+                <text class="closing-card-desc">请根据以下操作提示，补全符文</text>
+                <view class="closing-divider"></view>
+                <view class="closing-rune-grid">
+                  <view class="closing-rune-col">
+                    <view class="closing-rune-slot closing-rune-slot-top">
+                      <text class="closing-rune-label">延时符文</text>
+                    </view>
+                    <view class="closing-rune-slot closing-rune-slot-bottom">
+                      <text class="closing-rune-label">稳定态符文</text>
+                    </view>
+                  </view>
+                  <view class="closing-rune-col">
+                    <view class="closing-rune-slot closing-rune-slot-top">
+                      <text class="closing-rune-label">延时符文</text>
+                    </view>
+                    <view class="closing-rune-slot closing-rune-slot-bottom">
+                      <text class="closing-rune-label">属性类型符文</text>
+                    </view>
+                  </view>
+                </view>
+                <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                  <text class="card-section-title">第一轮-出牌解释</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                </scroll-view>
+              </view>
+            </view>
+          </swiper-item>
+
+          <swiper-item class="card-swiper-item">
+            <view class="game-card game-card-active closing-card">
+              <view class="closing-badge">收尾阶段</view>
+              <view class="closing-card-body">
+                <text class="closing-card-title">创意点复盘</text>
+                <view class="closing-photo-hint">（提示玩家拍摄卡组）</view>
+                <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                  <text class="card-section-title">第一轮-出牌解释</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <view class="closing-photo-placeholder" catchtap="handleClosingPhoto">
+                    <view class="discussion-photo-icon"></view>
+                  </view>
+                  <view class="card-photo-wrap" wx:if="{{reviewPhotos.length}}">
+                    <image
+                      class="card-photo"
+                      wx:for="{{reviewPhotos}}"
+                      wx:key="*this"
+                      src="{{item}}"
+                      mode="aspectFill"
+                    />
+                  </view>
+                  <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                  <view class="discussion-report-hint">
+                    <text class="discussion-report-title">玩家行动报告</text>
+                    <text class="discussion-report-sub">下拉查看</text>
+                  </view>
+                </scroll-view>
+              </view>
+            </view>
+          </swiper-item>
+        </swiper>
+
+        <view class="card-pagination">
+          <view class="pagination-dots">
+            <view class="dot {{cardIndex === 0 ? 'dot-active' : ''}}"></view>
+            <view class="dot {{cardIndex === 1 ? 'dot-active' : ''}}"></view>
+          </view>
+          <text class="pagination-text">{{cardIndex + 1}}/2</text>
+        </view>
+      </view>
+
+      <view class="inspiration-bar" bindtap="handleGoInspiration">
+        <view class="inspiration-badge-wrap">
+          <text class="inspiration-badge">💡</text>
+        </view>
+        <view class="inspiration-input-fake">
+          <text class="inspiration-placeholder">记录您的灵感...</text>
+        </view>
+        <view class="inspiration-submit">
+          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        </view>
+      </view>
+    </block>
+
+    <!-- 常规出牌 / 讨论 -->
+    <block wx:else>
     <view class="card-area">
       <swiper
         class="card-swiper"
@@ -175,11 +286,30 @@
         <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
       </view>
     </view>
+    </block>
   </view>
 
   <!-- 底部操作 -->
   <view class="page-footer">
-    <view class="bottom-actions" wx:if="{{gamepagePhase === 'discussion'}}">
+    <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune'}}">
+      <button
+        class="closing-next-btn {{isHost ? '' : 'closing-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleClosingNextStep"
+      >
+        下一步
+      </button>
+    </view>
+    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'review'}}">
+      <button
+        class="end-brainstorm-btn {{isHost ? '' : 'closing-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleEndBrainstorm"
+      >
+        结束脑暴
+      </button>
+    </view>
+    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'discussion'}}">
       <button
         class="end-discussion-btn {{isHost ? '' : 'end-discussion-btn-disabled'}}"
         disabled="{{!isHost}}"

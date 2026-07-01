@@ -3,14 +3,18 @@
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
 const { assignAvatarImages } = require('../../../../utils/avatars');
-const { buildStatementUrl, buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
+const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
   PHASE_PLAY,
   PHASE_DISCUSSION,
+  PHASE_CLOSING,
+  CLOSING_STEP_RUNE,
+  CLOSING_STEP_REVIEW,
   normalizePartnerGamePhase,
   isDiscussionPhase,
+  isClosingPhase,
 } = require('../../../../utils/partnerGamePhase');
 const {
   getNextPlayerTurn,
@@ -36,6 +40,9 @@ Page({
     scoredCount: 0,
     totalRequired: 0,
     isMasterMode: false,
+    closingStep: CLOSING_STEP_RUNE,
+    closingQuestionPlayers: [],
+    reviewPhotos: [],
     canStartStatement: false,
     playHistory: [
       'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -65,13 +72,17 @@ Page({
 
     const initialPhase = options && options.phase === PHASE_DISCUSSION
       ? PHASE_DISCUSSION
-      : PHASE_PLAY;
+      : (options && options.phase === PHASE_CLOSING ? PHASE_CLOSING : PHASE_PLAY);
+    const initialClosingStep = options && options.closingStep === CLOSING_STEP_REVIEW
+      ? CLOSING_STEP_REVIEW
+      : CLOSING_STEP_RUNE;
 
     this.setData({
       roomId,
       currentPlayerIndex,
       gamepagePhase: initialPhase,
-      cardIndex: 0
+      closingStep: initialClosingStep,
+      cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0
     });
 
     this.loadRoomData();
@@ -79,6 +90,15 @@ Page({
 
   onShow() {
     this.refreshScoreStatus();
+    if (this.data.roomId) {
+      this._startStatePolling();
+      this._startScorePolling();
+    }
+  },
+
+  onHide() {
+    this._stopScorePolling();
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -99,24 +119,40 @@ Page({
     const roomPhase = normalizePartnerGamePhase(
       roomState.partnerGamePhase || this.data.gamepagePhase
     );
+    const closingQuestionPlayers = Array.isArray(roomState.closingQuestionPlayers)
+      ? roomState.closingQuestionPlayers
+      : [];
+    const closingStep = roomState.partnerClosingStep || CLOSING_STEP_RUNE;
     const playerChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
     const phaseChanged = roomPhase !== this.data.gamepagePhase;
+    const closingStepChanged = isClosingPhase(roomPhase)
+      && closingStep !== this.data.closingStep;
 
     const patch = {
       members,
-      avatarList: buildPartnerAvatarList(members),
+      avatarList: isClosingPhase(roomPhase)
+        ? buildPartnerAvatarList(members, closingQuestionPlayers)
+        : buildPartnerAvatarList(members),
       currentPlayerIndex: player.currentPlayerIndex,
       currentPlayerName: player.currentPlayerName,
       isCurrentPlayer: player.isCurrentPlayer,
       gamepagePhase: roomPhase,
       isMasterMode: roomState.partnerMasterMode === true,
+      closingQuestionPlayers,
+      closingStep,
       totalRequired: Math.max(0, members.length - 1)
     };
 
     if (playerChanged || phaseChanged || options.resetTurnUi) {
-      patch.cardIndex = 0;
       patch.selectedScore = null;
       patch.canStartStatement = false;
+      if (!isClosingPhase(roomPhase)) {
+        patch.cardIndex = 0;
+      }
+    }
+
+    if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
+      patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
     }
 
     this.setData(patch);
@@ -169,8 +205,8 @@ Page({
   },
 
   async refreshScoreStatus() {
-    const { roomId, currentPlayerIndex, isHost } = this.data;
-    if (!roomId) return;
+    const { roomId, currentPlayerIndex, isHost, gamepagePhase } = this.data;
+    if (!roomId || isClosingPhase(gamepagePhase)) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getGameScoreStatus',
@@ -184,7 +220,8 @@ Page({
         ? result.totalRequired
         : this.data.totalRequired;
       const canStartStatement = isHost
-        && !isDiscussionPhase(this.data.gamepagePhase)
+        && !isDiscussionPhase(gamepagePhase)
+        && !isClosingPhase(gamepagePhase)
         && totalRequired > 0
         && scoredCount >= totalRequired;
 
@@ -225,18 +262,16 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         if (page === 'gamepage') {
           const prevMaster = this.data.isMasterMode;
+          const prevClosingStep = this.data.closingStep;
           const { playerChanged, phaseChanged } = this._applyRoomContext(result);
-          if (playerChanged || phaseChanged || prevMaster !== this.data.isMasterMode) {
+          if (
+            playerChanged
+            || phaseChanged
+            || prevMaster !== this.data.isMasterMode
+            || prevClosingStep !== this.data.closingStep
+          ) {
             this.refreshScoreStatus();
           }
-          return;
-        }
-        if (page === 'statement') {
-          const idx = result.roomState.currentPlayerIndex != null
-            ? result.roomState.currentPlayerIndex
-            : this.data.currentPlayerIndex;
-          const name = result.roomState.currentPlayerName || this.data.currentPlayerName;
-          safeOpenUrl(buildStatementUrl(roomId, idx, name, { isWaiting: true }));
           return;
         }
         navigateByRoomState(page, result.roomState, roomId);
@@ -270,6 +305,9 @@ Page({
       }
       if (extra && extra.partnerMasterMode != null) {
         data.partnerMasterMode = extra.partnerMasterMode;
+      }
+      if (extra && extra.partnerClosingStep != null) {
+        data.partnerClosingStep = extra.partnerClosingStep;
       }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
@@ -418,6 +456,68 @@ Page({
 
   handleGoInspiration() {
     wx.navigateTo({ url: '/pages/inspiration/index' });
+  },
+
+  async handleClosingNextStep() {
+    if (!this.data.isHost) {
+      wx.showToast({ title: '请等待房主操作', icon: 'none' });
+      return;
+    }
+    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
+    const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+      partnerGamePhase: PHASE_CLOSING,
+      partnerClosingStep: CLOSING_STEP_REVIEW
+    });
+    if (!ok) {
+      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      return;
+    }
+    this.setData({
+      closingStep: CLOSING_STEP_REVIEW,
+      cardIndex: 1
+    });
+  },
+
+  async handleEndBrainstorm() {
+    if (!this.data.isHost) {
+      wx.showToast({ title: '请等待房主结束脑暴', icon: 'none' });
+      return;
+    }
+    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
+    const ok = await this._updateRoomState('closingEnd', currentPlayerIndex, currentPlayerName, {
+      partnerGamePhase: PHASE_CLOSING
+    });
+    if (!ok) {
+      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      return;
+    }
+    safeOpenUrl(buildClosingEndUrl(roomId));
+  },
+
+  handleClosingPhoto() {
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        const remain = 9 - (this.data.reviewPhotos || []).length;
+        if (remain <= 0) {
+          wx.showToast({ title: '最多拍摄 9 张', icon: 'none' });
+          return;
+        }
+        wx.chooseImage({
+          count: remain,
+          sizeType: ['compressed'],
+          sourceType,
+          success: (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) return;
+            this.setData({
+              reviewPhotos: [...(this.data.reviewPhotos || []), ...paths]
+            });
+          }
+        });
+      }
+    });
   },
 
   handleGoBack() {

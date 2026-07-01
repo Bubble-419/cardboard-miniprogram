@@ -19,12 +19,14 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
   };
 }
 
-function buildPartnerAvatarList(members) {
+function buildPartnerAvatarList(members, highlightIds) {
+  const highlights = Array.isArray(highlightIds) ? highlightIds : [];
   return (members || []).map((m) => ({
     id: m.playerIndex,
     avatar: m.avatarImage || m.avatarUrl || '',
     nickName: m.nickName,
-    isMe: m.isMe
+    isMe: m.isMe,
+    highlight: highlights.includes(m.playerIndex)
   }));
 }
 

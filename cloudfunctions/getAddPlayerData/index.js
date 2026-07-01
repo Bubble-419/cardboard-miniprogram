@@ -8,6 +8,12 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
+const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement'];
+
+function isNonResumableProgressPage(page) {
+  return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
+}
+
 /**
  * 供 addPlayer 页使用：返回房间小程序码 fileID 与成员列表（含 isMe）
  */
@@ -41,24 +47,33 @@ exports.main = async (event, context) => {
     const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
 
+    const brainstormSessionEnded = room.brainstormSessionEnded === true;
     let currentPage = room.currentPage || 'addPlayer';
     // 房主回到房间大厅时 currentPage 可能为 addPlayer，用 brainstormProgressPage 恢复脑暴进度
     if (
       hasSelectedMode &&
+      !brainstormSessionEnded &&
       (currentPage === 'addPlayer' || !room.currentPage) &&
-      room.brainstormProgressPage
+      room.brainstormProgressPage &&
+      !isNonResumableProgressPage(room.brainstormProgressPage)
     ) {
       currentPage = room.brainstormProgressPage;
     }
 
     const roomState = {
       currentPage,
+      brainstormSessionEnded,
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
       currentPlayerName: room.currentPlayerName || '玩家1',
       passCount: room.currentPassCount != null ? room.currentPassCount : null,
       memberCount: room.currentMemberCount != null ? room.currentMemberCount : null,
       partnerGamePhase: room.partnerGamePhase || 'play',
-      partnerMasterMode: room.partnerMasterMode === true
+      partnerMasterMode: room.partnerMasterMode === true,
+      partnerClosingStep: room.partnerClosingStep || 'rune',
+      closingQuestionPlayers: Array.isArray(room.closingQuestionPlayers)
+        ? room.closingQuestionPlayers
+        : [],
+      closingVotes: room.closingVotes || {}
     };
 
     const membersRes = await db

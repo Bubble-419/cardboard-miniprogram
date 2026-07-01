@@ -1,4 +1,11 @@
-const { buildGamepageUrl, buildStatementUrl } = require('./modeRoutes');
+const { buildGamepageUrl, buildStatementUrl, buildClosingStatementUrl, buildClosingEndUrl } = require('./modeRoutes');
+const {
+  getCurrentRoute,
+  normalizeRoute,
+  openUrl,
+  safeOpenUrl,
+  openPartnerPage
+} = require('./pageNavigate');
 
 /** 副屏等待态：停留在 subAwait 并根据 scene 切换 UI */
 const SUB_AWAIT_ROUTE = 'pages/sub-pages/subAwait/index';
@@ -58,7 +65,9 @@ const PAGE_PROGRESS_RANK = {
   creativeinput: 80,
   creativesummary: 90,
   statement: 100,
+  closingstatement: 105,
   discussion: 110,
+  closingend: 115,
   leaderboard: 120
 };
 
@@ -107,16 +116,6 @@ function shouldSkipStaleSubScreenRedirect(targetPage) {
   return sceneRank > 0 && targetRank >= 0 && targetRank < sceneRank;
 }
 
-function getCurrentRoute() {
-  const pages = getCurrentPages();
-  if (!pages.length) return '';
-  return pages[pages.length - 1].route || '';
-}
-
-function normalizeRoute(url) {
-  return (url || '').replace(/^\//, '').split('?')[0];
-}
-
 function buildSubAwaitUrl(roomId, scene) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   let url = `/pages/sub-pages/subAwait/index?roomId=${encodeURIComponent(id)}`;
@@ -142,9 +141,14 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
     submitproblem: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
     selectproblem: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
     gamepage: buildGamepageUrl(roomId, idx, modeId, {
-      phase: state.partnerGamePhase === 'discussion' ? 'discussion' : undefined
+      phase: state.partnerGamePhase === 'discussion'
+        ? 'discussion'
+        : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
+      closingStep: state.partnerClosingStep || undefined
     }),
     statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
+    closingstatement: buildClosingStatementUrl(roomId),
+    closingend: buildClosingEndUrl(roomId),
     discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
@@ -168,15 +172,8 @@ function applySubAwaitScene(scene) {
   return false;
 }
 
-let _navLock = false;
 let _subAwaitNavLock = false;
 let _pendingSubAwaitUrl = '';
-
-function _releaseNavLock(delay = 1200) {
-  setTimeout(() => {
-    _navLock = false;
-  }, delay);
-}
 
 function _releaseSubAwaitLock(delay = 2000) {
   setTimeout(() => {
@@ -209,56 +206,29 @@ function openSubAwait(roomId, scene) {
 
   _subAwaitNavLock = true;
   _pendingSubAwaitUrl = url;
-
-  const finish = () => _releaseSubAwaitLock();
-
-  wx.redirectTo({
-    url,
-    success: finish,
-    fail: (err) => {
-      console.warn('redirectTo subAwait failed, fallback reLaunch', err);
-      wx.reLaunch({
-        url,
-        complete: finish
-      });
-    }
-  });
-
-  return true;
-}
-
-function safeOpenUrl(url, retryCount = 0) {
-  const targetRoute = normalizeRoute(url);
-  const currentRoute = getCurrentRoute();
-  if (currentRoute === targetRoute) {
-    return false;
-  }
-
-  if (_navLock && retryCount === 0) return false;
-  if (retryCount === 0) _navLock = true;
-
-  const finish = () => _releaseNavLock();
-
-  const handleFail = (err, navMethod) => {
-    const errMsg = (err && err.errMsg) || '';
-    if (retryCount < 2 && errMsg.indexOf('not been registered') !== -1) {
-      setTimeout(() => safeOpenUrl(url, retryCount + 1), 320);
-      return;
-    }
-    console.warn(`${navMethod} failed, fallback reLaunch`, err, url);
-    wx.reLaunch({ url, complete: finish });
-  };
-
-  wx.redirectTo({
-    url,
-    success: finish,
-    fail: (err) => handleFail(err, 'redirectTo')
-  });
+  openUrl(url);
+  setTimeout(() => _releaseSubAwaitLock(), 2000);
   return true;
 }
 
 /** 副屏轮询：根据主屏 currentPage 跳转至 subAwait 或业务页 */
 function navigateByRoomState(page, roomState, roomId) {
+  const p = (page || '').toLowerCase();
+  const state = roomState || {};
+  const current = getCurrentRoute();
+
+  // 大厅页不应被拉回收尾过渡页（避免 closingEnd ↔ addPlayer 振荡）
+  if (p === 'closingend' && current === 'pages/main-pages/addPlayer/index') {
+    return false;
+  }
+
+  if (state.brainstormSessionEnded === true) {
+    const staleAfterEnd = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+    if (staleAfterEnd.includes(p) && current === 'pages/main-pages/addPlayer/index') {
+      return false;
+    }
+  }
+
   const nav = resolveSubScreenNavigation(page, roomState, roomId);
   if (!nav) return false;
 
@@ -270,10 +240,15 @@ function navigateByRoomState(page, roomState, roomId) {
     if (shouldSkipStaleSubScreenRedirect(page)) {
       return false;
     }
-    return safeOpenUrl(nav.url);
+    return openUrl(nav.url);
   }
 
   return false;
+}
+
+/** @deprecated 使用 navigateByRoomState */
+function followRoomState(page, roomState, roomId) {
+  return navigateByRoomState(page, roomState, roomId);
 }
 
 module.exports = {
@@ -292,5 +267,8 @@ module.exports = {
   applySubAwaitScene,
   openSubAwait,
   navigateByRoomState,
-  safeOpenUrl
+  followRoomState,
+  openUrl,
+  safeOpenUrl,
+  openPartnerPage
 };

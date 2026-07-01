@@ -16,6 +16,12 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     if (options.phase === 'discussion') {
       url += '&phase=discussion';
     }
+    if (options.phase === 'closing') {
+      url += '&phase=closing';
+    }
+    if (options.closingStep) {
+      url += `&closingStep=${encodeURIComponent(options.closingStep)}`;
+    }
     return url;
   }
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
@@ -37,9 +43,21 @@ function buildSpecialMoveUrl(roomId, currentPlayerIndex) {
   return `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
 
+function buildClosingStatementUrl(roomId) {
+  const roomIdEnc = encodeURIComponent(roomId);
+  return `/pages/main-pages/partnerMode/closingStatement/index?roomId=${roomIdEnc}`;
+}
+
+function buildClosingEndUrl(roomId) {
+  const roomIdEnc = encodeURIComponent(roomId);
+  return `/pages/main-pages/partnerMode/closingEnd/index?roomId=${roomIdEnc}`;
+}
+
 module.exports = {
   getSelectedModeId,
   buildGamepageUrl,
   buildStatementUrl,
-  buildSpecialMoveUrl
+  buildSpecialMoveUrl,
+  buildClosingStatementUrl,
+  buildClosingEndUrl
 };
