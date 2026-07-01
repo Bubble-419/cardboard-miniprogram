@@ -1,157 +1,247 @@
+/* ===== 容器：固定高度，禁止滚动（overflow:hidden 只放这里） ===== */
 .container {
-  min-height: 100vh;
-  background-color: #f8fbfa;
+  height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(160deg, #e8f5e9 0%, #f0f9f7 50%, #e3f2fb 100%);
   display: flex;
   flex-direction: column;
 }
 
-.custom-navbar {
-  background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
-  flex-shrink: 0;
-}
-
+/* ===== 导航栏 ===== */
+.custom-navbar { background-color: transparent; flex-shrink: 0; }
 .navbar-content {
   height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 42rpx;
+  padding-left: 42rpx;
+  padding-right: 42rpx;
 }
+.navbar-left  { width: 80rpx; display: flex; align-items: center; }
+.back-icon    { width: 48rpx; height: 48rpx; }
+.navbar-title { font-size: 32rpx; font-weight: 500; color: #1f2937; text-align: center; flex: 1; }
+.navbar-right { width: 80rpx; }
 
-.navbar-left {
-  width: 174rpx;
-  display: flex;
-  align-items: center;
-}
-
-.back-icon {
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #000000;
-  text-align: center;
-  flex: 1;
-}
-
-.navbar-right {
-  width: 174rpx;
-}
-
+/* ===== 等待视图 ===== */
 .wait-wrap {
-  flex: 1;
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 24rpx; padding-left: 40rpx; padding-right: 40rpx;
+}
+.wait-title { font-size: 44rpx; font-weight: 700; color: #5ec159; }
+.wait-desc  { font-size: 28rpx; color: #9ca3af; }
+
+/* =================================================
+   HTML demo .deck-header
+   ================================================= */
+.deck-header {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 40rpx;
+  gap: 12rpx;
+  padding-top: 20rpx;
+  padding-bottom: 0;
+}
+.deck-title {
+  font-size: 44rpx;   /* demo: 22px × 2 = 44rpx */
+  font-weight: 700;
+  color: #1f2937;
+  letter-spacing: 1rpx;
+}
+.deck-subtitle {
+  font-size: 26rpx;   /* demo: 13px × 2 = 26rpx */
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.5;
+  padding-left: 60rpx;
+  padding-right: 60rpx;
 }
 
-.wait-title {
-  font-size: 44rpx;
-  font-weight: bold;
-  color: #5ec159;
-  margin-bottom: 16rpx;
-}
-
-.wait-desc {
-  font-size: 28rpx;
-  color: #9ca3af;
-}
-
-.cards-scroll {
+/* =================================================
+   HTML demo .deck-wrap 外层：
+   居中卡片堆，不设 overflow:hidden（入场动画向上超出时不被裁切）
+   ================================================= */
+.cards-area {
   flex: 1;
-  height: 0;
-  padding: 24rpx 42rpx 0;
-  box-sizing: border-box;
-}
-
-.cards-stack {
   display: flex;
   flex-direction: column;
-  gap: 28rpx;
-  padding-bottom: 32rpx;
+  align-items: center;          /* 水平居中固定宽度的 deck */
+  padding-top: 32rpx;
+  padding-bottom: 160rpx;       /* 为底部 fixed 按钮留空 */
+  /* ❌ 不设 overflow:hidden —— 入场动画从上方落下时不被截断 */
 }
 
-.confirm-card {
-  width: 100%;
-}
-
-.confirm-card-inner {
+/* =================================================
+   HTML demo .deck-wrap
+   精确宽度：600rpx，不用 100% 避免父级 padding 失效
+   deck 高 = 3 × step(255) + cardH(414) = 765 + 414 = 1179rpx
+   ================================================= */
+.cards-deck {
   position: relative;
-  min-height: 200rpx;
-  background-color: #ffffff;
-  border: 8rpx solid #5ec159;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48rpx 32rpx 36rpx;
-  box-sizing: border-box;
-  box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.12);
+  width: 600rpx;      /* 对应 demo 305px；固定值，不依赖父级 padding */
+  height: 1179rpx;
+  flex-shrink: 0;
 }
 
-.type-badge {
+/* =================================================
+   HTML demo .deck-slot-item
+   z-index 通过内联 style 注入（i+1），与 demo 完全一致
+   ================================================= */
+.deck-slot {
   position: absolute;
-  right: 24rpx;
-  top: -4rpx;
-  padding: 10rpx 20rpx;
-  background-color: #5ec159;
-  border-radius: 16rpx;
+  left: 0;
+  right: 0;
+  height: 414rpx;     /* 对应 demo 211px */
+  /* 入场动画由 animation-delay 内联 style 实现级联 */
+  animation: cardDrop 0.55s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+/* 入场关键帧（对应 demo @keyframes cardDrop） */
+@keyframes cardDrop {
+  from { transform: translateY(-120rpx); opacity: 0; }
+  60%  { transform: translateY(12rpx);   opacity: 1; }
+  to   { transform: translateY(0);       opacity: 1; }
+}
+
+/* =================================================
+   HTML demo .deck-card-item
+   border-radius: 12.5px × (600/305.611) = 24.5 → 24rpx
+   box-shadow: 完全对应 demo
+   ================================================= */
+.deck-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 12rpx 40rpx rgba(94, 193, 89, 0.18),
+              0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+/* HTML demo .deck-card-bg */
+.deck-bg {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  border-radius: 24rpx;
+}
+
+/* HTML demo .deck-union-svg */
+.deck-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
 }
 
-.type-badge-text {
-  font-size: 26rpx;
-  color: #ffffff;
-  font-weight: 500;
-  line-height: 1.2;
+/* 左下角"点击修改"提示（悬停可见，常态半透明） */
+.deck-edit-hint {
+  position: absolute;
+  left: 20rpx;
+  bottom: 18rpx;
+  z-index: 4;
+  pointer-events: none;
+}
+.deck-edit-text {
+  font-size: 22rpx;
+  color: rgba(94, 193, 89, 0.55);
+  letter-spacing: 1rpx;
 }
 
-.card-value {
+/*
+  HTML demo .deck-card-label
+  放在 deck-slot 层，不受 deck-card overflow:hidden 截断
+  top:  5px × 1.963 = 9.8  → 10rpx
+  right: 10px × 1.963 = 19.6 → 20rpx
+  font-size: 14px × 1.963 = 27.5 → 28rpx
+*/
+.deck-label {
+  position: absolute;
+  top: 10rpx;
+  right: 20rpx;
+  font-size: 28rpx;
+  font-weight: 400;
+  color: #ffffff;
+  letter-spacing: 2rpx;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/*
+  HTML demo .deck-xdl-icon
+  left:50%; top:47.4%; transform:translate(-50%,-50%)
+  width: 186/305.611 × 600 = 365rpx
+  height: 64/211 × 414 = 126rpx
+  opacity: 0.7
+*/
+.deck-watermark {
+  position: absolute;
+  left: 50%;
+  top: 47.4%;
+  transform: translate(-50%, -50%);
+  width: 365rpx;
+  height: 126rpx;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/*
+  HTML demo .deck-card-value
+  left:8%; right:8%; top:50.2%
+  font-size: 22px × 1.963 = 43.2 → 44rpx
+  font-weight: 600; color:#5ec159; line-height:1.2
+*/
+.deck-value {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50.2%;
+  transform: translateY(-50%);
   font-size: 44rpx;
   font-weight: 600;
   color: #5ec159;
   text-align: center;
-  line-height: 1.35;
+  line-height: 1.2;
+  z-index: 3;
   word-break: break-all;
-  padding: 0 16rpx;
 }
 
+/* =================================================
+   HTML demo .confirm-deck-btn
+   固定宽度 600rpx 与 deck 对齐；z-index:100 始终在卡片上方
+   ================================================= */
 .footer {
-  flex-shrink: 0;
-  padding: 24rpx 54rpx;
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background-color: transparent;
-}
-
-.confirm-btn {
-  width: 100%;
-  height: 96rpx;
-  background-color: #c0c0c0;
-  color: #ffffff;
-  border-radius: 24rpx;
-  font-size: 44rpx;
-  font-weight: 400;
-  border: none;
-  letter-spacing: 4rpx;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  padding-top: 16rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(to top,
+    rgba(240, 249, 247, 0.98) 55%,
+    rgba(240, 249, 247, 0) 100%);
 }
-
-.confirm-btn::after {
+.confirm-btn {
+  width: 600rpx;      /* 与 deck 同宽，对齐 demo 的 width:305px */
+  height: 96rpx;
+  background-color: #c8e6c8;
+  color: #8cbf8c;
+  border-radius: 20rpx;   /* demo: border-radius:10px → 20rpx */
+  font-size: 32rpx;
+  font-weight: 500;
   border: none;
+  letter-spacing: 6rpx;
 }
-
+.confirm-btn::after { border: none; }
 .confirm-btn.enabled {
-  background-color: #5ec159;
+  background: linear-gradient(135deg, #5ec159, #4db84a);
+  color: #ffffff;
+  box-shadow: 0 8rpx 28rpx rgba(94, 193, 89, 0.38);  /* demo: 0 4px 14px */
 }
-
-.confirm-btn.enabled:active {
-  opacity: 0.9;
-}
+.confirm-btn.enabled:active { opacity: 0.9; }

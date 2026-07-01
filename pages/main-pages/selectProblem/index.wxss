@@ -1,434 +1,299 @@
+/* ===== 全局容器 ===== */
 .container {
-  min-height: 100vh;
-  background-color: #fafafa;
-  padding-bottom: 200rpx;
+  background-color: #FAFAFA;
 }
 
-/* 自定义导航栏 */
-.custom-navbar {
-  background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
-}
-
-.navbar-content {
-  height: 88rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 42rpx;
-}
-
-.navbar-left {
-  width: 174rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-}
-
-.back-icon {
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #000000;
-  text-align: center;
-  flex: 1;
-}
-
-.navbar-right {
-  width: 174rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 20rpx;
-}
-
-.navbar-icon {
-  width: 32rpx;
-  height: 32rpx;
-  font-size: 24rpx;
-  color: #000000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 工作坊与成员区域 */
-.team-section {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 42rpx;
-  min-height: 72rpx;
-  background-color: #ffffff;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.team-info {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  flex: 1;
-  min-width: 0;
-}
-
-.workshop-name {
-  font-size: 32rpx;
-  color: #374151;
-  flex-shrink: 0;
-}
-
-.wait-tip {
-  flex-shrink: 0;
-  margin: 20rpx 42rpx 0;
-  padding: 18rpx 28rpx;
-  background-color: #e9f5e9;
-  border-radius: 20rpx;
-  text-align: center;
-}
-
-.wait-tip-text {
-  font-size: 28rpx;
-  color: #5ec159;
-}
-
-/* 工作坊区域（旧样式保留兼容） */
-.workshop-section {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 42rpx;
-  height: 72rpx;
-  background-color: #ffffff;
-}
-
-.workshop-info {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  flex: 1;
-}
-
-.workshop-name {
-  font-size: 32rpx;
-  color: #374151;
-}
-
-.players-group {
-  display: flex;
-  align-items: center;
-  gap: -18rpx;
-}
-
-.player-avatar {
-  width: 72rpx;
-  height: 72rpx;
-  margin-left: -18rpx;
-  position: relative;
-}
-
-.player-avatar:first-child {
-  margin-left: 0;
-}
-
-.avatar-img {
+/* ===== 滚动区域 ===== */
+.main-scroll {
   width: 100%;
-  height: 100%;
-  border-radius: 20rpx;
-}
-
-.add-player-btn {
-  width: 72rpx;
-  height: 72rpx;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.add-player-bg {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  background-color: #e9f5e9;
-  border-radius: 20rpx;
-}
-
-.add-player-icon {
-  position: relative;
-  z-index: 1;
-  font-size: 40rpx;
-  color: #5ec159;
-  font-weight: 300;
-}
-
-/* 分类标签区域 */
-.categories-section {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10rpx;
-  padding: 20rpx 41rpx;
-  background-color: #ffffff;
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.category-item {
-  height: 68rpx;
-  padding: 0 20rpx;
-  background-color: #e9f5e9;
-  border: 2rpx solid #5ec159;
-  border-radius: 40rpx;
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  flex: 0 0 calc((100% - 10rpx) / 2);
-  min-width: 0;
-  box-sizing: border-box;
-  max-width: calc((100% - 10rpx) / 2);
-}
-
-.category-icon {
-  width: 28rpx;
-  height: 28rpx;
-}
-
-.category-name {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #5ec159;
-  flex: 1;
-}
-
-/* 问题列表容器 */
-.problems-container {
-  height: calc(100vh - 400rpx);
-  padding: 20rpx 41rpx;
-  box-sizing: border-box;
-  width: 100%;
-  overflow-x: hidden;
-}
-
-/* 问题项 */
-.problem-item {
-  min-height: 128rpx;
-  background-color: #f3f3f3;
-  border: 2rpx solid #fcfcfc;
-  border-radius: 24rpx;
-  padding: 30rpx 24rpx;
-  margin-bottom: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  box-shadow: 0 2rpx 12rpx 0 rgba(0, 0, 0, 0.06);
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
   overflow: hidden;
 }
 
-.problem-item.selected {
-  background-color: #f2f4f1;
-  border-color: #5ec159;
-}
-
-.problem-item.ai-summary {
-  border-color: #e0e0e0;
-}
-
-.problem-content {
+/* MainContent: Figma padding = 30px 20px 96px → 60rpx 40rpx 192rpx */
+.main-content {
+  padding: 0 40rpx 192rpx;
   display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
-  flex: 1;
+  flex-direction: column;
+  gap: 24rpx; /* Figma gap 12px → 24rpx */
 }
 
-.problem-icon {
-  width: 30rpx;
-  height: 30rpx;
-  margin-top: 4rpx;
+/* ===== 顶部头像栏 ===== */
+/* Figma: row, alignItems center, fill width */
+.header-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+/* 当前用户主头像: 48×48px → 96×96rpx, border-radius 16px → 32rpx */
+.primary-avatar-wrap {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 32rpx;
+  background-color: #F0FDF4;
+  border: 2rpx solid #BBF7D0;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.primary-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 32rpx;
+}
+
+.primary-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.primary-avatar-text {
+  font-size: 40rpx;
+}
+
+/* 其他成员头像叠加: margin-left 8px→16rpx, 每个 40×40px→80×80rpx, gap -8px→-16rpx */
+.member-avatars {
+  display: flex;
+  flex-direction: row;
+  margin-left: 16rpx;
+}
+
+.member-avatar-item {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 9999rpx;
+  background-color: #E5E7EB;
+  border: 4rpx solid #FFFFFF;
+  overflow: hidden;
+  margin-left: -16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.member-avatar-img {
+  width: 100%;
+  height: 100%;
+}
+
+.member-avatar-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.member-avatar-text {
+  font-size: 32rpx;
+}
+
+/* 添加成员按钮: padding-left 8px→16rpx, 内圆 40×40px→80×80rpx */
+.add-member-btn {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 9999rpx;
+  background-color: #F3F4F6;
+  margin-left: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.problem-text {
-  font-size: 28rpx;
-  color: #999999;
-  line-height: 1.5;
-  flex: 1;
+.add-member-icon {
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.problem-text.ai-text {
-  color: #565656;
+/* ===== 情境标签区 ===== */
+/* Figma: grid 2×2, gap 4px → 8rpx */
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8rpx;
+}
+
+/* Figma EL-d18e22f2: row, padding 2px 16px → 4rpx 32rpx, border-radius 16px → 32rpx */
+.context-item {
+  background-color: #E9F5E9;
+  border: 2rpx solid #68D062;
+  border-radius: 32rpx;
+  padding: 4rpx 32rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Figma: fontSize 10px→20rpx, lineHeight 15px→30rpx, #5EC159 */
+.context-label {
+  font-size: 20rpx;
+  font-weight: 500;
+  color: #5EC159;
+  line-height: 30rpx;
+}
+
+/* Figma: fontSize 12px→24rpx, lineHeight 16px→32rpx, #1E293B */
+.context-value {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #1E293B;
+  line-height: 32rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 标题区 ===== */
+.title-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Figma: fontSize 24px→48rpx, lineHeight 36px→72rpx, #111827, weight 500 */
+.page-title {
+  font-size: 48rpx;
+  font-weight: 500;
+  color: #111827;
+  line-height: 72rpx;
+}
+
+/* Figma: fontSize 12px→24rpx, lineHeight 20px→40rpx, #6B7280, weight 500 */
+.page-subtitle {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #6B7280;
+  line-height: 40rpx;
+}
+
+/* ===== 问题列表 ===== */
+/* Figma ProblemList gap: 8px → 16rpx */
+.problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+/* Figma 问题卡片: padding 15px 12px 15px 16px → 30rpx 24rpx 30rpx 32rpx
+   gap 16px → 32rpx, border-radius 12px → 24rpx */
+.problem-item {
+  background-color: #F3F3F3;
+  border: 2rpx solid transparent;
+  border-radius: 24rpx;
+  padding: 30rpx 24rpx 30rpx 32rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 32rpx;
+  box-sizing: border-box;
+}
+
+.problem-item.selected {
+  background-color: #F2F4F1;
+  border-color: #5EC159;
+}
+
+/* 编辑态顶对齐，保证 textarea 高度变化时不乱排 */
+.problem-item.editing {
+  align-items: flex-start;
+}
+
+.problem-item:active:not(.readonly) {
+  opacity: 0.88;
 }
 
 .problem-item.readonly {
   opacity: 0.92;
 }
 
+/* 左侧竖线: Figma 0×30px + stroke 4px → 8rpx×60rpx */
+.problem-indicator {
+  width: 8rpx;
+  height: 60rpx;
+  border-radius: 4rpx;
+  background-color: rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.problem-indicator.selected {
+  background-color: #5EC159;
+}
+
+/* 问题主体 */
+.problem-body {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+}
+
+/* 编辑态时主体顶对齐 */
+.problem-item.editing .problem-body {
+  align-self: flex-start;
+}
+
+/* Figma 问题文字: 14px→28rpx, lineHeight 1.2em, #999999 */
+.problem-text {
+  font-size: 28rpx;
+  font-weight: 400;
+  color: #999999;
+  line-height: 1.2;
+  display: block;
+}
+
+/* ===== Textarea 编辑态 =====
+   高度完全由 JS（bindlinechange + onEditProblem 预计算）控制，
+   通过 style="height: Xpx" 内联传入，不使用 auto-height 属性，
+   避免微信原生 textarea 初始渲染时的高度跳变。 */
 .problem-textarea {
   width: 100%;
-  min-height: 80rpx;
   font-size: 28rpx;
-  color: #374151;
-  line-height: 1.5;
-}
-
-.check-icon {
-  width: 48rpx;
-  height: 48rpx;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.check-img {
-  width: 24rpx;
-  height: 24rpx;
-}
-
-.right-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12rpx;
-  flex-shrink: 0;
-}
-
-.edit-icon {
-  width: 48rpx;
-  height: 48rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.edit-img {
-  width: 28rpx;
-  height: 28rpx;
-}
-
-/* 底部区域 */
-.footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: #ffffff;
-  padding: 30rpx 54rpx;
-  padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
-  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.countdown {
-  font-size: 80rpx;
-  color: #ffffff;
-  text-align: center;
-  line-height: 1.5;
-}
-
-.confirm-btn {
-  width: 100%;
-  height: 96rpx;
-  background-color: #5ec159;
-  color: #ffffff;
-  border-radius: 24rpx;
-  font-size: 44rpx;
   font-weight: 400;
+  color: #575757;
+  line-height: 1.2;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+/* 右侧图标区 */
+.problem-right {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  letter-spacing: 4rpx;
+  flex-shrink: 0;
+  align-self: center;
 }
 
-.confirm-btn::after {
-  border: none;
+.problem-item.editing .problem-right {
+  align-self: flex-start;
+  padding-top: 4rpx;
 }
 
-.confirm-btn:active {
-  opacity: 0.8;
-}
-
-/* 编辑弹框 */
-.edit-mask {
-  position: fixed;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.35);
-  z-index: 99;
-}
-
-.edit-modal {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 640rpx;
-  background: #ffffff;
-  border-radius: 24rpx;
-  z-index: 100;
-  padding: 24rpx;
-  box-sizing: border-box;
-  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.18);
-}
-
-.edit-header {
+.right-icon-btn {
+  width: 48rpx;
+  height: 48rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
+  justify-content: center;
 }
 
-.edit-title {
-  font-size: 30rpx;
-  color: #111827;
-  font-weight: 600;
+.right-icon {
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.edit-close {
-  font-size: 40rpx;
-  color: #9ca3af;
-  padding: 0 10rpx;
+.right-icon-placeholder {
+  width: 48rpx;
+  height: 48rpx;
 }
 
-.edit-textarea {
-  width: 100%;
-  min-height: 160rpx;
-  background: #f3f3f3;
-  border-radius: 18rpx;
-  padding: 16rpx;
-  box-sizing: border-box;
-  font-size: 28rpx;
-  color: #374151;
-}
-
-.edit-save {
-  margin-top: 18rpx;
-  width: 100%;
-  height: 84rpx;
-  background-color: #5ec159;
-  color: #ffffff;
-  border-radius: 18rpx;
-  font-size: 32rpx;
-  border: none;
-}
-
-.edit-save::after {
-  border: none;
-}
-
+/* ===== 空状态 ===== */
 .empty-state {
   padding: 80rpx 20rpx;
   text-align: center;
@@ -436,5 +301,39 @@
 
 .empty-text {
   font-size: 28rpx;
-  color: #9ca3af;
+  color: #9CA3AF;
+}
+
+/* ===== 底部确认按钮 =====
+   Figma: padding 20px → 40rpx, fill rgba(255,255,255,0.9), blur 2px
+   Button: 315.66×44.56px, border-radius 11.14px */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 40rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(4px);
+}
+
+/* 按钮宽度 ≈ 315.66/354 ≈ 89.7% 内容区，用 margin auto 居中 */
+.confirm-btn {
+  width: 90%;
+  max-width: 630rpx;
+  height: 90rpx; /* 44.56px × 2 ≈ 89rpx */
+  background-color: #5EC159;
+  color: #FFFFFF;
+  border-radius: 22rpx; /* 11.14px × 2 ≈ 22rpx */
+  font-size: 40rpx; /* 20.42px × 2 ≈ 41rpx */
+  font-weight: 400;
+  letter-spacing: 4rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.confirm-btn:active {
+  opacity: 0.85;
 }

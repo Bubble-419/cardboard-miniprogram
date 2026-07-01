@@ -17,14 +17,15 @@ const AVATAR_IMAGES = [
 ];
 
 const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', name: '功能', icon: '/assets/icons/share.png', selected: false }
+  { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
+  { id: 2, key: 'user', label: '用户', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
+  { id: 3, key: 'platform', label: '平台', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
+  { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
 ];
 
 Page({
   data: {
+    navbarPaddingTop: 0,
     roomId: '',
     workshopName: '脑暴工作坊',
     avatarList: [],
@@ -48,8 +49,18 @@ Page({
       setTimeout(() => wx.navigateBack(), 1500);
       return;
     }
+
+    let navbarPaddingTop = 0;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const h = sys.statusBarHeight || 0;
+      navbarPaddingTop = sys.platform === 'ios' ? Math.max(6, h - 36) : h;
+    } catch (e) {
+      console.warn('getSystemInfo for navbar', e);
+    }
+
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId });
+    this.setData({ roomId, navbarPaddingTop });
     this._applySelectedBGCategories();
     this.loadRoomData().then(() => {
       this.refreshSubmitStatus();
@@ -194,6 +205,14 @@ Page({
     } catch (e) {
       console.warn('updateRoomState', e);
     }
+  },
+
+  handleGoBack() {
+    wx.navigateBack({
+      fail: () => {
+        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index' });
+      }
+    });
   },
 
   selectCategory(e) {

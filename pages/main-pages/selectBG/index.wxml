@@ -1,15 +1,12 @@
 <view class="container">
   <!-- 自定义导航栏 -->
-  <view class="custom-navbar">
+  <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
       </view>
       <view class="navbar-title"></view>
-      <view class="navbar-right">
-        <view class="navbar-icon">⋯</view>
-        <view class="navbar-icon">○</view>
-      </view>
+      <view class="navbar-right"></view>
     </view>
   </view>
 

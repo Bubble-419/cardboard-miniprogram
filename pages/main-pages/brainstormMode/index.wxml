@@ -1,68 +1,61 @@
-<view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
-      </view>
-      <view class="navbar-title">选择脑暴模式</view>
-      <view class="navbar-right"></view>
-    </view>
-  </view>
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
 
-  <!-- 队伍信息：成员列表 -->
-  <view class="team-section">
-    <view class="team-info">
-      <user-list
-        avatarList="{{avatarList}}"
-        currentUser="{{currentUser}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{true}}"
+  <!-- 顶部标题区 -->
+  <view class="header-section">
+    <view class="nav-row">
+      <image
+        class="back-btn"
+        src="/assets/icons/miniprogram-btn.png"
+        mode="aspectFit"
+        bindtap="handleGoBack"
       />
     </view>
+    <view class="title-block">
+      <text class="page-title">脑暴模式</text>
+      <text class="page-subtitle">
+        {{isHost ? '请选择一种模式，房主可进行切换' : '等待房主选择模式…'}}
+      </text>
+    </view>
   </view>
 
-  <view class="wait-tip" wx:if="{{!isHost}}">
-    <text class="wait-tip-text">等待房主选择脑暴模式</text>
-  </view>
-
+  <!-- 模式列表 -->
   <scroll-view class="mode-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-    <view class="mode-section">
-      <view class="section-header">
-        <text class="section-title">脑暴模式</text>
-        <text class="section-subtitle" wx:if="{{isHost}}">点击选择一种模式</text>
-        <text class="section-subtitle" wx:else>房主确认后将进入游戏</text>
-      </view>
+    <view class="mode-list">
+      <view
+        class="mode-item {{selectedModeId === item.id ? 'selected' : ''}}"
+        wx:for="{{brainstormModes}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onTapMode"
+      >
+        <!-- 封面图 -->
+        <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFill" />
 
-      <view class="mode-list">
-        <view
-          class="mode-item {{selectedModeId === item.id ? 'selected' : ''}} {{isHost ? '' : 'readonly'}}"
-          wx:for="{{brainstormModes}}"
-          wx:key="id"
-          data-id="{{item.id}}"
-          bindtap="onSelectMode"
-        >
-          <view class="mode-radio" wx:if="{{isHost}}">
-            <view class="radio-outer {{selectedModeId === item.id ? 'selected' : ''}}">
-              <view class="radio-inner" wx:if="{{selectedModeId === item.id}}"></view>
-            </view>
-          </view>
+        <!-- 文字信息 -->
+        <view class="mode-info">
+          <text class="mode-name {{selectedModeId === item.id ? 'active' : ''}}">{{item.title}}</text>
+          <text class="mode-desc" decode="{{true}}">{{item.description}}</text>
+        </view>
 
-          <view class="mode-icon-wrap">
-            <image class="mode-icon" src="{{item.icon}}" mode="aspectFit"></image>
-          </view>
-
-          <view class="mode-info">
-            <text class="mode-title">{{item.title}}</text>
-            <text class="mode-desc">{{item.description}}</text>
-          </view>
+        <!-- 选中状态指示器 -->
+        <view class="status-wrap {{selectedModeId === item.id ? 'checked' : ''}}">
+          <image
+            wx:if="{{selectedModeId === item.id}}"
+            class="check-icon"
+            src="/assets/brainstormMode/icon-mode-check.svg"
+            mode="aspectFit"
+          />
         </view>
       </view>
     </view>
   </scroll-view>
+
+  <!-- 底部确认按钮（仅房主可见） -->
+  <view class="footer" wx:if="{{isHost}}">
+    <view
+      class="confirm-btn {{selectedModeId ? '' : 'dimmed'}}"
+      bindtap="onConfirmMode"
+    >确认模式</view>
+  </view>
+
 </view>

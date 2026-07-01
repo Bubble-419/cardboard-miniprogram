@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>脑暴情境卡片</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ===== Reset & Base ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(160deg, #e8f5e9 0%, #f0f9f7 50%, #e3f2fb 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    overflow-x: hidden;
+  }
+
+  /* ===== Page Header ===== */
+  .page-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .page-header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 0.02em;
+  }
+  .page-header p {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #6b7280;
+  }
+
+  /* ===== Step Indicators ===== */
+  .step-indicators {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+  .step-dot {
+    width: 32px;
+    height: 6px;
+    border-radius: 3px;
+    background: #d1fae5;
+    transition: background 0.35s, width 0.35s;
+  }
+  .step-dot.active {
+    background: #5ec159;
+    width: 48px;
+  }
+  .step-dot.done {
+    background: #a7f3a4;
+  }
+
+  /* ===== Carousel ===== */
+  .carousel-wrap {
+    position: relative;
+    width: 420px;
+    max-width: 100vw;
+    height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Each card slot */
+  .card-slot {
+    position: absolute;
+    width: 305px;
+    transition:
+      transform 0.5s cubic-bezier(0.34, 1.4, 0.64, 1),
+      opacity   0.4s ease,
+      left      0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+    transform-origin: center bottom;
+    cursor: pointer;
+  }
+
+  /* Slot positions relative to center */
+  .card-slot[data-offset="-2"] { transform: translateX(-260px) scale(0.72); opacity: 0; pointer-events: none; }
+  .card-slot[data-offset="-1"] { transform: translateX(-200px) scale(0.82); opacity: 0.35; }
+  .card-slot[data-offset="0"]  { transform: translateX(0)      scale(1);    opacity: 1;    pointer-events: auto; z-index: 10; }
+  .card-slot[data-offset="1"]  { transform: translateX(200px)  scale(0.82); opacity: 0.35; }
+  .card-slot[data-offset="2"]  { transform: translateX(260px)  scale(0.72); opacity: 0; pointer-events: none; }
+  .card-slot[data-offset="3"],
+  .card-slot[data-offset="-3"] { opacity: 0; pointer-events: none; }
+
+  /* ===== Card Frame ===== */
+  .card-frame {
+    width: 305px;
+    position: relative;
+    user-select: none;
+  }
+
+  /* ─── Card Visual (the green union + white bg) ─── */
+  .card-visual {
+    width: 305px;
+    height: 211px;
+    position: relative;
+    z-index: 2;
+    cursor: default;
+  }
+
+  .card-bg {
+    position: absolute;
+    inset: 0;
+    border-radius: 12.5px;
+    background: #fff;
+    box-shadow: 0px 3.6px 9px 0px rgba(146, 165, 145, 0.20);
+  }
+
+  .card-union-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .card-label {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #fff;
+    letter-spacing: 0.04em;
+  }
+
+  .card-xdl-icon {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -58%);
+    width: 186px;
+    height: 64px;
+    opacity: 0.9;
+  }
+
+  /* Input area inside card */
+  .card-input-zone {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    transform: translateY(20%);
+    text-align: center;
+    cursor: text;
+  }
+
+  .card-placeholder-text {
+    font-size: 22px;
+    font-weight: 600;
+    color: #c9c9c9;
+    letter-spacing: 0.01em;
+    display: block;
+    transition: opacity 0.2s;
+  }
+
+  .card-text-input {
+    display: none;
+    width: 220px;
+    border: none;
+    border-bottom: 2px solid #5ec159;
+    background: transparent;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2937;
+    outline: none;
+    padding: 2px 8px 4px;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+  }
+
+  .card-input-zone.editing .card-placeholder-text { display: none; }
+  .card-input-zone.editing .card-text-input { display: inline-block; }
+  .card-input-zone.has-value .card-placeholder-text { color: #1f2937; font-size: 20px; }
+
+  /* ─── Info Panel (below card) ─── */
+  .card-info {
+    position: relative;
+    z-index: 1;
+    margin-top: -4px;
+    background: #fff;
+    border-radius: 0 0 12px 12px;
+    padding: 14px 18px 16px;
+    box-shadow: 0px 3.6px 9px 0px rgba(146, 165, 145, 0.20);
+    overflow: hidden;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .info-define-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #5ec159;
+    line-height: 1.4;
+    flex-shrink: 0;
+  }
+
+  .next-btn {
+    flex-shrink: 0;
+    background: #5ec159;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    line-height: 1.5;
+  }
+  .next-btn:hover { opacity: 0.85; }
+  .next-btn:active { transform: scale(0.96); }
+  .next-btn:disabled { background: #c2c2c2; cursor: default; }
+
+  .info-desc-text {
+    font-size: 12px;
+    font-weight: 400;
+    color: #979797;
+    line-height: 1.55;
+    text-align: justify;
+  }
+
+  /* ===== Deck Panel（四张堆叠） ===== */
+  .deck-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+  }
+  .deck-panel.visible { display: flex; }
+
+  .deck-header {
+    text-align: center;
+  }
+  .deck-header h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: 0.02em;
+  }
+  .deck-header p {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #6b7280;
+  }
+
+  /* 堆叠容器：相对定位，高度由 JS 设置 */
+  .deck-wrap {
+    position: relative;
+    width: 305px;
+  }
+
+  /* 每张卡的插槽（绝对定位，top 由 JS 设置） */
+  .deck-slot-item {
+    position: absolute;
+    left: 0; right: 0;
+    height: 211px;
+  }
+
+  /* 单张堆叠卡片主体 */
+  .deck-card-item {
+    position: absolute;
+    inset: 0;
+    border-radius: 12.5px;
+    overflow: hidden;
+    box-shadow: 0 6px 20px rgba(94,193,89,0.18), 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .deck-card-bg {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    border-radius: 12.5px;
+  }
+  .deck-union-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+  }
+  /* 右上角标签：放在 deck-slot-item 层（不受 overflow:hidden 裁切） */
+  .deck-card-label {
+    position: absolute;
+    top: 5px; right: 10px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #fff;
+    letter-spacing: 0.04em;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .deck-xdl-icon {
+    position: absolute;
+    left: 50%; top: 47.4%;
+    transform: translate(-50%, -50%);
+    width: 186px; height: 64px;
+    opacity: 0.7;
+    z-index: 2;
+  }
+  .deck-card-value {
+    position: absolute;
+    left: 8%; right: 8%;
+    top: 50.2%;
+    transform: translateY(-50%);
+    font-size: 22px;
+    font-weight: 600;
+    color: #5ec159;
+    text-align: center;
+    line-height: 1.2;
+    z-index: 3;
+    word-break: break-all;
+  }
+
+  /* 入场动画：从上方落下 */
+  @keyframes cardDrop {
+    from { transform: translateY(-60px); opacity: 0; }
+    60%  { transform: translateY(6px);   opacity: 1; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
+
+  /* 底部操作区 */
+  .deck-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .confirm-deck-btn {
+    background: linear-gradient(135deg, #5ec159, #4db84a);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px 56px;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    box-shadow: 0 4px 14px rgba(94,193,89,0.35);
+    transition: transform 0.15s, box-shadow 0.15s;
+    width: 305px;
+  }
+  .confirm-deck-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(94,193,89,0.4); }
+  .confirm-deck-btn:active { transform: scale(0.97); }
+
+  .restart-btn {
+    background: transparent;
+    color: #9ca3af;
+    border: none;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    text-decoration: underline;
+    transition: color 0.15s;
+  }
+  .restart-btn:hover { color: #5ec159; }
+
+  /* ===== Animation Keyframes ===== */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes popIn {
+    0%   { transform: scale(0.82); opacity: 0.35; }
+    60%  { transform: scale(1.04); opacity: 1; }
+    100% { transform: scale(1);    opacity: 1; }
+  }
+
+  .card-slot.animating-in {
+    animation: popIn 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  }
+
+  /* ===== Nav Arrows ===== */
+  .nav-arrows {
+    display: flex;
+    gap: 60px;
+    margin-top: 28px;
+  }
+  .nav-arrow {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    font-size: 18px;
+    color: #5ec159;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .nav-arrow:hover { transform: scale(1.08); box-shadow: 0 4px 12px rgba(94,193,89,0.25); }
+  .nav-arrow:disabled { opacity: 0.3; cursor: default; transform: none; }
+
+  /* ===== Progress text ===== */
+  .progress-text {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 4px;
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>新建脑暴情境</h1>
+  <p>填写四个维度，定义你的设计情境</p>
+</div>
+
+<!-- Step dots -->
+<div class="step-indicators" id="stepDots">
+  <div class="step-dot active" data-step="0"></div>
+  <div class="step-dot" data-step="1"></div>
+  <div class="step-dot" data-step="2"></div>
+  <div class="step-dot" data-step="3"></div>
+</div>
+
+<!-- Carousel -->
+<div class="carousel-wrap" id="carousel">
+  <!-- Cards injected by JS -->
+</div>
+
+<p class="progress-text" id="progressText">第 1 步，共 4 步</p>
+
+<!-- Nav arrows -->
+<div class="nav-arrows">
+  <button class="nav-arrow" id="prevBtn" onclick="navigate(-1)" disabled>&#8592;</button>
+  <button class="nav-arrow" id="nextBtn" onclick="navigate(1)">&#8594;</button>
+</div>
+
+<!-- Deck panel（四张卡片堆叠，全部填完后展示） -->
+<div class="deck-panel" id="deckPanel">
+  <div class="deck-header">
+    <h2>确认情境</h2>
+    <p>四个维度已填写完成，请确认后继续</p>
+  </div>
+  <!-- 堆叠区域，高度与卡片列表由 JS 动态生成 -->
+  <div class="deck-wrap" id="deckWrap"></div>
+  <!-- 底部按钮 -->
+  <div class="deck-actions">
+    <button class="confirm-deck-btn" onclick="confirmDeck()">确认情境</button>
+    <button class="restart-btn" onclick="restart()">重新填写</button>
+  </div>
+</div>
+
+<!-- ==================== SVG Defs ==================== -->
+<svg style="display:none">
+  <defs>
+    <!-- Union green frame shape (from Figma, 305.6×211) -->
+    <path id="unionPath"
+      d="M293.115 0C300.016 0 305.611 5.59454 305.611 12.4958V198.504C305.611 205.405 300.016 211 293.115 211H12.4958C5.59454 211 7.40405e-08 205.405 0 198.504V12.4958C3.04788e-06 5.59455 5.59455 1.32259e-07 12.4958 0H293.115ZM14.2809 8.92555C11.3232 8.92555 8.92555 11.3232 8.92555 14.2809V196.719C8.92555 199.677 11.3232 202.074 14.2809 202.074H291.33C294.287 202.074 296.685 199.677 296.685 196.719V33.9171C296.685 29.9735 293.488 26.7766 289.545 26.7766H260.729C256.895 26.7766 253.222 25.2352 250.537 22.4991L240.363 12.1337C238.349 10.0816 235.595 8.92555 232.719 8.92555H14.2809Z"
+    />
+    <!-- XDL center icon paths -->
+    <path id="xdlX"
+      d="M0 63.7664V0H13.938V63.7664H0ZM21.7931 63.7664L38.9405 38.4069L22.8018 14.1499H38.3903L48.0185 30.3212H48.5687L58.1968 14.1499H73.602L57.555 38.315L74.5189 63.7664H58.747L48.477 46.6763H47.9268L37.4733 63.7664H21.7931Z"
+    />
+    <path id="xdlD"
+      d="M82.3841 0H104.208C122.914 0 135.202 5.32918 135.202 31.8832C135.202 56.5077 122.914 63.7664 104.208 63.7664H82.3841V0ZM96.3221 51.8217H103.474C115.212 51.8217 120.805 47.4114 120.805 31.8832C120.805 15.4363 114.937 11.761 103.474 11.761H96.3221V51.8217Z"
+    />
+    <path id="xdlL"
+      d="M161.692 51.638H187V63.7664H147.754V0H161.692V51.638Z"
+    />
+  </defs>
+</svg>
+
+<script>
+// ==================== Card Data ====================
+const CARDS = [
+  {
+    key:   'scene',
+    label: '场景',
+    define:'定义场景',
+    placeholder: '点击以输入场景…',
+    desc:  '场景指用户所处的具体使用环境或情境背景，包括对空间、时间、事件等因素的描述。例如：早晨通勤的地铁站、周末购物的商场中庭等。',
+  },
+  {
+    key:   'user',
+    label: '用户',
+    define:'定义用户',
+    placeholder: '点击以输入用户…',
+    desc:  '用户指进行交互活动的个体或群体，包括对用户特征、行为习惯、技能水平等方面的描述。例如：下班后的网约车乘客、视力听力下降的老年人等。',
+  },
+  {
+    key:   'platform',
+    label: '平台',
+    define:'定义平台',
+    placeholder: '点击以输入平台…',
+    desc:  '平台指用户与产品发生交互的载体或设备，包括对设备类型、操作环境、显示特点等的描述。例如：车载中控屏、商场导览大屏、智能手机等。',
+  },
+  {
+    key:   'function',
+    label: '功能',
+    define:'定义功能',
+    placeholder: '点击以输入功能…',
+    desc:  '功能指产品需要帮助用户完成的具体任务或操作目标，包括对核心需求、使用场景下行为目标的描述。例如：调节空调与氛围灯、查找店铺与活动信息等。',
+  }
+];
+
+const values = { scene: '', user: '', platform: '', function: '' };
+let currentIndex = 0;
+
+// ==================== Build DOM ====================
+function buildCards() {
+  const carousel = document.getElementById('carousel');
+  carousel.innerHTML = '';
+
+  CARDS.forEach((card, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'card-slot';
+    slot.id = `slot-${i}`;
+    slot.setAttribute('data-index', i);
+    slot.innerHTML = `
+      <div class="card-frame">
+        <!-- Card Visual -->
+        <div class="card-visual" id="visual-${i}">
+          <div class="card-bg"></div>
+          <!-- Union green frame SVG -->
+          <svg class="card-union-svg" viewBox="0 0 305.611 211" xmlns="http://www.w3.org/2000/svg">
+            <use href="#unionPath" fill="#5EC159"/>
+          </svg>
+          <!-- Label in green tab -->
+          <span class="card-label">${card.label}</span>
+          <!-- XDL center icon -->
+          <svg class="card-xdl-icon" viewBox="0 0 187 64" xmlns="http://www.w3.org/2000/svg">
+            <use href="#xdlX" fill="#F2F2F2" fill-opacity="0.6"/>
+            <use href="#xdlD" fill="#F2F2F2" fill-opacity="0.6"/>
+            <use href="#xdlL" fill="#F2F2F2" fill-opacity="0.6"/>
+          </svg>
+          <!-- Input zone -->
+          <div class="card-input-zone" id="zone-${i}" onclick="activateInput(${i})">
+            <span class="card-placeholder-text" id="ph-${i}">${card.placeholder}</span>
+            <input
+              class="card-text-input"
+              id="inp-${i}"
+              type="text"
+              maxlength="20"
+              placeholder="${card.placeholder}"
+              oninput="onInput(${i}, this.value)"
+              onblur="onBlur(${i})"
+              onkeydown="onKeyDown(event, ${i})"
+            />
+          </div>
+        </div>
+        <!-- Info Panel -->
+        <div class="card-info">
+          <div class="info-row">
+            <span class="info-define-label">${card.define}</span>
+            <button class="next-btn" id="nextBtn-${i}" onclick="goNext(${i})" ${i === CARDS.length-1 ? '' : ''}>
+              ${i === CARDS.length-1 ? '完成' : '下一步'}
+            </button>
+          </div>
+          <p class="info-desc-text">${card.desc}</p>
+        </div>
+      </div>
+    `;
+    carousel.appendChild(slot);
+  });
+
+  updatePositions(false);
+}
+
+// ==================== Position Logic ====================
+function updatePositions(animate) {
+  CARDS.forEach((_, i) => {
+    const slot = document.getElementById(`slot-${i}`);
+    const offset = i - currentIndex;
+    slot.setAttribute('data-offset', Math.max(-2, Math.min(2, offset)));
+    if (animate && offset === 0) {
+      slot.classList.add('animating-in');
+      setTimeout(() => slot.classList.remove('animating-in'), 600);
+    }
+  });
+
+  // Step dots
+  document.querySelectorAll('.step-dot').forEach((dot, i) => {
+    dot.className = 'step-dot' +
+      (i === currentIndex ? ' active' : i < currentIndex ? ' done' : '');
+  });
+
+  // Progress text
+  document.getElementById('progressText').textContent =
+    `第 ${currentIndex + 1} 步，共 ${CARDS.length} 步`;
+
+  // Nav arrows
+  document.getElementById('prevBtn').disabled = currentIndex === 0;
+  document.getElementById('nextBtn').disabled = currentIndex === CARDS.length - 1;
+}
+
+// ==================== Input Handlers ====================
+function activateInput(i) {
+  if (i !== currentIndex) return;
+  const zone = document.getElementById(`zone-${i}`);
+  const input = document.getElementById(`inp-${i}`);
+  zone.classList.add('editing');
+  input.style.display = 'inline-block';
+  setTimeout(() => input.focus(), 50);
+}
+
+function onInput(i, val) {
+  values[CARDS[i].key] = val;
+  const ph = document.getElementById(`ph-${i}`);
+  ph.textContent = val || CARDS[i].placeholder;
+  if (val) {
+    document.getElementById(`zone-${i}`).classList.add('has-value');
+  } else {
+    document.getElementById(`zone-${i}`).classList.remove('has-value');
+  }
+}
+
+function onBlur(i) {
+  const zone = document.getElementById(`zone-${i}`);
+  zone.classList.remove('editing');
+  const val = values[CARDS[i].key];
+  const ph = document.getElementById(`ph-${i}`);
+  ph.textContent = val || CARDS[i].placeholder;
+  if (val) zone.classList.add('has-value');
+  else zone.classList.remove('has-value');
+}
+
+function onKeyDown(e, i) {
+  if (e.key === 'Enter') {
+    document.getElementById(`inp-${i}`).blur();
+    if (i < CARDS.length - 1) goNext(i);
+  }
+}
+
+// ==================== Navigation ====================
+function navigate(dir) {
+  const next = currentIndex + dir;
+  if (next < 0 || next >= CARDS.length) return;
+  currentIndex = next;
+  updatePositions(true);
+}
+
+function goNext(i) {
+  if (i < CARDS.length - 1) {
+    currentIndex = i + 1;
+    updatePositions(true);
+  } else {
+    showDeck();
+  }
+}
+
+// ==================== Deck（四张堆叠） ====================
+const DECK_STEP = 130; // px，相邻卡片的垂直间距
+const CARD_H    = 211; // px，单张卡高
+
+function showDeck() {
+  // 隐藏 carousel UI
+  document.getElementById('carousel').style.display = 'none';
+  document.getElementById('stepDots').style.display = 'none';
+  document.querySelector('.nav-arrows').style.display = 'none';
+  document.getElementById('progressText').style.display = 'none';
+
+  const wrap = document.getElementById('deckWrap');
+  const totalH = (CARDS.length - 1) * DECK_STEP + CARD_H; // 3×130 + 211 = 601
+  wrap.style.height = totalH + 'px';
+  wrap.innerHTML = '';
+
+  CARDS.forEach((card, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'deck-slot-item';
+    slot.style.cssText = `
+      top: ${i * DECK_STEP}px;
+      z-index: ${i + 1};
+      animation: cardDrop 0.55s cubic-bezier(0.34,1.3,0.64,1) ${i * 0.12}s both;
+    `;
+    slot.innerHTML = `
+      <div class="deck-card-item">
+        <div class="deck-card-bg"></div>
+        <svg class="deck-union-svg" viewBox="0 0 305.611 211" xmlns="http://www.w3.org/2000/svg">
+          <use href="#unionPath" fill="#5EC159"/>
+        </svg>
+        <svg class="deck-xdl-icon" viewBox="0 0 187 64" xmlns="http://www.w3.org/2000/svg">
+          <use href="#xdlX" fill="#F2F2F2" fill-opacity="0.6"/>
+          <use href="#xdlD" fill="#F2F2F2" fill-opacity="0.6"/>
+          <use href="#xdlL" fill="#F2F2F2" fill-opacity="0.6"/>
+        </svg>
+        <span class="deck-card-value">${values[card.key] || ''}</span>
+      </div>
+      <!-- 标签在 slot 层，不受 overflow:hidden 裁切 -->
+      <span class="deck-card-label">${card.label}</span>
+    `;
+    wrap.appendChild(slot);
+  });
+
+  const panel = document.getElementById('deckPanel');
+  panel.classList.add('visible');
+  // fadeUp 整体面板
+  panel.style.animation = 'none';
+  requestAnimationFrame(() => {
+    panel.style.animation = 'fadeUp 0.4s ease both';
+  });
+}
+
+function confirmDeck() {
+  // 简单提示，实际项目中跳转到下一页
+  alert('✅ 情境已确认！\n' + CARDS.map(c => `${c.label}：${values[c.key] || '（空）'}`).join('\n'));
+}
+
+function restart() {
+  CARDS.forEach(c => { values[c.key] = ''; });
+  currentIndex = 0;
+  document.getElementById('carousel').style.display = '';
+  document.getElementById('stepDots').style.display = '';
+  document.querySelector('.nav-arrows').style.display = '';
+  document.getElementById('progressText').style.display = '';
+  const panel = document.getElementById('deckPanel');
+  panel.classList.remove('visible');
+  panel.style.animation = '';
+  buildCards();
+}
+
+// ==================== Init ====================
+buildCards();
+</script>
+</body>
+</html>

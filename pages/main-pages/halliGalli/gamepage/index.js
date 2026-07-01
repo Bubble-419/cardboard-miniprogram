@@ -5,15 +5,13 @@
 Page({
   data: {
     navbarPaddingTop: 0,
-    contentOffsetTop: 44,
     roomId: '',
     members: [],
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     isHost: false,
-    selectedBG: null,
-    bgImageSrc: '/assets/icons/bg.jpg'
+    selectedBG: null
   },
 
   onLoad(options) {
@@ -40,12 +38,10 @@ Page({
       console.warn('getSystemInfo for navbar', e);
     }
 
-    const contentOffsetTop = 60;
     this.setData({
       roomId,
       currentPlayerIndex,
       navbarPaddingTop,
-      contentOffsetTop,
       selectedBG: getApp().globalData.selectedBG || null
     });
 
@@ -121,8 +117,10 @@ Page({
         const page = (result.roomState.currentPage || '').toLowerCase();
         const roomIdEnc = encodeURIComponent(roomId);
         if (page === 'creativeinput') {
+          this._stopStatePolling();
           wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
         } else if (page === 'creativesummary') {
+          this._stopStatePolling();
           wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
         }
       } catch (e) {
@@ -137,12 +135,6 @@ Page({
     if (this._statePollTimer) {
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;
-    }
-  },
-
-  onBgImageError() {
-    if (this.data.bgImageSrc.startsWith('/')) {
-      this.setData({ bgImageSrc: '../../../../assets/icons/bg.jpg' });
     }
   },
 
@@ -163,24 +155,19 @@ Page({
   },
 
   handleEndGame() {
-    wx.showModal({
-      title: '结束游戏',
-      content: '是否结束全局游戏？',
-      confirmText: '结束',
-      cancelText: '取消',
-      success: async (res) => {
-        if (!res.confirm) return;
-        const roomId = this.data.roomId || getApp().globalData.roomId || '';
-        const url = roomId
-          ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
-          : '/pages/main-pages/modeIndex/index?modeId=halliGalli';
-        try {
-          await this._updateRoomState('creativeInput');
-        } catch (e) {
-          console.warn('updateRoomState creativeInput', e);
-        }
-        wx.redirectTo({ url });
-      }
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间信息丢失', icon: 'none' });
+      return;
+    }
+    const roomIdEnc = encodeURIComponent(roomId);
+    wx.showLoading({ title: '请稍候…', mask: true });
+    this._updateRoomState('creativeInput').then(() => {
+      wx.hideLoading();
+      wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
+    }).catch(() => {
+      wx.hideLoading();
+      wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
     });
   },
 

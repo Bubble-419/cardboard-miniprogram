@@ -98,10 +98,10 @@ function getAllScenarios() {
   })).concat(history);
 }
 
-/** 按游戏模式返回情境列表；halliGalli 在首位插入线下情境 */
+/** 按游戏模式返回情境列表；halliGalli / partner 在首位插入线下情境 */
 function getScenariosForMode(modeId) {
   const list = getAllScenarios();
-  if (modeId === 'halliGalli') {
+  if (modeId === 'halliGalli' || modeId === 'partner') {
     return [OFFLINE_SCENARIO, ...list];
   }
   return list;

@@ -30,15 +30,35 @@ Page({
     problems: [],
     selectedProblemId: null,
     countdown: 5,
-    editingProblemId: ''
+    editingProblemId: '',
+    textareaHeights: {},
+    navbarPaddingTop: 0,
+    scrollHeight: 0,
+    contentPaddingTop: 0,
+    myAvatar: '',
+    otherAvatars: []
   },
 
   onLoad(options) {
+    let navbarPaddingTop = 44;
+    let screenHeight = 750;
+    try {
+      const sys = wx.getSystemInfoSync();
+      navbarPaddingTop = (sys.statusBarHeight || 0) + 8;
+      screenHeight = sys.windowHeight || 750;
+      // 记录设备宽度用于 rpx→px 换算（textarea 高度计算）
+      this._windowWidth = sys.windowWidth || 375;
+    } catch (e) {
+      console.warn('getSystemInfo', e);
+    }
+    const scrollHeight = screenHeight - navbarPaddingTop;
+    const contentPaddingTop = navbarPaddingTop + 30;
+
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (roomId) {
       getApp().globalData.roomId = roomId;
     }
-    this.setData({ roomId });
+    this.setData({ roomId, navbarPaddingTop, scrollHeight, contentPaddingTop });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData();
     this.loadSubmittedProblems();
@@ -96,11 +116,16 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
+      const myAvatar = me ? (me.avatarImage || '') : '';
+      const otherAvatars = avatarList.filter((a) => !a.isMe).slice(0, 5);
+
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
         currentUser: me ? me.id : null,
-        isHost
+        isHost,
+        myAvatar,
+        otherAvatars
       });
 
       if (isHost) {
@@ -238,7 +263,51 @@ Page({
   onEditProblem(e) {
     if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
-    this.setData({ editingProblemId: problemId });
+    const problem = this.data.problems.find((p) => p.id === problemId);
+    const text = problem ? (problem.text || '') : '';
+
+    // 预先计算 textarea 初始高度，避免 auto-height 首帧渲染跳变
+    // 28rpx font-size × 1.2 line-height，换算成 CSS px
+    const ww = this._windowWidth || 375;
+    const lineH = Math.ceil((28 / 750) * ww * 1.2);
+    // 按换行符估算行数（不含自动换行，作为下界）
+    const lineCount = Math.max(1, text.split('\n').length);
+    const initHeight = lineCount * lineH;
+
+    // 与 editingProblemId 同帧 setData，确保 textarea 首次渲染即带正确高度
+    this.setData({
+      editingProblemId: problemId,
+      [`textareaHeights.${problemId}`]: initHeight,
+    });
+  },
+
+  // textarea linechange 事件：内容行数变化时同步实际高度
+  onTextareaLineChange(e) {
+    const id = e.currentTarget.dataset.id;
+    const height = e.detail && e.detail.height;
+    if (id && height) {
+      this.setData({ [`textareaHeights.${id}`]: height });
+    }
+  },
+
+  stopPropagation() {},
+
+  async onSaveEdit() {
+    if (!this.data.isHost) return;
+    const id = this.data.editingProblemId;
+    if (!id) return;
+
+    const problem = this.data.problems.find((p) => p.id === id);
+    const text = ((problem && problem.text) || '').trim();
+    this.setData({ editingProblemId: '' });
+
+    if (!text) return;
+    try {
+      await updateProblemText(id, text);
+    } catch (err) {
+      console.error('更新设计问题失败', err);
+      wx.showToast({ title: '更新失败', icon: 'none' });
+    }
   },
 
   onProblemInput(e) {
@@ -286,7 +355,7 @@ Page({
         name: 'updateRoomState',
         data: {
           roomId,
-          currentPage: 'selectMode',
+          currentPage: 'selectPlayer',
           selectedDesignProblem: {
             id: problem.id,
             text: problem.text
@@ -301,7 +370,7 @@ Page({
 
     const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
     wx.navigateTo({
-      url: `/pages/main-pages/selectMode/index${query}`
+      url: `/pages/main-pages/selectPlayer/index${query}`
     });
   },
 

@@ -15,10 +15,17 @@ Page({
     cards: [],
     canConfirm: false,
     isHost: true,
-    isWaiting: false
+    isWaiting: false,
+    navbarPaddingTop: 44
   },
 
   onLoad(options) {
+    try {
+      const sys = wx.getSystemInfoSync();
+      this.setData({ navbarPaddingTop: sys.statusBarHeight || 44 });
+    } catch (e) {
+      this.setData({ navbarPaddingTop: 44 });
+    }
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
 
@@ -227,6 +234,14 @@ Page({
       console.error('handleConfirm', e);
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
     }
+  },
+
+  handleCardTap(e) {
+    const index = parseInt(e.currentTarget.dataset.index || '0', 10);
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    let url = `/pages/main-pages/selectBG/index?mode=partner&step=${index}`;
+    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
+    wx.redirectTo({ url });
   },
 
   handleGoBack() {

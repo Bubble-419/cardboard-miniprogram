@@ -1,27 +1,46 @@
 <view class="bg-card {{active ? 'is-active' : 'is-inactive'}}">
-  <view class="card-top">
-    <view class="type-badge">
-      <text class="type-badge-text">{{typeInfo.label}}</text>
-    </view>
-    <view class="top-inner">
+
+  <!-- 卡片主体视觉区 -->
+  <view class="card-visual">
+    <!-- 白色底层 -->
+    <view class="card-bg-white"></view>
+    <!-- Figma Union 绿色边框叠加 -->
+    <image
+      class="card-frame-img"
+      src="/assets/bgCard/union-green.svg"
+      mode="scaleToFill"
+    />
+    <!-- 右上角 tab 标签 -->
+    <text class="card-type-label">{{typeInfo.label}}</text>
+    <!-- IxDL 水印图标 -->
+    <image
+      class="card-watermark"
+      src="/assets/bgCard/icon-center.svg"
+      mode="aspectFit"
+    />
+    <!-- 输入区 -->
+    <view class="card-input-wrap">
       <textarea
         class="card-textarea"
         placeholder="{{typeInfo.placeholder}}"
+        placeholder-class="card-placeholder"
         value="{{value}}"
         maxlength="60"
-        auto-height="true"
+        auto-height="{{false}}"
         bindinput="onInput"
       />
     </view>
   </view>
 
-  <view class="card-bottom">
-    <view class="bottom-header">
-      <text class="bottom-title">{{typeInfo.title}}</text>
+  <!-- 说明面板 -->
+  <view class="card-info">
+    <view class="info-header">
+      <text class="info-define-label">{{typeInfo.title}}</text>
       <view class="next-btn" wx:if="{{!isLast}}" bindtap="onNext">
-        <text class="next-text">{{typeInfo.nextText}}</text>
+        <text class="next-btn-text">下一步</text>
       </view>
     </view>
-    <text class="desc">{{typeInfo.description}}</text>
+    <text class="info-desc">{{typeInfo.description}}</text>
   </view>
+
 </view>
