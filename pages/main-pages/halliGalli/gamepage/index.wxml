@@ -165,10 +165,13 @@
       </view>
     </view>
 
-    <!-- 底部：结束游戏（仅房主） -->
-    <view class="footer-section" wx:if="{{isHost}}">
-      <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
-    </view>
+    <!-- 底部占位，防止内容被固定按钮遮挡 -->
+    <view class="footer-placeholder" wx:if="{{isHost}}"></view>
 
   </scroll-view>
+
+  <!-- 底部：结束游戏（仅房主），固定悬浮在底部 -->
+  <view class="footer-section" wx:if="{{isHost}}">
+    <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
+  </view>
 </view>

@@ -1,68 +1,92 @@
 <view class="container">
-  <view class="page-body">
-    <view class="top-section">
-      <view class="wait-panel" wx:if="{{hasSubmitted}}">
-        <text class="wait-title">已提交设计问题</text>
-        <text class="wait-desc">等待其他成员提交后进入选择问题</text>
-        <text class="wait-problem">{{problemText}}</text>
-      </view>
+  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
 
-      <block wx:else>
-        <view class="categories-section">
+    <!-- 顶部区：TopBar + 情境格 -->
+    <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+
+      <!-- TopBar：房间入口 + 堆叠头像 + 添加按钮 -->
+      <view class="topbar">
+        <view class="room-entry" bindtap="handleGoBack">
+          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+        </view>
+        <view class="avatar-stack">
           <view
-            class="category-item {{item.selected ? 'selected' : ''}}"
-            wx:for="{{categories}}"
+            class="avatar-frame {{item.isMe ? 'avatar-me' : ''}}"
+            wx:for="{{avatarList}}"
             wx:key="id"
-            data-id="{{item.id}}"
-            bindtap="selectCategory"
+            style="margin-left: {{index > 0 ? '-16rpx' : '0'}}"
           >
-            <text class="category-label">{{item.label}}</text>
-            <text class="category-value">{{item.name}}</text>
+            <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
           </view>
         </view>
-
-        <view class="input-card">
-          <view class="card-title-section">
-            <text class="card-title">匿名提交您的设计问题</text>
-            <text class="card-subtitle">提交后将进入下一步，由其他成员继续共创</text>
-          </view>
-
-          <view class="example-box">
-            <view class="example-header-row">
-              <view class="example-icon-wrap">
-                <image class="example-icon" src="/assets/icons/icon-example-hint.svg" mode="aspectFit"></image>
-              </view>
-              <text class="example-label-text">设计问题示例</text>
-            </view>
-            <text class="example-content">如何帮助用户在驾驶过程中快速进行导航切换？</text>
-          </view>
-
-          <view class="form-input-wrap">
-            <view class="textarea-box">
-              <textarea
-                class="problem-input"
-                placeholder="请输入设计问题..."
-                value="{{problemText}}"
-                maxlength="{{maxLength}}"
-                bindinput="onInput"
-                placeholder-class="input-placeholder"
-              ></textarea>
-            </view>
-            <view class="counter-row">
-              <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
-              <view class="submit-circle" bindtap="submitProblem">
-                <image class="submit-arrow-img" src="/assets/icons/icon-submit-arrow.svg" mode="aspectFit"></image>
-              </view>
-            </view>
-          </view>
+        <view class="add-btn">
+          <image class="add-btn-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
         </view>
-      </block>
-    </view>
+      </view>
 
-    <view class="footer-action" wx:if="{{!hasSubmitted}}">
-      <view class="next-btn" bindtap="submitProblem">
-        <text class="next-btn-text">下一步</text>
+      <!-- 情境格子 -->
+      <view class="context-grid" wx:if="{{categories.length}}">
+        <view class="context-item" wx:for="{{categories}}" wx:key="id">
+          <text class="context-label">{{item.label}}</text>
+          <text class="context-value">{{item.name}}</text>
+        </view>
       </view>
     </view>
+
+    <!-- 主内容区（未提交状态） -->
+    <view class="content-section" wx:if="{{!hasSubmitted}}">
+
+      <!-- 标题区 -->
+      <view class="title-section">
+        <text class="page-title">匿名提交您的设计问题</text>
+        <text class="page-subtitle">提交后将进入下一步，由其他成员继续共创</text>
+      </view>
+
+      <!-- 输入区域 -->
+      <view class="input-area">
+
+        <!-- 示例框 -->
+        <view class="example-box">
+          <view class="example-header-row">
+            <view class="example-icon-wrap">
+              <image class="example-icon" src="/assets/icons/icon-example-hint.svg" mode="aspectFit" />
+            </view>
+            <text class="example-label-text">设计问题示例</text>
+          </view>
+          <text class="example-content">如何帮助用户在驾驶过程中快速进行导航切换？</text>
+        </view>
+
+        <!-- 输入框 + 字数计数 -->
+        <view class="form-input-wrap">
+          <view class="textarea-box">
+            <textarea
+              class="problem-input"
+              placeholder="请输入设计问题..."
+              value="{{problemText}}"
+              maxlength="{{maxLength}}"
+              bindinput="onInput"
+              placeholder-class="input-placeholder"
+            />
+          </view>
+          <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 已提交等待状态 -->
+    <view class="wait-panel" wx:if="{{hasSubmitted}}">
+      <text class="wait-title">已提交设计问题</text>
+      <text class="wait-desc">等待其他成员提交后进入选择问题</text>
+      <text class="wait-problem">{{problemText}}</text>
+    </view>
+
+    <!-- 底部占位，防止内容被固定按钮遮挡 -->
+    <view class="footer-placeholder" wx:if="{{!hasSubmitted}}"></view>
+
+  </scroll-view>
+
+  <!-- 固定底部按钮 -->
+  <view class="footer-action" wx:if="{{!hasSubmitted}}">
+    <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
   </view>
 </view>

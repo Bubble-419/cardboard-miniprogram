@@ -233,8 +233,6 @@
 }
 
 .btn-icon-wrap {
-  width: 60rpx;
-  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,14 +240,12 @@
 }
 
 .btn-icon-wrap-light {
-  border: 3rpx solid #ffffff;
-  border-radius: 50%;
-  box-sizing: border-box;
+  /* 圆圈造型已内含在 SVG 图标中，无需额外边框 */
 }
 
 .btn-icon {
-  width: 36rpx;
-  height: 36rpx;
+  width: 60rpx;
+  height: 60rpx;
 }
 
 .btn-text-group {
