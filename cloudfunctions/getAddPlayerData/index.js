@@ -76,7 +76,9 @@ exports.main = async (event, context) => {
       closingQuestionPlayers: Array.isArray(room.closingQuestionPlayers)
         ? room.closingQuestionPlayers
         : [],
-      closingVotes: room.closingVotes || {}
+      closingVotes: room.closingVotes || {},
+      partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
+      partnerRoundSummaries: Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries : []
     };
 
     const membersRes = await db

@@ -158,9 +158,22 @@
   overflow: hidden;
 }
 
-.game-card-active {
-  border-width: 8rpx;
-  border-color: #b0e0ae;
+.game-card-muted {
+  border: 4rpx solid #d4e0d4;
+  background: #f7faf7;
+}
+
+.game-card-no-border {
+  border: none;
+}
+
+.card-bullet-empty {
+  color: #b0b0b0;
+}
+
+game-card-timer {
+  display: block;
+  height: 100%;
 }
 
 .card-header-row {

@@ -160,20 +160,71 @@
         next-margin="40rpx"
         easing-function="easeOutCubic"
       >
-        <!-- 卡片 1：出牌并解释 / 提出疑问并讨论 -->
+        <!-- 已完成轮次的文字纪要（时间线：越左越早） -->
+        <swiper-item
+          class="card-swiper-item"
+          wx:for="{{roundSummaries}}"
+          wx:key="round"
+        >
+          <view class="game-card game-card-muted game-card-no-border">
+            <view class="card-header-row">
+              <text class="card-section-title card-section-title-inline">第{{item.round}}轮-文字纪要</text>
+            </view>
+            <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+              <text class="card-section-title">第{{item.round}}轮-出牌解释</text>
+              <view class="card-bullet-list">
+                <view
+                  class="card-bullet"
+                  wx:for="{{item.playHistory}}"
+                  wx:for-item="line"
+                  wx:key="*this"
+                >· {{line}}</view>
+                <view class="card-bullet card-bullet-empty" wx:if="{{!item.playHistory.length}}">· 暂无记录</view>
+              </view>
+              <view class="card-photo-wrap" wx:if="{{item.images.length}}">
+                <image
+                  class="card-photo"
+                  wx:for="{{item.images}}"
+                  wx:for-item="photo"
+                  wx:key="*this"
+                  src="{{photo}}"
+                  mode="aspectFill"
+                />
+              </view>
+              <view class="card-section-title card-section-title-gap">第{{item.round}}轮-疑问讨论</view>
+              <view class="card-bullet-list">
+                <view
+                  class="card-bullet"
+                  wx:for="{{item.discussionNotes}}"
+                  wx:for-item="note"
+                  wx:key="*this"
+                >· {{note}}</view>
+                <view class="card-bullet card-bullet-empty" wx:if="{{!item.discussionNotes.length}}">· 暂无记录</view>
+              </view>
+            </scroll-view>
+          </view>
+        </swiper-item>
+
+        <!-- 当前轮次：出牌并解释 / 提出疑问并讨论 -->
         <swiper-item class="card-swiper-item">
-          <view class="game-card game-card-active" wx:if="{{gamepagePhase === 'discussion'}}">
+          <game-card-timer
+            elapsedRatio="{{roundTimerElapsedRatio}}"
+            active="{{true}}"
+            wx:if="{{gamepagePhase === 'discussion'}}"
+          >
             <view class="discussion-card-body">
               <text class="discussion-title">提出疑问并讨论</text>
               <view class="discussion-divider"></view>
               <scroll-view class="discussion-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-                <text class="card-section-title">第一轮-出牌解释</text>
+                <text class="card-section-title">第{{currentRound}}轮-出牌解释</text>
                 <view class="card-bullet-list">
                   <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  <view class="card-bullet card-bullet-empty" wx:if="{{!playHistory.length}}">· 暂无记录</view>
                 </view>
-                <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                <text class="card-section-title card-section-title-gap">第{{currentRound}}轮-疑问讨论</text>
                 <view class="card-bullet-list">
                   <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                  <view class="card-bullet card-bullet-empty" wx:if="{{!discussionNotes.length}}">· 暂无记录</view>
                 </view>
                 <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
                   <view class="discussion-photo-icon"></view>
@@ -185,8 +236,13 @@
                 </view>
               </scroll-view>
             </view>
-          </view>
-          <view class="game-card game-card-active" wx:else>
+          </game-card-timer>
+
+          <game-card-timer
+            elapsedRatio="{{roundTimerElapsedRatio}}"
+            active="{{true}}"
+            wx:else
+          >
             <view class="action-card-body">
               <view class="action-title-row" wx:if="{{isMasterMode}}">
                 <view class="master-mode-badge">MASTER模式</view>
@@ -230,47 +286,19 @@
                 </view>
               </view>
             </view>
-          </view>
-        </swiper-item>
-
-        <!-- 卡片 2：文字纪要 -->
-        <swiper-item class="card-swiper-item">
-          <view class="game-card game-card-muted">
-            <view class="card-header-row">
-              <text class="card-section-title card-section-title-inline">第一轮-出牌解释</text>
-              <view class="insert-image-btn" catchtap="handleInsertImage">
-                <view class="insert-image-icon"></view>
-                <text class="insert-image-text">插入图片</text>
-              </view>
-            </view>
-            <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-              <view class="card-bullet-list">
-                <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
-              </view>
-              <view class="card-photo-wrap" wx:if="{{insertedImages.length}}">
-                <image
-                  class="card-photo"
-                  wx:for="{{insertedImages}}"
-                  wx:key="*this"
-                  src="{{item}}"
-                  mode="aspectFill"
-                />
-              </view>
-              <view class="card-section-title card-section-title-gap">第一轮-疑问讨论</view>
-              <view class="card-bullet-list">
-                <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
-              </view>
-            </scroll-view>
-          </view>
+          </game-card-timer>
         </swiper-item>
       </swiper>
 
       <view class="card-pagination">
         <view class="pagination-dots">
-          <view class="dot {{cardIndex === 0 ? 'dot-active' : ''}}"></view>
-          <view class="dot {{cardIndex === 1 ? 'dot-active' : ''}}"></view>
+          <view
+            class="dot {{cardIndex === item ? 'dot-active' : ''}}"
+            wx:for="{{paginationIndexes}}"
+            wx:key="*this"
+          ></view>
         </view>
-        <text class="pagination-text">{{cardIndex + 1}}/2</text>
+        <text class="pagination-text">{{cardIndex + 1}}/{{cardCount}}</text>
       </view>
     </view>
 

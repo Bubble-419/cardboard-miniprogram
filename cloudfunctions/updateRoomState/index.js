@@ -30,7 +30,10 @@ exports.main = async (event, context) => {
     partnerClosingStep,
     closingQuestionPlayers,
     resetClosingVotes,
-    brainstormSessionEnded
+    brainstormSessionEnded,
+    roundSummary,
+    partnerCurrentRoundContent,
+    partnerRoundStartedAt
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -72,8 +75,31 @@ exports.main = async (event, context) => {
     }
 
     let currentRound = room.currentRound != null ? room.currentRound : 1;
+    const emptyRoundContent = { playHistory: [], discussionNotes: [], images: [] };
+    const roundPatch = {};
+
     if (incrementRound === true) {
+      if (event.clearBrainstormProgress === true) {
+        roundPatch.partnerRoundSummaries = [];
+        roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+      } else {
+        const summarySource = roundSummary || room.partnerCurrentRoundContent;
+        if (summarySource && typeof summarySource === 'object') {
+          const summaries = Array.isArray(room.partnerRoundSummaries)
+            ? room.partnerRoundSummaries.slice()
+            : [];
+          summaries.push({
+            round: currentRound,
+            playHistory: summarySource.playHistory || [],
+            discussionNotes: summarySource.discussionNotes || [],
+            images: summarySource.images || []
+          });
+          roundPatch.partnerRoundSummaries = summaries;
+          roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+        }
+      }
       currentRound += 1;
+      roundPatch.partnerRoundStartedAt = Date.now();
     }
     if (currentPage === 'auth') {
       currentRound = 1;
@@ -82,7 +108,8 @@ exports.main = async (event, context) => {
     const updateData = {
       currentPage: (currentPage || 'addPlayer').toLowerCase(),
       currentRound,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      ...roundPatch
     };
 
     if (resetDesignProblems === true) {
@@ -195,6 +222,16 @@ exports.main = async (event, context) => {
     if (resetClosingVotes === true) {
       updateData.closingVotes = {};
       updateData.closingQuestionPlayers = [];
+    }
+    if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
+      updateData.partnerCurrentRoundContent = {
+        playHistory: partnerCurrentRoundContent.playHistory || [],
+        discussionNotes: partnerCurrentRoundContent.discussionNotes || [],
+        images: partnerCurrentRoundContent.images || []
+      };
+    }
+    if (partnerRoundStartedAt != null && Number.isFinite(Number(partnerRoundStartedAt))) {
+      updateData.partnerRoundStartedAt = Number(partnerRoundStartedAt);
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

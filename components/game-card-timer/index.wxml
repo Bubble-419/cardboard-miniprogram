@@ -1,0 +1,26 @@
+<view class="gct-wrap {{active ? 'gct-wrap-active' : ''}}">
+  <view class="gct-border gct-border-thick"></view>
+  <view
+    wx:if="{{border.right > 0}}"
+    class="gct-elapsed gct-elapsed-right"
+    style="height: {{border.right * 100}}%;"
+  ></view>
+  <view
+    wx:if="{{border.bottom > 0}}"
+    class="gct-elapsed gct-elapsed-bottom"
+    style="width: {{border.bottom * 100}}%;"
+  ></view>
+  <view
+    wx:if="{{border.left > 0}}"
+    class="gct-elapsed gct-elapsed-left"
+    style="height: {{border.left * 100}}%;"
+  ></view>
+  <view
+    wx:if="{{border.top > 0}}"
+    class="gct-elapsed gct-elapsed-top"
+    style="width: {{border.top * 100}}%;"
+  ></view>
+  <view class="gct-inner">
+    <slot></slot>
+  </view>
+</view>

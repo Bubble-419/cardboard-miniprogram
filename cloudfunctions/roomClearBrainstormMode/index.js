@@ -45,6 +45,9 @@ exports.main = async (event, context) => {
         partnerClosingStep: 'rune',
         closingVotes: {},
         closingQuestionPlayers: [],
+        partnerRoundSummaries: [],
+        partnerCurrentRoundContent: { playHistory: [], discussionNotes: [], images: [] },
+        partnerRoundStartedAt: null,
         updatedAt: Date.now()
       }
     });

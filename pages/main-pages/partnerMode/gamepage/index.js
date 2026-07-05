@@ -26,6 +26,10 @@ const {
   markPartnerSpecialMoveUsed,
   isSpecialMoveUsedForCurrentTurn
 } = require('../../../../utils/partnerSpecialMove');
+const {
+  getRoundTimerState,
+  buildPaginationIndexes
+} = require('../../../../utils/partnerRoundTimer');
 
 Page({
   data: {
@@ -52,15 +56,15 @@ Page({
     specialMoveUsedThisTurn: false,
     currentRound: 1,
     brainstormSessionSeq: 0,
-    playHistory: [
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    ],
-    discussionNotes: [
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    ]
+    roundSummaries: [],
+    partnerRoundStartedAt: null,
+    roundTimerElapsedRatio: 0,
+    roundTimerRemainingSec: 300,
+    cardCount: 1,
+    paginationIndexes: [0],
+    playHistory: [],
+    discussionNotes: [],
+    insertedImages: []
   },
 
   onLoad(options) {
@@ -151,11 +155,92 @@ Page({
   onHide() {
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimer();
+    this._syncRoundContentToRoom();
   },
 
   onUnload() {
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimer();
+  },
+
+  _buildRoundSummaryPayload() {
+    return {
+      playHistory: this.data.playHistory || [],
+      discussionNotes: this.data.discussionNotes || [],
+      images: this.data.insertedImages || []
+    };
+  },
+
+  _syncPaginationState(summaryCount, preferredIndex) {
+    const cardCount = Math.max(1, summaryCount + 1);
+    const actionCardIndex = summaryCount;
+    const cardIndex = preferredIndex != null
+      ? Math.min(Math.max(0, preferredIndex), cardCount - 1)
+      : actionCardIndex;
+    return {
+      cardCount,
+      paginationIndexes: buildPaginationIndexes(cardCount),
+      cardIndex
+    };
+  },
+
+  _restartRoundTimer() {
+    this._stopRoundTimer();
+    const { partnerRoundStartedAt, gamepagePhase } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) return;
+
+    const tick = () => {
+      const startedAt = this.data.partnerRoundStartedAt;
+      if (!startedAt) return;
+      const timerState = getRoundTimerState(startedAt);
+      this.setData({
+        roundTimerElapsedRatio: timerState.elapsedRatio,
+        roundTimerRemainingSec: timerState.remainingSec
+      });
+    };
+
+    tick();
+    this._roundTimerInterval = setInterval(tick, 1000);
+  },
+
+  _stopRoundTimer() {
+    if (this._roundTimerInterval) {
+      clearInterval(this._roundTimerInterval);
+      this._roundTimerInterval = null;
+    }
+  },
+
+  async _syncRoundContentToRoom() {
+    const roomId = this.data.roomId;
+    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'gamepage',
+          partnerCurrentRoundContent: this._buildRoundSummaryPayload()
+        }
+      });
+    } catch (e) {
+      console.warn('syncRoundContentToRoom', e);
+    }
+  },
+
+  async _ensureRoundTimerStarted(isHost) {
+    if (!isHost || isClosingPhase(this.data.gamepagePhase) || this.data.partnerRoundStartedAt) return;
+    const startedAt = Date.now();
+    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
+    const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+      partnerRoundStartedAt: startedAt
+    });
+    if (ok) {
+      this.setData({ partnerRoundStartedAt: startedAt }, () => {
+        this._restartRoundTimer();
+      });
+    }
   },
 
   _validateSpecialMoveFlag(flag, patch, members) {
@@ -237,6 +322,20 @@ Page({
       && player.currentPlayerIndex !== myPlayerIndex;
     const closingStepChanged = isClosingPhase(roomPhase)
       && closingStep !== this.data.closingStep;
+    const roundSummaries = (Array.isArray(roomState.partnerRoundSummaries)
+      ? roomState.partnerRoundSummaries
+      : [])
+      .slice()
+      .sort((a, b) => (a.round || 0) - (b.round || 0));
+    const partnerRoundStartedAt = roomState.partnerRoundStartedAt != null
+      ? roomState.partnerRoundStartedAt
+      : null;
+    const paginationState = this._syncPaginationState(
+      roundSummaries.length,
+      roundChanged || sessionChanged || options.resetTurnUi
+        ? roundSummaries.length
+        : this.data.cardIndex
+    );
 
     const patch = {
       members,
@@ -252,14 +351,25 @@ Page({
       closingStep,
       currentRound,
       brainstormSessionSeq,
-      totalRequired: Math.max(0, members.length - 1)
+      totalRequired: Math.max(0, members.length - 1),
+      roundSummaries,
+      partnerRoundStartedAt,
+      cardCount: paginationState.cardCount,
+      paginationIndexes: paginationState.paginationIndexes,
+      cardIndex: paginationState.cardIndex
     };
+
+    if (roundChanged || sessionChanged) {
+      patch.playHistory = [];
+      patch.discussionNotes = [];
+      patch.insertedImages = [];
+    }
 
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
-      if (!isClosingPhase(roomPhase)) {
-        patch.cardIndex = 0;
+      if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
+        patch.cardIndex = roundSummaries.length;
       }
     }
 
@@ -280,7 +390,9 @@ Page({
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
     }
 
-    this.setData(patch);
+    this.setData(patch, () => {
+      this._restartRoundTimer();
+    });
     return { playerChanged, phaseChanged, members, player, roomPhase };
   },
 
@@ -323,6 +435,8 @@ Page({
 
       this.refreshScoreStatus();
       this._startScorePolling();
+      await this._ensureRoundTimerStarted(result.isHost === true);
+      await this._syncRoundContentToRoom();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -434,6 +548,15 @@ Page({
       if (extra && extra.partnerClosingStep != null) {
         data.partnerClosingStep = extra.partnerClosingStep;
       }
+      if (extra && extra.roundSummary) {
+        data.roundSummary = extra.roundSummary;
+      }
+      if (extra && extra.partnerCurrentRoundContent) {
+        data.partnerCurrentRoundContent = extra.partnerCurrentRoundContent;
+      }
+      if (extra && extra.partnerRoundStartedAt != null) {
+        data.partnerRoundStartedAt = extra.partnerRoundStartedAt;
+      }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
       return result.ok === true;
@@ -445,7 +568,8 @@ Page({
 
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
-    this.setData({ cardIndex: index });
+    const maxIndex = Math.max(0, (this.data.roundSummaries || []).length);
+    this.setData({ cardIndex: Math.min(index, maxIndex) });
   },
 
   handleInsertImage() {
@@ -532,6 +656,8 @@ Page({
   async handleStartStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
 
+    await this._syncRoundContentToRoom();
+
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
     const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
       partnerMasterMode: false
@@ -552,11 +678,15 @@ Page({
 
     const { roomId, members, currentPlayerIndex } = this.data;
     const { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
-    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, {
+    const extra = {
       partnerGamePhase: PHASE_PLAY,
       partnerMasterMode: false,
       incrementRound
-    });
+    };
+    if (incrementRound) {
+      extra.roundSummary = this._buildRoundSummaryPayload();
+    }
+    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
     if (!ok) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
@@ -567,13 +697,20 @@ Page({
       currentPlayerName: nextName,
       gamepagePhase: PHASE_PLAY,
       isMasterMode: false,
-      cardIndex: 0,
       selectedScore: null,
       canStartStatement: false,
       specialMoveUsedThisTurn: false,
-      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex))
+      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex)),
+      playHistory: incrementRound ? [] : this.data.playHistory,
+      discussionNotes: incrementRound ? [] : this.data.discussionNotes,
+      insertedImages: incrementRound ? [] : this.data.insertedImages
+    }, () => {
+      if (incrementRound) {
+        this._syncRoomContext();
+      } else {
+        this.refreshScoreStatus();
+      }
     });
-    this.refreshScoreStatus();
   },
 
   handleGoRoom() {
