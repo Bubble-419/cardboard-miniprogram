@@ -22,6 +22,9 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     if (options.closingStep) {
       url += `&closingStep=${encodeURIComponent(options.closingStep)}`;
     }
+    if (options.specialMoveUsed) {
+      url += '&specialMoveUsed=1';
+    }
     return url;
   }
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;

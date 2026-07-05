@@ -6,6 +6,7 @@ const {
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
+const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -1028,6 +1029,7 @@ Page({
 
     wx.showLoading({ title: '准备中…', mask: true });
     clearLocalBrainstormProgress(roomId);
+    clearPartnerSpecialMoveUsedFlag(roomId);
     try {
       const updateRes = await this._updateRoomState('selectPlayer', null, null, {
         brainstormSessionEnded: false,
@@ -1250,6 +1252,7 @@ Page({
             return;
           }
           clearLocalBrainstormProgress(this.data.roomId);
+          clearPartnerSpecialMoveUsedFlag(this.data.roomId);
           wx.showToast({ title: '已退出脑暴', icon: 'success' });
           this.loadRoomData(this.data.roomId, { silent: true });
         } catch (err) {

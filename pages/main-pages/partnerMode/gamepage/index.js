@@ -21,6 +21,11 @@ const {
   buildPartnerAvatarList,
   resolveCurrentPlayerFromRoom
 } = require('../../../../utils/partnerPlayerTurn');
+const {
+  clearPartnerSpecialMoveUsedFlag,
+  markPartnerSpecialMoveUsed,
+  isSpecialMoveUsedForCurrentTurn
+} = require('../../../../utils/partnerSpecialMove');
 
 Page({
   data: {
@@ -44,6 +49,9 @@ Page({
     closingQuestionPlayers: [],
     reviewPhotos: [],
     canStartStatement: false,
+    specialMoveUsedThisTurn: false,
+    currentRound: 1,
+    brainstormSessionSeq: 0,
     playHistory: [
       'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
       'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -76,23 +84,67 @@ Page({
     const initialClosingStep = options && options.closingStep === CLOSING_STEP_REVIEW
       ? CLOSING_STEP_REVIEW
       : CLOSING_STEP_RUNE;
+    const specialMoveUsedFromUrl = options && (options.specialMoveUsed === '1' || options.specialMoveUsed === 1);
 
     this.setData({
       roomId,
       currentPlayerIndex,
       gamepagePhase: initialPhase,
       closingStep: initialClosingStep,
-      cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0
+      cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
+      specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
     });
 
     this.loadRoomData();
   },
 
+  _applyPendingSpecialMoveUsed() {
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+
+    const app = getApp();
+    const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
+    if (flag && flag.roomId === roomId) {
+      this.setData({ specialMoveUsedThisTurn: true });
+      return;
+    }
+
+    if (isSpecialMoveUsedForCurrentTurn(
+      roomId,
+      this.data.brainstormSessionSeq,
+      this.data.currentRound,
+      this.data.currentPlayerIndex
+    )) {
+      this.setData({ specialMoveUsedThisTurn: true });
+    }
+  },
+
   onShow() {
-    this.refreshScoreStatus();
+    this._applyPendingSpecialMoveUsed();
+    this._syncRoomContext().then(() => {
+      this._applyPendingSpecialMoveUsed();
+      this.refreshScoreStatus();
+    });
     if (this.data.roomId) {
       this._startStatePolling();
       this._startScorePolling();
+    }
+  },
+
+  async _syncRoomContext() {
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true && result.members && result.members.length) {
+        this._applyRoomContext(result);
+      }
+    } catch (e) {
+      console.warn('partner gamepage syncRoomContext', e);
     }
   },
 
@@ -104,6 +156,45 @@ Page({
   onUnload() {
     this._stopScorePolling();
     this._stopStatePolling();
+  },
+
+  _validateSpecialMoveFlag(flag, patch, members) {
+    const me = members.find((m) => m.isMe);
+    if (!me || me.playerIndex !== flag.playerIndex) return false;
+    if (flag.playerIndex !== patch.currentPlayerIndex) return false;
+    return true;
+  },
+
+  _resolveSpecialMoveUsed(patch, members) {
+    if (!patch.isCurrentPlayer) {
+      return false;
+    }
+
+    if (patch.isMasterMode) {
+      return true;
+    }
+
+    const roomId = this.data.roomId;
+    const app = getApp();
+    const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
+
+    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch, members)) {
+      markPartnerSpecialMoveUsed(
+        roomId,
+        flag.playerIndex,
+        patch.currentRound,
+        patch.brainstormSessionSeq
+      );
+      app.globalData.partnerSpecialMoveUsedTurn = null;
+      return true;
+    }
+
+    return isSpecialMoveUsedForCurrentTurn(
+      roomId,
+      patch.brainstormSessionSeq,
+      patch.currentRound,
+      patch.currentPlayerIndex
+    );
   },
 
   _applyRoomContext(result, options = {}) {
@@ -123,8 +214,27 @@ Page({
       ? roomState.closingQuestionPlayers
       : [];
     const closingStep = roomState.partnerClosingStep || CLOSING_STEP_RUNE;
+    const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
+    const brainstormSessionSeq = roomState.brainstormSessionSeq != null
+      ? roomState.brainstormSessionSeq
+      : 0;
     const playerChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
     const phaseChanged = roomPhase !== this.data.gamepagePhase;
+    const roundChanged = currentRound !== this.data.currentRound;
+    const sessionChanged = brainstormSessionSeq !== this.data.brainstormSessionSeq;
+    const hadPriorContext = (this.data.members || []).length > 0;
+    const me = members.find((m) => m.isMe);
+    const myPlayerIndex = me ? me.playerIndex : null;
+    const turnIndexChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
+    const becameMyTurn = hadPriorContext
+      && turnIndexChanged
+      && myPlayerIndex != null
+      && player.currentPlayerIndex === myPlayerIndex;
+    const leftMyTurn = hadPriorContext
+      && turnIndexChanged
+      && myPlayerIndex != null
+      && this.data.currentPlayerIndex === myPlayerIndex
+      && player.currentPlayerIndex !== myPlayerIndex;
     const closingStepChanged = isClosingPhase(roomPhase)
       && closingStep !== this.data.closingStep;
 
@@ -140,15 +250,30 @@ Page({
       isMasterMode: roomState.partnerMasterMode === true,
       closingQuestionPlayers,
       closingStep,
+      currentRound,
+      brainstormSessionSeq,
       totalRequired: Math.max(0, members.length - 1)
     };
 
-    if (playerChanged || phaseChanged || options.resetTurnUi) {
+    if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
       if (!isClosingPhase(roomPhase)) {
         patch.cardIndex = 0;
       }
+    }
+
+    if (becameMyTurn || leftMyTurn || roundChanged || sessionChanged) {
+      patch.specialMoveUsedThisTurn = false;
+    }
+    if (becameMyTurn || roundChanged || sessionChanged) {
+      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
+    }
+
+    if (leftMyTurn) {
+      patch.specialMoveUsedThisTurn = false;
+    } else if (!(becameMyTurn || roundChanged || sessionChanged)) {
+      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch, members);
     }
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
@@ -392,7 +517,11 @@ Page({
   },
 
   handleSpecialMove() {
-    if (this.data.isMasterMode) return;
+    if (!this.data.isCurrentPlayer) {
+      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+      return;
+    }
+    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) return;
     const { roomId, members } = this.data;
     if (!roomId) return;
     const me = (members || []).find((m) => m.isMe);
@@ -441,6 +570,7 @@ Page({
       cardIndex: 0,
       selectedScore: null,
       canStartStatement: false,
+      specialMoveUsedThisTurn: false,
       isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex))
     });
     this.refreshScoreStatus();

@@ -48,6 +48,7 @@ exports.main = async (event, context) => {
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
 
     const brainstormSessionEnded = room.brainstormSessionEnded === true;
+    const brainstormSessionSeq = room.brainstormSessionSeq != null ? room.brainstormSessionSeq : 0;
     let currentPage = room.currentPage || 'addPlayer';
     // 房主回到房间大厅时 currentPage 可能为 addPlayer，用 brainstormProgressPage 恢复脑暴进度
     if (
@@ -63,6 +64,8 @@ exports.main = async (event, context) => {
     const roomState = {
       currentPage,
       brainstormSessionEnded,
+      brainstormSessionSeq,
+      currentRound: room.currentRound != null ? room.currentRound : 1,
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
       currentPlayerName: room.currentPlayerName || '玩家1',
       passCount: room.currentPassCount != null ? room.currentPassCount : null,

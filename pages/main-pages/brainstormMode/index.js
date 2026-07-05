@@ -36,6 +36,8 @@ const BRAINSTORM_MODES = [
   }
 ];
 
+const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+
 Page({
   data: {
     roomId: '',
@@ -221,6 +223,7 @@ Page({
         title: mode.title,
         description: mode.description
       };
+      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
 
       wx.navigateTo({
         url: `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`,

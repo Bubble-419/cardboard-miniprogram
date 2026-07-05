@@ -44,6 +44,15 @@ exports.main = async (event, context) => {
         selectedModeId,
         selectedModeTitle: selectedModeTitle || '',
         selectedModeDesc: selectedModeDesc || '',
+        brainstormSessionSeq: db.command.inc(1),
+        currentRound: 1,
+        currentPlayerIndex: 1,
+        currentPlayerName: '玩家1',
+        partnerGamePhase: 'play',
+        partnerMasterMode: false,
+        partnerClosingStep: 'rune',
+        closingVotes: {},
+        closingQuestionPlayers: [],
         updatedAt: Date.now()
       }
     });

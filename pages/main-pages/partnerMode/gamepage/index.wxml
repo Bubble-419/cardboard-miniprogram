@@ -214,12 +214,12 @@
             </view>
             <view class="score-panel">
               <view class="score-panel-head">
-                <text class="score-label">此次行动评分</text>
+                <text class="score-label">{{isCurrentPlayer ? '此次行动无需评分' : '此次行动评分'}}</text>
                 <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
               </view>
-              <view class="score-buttons">
+              <view class="score-buttons" wx:if="{{!isCurrentPlayer}}">
                 <view
-                  class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}} {{isCurrentPlayer ? 'score-btn-disabled' : ''}}"
+                  class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
                   wx:for="{{scoreOptions}}"
                   wx:key="*this"
                   data-score="{{item}}"
@@ -319,9 +319,26 @@
       </button>
     </view>
     <view class="bottom-actions" wx:else>
+      <!-- 他人轮次：灰色禁用 -->
       <button
-        class="special-btn {{isMasterMode ? 'special-btn-disabled' : ''}}"
-        disabled="{{isMasterMode}}"
+        wx:if="{{!isCurrentPlayer}}"
+        class="special-btn special-btn-disabled"
+        disabled
+      >
+        <text class="special-btn-line">特殊</text>
+        <text class="special-btn-line">行动</text>
+      </button>
+      <!-- 自己轮次且(已使用 / MASTER)：浅绿灰底 + 深绿打勾 -->
+      <view
+        wx:elif="{{isCurrentPlayer && (specialMoveUsedThisTurn || isMasterMode)}}"
+        class="special-btn special-btn-used"
+      >
+        <text class="special-btn-check-mark">✓</text>
+      </view>
+      <!-- 自己轮次且未使用：可点击 -->
+      <button
+        wx:else
+        class="special-btn"
         bindtap="handleSpecialMove"
       >
         <text class="special-btn-line">特殊</text>

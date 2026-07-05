@@ -552,6 +552,19 @@
   color: #c1c1c1;
 }
 
+.special-btn-used {
+  background: #e3ebe3;
+  border: 2rpx solid #d4e0d4;
+  box-sizing: border-box;
+}
+
+.special-btn-check-mark {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #2f8a2f;
+  line-height: 1;
+}
+
 .statement-btn {
   flex: 1;
   height: 112rpx;
