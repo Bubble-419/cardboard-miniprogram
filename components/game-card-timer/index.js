@@ -66,7 +66,7 @@ Component({
           }
           const canvas = res[0].node;
           const ctx = canvas.getContext('2d');
-          const dpr = wx.getSystemInfoSync().pixelRatio || 2;
+          const dpr = (wx.getWindowInfo && wx.getWindowInfo().pixelRatio) || 2;
           const width = res[0].width;
           const height = res[0].height;
 
@@ -89,7 +89,8 @@ Component({
 
     _getRpxToPx() {
       try {
-        return wx.getSystemInfoSync().windowWidth / 750;
+        const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : null;
+        return (windowInfo && windowInfo.windowWidth ? windowInfo.windowWidth : 375) / 750;
       } catch (e) {
         return 0.5;
       }

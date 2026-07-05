@@ -54,7 +54,14 @@ exports.main = async (event, context) => {
         closingVotes: {},
         closingQuestionPlayers: [],
         partnerRoundSummaries: [],
-        partnerCurrentRoundContent: { playHistory: [], discussionNotes: [], images: [] },
+        partnerCurrentRoundContent: {
+          playHistory: [],
+          discussionNotes: [],
+          images: [],
+          voiceLines: [],
+          turnRecords: [],
+          aiSummary: { status: 'pending' }
+        },
         partnerRoundStartedAt: Date.now(),
         updatedAt: Date.now()
       }

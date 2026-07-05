@@ -24,6 +24,11 @@ function patchWxCloudForSharedEnv(app) {
       return app.globalData.cloudReady.then(() => app.globalData.cloud.getTempFileURL(opts));
     };
   }
+  if (app.globalData.cloud.uploadFile) {
+    wx.cloud.uploadFile = function(opts) {
+      return app.globalData.cloudReady.then(() => app.globalData.cloud.uploadFile(opts));
+    };
+  }
 }
 
 App({

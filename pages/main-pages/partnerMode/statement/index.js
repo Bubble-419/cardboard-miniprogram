@@ -178,6 +178,29 @@ Page({
 
     this.setData({ isSubmitting: true });
 
+    try {
+      const finalizeRes = await wx.cloud.callFunction({
+        name: 'finalizePartnerTurnRecord',
+        data: {
+          roomId,
+          playerIndex: currentPlayerIndex,
+          playerName: currentPlayerName,
+          statementResult: result
+        }
+      });
+      const finalizeResult = (finalizeRes && finalizeRes.result) || {};
+      if (finalizeResult.ok !== true) {
+        console.warn('finalizePartnerTurnRecord failed', finalizeResult);
+        wx.showToast({
+          title: finalizeResult.errMsg || '表态记录保存失败',
+          icon: 'none'
+        });
+      }
+    } catch (e) {
+      console.warn('finalizePartnerTurnRecord', e);
+      wx.showToast({ title: '表态记录保存失败', icon: 'none' });
+    }
+
     const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
       partnerGamePhase,
       partnerMasterMode: false,

@@ -31,6 +31,10 @@ const {
   buildPaginationIndexes,
   isRoundTimerActive
 } = require('../../../../utils/partnerRoundTimer');
+const {
+  normalizePartnerRoundContent
+} = require('../../../../utils/partnerRoundContent');
+const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
 
 Page({
   data: {
@@ -66,7 +70,8 @@ Page({
     paginationIndexes: [0],
     playHistory: [],
     discussionNotes: [],
-    insertedImages: []
+    voiceLines: [],
+    turnRecords: []
   },
 
   onLoad(options) {
@@ -102,6 +107,9 @@ Page({
     });
 
     this.loadRoomData();
+    this._roundSpeech = createPartnerRoundSpeech({
+      onText: () => this._syncRoomContext()
+    });
   },
 
   _applyPendingSpecialMoveUsed() {
@@ -134,6 +142,7 @@ Page({
       this._applyPendingSpecialMoveUsed();
       this.refreshScoreStatus();
       this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+      this._syncRoundSpeech();
     });
     if (this.data.roomId) {
       this._startStatePolling();
@@ -144,7 +153,7 @@ Page({
 
   async _syncRoomContext() {
     const roomId = this.data.roomId;
-    if (!roomId) return;
+    if (!roomId) return null;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
@@ -153,15 +162,24 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok === true && result.members && result.members.length) {
         this._applyRoomContext(result);
+        const roomState = result.roomState || {};
+        return {
+          roundContent: this._applyRoundContentFromRoom(roomState),
+          currentPlayerIndex: roomState.currentPlayerIndex != null
+            ? roomState.currentPlayerIndex
+            : this.data.currentPlayerIndex
+        };
       }
     } catch (e) {
       console.warn('partner gamepage syncRoomContext', e);
     }
+    return null;
   },
 
   onHide() {
     this._pageVisible = false;
     this.setData({ roundTimerVisible: false });
+    this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
     this._stopRoundTimer();
@@ -169,17 +187,65 @@ Page({
   },
 
   onUnload() {
+    this._stopRoundSpeech();
+    if (this._roundSpeech) {
+      this._roundSpeech.destroy();
+      this._roundSpeech = null;
+    }
     this._stopScorePolling();
     this._stopStatePolling();
     this._stopRoundTimer();
   },
 
-  _buildRoundSummaryPayload() {
+  _applyRoundContentFromRoom(roomState) {
+    return normalizePartnerRoundContent(roomState && roomState.partnerCurrentRoundContent);
+  },
+
+  _buildClientRoundContentPatch() {
     return {
       playHistory: this.data.playHistory || [],
       discussionNotes: this.data.discussionNotes || [],
       images: this.data.insertedImages || []
     };
+  },
+
+  _buildRoundSummaryPayload() {
+    return {
+      ...this._buildClientRoundContentPatch(),
+      voiceLines: this.data.voiceLines || [],
+      turnRecords: this.data.turnRecords || [],
+      aiSummary: { status: 'pending' }
+    };
+  },
+
+  _shouldRunRoundSpeech() {
+    return this.data.isHost
+      && this._pageVisible
+      && this._roomLoaded
+      && !isClosingPhase(this.data.gamepagePhase)
+      && !!this.data.roomId;
+  },
+
+  async _syncRoundSpeech() {
+    if (!this._roundSpeech) return;
+    if (!this._shouldRunRoundSpeech()) {
+      this._roundSpeech.stop();
+      return;
+    }
+    this._roundSpeech.setPhase(
+      isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
+    );
+    if (this._roundSpeech.isActive()) return;
+    await this._roundSpeech.start({
+      roomId: this.data.roomId,
+      phase: isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
+    });
+  },
+
+  _stopRoundSpeech() {
+    if (this._roundSpeech) {
+      this._roundSpeech.stop();
+    }
   },
 
   _syncPaginationState(summaryCount, preferredIndex) {
@@ -245,7 +311,7 @@ Page({
         data: {
           roomId,
           currentPage: 'gamepage',
-          partnerCurrentRoundContent: this._buildRoundSummaryPayload()
+          partnerCurrentRoundContent: this._buildClientRoundContentPatch()
         }
       });
     } catch (e) {
@@ -407,7 +473,13 @@ Page({
       ? roomState.partnerRoundSummaries
       : [])
       .slice()
-      .sort((a, b) => (a.round || 0) - (b.round || 0));
+      .sort((a, b) => (a.round || 0) - (b.round || 0))
+      .map((item) => ({
+        ...item,
+        voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
+        turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : []
+      }));
+    const roundContent = this._applyRoundContentFromRoom(roomState);
     const partnerRoundStartedAt = this._resolvePartnerRoundStartedAt(roomState, currentRound);
     const timerPatch = (!isClosingPhase(roomPhase) && partnerRoundStartedAt)
       ? (() => {
@@ -442,6 +514,8 @@ Page({
       totalRequired: Math.max(0, members.length - 1),
       roundSummaries,
       partnerRoundStartedAt,
+      voiceLines: roundContent.voiceLines,
+      turnRecords: roundContent.turnRecords,
       ...timerPatch,
       cardCount: paginationState.cardCount,
       paginationIndexes: paginationState.paginationIndexes,
@@ -452,6 +526,8 @@ Page({
       patch.playHistory = [];
       patch.discussionNotes = [];
       patch.insertedImages = [];
+      patch.voiceLines = [];
+      patch.turnRecords = [];
       this._clearRoundStartedAtCache();
       const serverTs = roomState.partnerRoundStartedAt != null
         ? Number(roomState.partnerRoundStartedAt)
@@ -462,6 +538,7 @@ Page({
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
+      patch.scoredCount = 0;
       if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
         patch.cardIndex = roundSummaries.length;
       }
@@ -494,10 +571,13 @@ Page({
       ) {
         this._ensureRoundTimerStarted(true).then(() => {
           this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+          this._syncRoundSpeech();
         });
+      } else {
+        this._syncRoundSpeech();
       }
     });
-    return { playerChanged, phaseChanged, members, player, roomPhase };
+    return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
 
   async loadRoomData() {
@@ -542,6 +622,7 @@ Page({
       this._roomLoaded = true;
       await this._ensureRoundTimerStarted(result.isHost === true);
       this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+      await this._syncRoundSpeech();
       await this._syncRoundContentToRoom();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
@@ -550,12 +631,12 @@ Page({
   },
 
   async refreshScoreStatus() {
-    const { roomId, currentPlayerIndex, isHost, gamepagePhase } = this.data;
+    const { roomId, isHost, gamepagePhase } = this.data;
     if (!roomId || isClosingPhase(gamepagePhase)) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getGameScoreStatus',
-        data: { roomId, currentPlayerIndex }
+        data: { roomId }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
@@ -608,15 +689,24 @@ Page({
         if (page === 'gamepage') {
           const prevMaster = this.data.isMasterMode;
           const prevClosingStep = this.data.closingStep;
-          const { playerChanged, phaseChanged } = this._applyRoomContext(result);
+          const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(result);
           if (
             playerChanged
             || phaseChanged
+            || roundChanged
             || prevMaster !== this.data.isMasterMode
             || prevClosingStep !== this.data.closingStep
           ) {
             this.refreshScoreStatus();
           }
+          return;
+        }
+        if (this.data.isHost && page === 'statement') {
+          const idx = result.roomState.currentPlayerIndex != null
+            ? result.roomState.currentPlayerIndex
+            : this.data.currentPlayerIndex;
+          const playerName = result.roomState.currentPlayerName || this.data.currentPlayerName;
+          safeOpenUrl(buildStatementUrl(roomId, idx, playerName));
           return;
         }
         navigateByRoomState(page, result.roomState, roomId);
@@ -762,6 +852,8 @@ Page({
   async handleStartStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
 
+    this._stopRoundSpeech();
+    this._stopStatePolling();
     await this._syncRoundContentToRoom();
 
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
@@ -769,6 +861,7 @@ Page({
       partnerMasterMode: false
     });
     if (!ok) {
+      this._startStatePolling();
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }
@@ -790,7 +883,17 @@ Page({
       incrementRound
     };
     if (incrementRound) {
-      extra.roundSummary = this._buildRoundSummaryPayload();
+      const ctx = await this._syncRoomContext();
+      const roundContent = ctx && ctx.roundContent;
+      extra.roundSummary = {
+        ...this._buildRoundSummaryPayload(),
+        voiceLines: (roundContent && roundContent.voiceLines.length)
+          ? roundContent.voiceLines
+          : (this.data.voiceLines || []),
+        turnRecords: (roundContent && roundContent.turnRecords.length)
+          ? roundContent.turnRecords
+          : (this.data.turnRecords || [])
+      };
     }
     const ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
     if (!ok) {
@@ -805,16 +908,21 @@ Page({
       isMasterMode: false,
       selectedScore: null,
       canStartStatement: false,
+      scoredCount: 0,
       specialMoveUsedThisTurn: false,
       isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex)),
       playHistory: incrementRound ? [] : this.data.playHistory,
       discussionNotes: incrementRound ? [] : this.data.discussionNotes,
-      insertedImages: incrementRound ? [] : this.data.insertedImages
+      insertedImages: incrementRound ? [] : this.data.insertedImages,
+      voiceLines: incrementRound ? [] : this.data.voiceLines,
+      turnRecords: incrementRound ? [] : this.data.turnRecords
     }, () => {
       if (incrementRound) {
-        this._syncRoomContext();
+        this._roundSpeech && this._roundSpeech.stop();
+        this._syncRoomContext().then(() => this._syncRoundSpeech());
       } else {
         this.refreshScoreStatus();
+        this._syncRoundSpeech();
       }
     });
   },

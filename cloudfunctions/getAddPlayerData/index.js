@@ -78,7 +78,15 @@ exports.main = async (event, context) => {
         : [],
       closingVotes: room.closingVotes || {},
       partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
-      partnerRoundSummaries: Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries : []
+      partnerRoundSummaries: Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries : [],
+      partnerCurrentRoundContent: room.partnerCurrentRoundContent || {
+        playHistory: [],
+        discussionNotes: [],
+        images: [],
+        voiceLines: [],
+        turnRecords: [],
+        aiSummary: { status: 'pending' }
+      }
     };
 
     const membersRes = await db

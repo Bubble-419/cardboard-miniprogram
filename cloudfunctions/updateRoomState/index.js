@@ -9,6 +9,40 @@ const ROOMS_COLLECTION = 'rooms';
 const PROBLEMS_COLLECTION = 'designProblems';
 const DESIGN_PROBLEM_ENTRY = 'designProblem';
 
+function normalizePartnerRoundContent(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    playHistory: Array.isArray(src.playHistory) ? src.playHistory.slice() : [],
+    discussionNotes: Array.isArray(src.discussionNotes) ? src.discussionNotes.slice() : [],
+    images: Array.isArray(src.images) ? src.images.slice() : [],
+    voiceLines: Array.isArray(src.voiceLines) ? src.voiceLines.slice() : [],
+    turnRecords: Array.isArray(src.turnRecords) ? src.turnRecords.slice() : [],
+    aiSummary: src.aiSummary && typeof src.aiSummary === 'object'
+      ? { ...src.aiSummary }
+      : { status: 'pending' }
+  };
+}
+
+function pickPreferredList(clientList, serverList) {
+  if (Array.isArray(clientList) && clientList.length) return clientList;
+  if (Array.isArray(serverList) && serverList.length) return serverList;
+  return Array.isArray(clientList) ? clientList : (Array.isArray(serverList) ? serverList : []);
+}
+
+function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
+  const client = clientSummary ? normalizePartnerRoundContent(clientSummary) : null;
+  const server = normalizePartnerRoundContent(serverContent);
+  return {
+    round: currentRound,
+    playHistory: client && client.playHistory.length ? client.playHistory : server.playHistory,
+    discussionNotes: client && client.discussionNotes.length ? client.discussionNotes : server.discussionNotes,
+    images: client && client.images.length ? client.images : server.images,
+    voiceLines: pickPreferredList(client && client.voiceLines, server.voiceLines),
+    turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
+    aiSummary: server.aiSummary || { status: 'pending' }
+  };
+}
+
 /**
  * 房主更新房间当前页面状态，供普通玩家跟随跳转
  * 仅房间创建者可调用
@@ -75,7 +109,7 @@ exports.main = async (event, context) => {
     }
 
     let currentRound = room.currentRound != null ? room.currentRound : 1;
-    const emptyRoundContent = { playHistory: [], discussionNotes: [], images: [] };
+    const emptyRoundContent = { playHistory: [], discussionNotes: [], images: [], voiceLines: [], turnRecords: [], aiSummary: { status: 'pending' } };
     const roundPatch = {};
 
     if (incrementRound === true) {
@@ -83,17 +117,15 @@ exports.main = async (event, context) => {
         roundPatch.partnerRoundSummaries = [];
         roundPatch.partnerCurrentRoundContent = emptyRoundContent;
       } else {
-        const summarySource = roundSummary || room.partnerCurrentRoundContent;
-        if (summarySource && typeof summarySource === 'object') {
+        const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+        const contentRoom = (freshRes.data && freshRes.data[0]) || room;
+        const serverContent = contentRoom.partnerCurrentRoundContent;
+        const clientSummary = roundSummary && typeof roundSummary === 'object' ? roundSummary : null;
+        if (serverContent || clientSummary) {
           const summaries = Array.isArray(room.partnerRoundSummaries)
             ? room.partnerRoundSummaries.slice()
             : [];
-          summaries.push({
-            round: currentRound,
-            playHistory: summarySource.playHistory || [],
-            discussionNotes: summarySource.discussionNotes || [],
-            images: summarySource.images || []
-          });
+          summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent));
           roundPatch.partnerRoundSummaries = summaries;
           roundPatch.partnerCurrentRoundContent = emptyRoundContent;
         }
@@ -224,10 +256,17 @@ exports.main = async (event, context) => {
       updateData.closingQuestionPlayers = [];
     }
     if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
+      const existing = normalizePartnerRoundContent(room.partnerCurrentRoundContent);
+      const incoming = partnerCurrentRoundContent;
+      const incomingVoiceLines = Array.isArray(incoming.voiceLines) ? incoming.voiceLines : [];
+      const incomingTurnRecords = Array.isArray(incoming.turnRecords) ? incoming.turnRecords : [];
       updateData.partnerCurrentRoundContent = {
-        playHistory: partnerCurrentRoundContent.playHistory || [],
-        discussionNotes: partnerCurrentRoundContent.discussionNotes || [],
-        images: partnerCurrentRoundContent.images || []
+        playHistory: incoming.playHistory || [],
+        discussionNotes: incoming.discussionNotes || [],
+        images: incoming.images || [],
+        voiceLines: incomingVoiceLines.length ? incomingVoiceLines : existing.voiceLines,
+        turnRecords: incomingTurnRecords.length ? incomingTurnRecords : existing.turnRecords,
+        aiSummary: existing.aiSummary
       };
     }
     if (partnerRoundStartedAt != null && Number.isFinite(Number(partnerRoundStartedAt))) {

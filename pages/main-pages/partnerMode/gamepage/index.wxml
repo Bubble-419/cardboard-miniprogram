@@ -171,35 +171,26 @@
               <text class="card-section-title card-section-title-inline">第{{item.round}}轮-文字纪要</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-              <text class="card-section-title">第{{item.round}}轮-出牌解释</text>
+              <text class="card-section-title">第{{item.round}}轮-语音纪要</text>
               <view class="card-bullet-list">
                 <view
                   class="card-bullet"
-                  wx:for="{{item.playHistory}}"
-                  wx:for-item="line"
-                  wx:key="*this"
-                >· {{line}}</view>
-                <view class="card-bullet card-bullet-empty" wx:if="{{!item.playHistory.length}}">· 暂无记录</view>
+                  wx:for="{{item.voiceLines}}"
+                  wx:for-item="voiceLine"
+                  wx:key="at"
+                >· {{voiceLine.text}}</view>
+                <view class="card-bullet card-bullet-empty" wx:if="{{!item.voiceLines || !item.voiceLines.length}}">· 暂无记录</view>
               </view>
-              <view class="card-photo-wrap" wx:if="{{item.images.length}}">
-                <image
-                  class="card-photo"
-                  wx:for="{{item.images}}"
-                  wx:for-item="photo"
-                  wx:key="*this"
-                  src="{{photo}}"
-                  mode="aspectFill"
-                />
-              </view>
-              <view class="card-section-title card-section-title-gap">第{{item.round}}轮-疑问讨论</view>
+              <text class="card-section-title card-section-title-gap">第{{item.round}}轮-表态记录</text>
               <view class="card-bullet-list">
                 <view
                   class="card-bullet"
-                  wx:for="{{item.discussionNotes}}"
-                  wx:for-item="note"
-                  wx:key="*this"
-                >· {{note}}</view>
-                <view class="card-bullet card-bullet-empty" wx:if="{{!item.discussionNotes.length}}">· 暂无记录</view>
+                  wx:for="{{item.turnRecords}}"
+                  wx:for-item="turn"
+                  wx:for-index="turnIdx"
+                  wx:key="turnIdx"
+                >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
+                <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
             </scroll-view>
           </view>
@@ -226,6 +217,22 @@
                   <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
                   <view class="card-bullet card-bullet-empty" wx:if="{{!discussionNotes.length}}">· 暂无记录</view>
                 </view>
+                <text class="card-section-title card-section-title-gap">第{{currentRound}}轮-语音纪要</text>
+                <view class="card-bullet-list">
+                  <view class="card-bullet" wx:for="{{voiceLines}}" wx:key="at">· {{item.text}}</view>
+                  <view class="card-bullet card-bullet-empty" wx:if="{{!voiceLines.length}}">· 正在聆听…</view>
+                </view>
+                <text class="card-section-title card-section-title-gap">第{{currentRound}}轮-表态记录</text>
+                <view class="card-bullet-list">
+                  <view
+                    class="card-bullet"
+                    wx:for="{{turnRecords}}"
+                    wx:for-item="turn"
+                    wx:for-index="turnIdx"
+                    wx:key="turnIdx"
+                  >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
+                  <view class="card-bullet card-bullet-empty" wx:if="{{!turnRecords.length}}">· 暂无记录</view>
+                </view>
                 <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
                   <view class="discussion-photo-icon"></view>
                 </view>
@@ -250,6 +257,12 @@
               <text class="action-title">出牌并解释</text>
               <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
               <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
+              <view class="action-divider"></view>
+              <text class="card-section-title">第{{currentRound}}轮-语音纪要</text>
+              <view class="card-bullet-list action-voice-list">
+                <view class="card-bullet" wx:for="{{voiceLines}}" wx:key="at">· {{item.text}}</view>
+                <view class="card-bullet card-bullet-empty" wx:if="{{!voiceLines.length}}">· 正在聆听…</view>
+              </view>
               <view class="action-divider"></view>
               <view class="action-grid">
                 <view class="action-cell action-cell-filled">
