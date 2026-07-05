@@ -463,3 +463,62 @@
   color: #d1d5db;
   line-height: 32rpx;
 }
+
+/* DEV_TEST_START: 输入房间号加入（测试用） */
+.dev-join-room {
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx;
+  border: 2rpx dashed #f59e0b;
+  border-radius: 24rpx;
+  background: #fffbeb;
+  box-sizing: border-box;
+}
+
+.dev-join-label {
+  display: block;
+  font-size: 22rpx;
+  color: #b45309;
+  margin-bottom: 12rpx;
+}
+
+.dev-join-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.dev-join-input {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 20rpx;
+  background: #fff;
+  border: 1rpx solid #fcd34d;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  color: #333;
+  box-sizing: border-box;
+}
+
+.dev-join-placeholder {
+  color: #d1d5db;
+}
+
+.dev-join-btn {
+  flex-shrink: 0;
+  width: 140rpx;
+  height: 72rpx;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 16rpx;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 28rpx;
+  line-height: 72rpx;
+  text-align: center;
+}
+
+.dev-join-btn::after {
+  border: none;
+}
+/* DEV_TEST_END */

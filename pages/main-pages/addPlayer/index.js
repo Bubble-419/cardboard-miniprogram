@@ -8,6 +8,7 @@ const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partner
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
+const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -110,7 +111,8 @@ Page({
 
     this.setData({
       roomId,
-      isFromScan: !!scene
+      isFromScan: !!scene,
+      ...getDevRoomIdDisplayPatch(roomId)
     });
 
     if (scene) {
@@ -1345,5 +1347,18 @@ Page({
       }
     });
   },
+
+  /* DEV_TEST_START: 显示房间号（测试用） */
+  handleDevCopyRoomId() {
+    const roomId = this.data.devRoomIdDisplay || this.data.roomId;
+    if (!roomId) return;
+    wx.setClipboardData({
+      data: String(roomId),
+      success: () => {
+        wx.showToast({ title: '已复制房间号', icon: 'none' });
+      }
+    });
+  }
+  /* DEV_TEST_END */
 
 });

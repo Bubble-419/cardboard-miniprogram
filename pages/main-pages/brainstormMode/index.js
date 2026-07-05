@@ -12,6 +12,9 @@ const AVATAR_IMAGES = [
 
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
+const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
+
 const BRAINSTORM_MODES = [
   {
     id: 'halliGalli',
@@ -35,9 +38,6 @@ const BRAINSTORM_MODES = [
     pagePath: MODE_INDEX_PATH
   }
 ];
-
-const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
-const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 
 Page({
   data: {

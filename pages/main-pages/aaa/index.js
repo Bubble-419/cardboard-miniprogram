@@ -1,6 +1,7 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
 const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
+const { getDevJoinPageData } = require('../../../utils/devJoinRoomById');
 
 Page({
   data: {
@@ -27,7 +28,7 @@ Page({
     } catch (e) {
       console.warn('getSystemInfo for header', e);
     }
-    this.setData({ headerPaddingTop });
+    this.setData({ headerPaddingTop, ...getDevJoinPageData() });
     this.loadJoinedRoomState();
   },
 
@@ -485,5 +486,20 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }
+  },
+
+  /* DEV_TEST_START: 输入房间号加入（测试用） */
+  onDevJoinRoomIdInput(e) {
+    this.setData({ devJoinRoomIdInput: (e.detail.value || '').trim() });
+  },
+
+  async handleDevJoinByRoomId() {
+    const roomId = (this.data.devJoinRoomIdInput || '').trim();
+    if (!this._isValidRoomId(roomId)) {
+      wx.showToast({ title: '请输入8位房间号', icon: 'none' });
+      return;
+    }
+    await this._joinRoomAndGo(roomId);
   }
+  /* DEV_TEST_END */
 });
