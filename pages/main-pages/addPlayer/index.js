@@ -7,6 +7,7 @@ const {
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -159,7 +160,10 @@ Page({
       hasSelectedMode: result.hasSelectedMode === true,
       brainstormSessionEnded: !!(result.roomState && result.roomState.brainstormSessionEnded),
       selectedModeId: result.selectedModeId || '',
-      selectedModeTitle: result.selectedModeTitle || '',
+      selectedModeTitle: normalizeModeDisplayTitle(
+        result.selectedModeTitle || '',
+        result.selectedModeId
+      ),
       selectedModeDesc: result.selectedModeDesc || '',
       workshopName: result.workshopName || this.data.workshopName
     };
@@ -1187,7 +1191,10 @@ Page({
           roomState,
           selectedModeId,
           hasSelectedMode,
-          selectedModeTitle: result.selectedModeTitle || this.data.selectedModeTitle,
+          selectedModeTitle: normalizeModeDisplayTitle(
+            result.selectedModeTitle || this.data.selectedModeTitle,
+            selectedModeId
+          ),
           selectedModeDesc: result.selectedModeDesc || this.data.selectedModeDesc
         });
       } else if (hasSelectedMode) {

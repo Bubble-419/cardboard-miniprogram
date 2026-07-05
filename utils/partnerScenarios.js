@@ -107,7 +107,7 @@ function getScenariosForMode(modeId) {
   return list;
 }
 
-/** 合伙人流程中，恢复进度前需已选情境的页面 */
+/** 脑暴大富翁（partnerMode）流程中，恢复进度前需已选情境的页面 */
 const PARTNER_PAGES_NEED_BG = [
   'confirmbg',
   'submitproblem',

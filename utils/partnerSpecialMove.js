@@ -22,7 +22,7 @@ function saveSpecialMoveUsedTurnKey(roomId, turnKey) {
   }
 }
 
-/** 清除合伙人模式「特殊行动已使用」本地标记 */
+/** 清除脑暴大富翁（partnerMode）「特殊行动已使用」本地标记 */
 function clearPartnerSpecialMoveUsedFlag(roomId) {
   const app = getApp();
   if (!app.globalData) return;

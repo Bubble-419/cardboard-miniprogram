@@ -5,10 +5,11 @@
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
-  partner: { title: '合伙人模式', gameMode: 'partner' },
+  partner: { title: PARTNER_MODE_DISPLAY_TITLE, gameMode: 'partner' },
   spy: { title: '谁是卧底模式', gameMode: 'spy' }
 };
 
@@ -16,7 +17,7 @@ Page({
   data: {
     roomId: '',
     modeId: 'partner',
-    modeTitle: '合伙人模式',
+    modeTitle: PARTNER_MODE_DISPLAY_TITLE,
     isHost: true,
     isWaiting: false,
     scenarios: [],
@@ -236,7 +237,7 @@ Page({
       return;
     }
 
-    // 合伙人：确认情境页 → 选择问题
+    // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
     if (this.data.modeId === 'partner') {
       app.globalData.selectedBG = { ...scenario.bg };
       app.globalData.gameMode = 'partner';

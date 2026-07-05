@@ -22,7 +22,7 @@ const BRAINSTORM_MODES = [
   },
   {
     id: 'partner',
-    title: '合伙人模式',
+    title: PARTNER_MODE_DISPLAY_TITLE,
     description: '团队协作，\n共同打磨并提交最佳创意方案',
     coverImage: '/assets/brainstormMode/mode-cover-partner.png',
     pagePath: MODE_INDEX_PATH
@@ -37,6 +37,7 @@ const BRAINSTORM_MODES = [
 ];
 
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 
 Page({
   data: {

@@ -1,5 +1,5 @@
 /**
- * 合伙人模式 - 出牌页
+ * 脑暴大富翁（partnerMode）- 出牌页
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
 const { assignAvatarImages } = require('../../../../utils/avatars');
