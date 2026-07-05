@@ -91,6 +91,7 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
 
 .main-stage {
@@ -334,6 +335,7 @@
   flex-shrink: 0;
   padding: 24rpx 54rpx;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
 }
 
 .confirm-btn {

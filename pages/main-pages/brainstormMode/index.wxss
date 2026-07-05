@@ -143,10 +143,6 @@
 
 /* ===== 底部确认按钮区 ===== */
 .footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   padding: 40rpx 40rpx calc(56rpx + env(safe-area-inset-bottom));
   background: linear-gradient(
     0deg,

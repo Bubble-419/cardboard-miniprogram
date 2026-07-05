@@ -51,7 +51,7 @@
   </view>
 
   <!-- 底部确认按钮 -->
-  <view class="footer">
+  <page-footer extClass="footer" bind:prev="goBack">
     <button class="confirm-btn {{canConfirm ? 'enabled' : ''}}" disabled="{{!canConfirm}}" bindtap="confirmBG">确认情境</button>
-  </view>
+  </page-footer>
 </view>

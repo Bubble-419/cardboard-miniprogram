@@ -51,11 +51,22 @@
   </scroll-view>
 
   <!-- 底部确认按钮（仅房主可见） -->
-  <view class="footer" wx:if="{{isHost}}">
+  <page-footer
+    wx:if="{{isHost}}"
+    extClass="footer"
+    bind:prev="handleGoBack"
+  >
     <view
       class="confirm-btn {{selectedModeId ? '' : 'dimmed'}}"
       bindtap="onConfirmMode"
     >确认模式</view>
-  </view>
+  </page-footer>
+
+  <page-footer
+    wx:else
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 
 </view>

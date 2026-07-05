@@ -88,7 +88,7 @@
     </view>
   </view>
 
-  <view class="footer">
+  <page-footer extClass="footer" bind:prev="goBack">
     <button class="next-btn" bindtap="nextStep">下一步</button>
-  </view>
+  </page-footer>
 </view>

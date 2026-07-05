@@ -340,3 +340,22 @@
   color: #9c9c9c;
   line-height: 56rpx;
 }
+
+/* ===== 底部上一页 ===== */
+.footer {
+  padding: 40rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.95) 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.main-scroll {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}
+
+.wait-page {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}

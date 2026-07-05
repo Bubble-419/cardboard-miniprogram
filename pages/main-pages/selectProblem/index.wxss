@@ -308,19 +308,15 @@
    Figma: padding 20px → 40rpx, fill rgba(255,255,255,0.9), blur 2px
    Button: 315.66×44.56px, border-radius 11.14px */
 .footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   padding: 40rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
   background-color: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(4px);
 }
 
-/* 按钮宽度 ≈ 315.66/354 ≈ 89.7% 内容区，用 margin auto 居中 */
+/* 按钮宽度由 page-footer 并排布局控制 */
 .confirm-btn {
-  width: 90%;
-  max-width: 630rpx;
+  width: 100%;
+  max-width: none;
   height: 90rpx; /* 44.56px × 2 ≈ 89rpx */
   background-color: #5EC159;
   color: #FFFFFF;
@@ -331,7 +327,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .confirm-btn:active {

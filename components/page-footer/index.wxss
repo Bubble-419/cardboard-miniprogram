@@ -1,0 +1,63 @@
+.page-footer--fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.page-footer__row {
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+}
+
+.page-footer__row--solo .page-footer__prev-btn {
+  flex: 1;
+  width: 100%;
+}
+
+.page-footer__prev-btn {
+  flex: 1;
+  height: 96rpx;
+  background-color: #ffffff;
+  color: #5ec159;
+  border: 2rpx solid #5ec159;
+  border-radius: 24rpx;
+  font-size: 40rpx;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 4rpx;
+  padding: 0;
+  margin: 0;
+  line-height: normal;
+  box-sizing: border-box;
+}
+
+.page-footer__prev-btn::after {
+  border: none;
+}
+
+.page-footer__prev-btn:active {
+  opacity: 0.8;
+}
+
+.page-footer__slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+}
+
+.page-footer__slot > button,
+.page-footer__slot > view {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+}

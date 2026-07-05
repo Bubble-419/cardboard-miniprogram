@@ -16,6 +16,11 @@
         <text class="wait-hint">等待房主选择情境…</text>
       </view>
     </view>
+    <page-footer
+      extClass="footer"
+      showPrimary="{{false}}"
+      bind:prev="handleGoBack"
+    ></page-footer>
   </block>
 
   <!-- 房主视图 -->
@@ -113,5 +118,11 @@
         </view>
       </view>
     </scroll-view>
+
+    <page-footer
+      extClass="footer"
+      showPrimary="{{false}}"
+      bind:prev="handleGoBack"
+    ></page-footer>
   </block>
 </view>

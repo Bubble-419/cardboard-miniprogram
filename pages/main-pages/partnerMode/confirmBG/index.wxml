@@ -20,6 +20,12 @@
     <text class="wait-title">确认情境</text>
     <text class="wait-desc">等待房主确认情境…</text>
   </view>
+  <page-footer
+    wx:if="{{!isHost || isWaiting}}"
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 
   <!-- 房主确认视图 -->
   <block wx:else>
@@ -54,7 +60,7 @@
     </view>
 
     <!-- 确认按钮 -->
-    <view class="footer">
+    <page-footer extClass="footer" bind:prev="handleGoBack">
       <button
         class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
         disabled="{{!canConfirm}}"
@@ -62,6 +68,6 @@
       >
         确认情境
       </button>
-    </view>
+    </page-footer>
   </block>
 </view>

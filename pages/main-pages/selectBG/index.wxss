@@ -131,10 +131,6 @@
 
 /* ===== 底部确认按钮 ===== */
 .footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   padding: 24rpx 54rpx;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
   background: linear-gradient(to top, rgba(248, 251, 250, 0.98) 70%, transparent);

@@ -86,7 +86,18 @@
   </scroll-view>
 
   <!-- 固定底部按钮 -->
-  <view class="footer-action" wx:if="{{!hasSubmitted}}">
+  <page-footer
+    wx:if="{{!hasSubmitted}}"
+    extClass="footer-action"
+    bind:prev="handleGoBack"
+  >
     <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
-  </view>
+  </page-footer>
+
+  <page-footer
+    wx:if="{{hasSubmitted}}"
+    extClass="footer-action"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 </view>
