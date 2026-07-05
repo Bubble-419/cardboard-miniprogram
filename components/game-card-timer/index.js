@@ -246,8 +246,8 @@ Component({
         this._drawLineProgress(ctx, xL, yB - r, xL, yT + r, segP[4], thick, thin);
         // 5 左上圆角
         this._drawArcProgress(ctx, xL + r, yT + r, r, Math.PI, Math.PI * 1.5, segP[5], thick, thin);
-        // 6 顶边：右 → 左
-        this._drawLineProgress(ctx, xR - r, yT, xL + r, yT, segP[6], thick, thin);
+        // 6 顶边：左 → 右
+        this._drawLineProgress(ctx, xL + r, yT, xR - r, yT, segP[6], thick, thin);
         // 7 右上圆角
         this._drawArcProgress(ctx, xR - r, yT + r, r, Math.PI * 1.5, Math.PI * 2, segP[7], thick, thin);
       }
