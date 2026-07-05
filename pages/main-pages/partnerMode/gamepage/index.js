@@ -28,7 +28,8 @@ const {
 } = require('../../../../utils/partnerSpecialMove');
 const {
   getRoundTimerState,
-  buildPaginationIndexes
+  buildPaginationIndexes,
+  isRoundTimerActive
 } = require('../../../../utils/partnerRoundTimer');
 
 Page({
@@ -58,6 +59,7 @@ Page({
     brainstormSessionSeq: 0,
     roundSummaries: [],
     partnerRoundStartedAt: null,
+    roundTimerVisible: false,
     roundTimerElapsedRatio: 0,
     roundTimerRemainingSec: 300,
     cardCount: 1,
@@ -124,15 +126,20 @@ Page({
   },
 
   onShow() {
+    this._pageVisible = true;
     this._applyPendingSpecialMoveUsed();
+    this._syncTimerFromStartedAt();
+    this._restartRoundTimer();
     this._syncRoomContext().then(() => {
       this._applyPendingSpecialMoveUsed();
       this.refreshScoreStatus();
+      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
     });
     if (this.data.roomId) {
       this._startStatePolling();
       this._startScorePolling();
     }
+    this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
   },
 
   async _syncRoomContext() {
@@ -153,6 +160,8 @@ Page({
   },
 
   onHide() {
+    this._pageVisible = false;
+    this.setData({ roundTimerVisible: false });
     this._stopScorePolling();
     this._stopStatePolling();
     this._stopRoundTimer();
@@ -184,6 +193,21 @@ Page({
       paginationIndexes: buildPaginationIndexes(cardCount),
       cardIndex
     };
+  },
+
+  _syncTimerFromStartedAt() {
+    const { partnerRoundStartedAt, gamepagePhase } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) {
+      if (this.data.roundTimerElapsedRatio !== 0) {
+        this.setData({ roundTimerElapsedRatio: 0 });
+      }
+      return;
+    }
+    const timerState = getRoundTimerState(partnerRoundStartedAt);
+    this.setData({
+      roundTimerElapsedRatio: timerState.elapsedRatio,
+      roundTimerRemainingSec: timerState.remainingSec
+    });
   },
 
   _restartRoundTimer() {
@@ -229,17 +253,74 @@ Page({
     }
   },
 
+  _cacheRoundStartedAt(roomId, round, startedAt) {
+    const app = getApp();
+    if (!app.globalData) app.globalData = {};
+    app.globalData.partnerRoundStartedAt = { roomId, round, startedAt };
+  },
+
+  _clearRoundStartedAtCache() {
+    const app = getApp();
+    if (app.globalData) {
+      app.globalData.partnerRoundStartedAt = null;
+    }
+  },
+
+  _resolvePartnerRoundStartedAt(roomState, currentRound) {
+    const roomId = this.data.roomId;
+    const fromServer = roomState.partnerRoundStartedAt != null
+      ? Number(roomState.partnerRoundStartedAt)
+      : 0;
+    if (Number.isFinite(fromServer) && fromServer > 0 && isRoundTimerActive(fromServer)) {
+      this._cacheRoundStartedAt(roomId, currentRound, fromServer);
+      return fromServer;
+    }
+
+    const cached = getApp().globalData && getApp().globalData.partnerRoundStartedAt;
+    if (
+      cached
+      && cached.roomId === roomId
+      && cached.round === currentRound
+      && isRoundTimerActive(cached.startedAt)
+    ) {
+      return Number(cached.startedAt);
+    }
+
+    const local = Number(this.data.partnerRoundStartedAt);
+    if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local)) {
+      return local;
+    }
+    return null;
+  },
+
+  _syncRoundTimerVisible(partnerRoundStartedAt) {
+    const visible = !!(this._roomLoaded
+      && this._pageVisible
+      && partnerRoundStartedAt
+      && isRoundTimerActive(partnerRoundStartedAt)
+      && !isClosingPhase(this.data.gamepagePhase));
+    if (visible !== this.data.roundTimerVisible) {
+      this.setData({ roundTimerVisible: visible });
+    }
+  },
+
   async _ensureRoundTimerStarted(isHost) {
-    if (!isHost || isClosingPhase(this.data.gamepagePhase) || this.data.partnerRoundStartedAt) return;
+    if (isClosingPhase(this.data.gamepagePhase)) return;
+    if (!isHost) return;
+    if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+
     const startedAt = Date.now();
-    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
-    const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
-      partnerRoundStartedAt: startedAt
-    });
-    if (ok) {
-      this.setData({ partnerRoundStartedAt: startedAt }, () => {
-        this._restartRoundTimer();
+    const { currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+    this._cacheRoundStartedAt(this.data.roomId, currentRound, startedAt);
+    this.setData({ partnerRoundStartedAt: startedAt });
+    this._syncRoundTimerVisible(startedAt);
+
+    try {
+      await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+        partnerRoundStartedAt: startedAt
       });
+    } catch (e) {
+      console.warn('_ensureRoundTimerStarted', e);
     }
   },
 
@@ -327,9 +408,16 @@ Page({
       : [])
       .slice()
       .sort((a, b) => (a.round || 0) - (b.round || 0));
-    const partnerRoundStartedAt = roomState.partnerRoundStartedAt != null
-      ? roomState.partnerRoundStartedAt
-      : null;
+    const partnerRoundStartedAt = this._resolvePartnerRoundStartedAt(roomState, currentRound);
+    const timerPatch = (!isClosingPhase(roomPhase) && partnerRoundStartedAt)
+      ? (() => {
+        const timerState = getRoundTimerState(partnerRoundStartedAt);
+        return {
+          roundTimerElapsedRatio: timerState.elapsedRatio,
+          roundTimerRemainingSec: timerState.remainingSec
+        };
+      })()
+      : { roundTimerElapsedRatio: 0 };
     const paginationState = this._syncPaginationState(
       roundSummaries.length,
       roundChanged || sessionChanged || options.resetTurnUi
@@ -354,6 +442,7 @@ Page({
       totalRequired: Math.max(0, members.length - 1),
       roundSummaries,
       partnerRoundStartedAt,
+      ...timerPatch,
       cardCount: paginationState.cardCount,
       paginationIndexes: paginationState.paginationIndexes,
       cardIndex: paginationState.cardIndex
@@ -363,6 +452,11 @@ Page({
       patch.playHistory = [];
       patch.discussionNotes = [];
       patch.insertedImages = [];
+      this._clearRoundStartedAtCache();
+      const serverTs = roomState.partnerRoundStartedAt != null
+        ? Number(roomState.partnerRoundStartedAt)
+        : 0;
+      patch.partnerRoundStartedAt = isRoundTimerActive(serverTs) ? serverTs : null;
     }
 
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
@@ -392,6 +486,16 @@ Page({
 
     this.setData(patch, () => {
       this._restartRoundTimer();
+      this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
+      if (
+        !patch.partnerRoundStartedAt
+        && this.data.isHost
+        && !isClosingPhase(this.data.gamepagePhase)
+      ) {
+        this._ensureRoundTimerStarted(true).then(() => {
+          this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+        });
+      }
     });
     return { playerChanged, phaseChanged, members, player, roomPhase };
   },
@@ -435,7 +539,9 @@ Page({
 
       this.refreshScoreStatus();
       this._startScorePolling();
+      this._roomLoaded = true;
       await this._ensureRoundTimerStarted(result.isHost === true);
+      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
       await this._syncRoundContentToRoom();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);

@@ -1,63 +1,46 @@
 .gct-wrap {
   position: relative;
+  width: 100%;
   height: 100%;
   box-sizing: border-box;
-}
-
-.gct-border-thick {
-  position: absolute;
-  inset: 0;
   border-radius: 28rpx;
-  border: 8rpx solid #5ec159;
-  box-sizing: border-box;
-  pointer-events: none;
-  z-index: 1;
 }
 
-.gct-wrap-active .gct-border-thick {
-  border-color: #5ec159;
+.gct-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+}
+
+.gct-canvas-visible {
+  opacity: 1;
 }
 
 .gct-inner {
-  position: relative;
-  z-index: 0;
-  height: 100%;
-  margin: 8rpx;
-  border-radius: 20rpx;
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  border-radius: 28rpx;
   background: #fff;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   box-sizing: border-box;
 }
 
-.gct-elapsed {
-  position: absolute;
-  background: #b0e0ae;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.gct-elapsed-right {
-  right: 0;
-  top: 0;
-  width: 4rpx;
-}
-
-.gct-elapsed-bottom {
-  right: 0;
-  bottom: 0;
-  height: 4rpx;
-}
-
-.gct-elapsed-left {
-  left: 0;
-  bottom: 0;
-  width: 4rpx;
-}
-
-.gct-elapsed-top {
-  right: 0;
-  top: 0;
-  height: 4rpx;
+.gct-wrap-timer-on .gct-inner {
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  bottom: 8rpx;
+  border-radius: 20rpx;
 }

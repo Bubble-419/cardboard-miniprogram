@@ -46,8 +46,8 @@
           class="card-swiper"
           current="{{cardIndex}}"
           bindchange="onCardSwiperChange"
-          previous-margin="40rpx"
-          next-margin="40rpx"
+          previous-margin="56rpx"
+          next-margin="56rpx"
           easing-function="easeOutCubic"
         >
           <swiper-item class="card-swiper-item">
@@ -156,8 +156,8 @@
         class="card-swiper"
         current="{{cardIndex}}"
         bindchange="onCardSwiperChange"
-        previous-margin="40rpx"
-        next-margin="40rpx"
+        previous-margin="56rpx"
+        next-margin="56rpx"
         easing-function="easeOutCubic"
       >
         <!-- 已完成轮次的文字纪要（时间线：越左越早） -->
@@ -166,7 +166,7 @@
           wx:for="{{roundSummaries}}"
           wx:key="round"
         >
-          <view class="game-card game-card-muted game-card-no-border">
+          <view class="game-card game-card-muted">
             <view class="card-header-row">
               <text class="card-section-title card-section-title-inline">第{{item.round}}轮-文字纪要</text>
             </view>
@@ -208,8 +208,8 @@
         <!-- 当前轮次：出牌并解释 / 提出疑问并讨论 -->
         <swiper-item class="card-swiper-item">
           <game-card-timer
-            elapsedRatio="{{roundTimerElapsedRatio}}"
-            active="{{true}}"
+            startedAt="{{partnerRoundStartedAt}}"
+            timerActive="{{roundTimerVisible}}"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
             <view class="discussion-card-body">
@@ -239,8 +239,8 @@
           </game-card-timer>
 
           <game-card-timer
-            elapsedRatio="{{roundTimerElapsedRatio}}"
-            active="{{true}}"
+            startedAt="{{partnerRoundStartedAt}}"
+            timerActive="{{roundTimerVisible}}"
             wx:else
           >
             <view class="action-card-body">
