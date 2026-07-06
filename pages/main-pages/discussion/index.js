@@ -1,4 +1,5 @@
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 Page({
     data: {
@@ -115,42 +116,43 @@ Page({
         });
 
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        const idx = result.roomState.currentPlayerIndex != null
-          ? result.roomState.currentPlayerIndex
-          : 1;
-        const modeId = result.selectedModeId || getApp().globalData.gameMode || 'partner';
-
-        if (page === 'gamepage') {
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, idx, modeId)
-          });
-        } else if (page === 'statement') {
-          wx.redirectTo({
-            url: buildStatementUrl(
-              roomId,
-              idx,
-              result.roomState.currentPlayerName || `玩家${idx}`,
-              { isWaiting: true }
-            )
-          });
-        } else if (page === 'creativeinput') {
-          wx.redirectTo({
-            url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`
-          });
-        } else if (page === 'creativesummary') {
-          wx.redirectTo({
-            url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
-          });
-        // 排行榜流程临时下线，本次不使用
-        // } else if (page === 'leaderboard') {
-        //   wx.redirectTo({
-        //     url: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`
-        //   });
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            const roomIdEnc = encodeURIComponent(roomId);
+            const idx = pollResult.roomState.currentPlayerIndex != null
+              ? pollResult.roomState.currentPlayerIndex
+              : 1;
+            const modeId = pollResult.selectedModeId || getApp().globalData.gameMode || 'partner';
+            if (page === 'gamepage') {
+              wx.redirectTo({ url: buildGamepageUrl(roomId, idx, modeId) });
+              return true;
+            }
+            if (page === 'statement') {
+              wx.redirectTo({
+                url: buildStatementUrl(
+                  roomId,
+                  idx,
+                  pollResult.roomState.currentPlayerName || `玩家${idx}`,
+                  { isWaiting: true }
+                )
+              });
+              return true;
+            }
+            if (page === 'creativeinput') {
+              wx.redirectTo({
+                url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`
+              });
+              return true;
+            }
+            if (page === 'creativesummary') {
+              wx.redirectTo({
+                url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
+              });
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('discussion state poll error:', e);
       }

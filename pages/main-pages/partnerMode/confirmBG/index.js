@@ -1,6 +1,7 @@
 const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } = require('../../../../utils/partnerScenarios');
 const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -157,18 +158,22 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'submitproblem') {
-          safeOpenUrl(`/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`);
-        } else if (page === 'selectproblem') {
-          wx.redirectTo({
-            url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
-          });
-        } else {
-          navigateByRoomState(page, result.roomState, roomId);
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            const roomIdEnc = encodeURIComponent(roomId);
+            if (page === 'submitproblem') {
+              safeOpenUrl(`/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`);
+              return true;
+            }
+            if (page === 'selectproblem') {
+              wx.redirectTo({
+                url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
+              });
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('confirmBG state poll', e);
       }

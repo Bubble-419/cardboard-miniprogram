@@ -5,6 +5,7 @@ const {
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
 const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 
 Page({
@@ -168,17 +169,20 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          const roomIdEnc = encodeURIComponent(roomId);
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, idx, 'partner')
-          });
-        } else {
-          navigateByRoomState(page, result.roomState, roomId);
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'gamepage') {
+              const idx = pollResult.roomState.currentPlayerIndex != null
+                ? pollResult.roomState.currentPlayerIndex
+                : 1;
+              wx.redirectTo({
+                url: buildGamepageUrl(roomId, idx, 'partner')
+              });
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('confirmFirstPlayer state poll', e);
       }

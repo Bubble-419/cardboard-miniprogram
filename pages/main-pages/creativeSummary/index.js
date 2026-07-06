@@ -1,3 +1,5 @@
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+
 Page({
   _ideaCollection: 'designProblems',
   _ideaEntryType: 'creativeIdea',
@@ -112,11 +114,15 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'auth') {
-          wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'auth') {
+              wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('creativeSummary state poll', e);
       }

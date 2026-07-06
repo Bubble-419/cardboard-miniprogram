@@ -1,3 +1,5 @@
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+
 Page({
   data: {
     roomId: '',
@@ -57,13 +59,17 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'addplayer' || result.roomState.brainstormSessionEnded === true) {
-          this._clearCountdown();
-          this._stopFollowPoll();
-          this._reLaunchRoom();
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'addplayer' || pollResult.roomState.brainstormSessionEnded === true) {
+              this._clearCountdown();
+              this._stopFollowPoll();
+              this._reLaunchRoom();
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('closingEnd follow poll', e);
       }

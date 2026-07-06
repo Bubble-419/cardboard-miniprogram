@@ -1,4 +1,5 @@
 const { navigateByRoomState, safeOpenUrl } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const {
   saveLocalBrainstormProgress,
   clearLocalBrainstormProgress,
@@ -181,14 +182,15 @@ Page({
     }
   },
 
-  _handleMembershipLost() {
+  _handleMembershipLost(reason = 'left') {
     try {
       wx.removeStorageSync('joinedRoomId');
     } catch (e) {
       console.warn('removeStorage joinedRoomId failed', e);
     }
     getApp().globalData.roomId = null;
-    wx.showToast({ title: '您已不在该房间', icon: 'none' });
+    const msg = reason === 'dissolved' ? '原房间已解散' : '您已不在该房间';
+    wx.showToast({ title: msg, icon: 'none' });
     setTimeout(() => {
       wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
     }, 1500);
@@ -254,6 +256,7 @@ Page({
         });
         if (result.ok !== true || !result.roomState) {
           console.log('[副屏轮询] 数据无效，跳过', { ok: result.ok, errMsg: result.errMsg });
+          followSubScreenRoomPoll(result, roomId);
           return;
         }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
@@ -268,7 +271,7 @@ Page({
             return;
           }
         }
-        if (navigateByRoomState(page, result.roomState, roomId)) {
+        if (followSubScreenRoomPoll(result, roomId)) {
           console.log('[副屏轮询] 已跟随主屏跳转', { page });
         } else {
           console.log('[副屏轮询] 主屏在 addPlayer，保持当前页', { page });
@@ -391,6 +394,16 @@ Page({
       if (!silent) wx.hideLoading();
 
       if (result.ok !== true) {
+        if (!this.data.isHost) {
+          if (result.errCode === 'ROOM_DISSOLVED' || result.roomDissolved === true) {
+            this._handleMembershipLost('dissolved');
+            return null;
+          }
+          if (result.errCode === 'NOT_IN_ROOM') {
+            this._handleMembershipLost('left');
+            return null;
+          }
+        }
         if (!silent) {
           this.setData({ qrcodeStatus: 'error' });
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
@@ -402,7 +415,7 @@ Page({
       const deduped = this._dedupeMembersById(rawMembers);
       const isStillMember = deduped.some((m) => m.isMe);
       if (!result.isHost && !isStillMember) {
-        this._handleMembershipLost();
+        this._handleMembershipLost('dissolved');
         return null;
       }
 

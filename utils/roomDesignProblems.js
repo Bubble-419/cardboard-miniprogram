@@ -26,11 +26,22 @@ async function clearRoomProblems(roomId) {
 }
 
 async function listProblems(roomId) {
-  const db = await getCloudDatabase();
-  const res = await db.collection(COLLECTION).where({ roomId, entryType: ENTRY_TYPE }).get();
-  const list = (res.data || []).map(mapProblemDoc);
-  list.sort((a, b) => (a.submitTime || 0) - (b.submitTime || 0));
-  return list;
+  const res = await wx.cloud.callFunction({
+    name: 'getDesignProblems',
+    data: { roomId }
+  });
+  const result = (res && res.result) || {};
+  if (result.ok !== true) {
+    throw new Error(result.errMsg || '获取设计问题失败');
+  }
+  return (result.problems || []).map((item) => ({
+    id: item.id,
+    text: item.text || '',
+    playerIndex: item.playerIndex,
+    nickName: item.nickName || '',
+    userId: item.userId || '',
+    submitTime: item.submitTime || 0
+  }));
 }
 
 async function submitProblem(roomId, { playerIndex, nickName, text }) {
@@ -65,16 +76,16 @@ async function submitProblem(roomId, { playerIndex, nickName, text }) {
 }
 
 async function updateProblemText(docId, text) {
-  const db = await getCloudDatabase();
   const problemText = (text || '').trim();
   if (!docId || !problemText) return;
-  await db.collection(COLLECTION).doc(docId).update({
-    data: {
-      text: problemText,
-      problemText,
-      updateTime: db.serverDate()
-    }
+  const res = await wx.cloud.callFunction({
+    name: 'updateDesignProblem',
+    data: { problemId: docId, text: problemText }
   });
+  const result = (res && res.result) || {};
+  if (result.ok !== true) {
+    throw new Error(result.errMsg || '更新设计问题失败');
+  }
 }
 
 async function getSubmitStatus(roomId, myPlayerIndex, totalMembers) {

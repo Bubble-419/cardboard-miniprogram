@@ -13,6 +13,7 @@ const AVATAR_IMAGES = [
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 
 const BRAINSTORM_MODES = [
@@ -147,17 +148,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
-        } else if (page === 'creativeinput') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-        } else if (page === 'creativesummary') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
-        }
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('brainstormMode state poll', e);
       }

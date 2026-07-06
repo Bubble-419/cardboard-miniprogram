@@ -5,6 +5,7 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
 const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
   PHASE_PLAY,
@@ -760,32 +761,34 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage') {
-          const prevMaster = this.data.isMasterMode;
-          const prevClosingStep = this.data.closingStep;
-          const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(result);
-          if (
-            playerChanged
-            || phaseChanged
-            || roundChanged
-            || prevMaster !== this.data.isMasterMode
-            || prevClosingStep !== this.data.closingStep
-          ) {
-            this.refreshScoreStatus();
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'gamepage') {
+              const prevMaster = this.data.isMasterMode;
+              const prevClosingStep = this.data.closingStep;
+              const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
+              if (
+                playerChanged
+                || phaseChanged
+                || roundChanged
+                || prevMaster !== this.data.isMasterMode
+                || prevClosingStep !== this.data.closingStep
+              ) {
+                this.refreshScoreStatus();
+              }
+              return true;
+            }
+            if (this.data.isHost && page === 'statement') {
+              const idx = pollResult.roomState.currentPlayerIndex != null
+                ? pollResult.roomState.currentPlayerIndex
+                : this.data.currentPlayerIndex;
+              const playerName = pollResult.roomState.currentPlayerName || this.data.currentPlayerName;
+              safeOpenUrl(buildStatementUrl(roomId, idx, playerName));
+              return true;
+            }
+            return false;
           }
-          return;
-        }
-        if (this.data.isHost && page === 'statement') {
-          const idx = result.roomState.currentPlayerIndex != null
-            ? result.roomState.currentPlayerIndex
-            : this.data.currentPlayerIndex;
-          const playerName = result.roomState.currentPlayerName || this.data.currentPlayerName;
-          safeOpenUrl(buildStatementUrl(roomId, idx, playerName));
-          return;
-        }
-        navigateByRoomState(page, result.roomState, roomId);
+        });
       } catch (e) {
         console.warn('partner gamepage state poll', e);
       }

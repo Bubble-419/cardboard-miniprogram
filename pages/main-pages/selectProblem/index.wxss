@@ -183,6 +183,14 @@
   display: block;
 }
 
+.problem-text-mine {
+  color: #575757;
+}
+
+.problem-item.selected .problem-text {
+  color: #575757;
+}
+
 /* ===== Textarea 编辑态 =====
    高度完全由 JS（bindlinechange + onEditProblem 预计算）控制，
    通过 style="height: Xpx" 内联传入，不使用 auto-height 属性，

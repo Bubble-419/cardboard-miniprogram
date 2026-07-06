@@ -1,4 +1,5 @@
 const { navigateByRoomState } = require('../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../utils/subScreenRoomPoll');
 
 Page({
   data: {
@@ -41,9 +42,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('leaderboard state poll', e);
       }

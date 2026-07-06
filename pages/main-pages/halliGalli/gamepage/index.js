@@ -2,6 +2,8 @@
  * 德国心脏病模式 - 游戏页
  * 路径：pages/main-pages/halliGalli/gamepage/
  */
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+
 Page({
   data: {
     navbarPaddingTop: 0,
@@ -60,6 +62,7 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true || !result.members || !result.members.length) {
+        if (followSubScreenRoomPoll(result, roomId)) return;
         wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         return;
       }
@@ -113,16 +116,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'creativeinput') {
-          this._stopStatePolling();
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-        } else if (page === 'creativesummary') {
-          this._stopStatePolling();
-          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
-        }
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('halliGalli gamepage state poll', e);
       }

@@ -1,4 +1,10 @@
-const { buildGamepageUrl, buildStatementUrl, buildClosingStatementUrl, buildClosingEndUrl } = require('./modeRoutes');
+const {
+  buildGamepageUrl,
+  buildStatementUrl,
+  buildClosingStatementUrl,
+  buildClosingEndUrl,
+  getSelectedModeId
+} = require('./modeRoutes');
 const {
   getCurrentRoute,
   normalizeRoute,
@@ -125,19 +131,32 @@ function buildSubAwaitUrl(roomId, scene) {
   return url;
 }
 
+function resolveModeIdForNavigation(state) {
+  const s = state || {};
+  if (s.selectedModeId) return s.selectedModeId;
+  if (s.partnerGamePhase === 'discussion' || s.partnerGamePhase === 'closing') {
+    return 'partner';
+  }
+  if (s.selectedDesignProblem && typeof s.selectedDesignProblem === 'object') {
+    return 'partner';
+  }
+  return getSelectedModeId('halliGalli');
+}
+
 function resolveSubScreenNavigation(page, roomState, roomId) {
   const p = (page || '').toLowerCase();
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
   const playerName = state.currentPlayerName || `玩家${idx}`;
-  const modeId = (getApp().globalData && getApp().globalData.gameMode) || 'partner';
+  const modeId = resolveModeIdForNavigation(state);
 
   if (isAwaitPage(p)) {
     return { action: 'await', scene: getSceneForPage(p) };
   }
 
   const redirectMap = {
+    addplayer: `/pages/main-pages/addPlayer/index?roomId=${roomIdEnc}`,
     submitproblem: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
     selectproblem: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
     gamepage: buildGamepageUrl(roomId, idx, modeId, {

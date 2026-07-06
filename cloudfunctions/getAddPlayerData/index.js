@@ -43,6 +43,15 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
+    if (room.status === 'DISSOLVED') {
+      return {
+        ok: false,
+        errCode: 'ROOM_DISSOLVED',
+        errMsg: '房间已解散',
+        roomDissolved: true
+      };
+    }
+
     const isHost = !!(room.creatorId && room.creatorId === currentUserId);
     const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
@@ -62,6 +71,8 @@ exports.main = async (event, context) => {
     }
 
     const roomState = {
+      selectedModeId: selectedModeId || null,
+      selectedDesignProblem: room.selectedDesignProblem || null,
       currentPage,
       brainstormSessionEnded,
       brainstormSessionSeq,
@@ -97,6 +108,14 @@ exports.main = async (event, context) => {
 
     const rawMembers = membersRes.data || [];
     const myMember = rawMembers.find(m => m.userId === currentUserId) || null;
+
+    if (!isHost && !myMember) {
+      return {
+        ok: false,
+        errCode: 'NOT_IN_ROOM',
+        errMsg: '您已不在该房间'
+      };
+    }
 
     const members = rawMembers.map(m => {
       const out = {

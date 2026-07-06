@@ -2,19 +2,8 @@ const {
   getSubmitStatus,
   submitProblem: saveProblem
 } = require('../../../utils/roomDesignProblems');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
-
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
-];
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { buildUserListFromMembers } = require('../../../utils/userListData');
 
 const DEFAULT_CATEGORIES = [
   { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
@@ -69,6 +58,7 @@ Page({
   },
 
   onShow() {
+    this.loadRoomData();
     this.refreshSubmitStatus();
   },
 
@@ -90,6 +80,21 @@ Page({
     this.setData({ categories });
   },
 
+  _syncMembersFromResult(result) {
+    if (!result || result.ok !== true) return;
+    const members = result.members || [];
+    const avatarList = buildUserListFromMembers(members);
+    const me = members.find((m) => m.isMe);
+    this.setData({
+      workshopName: result.workshopName || this.data.workshopName,
+      avatarList,
+      currentUser: me ? me.playerIndex : null,
+      myPlayerIndex: me ? me.playerIndex : null,
+      myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
+      totalMembers: result.memberCount != null ? result.memberCount : avatarList.length
+    });
+  },
+
   async loadRoomData() {
     const roomId = this.data.roomId;
     if (!roomId) return;
@@ -100,26 +105,7 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
-      const avatarList = (result.members || []).map((m, i) => {
-        const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-        const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length];
-        return {
-          id: m.userId || String(m.playerIndex),
-          nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatar: avatarImage,
-          avatarImage,
-          isMe: m.isMe === true
-        };
-      });
-      const me = (result.members || []).find((m) => m.isMe);
-      this.setData({
-        workshopName: result.workshopName || '脑暴工作坊',
-        avatarList,
-        currentUser: me ? (me.userId || String(me.playerIndex)) : null,
-        myPlayerIndex: me ? me.playerIndex : null,
-        myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
-        totalMembers: result.memberCount || avatarList.length
-      });
+      this._syncMembersFromResult(result);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
@@ -162,13 +148,16 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'selectproblem') {
-          this._goSelectProblem();
-        } else {
-          navigateByRoomState(page, result.roomState, roomId);
-        }
+        this._syncMembersFromResult(result);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'selectproblem') {
+              this._goSelectProblem();
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('submitProblem poll', e);
       }

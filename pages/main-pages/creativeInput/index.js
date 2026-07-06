@@ -1,3 +1,5 @@
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+
 Page({
   _ideaCollection: 'designProblems',
   _ideaEntryType: 'creativeIdea',
@@ -172,13 +174,17 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'creativesummary') {
-          wx.redirectTo({
-            url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
-          });
-        }
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'creativesummary') {
+              wx.redirectTo({
+                url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
+              });
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('creativeInput state poll', e);
       }

@@ -34,14 +34,14 @@
       <view class="title-section">
         <text class="page-title">选择设计问题</text>
         <text class="page-subtitle">
-          {{isHost ? '请选择一种模式，房主可进行切换' : '等待房主选择设计问题'}}
+          {{isHost ? '请选择一种模式，房主可进行切换' : '可修改自己提交的问题，等待房主选择'}}
         </text>
       </view>
 
       <!-- 设计问题列表 -->
       <view class="problem-list">
         <view
-          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost ? 'readonly' : ''}}"
+          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost && !item.isMine ? 'readonly' : ''}}"
           wx:for="{{problems}}"
           wx:key="id"
           data-id="{{item.id}}"
@@ -52,7 +52,7 @@
 
           <!-- 问题文字（含编辑态） -->
           <view class="problem-body">
-            <block wx:if="{{isHost && editingProblemId === item.id}}">
+            <block wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}">
               <textarea
                 class="problem-textarea"
                 value="{{item.text}}"
@@ -65,14 +65,14 @@
                 bindlinechange="onTextareaLineChange"
               />
             </block>
-            <text wx:else class="problem-text">{{item.text}}</text>
+            <text wx:else class="problem-text {{item.isMine && !isHost ? 'problem-text-mine' : ''}}">{{item.text}}</text>
           </view>
 
           <!-- 右侧图标区：三种状态各显示不同图标 -->
           <view class="problem-right">
             <!-- 编辑态：勾选确认图标 -->
             <view
-              wx:if="{{isHost && editingProblemId === item.id}}"
+              wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}"
               class="right-icon-btn"
               catchtap="onSaveEdit"
             >
@@ -87,13 +87,15 @@
             >
               <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
             </view>
-            <!-- 选中态（非房主）：箭头图标，仅展示 -->
-            <image
-              wx:elif="{{item.selected}}"
-              class="right-icon"
-              src="/assets/icons/icon-problem-arrow.svg"
-              mode="aspectFit"
-            />
+            <!-- 选中态（副屏自己的问题）：箭头图标，点击进入编辑 -->
+            <view
+              wx:elif="{{!isHost && item.isMine && item.selected}}"
+              class="right-icon-btn"
+              data-id="{{item.id}}"
+              catchtap="onEditProblem"
+            >
+              <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
+            </view>
             <!-- 普通态：空占位 -->
             <view wx:else class="right-icon-placeholder"></view>
           </view>

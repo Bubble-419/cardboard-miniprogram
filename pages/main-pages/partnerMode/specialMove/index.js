@@ -1,6 +1,7 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
 const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
@@ -232,12 +233,14 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage' && result.roomState.partnerMasterMode !== true) {
-          return;
-        }
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'gamepage' && pollResult.roomState.partnerMasterMode !== true) {
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('specialMove state poll', e);
       }
