@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "user-list": "/components/user-list/index"
+    "user-list": "/components/user-list/index",
+    "partner-avatar": "/components/partner-avatar/index"
   },
   "navigationStyle": "custom",
   "disableSwipeBack": true

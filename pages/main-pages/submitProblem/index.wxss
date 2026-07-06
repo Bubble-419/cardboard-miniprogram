@@ -89,7 +89,7 @@
   height: 48rpx;
 }
 
-/* 情境格子（Figma: 2列 grid, gap 4px, item padding 2px 16px, bg #E9F5E9, border #68D062 1px, radius 16px） */
+/* 情境格子（Figma: 2列 grid, gap ~4px, item padding 4px 14px, bg #E9F5E9, border #68D062 1px, radius 15.85px） */
 .context-grid {
   display: flex;
   flex-wrap: wrap;
@@ -97,19 +97,13 @@
 }
 .context-item {
   width: calc(50% - 4rpx);
-  padding: 4rpx 32rpx;
+  padding: 8rpx 28rpx;
   background-color: #E9F5E9;
   border: 2rpx solid #68D062;
   border-radius: 32rpx;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   box-sizing: border-box;
-}
-.context-label {
-  font-size: 20rpx;
-  font-weight: 500;
-  color: #5EC159;
-  line-height: 30rpx;
 }
 .context-value {
   font-size: 24rpx;
@@ -131,23 +125,16 @@
   gap: 24rpx;
 }
 
-/* 标题区（Figma: gap 12px，title 24px/500/#0F172A，subtitle 12px/500/#6B7280） */
+/* 标题区（Figma: title 24px/700/#509D59） */
 .title-section {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 .page-title {
   font-size: 48rpx;
-  font-weight: 500;
-  color: #0F172A;
+  font-weight: 700;
+  color: #509D59;
   line-height: 60rpx;
-}
-.page-subtitle {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #6B7280;
-  line-height: 40rpx;
 }
 
 /* 输入整体区域（Figma: height 263px = 526rpx，gap 6px） */
@@ -157,10 +144,8 @@
   gap: 12rpx;
 }
 
-/* 示例框（Figma: bg #E9F5E9，border 1px #F3FFF0，radius 16px，padding 6px 10px，gap 4px） */
+/* 示例框（无背景色，radius 16px，padding 6px 10px，gap 4px） */
 .example-box {
-  background-color: #E9F5E9;
-  border: 2rpx solid #F3FFF0;
   border-radius: 32rpx;
   padding: 12rpx 20rpx;
   display: flex;
@@ -203,10 +188,9 @@
   line-height: 40rpx;
 }
 
-/* 输入框区（Figma: padding-bottom 7px，内部 textarea 填满剩余高度） */
+/* 输入框区（Figma: padding-bottom 7px） */
 .form-input-wrap {
   position: relative;
-  padding-bottom: 14rpx;
 }
 /* 文本框容器（Figma: bg white，border 1px rgba(76,175,80,0.3)，radius 16px，padding 16px） */
 .textarea-box {
@@ -214,12 +198,13 @@
   border: 2rpx solid rgba(76, 175, 80, 0.3);
   border-radius: 32rpx;
   padding: 32rpx;
+  padding-bottom: 96rpx;
   box-sizing: border-box;
 }
 /* 输入框（Figma: 14px/500/#CBD5E1 placeholder，颜色 #3F3F3F） */
 .problem-input {
   width: 100%;
-  height: 260rpx;
+  height: 320rpx;
   font-size: 28rpx;
   font-weight: 500;
   color: #3F3F3F;
@@ -230,13 +215,26 @@
   color: #CBD5E1;
   font-size: 28rpx;
 }
-/* 字数计数（Figma: 12px/#CBD5E1，绝对定位右下角） */
-.char-count {
+/* 字数计数 + 提交图标行（Figma: 绝对定位右下角，row，gap 8px） */
+.counter-row {
   position: absolute;
   right: 32rpx;
-  bottom: 28rpx;
+  bottom: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+/* 字数计数（Figma: 12px/#CBD5E1） */
+.char-count {
   font-size: 24rpx;
   color: #CBD5E1;
+  font-weight: 500;
+}
+/* 提交图标（Figma: 26×26，icon-submit-arrow.svg，绿色圆圈箭头） */
+.submit-icon {
+  width: 52rpx;
+  height: 52rpx;
+  flex-shrink: 0;
 }
 
 /* ===== 已提交等待面板 ===== */
@@ -267,43 +265,3 @@
   margin-top: 12rpx;
 }
 
-/* ===== 底部按钮（固定悬浮，带渐变遮罩） ===== */
-.footer-placeholder {
-  height: calc(180rpx + env(safe-area-inset-bottom));
-}
-
-.footer-action {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 40rpx 40rpx calc(56rpx + env(safe-area-inset-bottom));
-  background: linear-gradient(0deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.95) 50%, rgba(255, 255, 255, 0) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-/* 按钮（Figma: 315.66px×44.56px，radius 11.14px，20.42px Regular，letterSpacing 0.0909em） */
-.confirm-btn {
-  width: 630rpx;
-  height: 90rpx;
-  font-size: 40rpx;
-  font-weight: 400;
-  color: #FFFFFF;
-  background-color: #5EC159;
-  border-radius: 22rpx;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 0.0909em;
-  pointer-events: auto;
-}
-.confirm-btn::after {
-  border: none;
-}
-.confirm-btn:active {
-  opacity: 0.9;
-}

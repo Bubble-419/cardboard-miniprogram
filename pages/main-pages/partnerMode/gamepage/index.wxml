@@ -18,23 +18,29 @@
     <!-- 顶部：房间入口 + 设计问题 -->
     <view class="top-bar">
       <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/add-icon.png" mode="aspectFit" />
+        <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
       </view>
       <view class="problem-chip">
-        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" />
+        <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
         <text class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}}">{{selectedProblemText || '暂无设计问题'}}</text>
       </view>
     </view>
 
-    <!-- 玩家列表（不展示工作坊名称） -->
+    <!-- 玩家列表：使用 partner-avatar 展示六种头像状态 -->
     <view class="user-section">
-      <user-list
-        avatarList="{{avatarList}}"
-        currentUser="{{currentPlayerIndex}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{false}}"
-      />
+      <scroll-view class="player-avatar-scroll" scroll-x="true" show-scrollbar="false">
+        <view class="player-avatar-row">
+          <block wx:for="{{avatarList}}" wx:key="id">
+            <partner-avatar
+              size="sm"
+              src="{{item.avatar}}"
+              type="{{item.id === currentPlayerIndex ? 'active' : 'normal'}}"
+              isSelf="{{item.isMe}}"
+              showArrow="{{item.id === currentPlayerIndex}}"
+            />
+          </block>
+        </view>
+      </scroll-view>
     </view>
 
     <view class="divider-line"></view>
@@ -137,14 +143,13 @@
       </view>
 
       <view class="inspiration-bar" bindtap="handleGoInspiration">
-        <view class="inspiration-badge-wrap">
-          <text class="inspiration-badge">💡</text>
+        <view class="insp-icon-wrap">
+          <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
+          <view class="insp-dot"></view>
         </view>
         <view class="inspiration-input-fake">
           <text class="inspiration-placeholder">记录您的灵感...</text>
-        </view>
-        <view class="inspiration-submit">
-          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+          <image class="inspiration-arrow" src="/assets/partnerMode/icon-insp-arrow.svg" mode="aspectFit" />
         </view>
       </view>
     </block>
@@ -187,31 +192,34 @@
             </view>
           </view>
           <view class="game-card game-card-active" wx:else>
-            <view class="action-card-body">
-              <view class="action-title-row" wx:if="{{isMasterMode}}">
-                <view class="master-mode-badge">MASTER模式</view>
+            <scroll-view class="action-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+              <view class="action-card-inner">
+                <view class="action-title-row" wx:if="{{isMasterMode}}">
+                  <view class="master-mode-badge">MASTER模式</view>
+                </view>
+                <text class="action-title">出牌并解释</text>
+                <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+                <view class="action-divider"></view>
+                <view class="action-grid">
+                  <view class="action-cell">
+                    <view class="action-illus"></view>
+                    <text class="action-cell-label">出 1 张卡牌</text>
+                  </view>
+                  <view class="action-cell">
+                    <view class="action-illus"></view>
+                    <text class="action-cell-label">删 1 张卡牌</text>
+                  </view>
+                  <view class="action-cell">
+                    <view class="action-illus"></view>
+                    <text class="action-cell-label">调整 1 张卡牌</text>
+                  </view>
+                  <view class="action-cell">
+                    <view class="action-illus"></view>
+                    <text class="action-cell-label">交换 2 张卡牌</text>
+                  </view>
+                </view>
               </view>
-              <text class="action-title">出牌并解释</text>
-              <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
-              <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
-              <view class="action-divider"></view>
-              <view class="action-grid">
-                <view class="action-cell action-cell-filled">
-                  <view class="action-illus action-illus-play"></view>
-                  <text class="action-cell-label">出 1 张卡牌</text>
-                </view>
-                <view class="action-cell action-cell-filled">
-                  <view class="action-illus action-illus-delete"></view>
-                  <text class="action-cell-label">删 1 张卡牌</text>
-                </view>
-                <view class="action-cell action-cell-empty">
-                  <text class="action-cell-label">调整 1 张卡牌</text>
-                </view>
-                <view class="action-cell action-cell-empty">
-                  <text class="action-cell-label">交换 2 张卡牌</text>
-                </view>
-              </view>
-            </view>
+            </scroll-view>
             <view class="score-panel">
               <view class="score-panel-head">
                 <text class="score-label">此次行动评分</text>
@@ -276,14 +284,13 @@
 
     <!-- 灵感记录 -->
     <view class="inspiration-bar" bindtap="handleGoInspiration">
-      <view class="inspiration-badge-wrap">
-        <text class="inspiration-badge">💡</text>
+      <view class="insp-icon-wrap">
+        <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
+        <view class="insp-dot"></view>
       </view>
       <view class="inspiration-input-fake">
         <text class="inspiration-placeholder">记录您的灵感...</text>
-      </view>
-      <view class="inspiration-submit">
-        <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        <image class="inspiration-arrow" src="/assets/partnerMode/icon-insp-arrow.svg" mode="aspectFit" />
       </view>
     </view>
     </block>

@@ -3,64 +3,42 @@
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}" style="height: {{scrollHeight}}px">
     <view class="main-content" style="padding-top: {{contentPaddingTop}}px">
 
-      <!-- 顶部：用户头像栏 -->
-      <view class="header-bar">
-        <!-- 当前用户主头像 -->
-        <view class="primary-avatar-wrap">
-          <image
-            wx:if="{{myAvatar}}"
-            class="primary-avatar-img"
-            src="{{myAvatar}}"
-            mode="aspectFill"
-          />
-          <view wx:else class="primary-avatar-placeholder">
-            <text class="primary-avatar-text">😊</text>
-          </view>
-        </view>
+      <!-- 顶部：TopBar + 情境格 -->
+      <view class="header-section">
 
-        <!-- 其他成员头像叠加 -->
-        <view class="member-avatars" wx:if="{{otherAvatars.length > 0}}">
-          <view
-            class="member-avatar-item"
-            wx:for="{{otherAvatars}}"
-            wx:key="id"
-          >
-            <image
-              wx:if="{{item.avatarImage}}"
-              class="member-avatar-img"
-              src="{{item.avatarImage}}"
-              mode="aspectFill"
-            />
-            <view wx:else class="member-avatar-emoji">
-              <text class="member-avatar-text">😊</text>
+        <!-- TopBar：房间入口 + 堆叠头像 + 添加按钮 -->
+        <view class="topbar">
+          <view class="room-entry">
+            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+          </view>
+          <view class="avatar-stack">
+            <view
+              class="avatar-frame {{item.isMe ? 'avatar-me' : ''}}"
+              wx:for="{{avatarList}}"
+              wx:key="id"
+              style="margin-left: {{index > 0 ? '-16rpx' : '0'}}"
+            >
+              <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
             </view>
           </view>
+          <view class="add-btn">
+            <image class="add-btn-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
+          </view>
         </view>
 
-        <!-- 添加成员按钮（预留，保持原有跳转逻辑） -->
-        <view class="add-member-btn">
-          <image class="add-member-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
+        <!-- 情境格子（2×2 网格，仅展示值） -->
+        <view class="context-grid" wx:if="{{categories.length > 0}}">
+          <view class="context-item" wx:for="{{categories}}" wx:key="id">
+            <text class="context-value">{{item.name}}</text>
+          </view>
         </view>
-      </view>
 
-      <!-- 情境标签区（2×2 网格） -->
-      <view class="context-grid" wx:if="{{categories.length > 0}}">
-        <view
-          class="context-item"
-          wx:for="{{categories}}"
-          wx:key="id"
-        >
-          <text class="context-label">{{item.label}}</text>
-          <text class="context-value">{{item.name}}</text>
-        </view>
       </view>
 
       <!-- 标题区 -->
       <view class="title-section">
         <text class="page-title">选择设计问题</text>
-        <text class="page-subtitle">
-          {{isHost ? '请选择一种模式，房主可进行切换' : '等待房主选择设计问题'}}
-        </text>
+        <text class="page-subtitle">房主可以对设计问题进行选择、编辑</text>
       </view>
 
       <!-- 设计问题列表 -->
@@ -73,7 +51,7 @@
           bindtap="selectProblem"
         >
           <!-- 左侧竖线指示器 -->
-          <view class="problem-indicator {{item.selected ? 'selected' : ''}}"></view>
+          <view class="problem-indicator {{item.selected ? 'indicator-selected' : ''}}"></view>
 
           <!-- 问题文字（含编辑态） -->
           <view class="problem-body">
@@ -93,9 +71,8 @@
             <text wx:else class="problem-text">{{item.text}}</text>
           </view>
 
-          <!-- 右侧图标区：三种状态各显示不同图标 -->
+          <!-- 右侧图标：编辑态勾选 / 选中态箭头 / 普通态占位 -->
           <view class="problem-right">
-            <!-- 编辑态：勾选确认图标 -->
             <view
               wx:if="{{isHost && editingProblemId === item.id}}"
               class="right-icon-btn"
@@ -103,7 +80,6 @@
             >
               <image class="right-icon" src="/assets/icons/icon-problem-confirm.svg" mode="aspectFit" />
             </view>
-            <!-- 选中态（房主）：箭头图标，点击进入编辑 -->
             <view
               wx:elif="{{isHost && item.selected}}"
               class="right-icon-btn"
@@ -112,14 +88,12 @@
             >
               <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
             </view>
-            <!-- 选中态（非房主）：箭头图标，仅展示 -->
             <image
               wx:elif="{{item.selected}}"
               class="right-icon"
               src="/assets/icons/icon-problem-arrow.svg"
               mode="aspectFit"
             />
-            <!-- 普通态：空占位 -->
             <view wx:else class="right-icon-placeholder"></view>
           </view>
         </view>
