@@ -80,9 +80,9 @@
 .problem-chip {
   flex: 1;
   min-width: 0;
-  max-width: calc(100% - 138rpx);
-  min-height: 84rpx;
-  padding: 22rpx 28rpx 22rpx 56rpx;
+  max-width: calc((100% - 138rpx) * 2 / 3);
+  height: 100rpx;
+  padding: 0 28rpx 0 56rpx;
   background: #e9f5e9;
   border-radius: 24rpx;
   display: flex;
@@ -356,11 +356,25 @@
   box-sizing: border-box;
 }
 
-.action-illus {
+.action-illus-box {
   width: 100%;
-  height: 310rpx;
-  background: #e7e7e7;
+  position: relative;
   flex-shrink: 0;
+}
+
+.action-illus-box::after {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
+}
+
+.action-illus {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #e7e7e7;
 }
 
 .action-cell-label {
@@ -375,51 +389,69 @@
 .score-panel {
   flex-shrink: 0;
   margin: 0 20rpx 20rpx;
-  padding: 16rpx 12rpx 12rpx;
+  padding: 6rpx 14rpx 10rpx;
   background: #fff;
   border: 1rpx solid #f1f5f1;
   border-radius: 28rpx;
-  box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.2);
 }
 
 .score-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12rpx;
-  padding: 0 8rpx;
+  margin-bottom: 4rpx;
+  padding: 0 4rpx;
 }
 
 .score-label,
 .score-progress {
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 600;
   color: #5ec159;
+  line-height: 1.5;
 }
 
 .score-buttons {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  gap: 8rpx;
+  gap: 12rpx;
 }
 
 .score-btn {
   flex: 1;
-  min-height: 88rpx;
+  width: 0;
+  min-width: 0;
+  position: relative;
   border-radius: 21rpx;
   background: #e3fae2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #5ec159;
   box-sizing: border-box;
+  overflow: hidden;
+}
+
+.score-btn::after {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
+}
+
+.score-btn-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6rpx;
+  box-sizing: border-box;
+  line-height: 1;
 }
 
 .score-btn-active {
   background: #5ec159;
-  color: #fff;
 }
 
 .score-btn-disabled {
@@ -427,14 +459,27 @@
 }
 
 .score-num {
-  font-size: 40rpx;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 76rpx;
+  font-weight: 600;
+  line-height: 0.75;
 }
 
 .score-unit {
-  font-size: 20rpx;
-  line-height: 1.2;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 0;
+  margin-bottom: 10rpx;
+}
+
+.score-btn:not(.score-btn-active) .score-num,
+.score-btn:not(.score-btn-active) .score-unit {
+  color: #5ec159;
+}
+
+.score-btn-active .score-num,
+.score-btn-active .score-unit {
+  color: #fff;
 }
 
 .card-pagination {
@@ -472,7 +517,7 @@
 }
 
 .inspiration-bar {
-  margin: 6rpx 30rpx 8rpx;
+  margin: 6rpx 48rpx 8rpx;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -537,12 +582,25 @@
   display: flex;
   align-items: stretch;
   gap: 16rpx;
-  padding: 0 30rpx;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 48rpx;
+}
+
+.special-btn-wrap {
+  flex: 4;
+  min-width: 0;
+  width: 0;
+}
+
+.statement-btn-wrap {
+  flex: 13;
+  min-width: 0;
+  width: 0;
 }
 
 .special-btn {
-  width: 162rpx;
-  min-width: 162rpx;
+  width: 100%;
   height: 112rpx;
   margin: 0;
   padding: 0;
@@ -550,7 +608,7 @@
   border-radius: 28rpx;
   background: #e9f5e9;
   color: #5ec159;
-  font-size: 40rpx;
+  font-size: 36rpx;
   font-weight: 600;
   line-height: 1.06em;
   letter-spacing: 0.1em;
@@ -569,21 +627,23 @@
   border: none;
 }
 
-.special-btn-disabled {
-  background: #e7e7e7;
-  color: #c1c1c1;
+.special-btn-disabled,
+.special-btn[disabled] {
+  background: #e7e7e7 !important;
+  color: #c1c1c1 !important;
+  opacity: 1 !important;
 }
 
 .statement-btn {
-  flex: 1;
+  width: 100%;
   height: 112rpx;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 28rpx;
-  background: #e7e7e7;
-  color: #c1c1c1;
-  font-size: 60rpx;
+  background: #c0c0c0;
+  color: #ffffff;
+  font-size: 44rpx;
   font-weight: 400;
   letter-spacing: 0.0667em;
   display: flex;
@@ -595,13 +655,20 @@
   border: none;
 }
 
+.statement-btn[disabled] {
+  background: #c0c0c0 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
 .statement-btn-enabled {
-  background: #5ec159;
-  color: #fff;
+  background: #5ec159 !important;
+  color: #fff !important;
+  opacity: 1 !important;
 }
 
 .statement-btn-enabled:active {
-  opacity: 0.9;
+  opacity: 0.9 !important;
 }
 
 .discussion-card-body {

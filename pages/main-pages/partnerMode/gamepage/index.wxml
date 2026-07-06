@@ -202,19 +202,27 @@
                 <view class="action-divider"></view>
                 <view class="action-grid">
                   <view class="action-cell">
-                    <view class="action-illus"></view>
+                    <view class="action-illus-box">
+                      <view class="action-illus"></view>
+                    </view>
                     <text class="action-cell-label">出 1 张卡牌</text>
                   </view>
                   <view class="action-cell">
-                    <view class="action-illus"></view>
+                    <view class="action-illus-box">
+                      <view class="action-illus"></view>
+                    </view>
                     <text class="action-cell-label">删 1 张卡牌</text>
                   </view>
                   <view class="action-cell">
-                    <view class="action-illus"></view>
+                    <view class="action-illus-box">
+                      <view class="action-illus"></view>
+                    </view>
                     <text class="action-cell-label">调整 1 张卡牌</text>
                   </view>
                   <view class="action-cell">
-                    <view class="action-illus"></view>
+                    <view class="action-illus-box">
+                      <view class="action-illus"></view>
+                    </view>
                     <text class="action-cell-label">交换 2 张卡牌</text>
                   </view>
                 </view>
@@ -233,8 +241,10 @@
                   data-score="{{item}}"
                   bindtap="onScoreTap"
                 >
-                  <text class="score-num">{{item}}</text>
-                  <text class="score-unit">分</text>
+                  <view class="score-btn-content">
+                    <text class="score-num">{{item}}</text>
+                    <text class="score-unit">分</text>
+                  </view>
                 </view>
               </view>
             </view>
@@ -326,21 +336,27 @@
       </button>
     </view>
     <view class="bottom-actions" wx:else>
-      <button
-        class="special-btn {{isMasterMode ? 'special-btn-disabled' : ''}}"
-        disabled="{{isMasterMode}}"
-        bindtap="handleSpecialMove"
-      >
-        <text class="special-btn-line">特殊</text>
-        <text class="special-btn-line">行动</text>
-      </button>
-      <button
-        class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
-        disabled="{{!canStartStatement}}"
-        bindtap="handleStartStatement"
-      >
-        开始表态
-      </button>
+      <view class="special-btn-wrap">
+        <button
+          class="special-btn {{isMasterMode ? 'special-btn-disabled' : ''}}"
+          disabled="{{isMasterMode}}"
+          hover-class="none"
+          bindtap="handleSpecialMove"
+        >
+          <text class="special-btn-line">特殊</text>
+          <text class="special-btn-line">行动</text>
+        </button>
+      </view>
+      <view class="statement-btn-wrap">
+        <button
+          class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
+          disabled="{{!canStartStatement}}"
+          hover-class="none"
+          bindtap="handleStartStatement"
+        >
+          开始表态
+        </button>
+      </view>
     </view>
   </view>
 </view>
