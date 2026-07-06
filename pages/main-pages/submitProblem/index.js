@@ -102,10 +102,12 @@ Page({
       if (result.ok !== true) return;
       const avatarList = (result.members || []).map((m, i) => {
         const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
+        const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length];
         return {
           id: m.userId || String(m.playerIndex),
           nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
+          avatar: avatarImage,
+          avatarImage,
           isMe: m.isMe === true
         };
       });

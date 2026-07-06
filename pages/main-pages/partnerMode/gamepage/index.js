@@ -34,6 +34,11 @@ const {
 const {
   normalizePartnerRoundContent
 } = require('../../../../utils/partnerRoundContent');
+const {
+  buildDisplaySummaries,
+  playerHasSummaryCards,
+  isSamePlayerIndex
+} = require('../../../../utils/partnerRoundNavigation');
 const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
 
 Page({
@@ -43,6 +48,7 @@ Page({
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
+    selectedPlayerIndex: 1,
     members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
@@ -62,6 +68,10 @@ Page({
     currentRound: 1,
     brainstormSessionSeq: 0,
     roundSummaries: [],
+    displayRoundSummaries: [],
+    filteredPlayerIndex: null,
+    isPlayerFilterActive: false,
+    cardIndexBeforeFilter: 0,
     partnerRoundStartedAt: null,
     roundTimerVisible: false,
     roundTimerElapsedRatio: 0,
@@ -75,6 +85,7 @@ Page({
   },
 
   onLoad(options) {
+    this._playerFilterIndex = null;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -248,16 +259,46 @@ Page({
     }
   },
 
-  _syncPaginationState(summaryCount, preferredIndex) {
+  _resolveActivePlayerFilter() {
+    if (this._playerFilterIndex != null) {
+      return this._playerFilterIndex;
+    }
+    return this.data.isPlayerFilterActive ? this.data.filteredPlayerIndex : null;
+  },
+
+  _buildDisplayCardState(options) {
+    const {
+      roundSummaries,
+      members,
+      filteredPlayerIndex,
+      isPlayerFilterActive,
+      currentPlayerIndex,
+      preferredCardIndex
+    } = options || {};
+
+    const filterActive = isPlayerFilterActive === true;
+    const displayRoundSummaries = buildDisplaySummaries(
+      roundSummaries,
+      members,
+      filteredPlayerIndex,
+      filterActive
+    );
+    const summaryCount = displayRoundSummaries.length;
     const cardCount = Math.max(1, summaryCount + 1);
     const actionCardIndex = summaryCount;
-    const cardIndex = preferredIndex != null
-      ? Math.min(Math.max(0, preferredIndex), cardCount - 1)
+    const cardIndex = preferredCardIndex != null
+      ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
       : actionCardIndex;
+
     return {
+      displayRoundSummaries,
       cardCount,
       paginationIndexes: buildPaginationIndexes(cardCount),
-      cardIndex
+      cardIndex,
+      isPlayerFilterActive: filterActive,
+      selectedPlayerIndex: filterActive
+        ? filteredPlayerIndex
+        : currentPlayerIndex
     };
   },
 
@@ -490,12 +531,24 @@ Page({
         };
       })()
       : { roundTimerElapsedRatio: 0 };
-    const paginationState = this._syncPaginationState(
-      roundSummaries.length,
-      roundChanged || sessionChanged || options.resetTurnUi
-        ? roundSummaries.length
+    const nextFilteredPlayerIndex = (playerChanged || roundChanged || sessionChanged || options.resetTurnUi)
+      ? null
+      : this._resolveActivePlayerFilter();
+    const nextFilterActive = nextFilteredPlayerIndex != null
+      && !Number.isNaN(parseInt(nextFilteredPlayerIndex, 10));
+    if (!nextFilterActive) {
+      this._playerFilterIndex = null;
+    }
+    const paginationState = this._buildDisplayCardState({
+      roundSummaries,
+      members,
+      filteredPlayerIndex: nextFilteredPlayerIndex,
+      isPlayerFilterActive: nextFilterActive,
+      currentPlayerIndex: player.currentPlayerIndex,
+      preferredCardIndex: (roundChanged || sessionChanged || options.resetTurnUi)
+        ? undefined
         : this.data.cardIndex
-    );
+    });
 
     const patch = {
       members,
@@ -513,13 +566,18 @@ Page({
       brainstormSessionSeq,
       totalRequired: Math.max(0, members.length - 1),
       roundSummaries,
+      filteredPlayerIndex: nextFilteredPlayerIndex,
+      isPlayerFilterActive: nextFilterActive,
       partnerRoundStartedAt,
       voiceLines: roundContent.voiceLines,
       turnRecords: roundContent.turnRecords,
       ...timerPatch,
+      displayRoundSummaries: paginationState.displayRoundSummaries,
       cardCount: paginationState.cardCount,
       paginationIndexes: paginationState.paginationIndexes,
-      cardIndex: paginationState.cardIndex
+      cardIndex: paginationState.cardIndex,
+      selectedPlayerIndex: paginationState.selectedPlayerIndex,
+      isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
 
     if (roundChanged || sessionChanged) {
@@ -539,8 +597,26 @@ Page({
       patch.selectedScore = null;
       patch.canStartStatement = false;
       patch.scoredCount = 0;
+      if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
+        patch.filteredPlayerIndex = null;
+        patch.isPlayerFilterActive = false;
+        patch.cardIndexBeforeFilter = 0;
+        this._playerFilterIndex = null;
+      }
       if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
-        patch.cardIndex = roundSummaries.length;
+        const resetCardState = this._buildDisplayCardState({
+          roundSummaries,
+          members,
+          filteredPlayerIndex: null,
+          isPlayerFilterActive: false,
+          currentPlayerIndex: player.currentPlayerIndex
+        });
+        patch.displayRoundSummaries = resetCardState.displayRoundSummaries;
+        patch.cardCount = resetCardState.cardCount;
+        patch.paginationIndexes = resetCardState.paginationIndexes;
+        patch.cardIndex = resetCardState.cardIndex;
+        patch.selectedPlayerIndex = resetCardState.selectedPlayerIndex;
+        patch.isPlayerFilterActive = false;
       }
     }
 
@@ -764,8 +840,89 @@ Page({
 
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
-    const maxIndex = Math.max(0, (this.data.roundSummaries || []).length);
+    const maxIndex = (this.data.displayRoundSummaries || []).length;
     this.setData({ cardIndex: Math.min(index, maxIndex) });
+  },
+
+  handleAvatarTap(e) {
+    if (isClosingPhase(this.data.gamepagePhase)) return;
+    const id = e.detail && (e.detail.playerIndex != null ? e.detail.playerIndex : e.detail.id);
+    if (id == null || id === '') return;
+
+    const playerIndex = parseInt(id, 10);
+    if (Number.isNaN(playerIndex)) return;
+
+    const {
+      members,
+      roundSummaries,
+      currentPlayerIndex,
+      isPlayerFilterActive,
+      filteredPlayerIndex,
+      cardIndexBeforeFilter,
+      cardIndex
+    } = this.data;
+    const memberCount = (members || []).length;
+    const activeFilter = this._resolveActivePlayerFilter();
+
+    if (isPlayerFilterActive && isSamePlayerIndex(activeFilter, playerIndex)) {
+      this._playerFilterIndex = null;
+      const restoredIndex = cardIndexBeforeFilter != null
+        ? cardIndexBeforeFilter
+        : (roundSummaries || []).length;
+      const cardState = this._buildDisplayCardState({
+        roundSummaries,
+        members,
+        filteredPlayerIndex: null,
+        isPlayerFilterActive: false,
+        currentPlayerIndex,
+        preferredCardIndex: restoredIndex
+      });
+      this.setData({
+        filteredPlayerIndex: null,
+        isPlayerFilterActive: false,
+        cardIndexBeforeFilter: 0,
+        ...cardState
+      });
+      return;
+    }
+
+    if (!playerHasSummaryCards(playerIndex, {
+      roundSummaries,
+      memberCount,
+      currentPlayerIndex
+    })) {
+      wx.showToast({ title: '暂无发言纪要', icon: 'none' });
+      return;
+    }
+
+    this._playerFilterIndex = playerIndex;
+
+    const playerSummaries = buildDisplaySummaries(
+      roundSummaries,
+      members,
+      playerIndex,
+      true
+    );
+    const isActing = isSamePlayerIndex(playerIndex, currentPlayerIndex);
+    const preferredCardIndex = isActing
+      ? playerSummaries.length
+      : Math.max(0, playerSummaries.length - 1);
+
+    const cardState = this._buildDisplayCardState({
+      roundSummaries,
+      members,
+      filteredPlayerIndex: playerIndex,
+      isPlayerFilterActive: true,
+      currentPlayerIndex,
+      preferredCardIndex
+    });
+
+    this.setData({
+      filteredPlayerIndex: playerIndex,
+      isPlayerFilterActive: true,
+      cardIndexBeforeFilter: cardIndex,
+      ...cardState
+    });
   },
 
   handleInsertImage() {

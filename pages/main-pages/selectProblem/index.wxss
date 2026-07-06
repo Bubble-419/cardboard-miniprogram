@@ -18,80 +18,17 @@
 }
 
 /* ===== 顶部头像栏 ===== */
-/* Figma: row, alignItems center, fill width */
 .header-bar {
   display: flex;
   flex-direction: row;
   align-items: center;
+  gap: 16rpx;
 }
 
-/* 当前用户主头像: 48×48px → 96×96rpx, border-radius 16px → 32rpx */
-.primary-avatar-wrap {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 32rpx;
-  background-color: #F0FDF4;
-  border: 2rpx solid #BBF7D0;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.primary-avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 32rpx;
-}
-
-.primary-avatar-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.primary-avatar-text {
-  font-size: 40rpx;
-}
-
-/* 其他成员头像叠加: margin-left 8px→16rpx, 每个 40×40px→80×80rpx, gap -8px→-16rpx */
-.member-avatars {
-  display: flex;
-  flex-direction: row;
-  margin-left: 16rpx;
-}
-
-.member-avatar-item {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #E5E7EB;
-  border: 4rpx solid #FFFFFF;
-  overflow: hidden;
-  margin-left: -16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.member-avatar-img {
-  width: 100%;
-  height: 100%;
-}
-
-.member-avatar-emoji {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.member-avatar-text {
-  font-size: 32rpx;
+.header-user-list {
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
 }
 
 /* 添加成员按钮: padding-left 8px→16rpx, 内圆 40×40px→80×80rpx */

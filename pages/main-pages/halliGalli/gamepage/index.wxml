@@ -14,16 +14,14 @@
             mode="aspectFit"
           />
         </view>
-        <!-- 中：堆叠头像（左边距 16rpx 与 Figma 8px 对应） -->
-        <view class="avatar-stack">
-          <view
-            class="avatar-frame {{item.isMe ? 'avatar-me' : ''}}"
-            wx:for="{{avatarList}}"
-            wx:key="id"
-            style="margin-left: {{index > 0 ? '-16rpx' : '0'}}"
-          >
-            <image class="avatar-img" src="{{item.avatar}}" mode="aspectFill" />
-          </view>
+        <!-- 中：成员头像 -->
+        <view class="avatar-bar">
+          <user-list
+            avatarList="{{avatarList}}"
+            enableAdd="{{false}}"
+            isFold="{{true}}"
+            showName="{{false}}"
+          />
         </view>
         <!-- 右：添加成员按钮 -->
         <view class="add-btn" bindtap="handleGoBack">

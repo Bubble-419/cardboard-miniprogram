@@ -5,39 +5,14 @@
 
       <!-- 顶部：用户头像栏 -->
       <view class="header-bar">
-        <!-- 当前用户主头像 -->
-        <view class="primary-avatar-wrap">
-          <image
-            wx:if="{{myAvatar}}"
-            class="primary-avatar-img"
-            src="{{myAvatar}}"
-            mode="aspectFill"
+        <view class="header-user-list">
+          <user-list
+            avatarList="{{avatarList}}"
+            enableAdd="{{false}}"
+            isFold="{{true}}"
+            showName="{{false}}"
           />
-          <view wx:else class="primary-avatar-placeholder">
-            <text class="primary-avatar-text">😊</text>
-          </view>
         </view>
-
-        <!-- 其他成员头像叠加 -->
-        <view class="member-avatars" wx:if="{{otherAvatars.length > 0}}">
-          <view
-            class="member-avatar-item"
-            wx:for="{{otherAvatars}}"
-            wx:key="id"
-          >
-            <image
-              wx:if="{{item.avatarImage}}"
-              class="member-avatar-img"
-              src="{{item.avatarImage}}"
-              mode="aspectFill"
-            />
-            <view wx:else class="member-avatar-emoji">
-              <text class="member-avatar-text">😊</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 添加成员按钮（预留，保持原有跳转逻辑） -->
         <view class="add-member-btn">
           <image class="add-member-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
         </view>

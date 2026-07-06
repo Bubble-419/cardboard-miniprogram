@@ -30,10 +30,15 @@
     <view class="user-section">
       <user-list
         avatarList="{{avatarList}}"
-        currentUser="{{currentPlayerIndex}}"
+        actingUser="{{currentPlayerIndex}}"
+        selectedUser="{{selectedPlayerIndex}}"
         enableAdd="{{false}}"
         isFold="{{true}}"
         showName="{{false}}"
+        showActingFrame="{{gamepagePhase !== 'closing'}}"
+        enableSelectedFrame="{{gamepagePhase !== 'closing'}}"
+        enableAvatarTap="{{gamepagePhase !== 'closing'}}"
+        bindavatartap="handleAvatarTap"
       />
     </view>
 
@@ -163,12 +168,12 @@
         <!-- 已完成轮次的文字纪要（时间线：越左越早） -->
         <swiper-item
           class="card-swiper-item"
-          wx:for="{{roundSummaries}}"
+          wx:for="{{displayRoundSummaries}}"
           wx:key="round"
         >
           <view class="game-card game-card-muted">
             <view class="card-header-row">
-              <text class="card-section-title card-section-title-inline">第{{item.round}}轮-文字纪要</text>
+              <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
               <text class="card-section-title">第{{item.round}}轮-语音纪要</text>
@@ -204,6 +209,7 @@
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
             <view class="discussion-card-body">
+              <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
               <text class="discussion-title">提出疑问并讨论</text>
               <view class="discussion-divider"></view>
               <scroll-view class="discussion-scroll" scroll-y enhanced show-scrollbar="{{false}}">
@@ -254,6 +260,7 @@
               <view class="action-title-row" wx:if="{{isMasterMode}}">
                 <view class="master-mode-badge">MASTER模式</view>
               </view>
+              <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
               <text class="action-title">出牌并解释</text>
               <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
               <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>

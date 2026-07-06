@@ -1,14 +1,37 @@
-<view class="user-list {{showName ? 'show-name' : ''}}">
-  <scroll-view class="avatar-scroll" scroll-x="true" show-scrollbar="false">
-    <view class="avatar-row">
+<view class="user-list {{showName ? 'show-name' : ''}} {{isFold ? 'fold' : ''}} {{layout === 'stack' ? 'layout-stack' : 'layout-scroll'}}">
+  <scroll-view
+    class="avatar-scroll"
+    scroll-x="{{layout !== 'stack'}}"
+    show-scrollbar="false"
+  >
+    <view class="avatar-row {{layout === 'stack' ? 'avatar-row-stack' : ''}}">
       <block wx:for="{{avatarList}}" wx:key="id">
-        <view class="avatar-item {{item.id === currentUser || item.highlight ? 'active' : ''}} {{item.isMe ? 'avatar-item-me' : ''}}">
-          <view class="avatar-wrap">
-            <image class="avatar-img" src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}" mode="aspectFill"></image>
-            <view class="active-ring" wx:if="{{item.id === currentUser}}"></view>
-            <view class="active-indicator" wx:if="{{item.id === currentUser}}"></view>
+        <view
+          class="avatar-item {{item.isMe ? 'avatar-item-me' : ''}}"
+          bindtap="onAvatarTap"
+          data-player-index="{{item.id}}"
+        >
+          <view class="avatar-slot">
+            <view class="avatar-frame-box">
+              <view class="avatar-wrap">
+                <image
+                  class="avatar-img"
+                  src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
+                  mode="aspectFill"
+                />
+              </view>
+              <block wx:if="{{item.id == resolvedActingUser}}">
+                <view class="partner-ring partner-ring-acting-outer"></view>
+                <view class="partner-ring partner-ring-acting-inner"></view>
+              </block>
+              <view
+                wx:elif="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                class="partner-ring partner-ring-selected"
+              ></view>
+            </view>
+            <view wx:if="{{item.isMe}}" class="me-indicator"></view>
           </view>
-          <view class="avatar-name-wrap" wx:if="{{showName && (item.nickName != null || item.isMe)}}">
+          <view class="avatar-name-wrap" wx:if="{{showName && layout !== 'stack' && (item.nickName != null || item.isMe)}}">
             <text class="avatar-name">{{item.nickName || '玩家' + item.id}}</text>
             <text class="avatar-name avatar-me avatar-me-line" wx:if="{{item.isMe}}">（我）</text>
           </view>

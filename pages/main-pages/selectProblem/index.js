@@ -34,9 +34,7 @@ Page({
     textareaHeights: {},
     navbarPaddingTop: 0,
     scrollHeight: 0,
-    contentPaddingTop: 0,
-    myAvatar: '',
-    otherAvatars: []
+    contentPaddingTop: 0
   },
 
   onLoad(options) {
@@ -100,10 +98,12 @@ Page({
 
       const avatarList = (result.members || []).map((m, i) => {
         const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
+        const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length];
         return {
           id: m.userId || String(m.playerIndex),
           nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
+          avatar: avatarImage,
+          avatarImage,
           isMe: m.isMe === true
         };
       });
@@ -116,16 +116,11 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
-      const myAvatar = me ? (me.avatarImage || '') : '';
-      const otherAvatars = avatarList.filter((a) => !a.isMe).slice(0, 5);
-
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
         currentUser: me ? me.id : null,
-        isHost,
-        myAvatar,
-        otherAvatars
+        isHost
       });
 
       if (isHost) {

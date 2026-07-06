@@ -7,18 +7,15 @@
 .avatar-scroll {
   width: 100%;
   overflow: hidden;
-  /* 为激活态外圈与底部指示三角预留空间，避免被 scroll-view 裁切 */
-  /* padding: 20rpx 0 22rpx; */
 }
 
 .avatar-row {
-  display: flex;
+  display: inline-flex;
   align-items: flex-start;
-  gap: 12rpx;
-  padding: 5rpx;
+  gap: 6rpx;
+  padding: 6rpx 4rpx 16rpx;
   box-sizing: border-box;
-  /* 绝对定位的 active-indicator 不参与布局，手动补足行高 */
-  /* padding-bottom: 12rpx; */
+  min-width: 100%;
 }
 
 .avatar-item {
@@ -29,30 +26,90 @@
   flex-shrink: 0;
 }
 
+.avatar-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.avatar-frame-box {
+  position: relative;
+  width: 96rpx;
+  height: 96rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .avatar-wrap {
   position: relative;
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 44rpx;
-  padding: 6rpx;
+  z-index: 1;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  padding: 4rpx;
   box-sizing: border-box;
   background-color: #f2f2f2;
   box-shadow: inset 0 0 4rpx rgba(0, 0, 0, 0.06);
-}
-
-.avatar-item.active .avatar-wrap {
-  box-shadow: 0 0 0 4rpx #00d468;
+  overflow: hidden;
 }
 
 .avatar-img {
+  display: block;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   background-color: #e8e8e8;
 }
 
+.partner-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.partner-ring-acting-outer {
+  z-index: 2;
+  border: 4rpx solid #c3e4c1;
+}
+
+.partner-ring-acting-inner {
+  z-index: 3;
+  border: 5rpx solid transparent;
+  border-top-color: #5ec159;
+  border-right-color: #5ec159;
+  animation: acting-ring-spin 2.4s linear infinite;
+}
+
+.partner-ring-selected {
+  z-index: 2;
+  left: 4rpx;
+  top: 4rpx;
+  width: calc(100% - 8rpx);
+  height: calc(100% - 8rpx);
+  border: 2rpx solid #5ec159;
+  box-shadow: 0 0 12rpx rgba(94, 193, 89, 0.55);
+}
+
+.me-indicator {
+  width: 0;
+  height: 0;
+  margin-top: 2rpx;
+  border-left: 10rpx solid transparent;
+  border-right: 10rpx solid transparent;
+  border-top: 12rpx solid #5ec159;
+  flex-shrink: 0;
+}
+
 .avatar-name-wrap {
-  margin-top: 8rpx;
+  margin-top: 4rpx;
   text-align: center;
   max-width: 100rpx;
   display: flex;
@@ -79,30 +136,10 @@
   white-space: normal;
 }
 
-.active-ring {
-  position: absolute;
-  inset: 0;
-  border: 6rpx solid #00d468;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.active-indicator {
-  position: absolute;
-  bottom: -8rpx;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 12rpx solid transparent;
-  border-right: 12rpx solid transparent;
-  border-top: 12rpx solid #00d468;
-}
-
 .add-btn {
   width: 80rpx;
   height: 80rpx;
-  margin-left: 8rpx;
+  margin-left: 4rpx;
   border-radius: 20rpx;
   background: #e9f5e9;
   display: flex;
@@ -117,26 +154,42 @@
   height: 36rpx;
 }
 
-/* 折叠态，整体更紧凑以兼容顶部空间不足的区域 */
 .fold .avatar-row {
-  gap: 8rpx;
-  padding: 0 6rpx;
-  padding-bottom: 10rpx;
+  gap: 4rpx;
+  padding: 4rpx 4rpx 16rpx;
+}
+
+.fold .avatar-frame-box {
+  width: 72rpx;
+  height: 72rpx;
 }
 
 .fold .avatar-wrap {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 36rpx;
-  padding: 4rpx;
+  width: 60rpx;
+  height: 60rpx;
+  padding: 2rpx;
 }
 
-.fold .active-ring {
-  border-width: 6rpx;
+.fold .partner-ring-acting-outer {
+  border-width: 3rpx;
 }
 
-.fold .active-indicator {
-  bottom: -6rpx;
+.fold .partner-ring-acting-inner {
+  border-width: 4rpx;
+}
+
+.fold .partner-ring-selected {
+  left: 2rpx;
+  top: 2rpx;
+  width: calc(100% - 4rpx);
+  height: calc(100% - 4rpx);
+}
+
+.fold .me-indicator {
+  border-left-width: 8rpx;
+  border-right-width: 8rpx;
+  border-top-width: 10rpx;
+  margin-top: 0;
 }
 
 .fold .add-btn {
@@ -148,4 +201,80 @@
 .fold .add-icon {
   width: 30rpx;
   height: 30rpx;
+}
+
+/* 堆叠布局（halliGalli 等顶栏） */
+.layout-stack {
+  flex: 1;
+  min-width: 0;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+}
+
+.layout-stack .avatar-scroll {
+  width: 100%;
+  height: 88rpx;
+}
+
+.layout-stack .avatar-row-stack {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0 0 16rpx;
+  box-sizing: border-box;
+  height: 88rpx;
+}
+
+.layout-stack .avatar-item {
+  position: relative;
+  z-index: 1;
+  margin-left: 0;
+}
+
+.layout-stack .avatar-item + .avatar-item {
+  margin-left: -16rpx;
+}
+
+.layout-stack .avatar-item-me {
+  z-index: 10;
+}
+
+.layout-stack .avatar-slot {
+  position: relative;
+  height: 88rpx;
+  justify-content: center;
+  padding-bottom: 0;
+}
+
+.layout-stack .me-indicator {
+  position: absolute;
+  bottom: 4rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0;
+}
+
+.layout-stack .avatar-wrap {
+  background-color: #fff;
+  border: 4rpx solid #fff;
+  box-shadow: 0 0 0 1rpx rgba(0, 0, 0, 0.04);
+}
+
+.layout-stack.fold .avatar-frame-box {
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.layout-stack.fold .avatar-wrap {
+  width: 64rpx;
+  height: 64rpx;
+}
+
+@keyframes acting-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

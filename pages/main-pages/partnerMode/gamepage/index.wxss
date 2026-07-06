@@ -211,6 +211,14 @@ game-card-timer {
   margin-bottom: 0;
 }
 
+.card-player-round {
+  display: block;
+  text-align: center;
+  font-size: 24rpx;
+  color: #7a9a78;
+  margin-bottom: 8rpx;
+}
+
 .card-section-title-gap {
   margin-top: 28rpx;
 }
