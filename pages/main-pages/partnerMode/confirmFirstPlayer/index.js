@@ -5,6 +5,7 @@ const {
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
 const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 
 Page({
   data: {
@@ -173,7 +174,7 @@ Page({
           const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
           const roomIdEnc = encodeURIComponent(roomId);
           wx.redirectTo({
-            url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`
+            url: buildGamepageUrl(roomId, idx, 'partner')
           });
         } else {
           navigateByRoomState(page, result.roomState, roomId);
@@ -228,7 +229,7 @@ Page({
       await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
       wx.hideLoading();
       wx.redirectTo({
-        url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${selectedPlayerIndex}`
+        url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
       });
     } catch (e) {
       wx.hideLoading();

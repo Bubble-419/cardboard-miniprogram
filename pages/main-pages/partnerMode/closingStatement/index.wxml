@@ -1,0 +1,57 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="waiting-content" wx:if="{{hasVoted}}">
+    <view class="character-container">
+      <view class="character-bg">
+        <view class="character-icon">
+          <view class="character-face">
+            <view class="eye eye-left"></view>
+            <view class="eye eye-right"></view>
+            <view class="mouth"></view>
+            <view class="foot foot-left"></view>
+            <view class="foot foot-right"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="main-text">{{voteResult === 'question' ? '您选择了存在疑问' : '您选择了通过'}}</view>
+    <view class="sub-text">等待其他玩家表态...</view>
+  </view>
+
+  <view class="host-content" wx:else>
+    <view class="instruction">
+      <text class="instruction-line">收尾阶段表态</text>
+      <text class="instruction-line instruction-line-sub">是否同意结束本次脑暴？</text>
+    </view>
+
+    <view class="result-stack">
+      <view class="result-item" bindtap="handleVote" data-vote="pass">
+        <view class="result-circle result-circle-pass">
+          <text class="result-label">通过</text>
+        </view>
+      </view>
+
+      <view class="result-connector"></view>
+
+      <view class="result-item" bindtap="handleVote" data-vote="question">
+        <view class="result-circle result-circle-question">
+          <text class="result-label">存在疑问</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

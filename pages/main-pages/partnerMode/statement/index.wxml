@@ -1,0 +1,77 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="waiting-content" wx:if="{{isWaiting}}">
+    <view class="character-container">
+      <view class="character-bg">
+        <view class="character-icon">
+          <view class="character-face">
+            <view class="eye eye-left"></view>
+            <view class="eye eye-right"></view>
+            <view class="mouth"></view>
+            <view class="foot foot-left"></view>
+            <view class="foot foot-right"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="main-text">请用实体表态卡进行表态</view>
+    <view class="sub-text">等待主屏操作...</view>
+  </view>
+
+  <view class="host-content" wx:else>
+    <view class="instruction">
+      <text class="instruction-line">请用表态卡对第{{currentPlayerIndex}}位玩家行动表态</text>
+      <text class="instruction-line">选择表态统计结果</text>
+    </view>
+
+    <view class="result-stack">
+      <view
+        class="result-item"
+        bindtap="handleStatementResult"
+        data-result="allPass"
+      >
+        <view class="result-circle result-circle-pass">
+          <text class="result-label">全部通过</text>
+        </view>
+      </view>
+
+      <view class="result-connector"></view>
+
+      <view
+        class="result-item"
+        bindtap="handleStatementResult"
+        data-result="partialPass"
+      >
+        <view class="result-circle result-circle-partial">
+          <text class="result-label">部分通过</text>
+        </view>
+      </view>
+
+      <view class="result-connector"></view>
+
+      <view
+        class="result-item"
+        bindtap="handleStatementResult"
+        data-result="allQuestion"
+      >
+        <view class="result-circle result-circle-question">
+          <text class="result-label">全部疑问</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,339 @@
+<view class="container">
+  <view class="custom-navbar">
+    <view class="navbar-content">
+      <view class="navbar-left">
+        <image
+          class="back-icon"
+          src="/assets/icons/miniprogram-btn.png"
+          mode="aspectFit"
+          bindtap="handleGoBack"
+        />
+      </view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="page-body">
+    <!-- 顶部：房间入口 + 设计问题 -->
+    <view class="top-bar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/add-icon.png" mode="aspectFit" />
+      </view>
+      <view class="problem-chip">
+        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" />
+        <text class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}}">{{selectedProblemText || '暂无设计问题'}}</text>
+      </view>
+    </view>
+
+    <!-- 玩家列表（不展示工作坊名称） -->
+    <view class="user-section">
+      <user-list
+        avatarList="{{avatarList}}"
+        currentUser="{{currentPlayerIndex}}"
+        enableAdd="{{false}}"
+        isFold="{{true}}"
+        showName="{{false}}"
+      />
+    </view>
+
+    <view class="divider-line"></view>
+
+    <!-- 收尾阶段 -->
+    <block wx:if="{{gamepagePhase === 'closing'}}">
+      <view class="card-area">
+        <swiper
+          class="card-swiper"
+          current="{{cardIndex}}"
+          bindchange="onCardSwiperChange"
+          previous-margin="40rpx"
+          next-margin="40rpx"
+          easing-function="easeOutCubic"
+        >
+          <swiper-item class="card-swiper-item">
+            <view class="game-card game-card-active closing-card">
+              <view class="closing-badge">收尾阶段</view>
+              <view class="closing-card-body">
+                <text class="closing-card-title">补全符文</text>
+                <text class="closing-card-desc">请根据以下操作提示，补全符文</text>
+                <view class="closing-divider"></view>
+                <view class="closing-rune-grid">
+                  <view class="closing-rune-col">
+                    <view class="closing-rune-slot closing-rune-slot-top">
+                      <text class="closing-rune-label">延时符文</text>
+                    </view>
+                    <view class="closing-rune-slot closing-rune-slot-bottom">
+                      <text class="closing-rune-label">稳定态符文</text>
+                    </view>
+                  </view>
+                  <view class="closing-rune-col">
+                    <view class="closing-rune-slot closing-rune-slot-top">
+                      <text class="closing-rune-label">延时符文</text>
+                    </view>
+                    <view class="closing-rune-slot closing-rune-slot-bottom">
+                      <text class="closing-rune-label">属性类型符文</text>
+                    </view>
+                  </view>
+                </view>
+                <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                  <text class="card-section-title">第一轮-出牌解释</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                </scroll-view>
+              </view>
+            </view>
+          </swiper-item>
+
+          <swiper-item class="card-swiper-item">
+            <view class="game-card game-card-active closing-card">
+              <view class="closing-badge">收尾阶段</view>
+              <view class="closing-card-body">
+                <text class="closing-card-title">创意点复盘</text>
+                <view class="closing-photo-hint">（提示玩家拍摄卡组）</view>
+                <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                  <text class="card-section-title">第一轮-出牌解释</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <view class="closing-photo-placeholder" catchtap="handleClosingPhoto">
+                    <view class="discussion-photo-icon"></view>
+                  </view>
+                  <view class="card-photo-wrap" wx:if="{{reviewPhotos.length}}">
+                    <image
+                      class="card-photo"
+                      wx:for="{{reviewPhotos}}"
+                      wx:key="*this"
+                      src="{{item}}"
+                      mode="aspectFill"
+                    />
+                  </view>
+                  <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                  <view class="discussion-report-hint">
+                    <text class="discussion-report-title">玩家行动报告</text>
+                    <text class="discussion-report-sub">下拉查看</text>
+                  </view>
+                </scroll-view>
+              </view>
+            </view>
+          </swiper-item>
+        </swiper>
+
+        <view class="card-pagination">
+          <view class="pagination-dots">
+            <view class="dot {{cardIndex === 0 ? 'dot-active' : ''}}"></view>
+            <view class="dot {{cardIndex === 1 ? 'dot-active' : ''}}"></view>
+          </view>
+          <text class="pagination-text">{{cardIndex + 1}}/2</text>
+        </view>
+      </view>
+
+      <view class="inspiration-bar" bindtap="handleGoInspiration">
+        <view class="inspiration-badge-wrap">
+          <text class="inspiration-badge">💡</text>
+        </view>
+        <view class="inspiration-input-fake">
+          <text class="inspiration-placeholder">记录您的灵感...</text>
+        </view>
+        <view class="inspiration-submit">
+          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        </view>
+      </view>
+    </block>
+
+    <!-- 常规出牌 / 讨论 -->
+    <block wx:else>
+    <view class="card-area">
+      <swiper
+        class="card-swiper"
+        current="{{cardIndex}}"
+        bindchange="onCardSwiperChange"
+        previous-margin="40rpx"
+        next-margin="40rpx"
+        easing-function="easeOutCubic"
+      >
+        <!-- 卡片 1：出牌并解释 / 提出疑问并讨论 -->
+        <swiper-item class="card-swiper-item">
+          <view class="game-card game-card-active" wx:if="{{gamepagePhase === 'discussion'}}">
+            <view class="discussion-card-body">
+              <text class="discussion-title">提出疑问并讨论</text>
+              <view class="discussion-divider"></view>
+              <scroll-view class="discussion-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                <text class="card-section-title">第一轮-出牌解释</text>
+                <view class="card-bullet-list">
+                  <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                </view>
+                <text class="card-section-title card-section-title-gap">第一轮-疑问讨论</text>
+                <view class="card-bullet-list">
+                  <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+                </view>
+                <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
+                  <view class="discussion-photo-icon"></view>
+                </view>
+                <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                <view class="discussion-report-hint">
+                  <text class="discussion-report-title">玩家行动报告</text>
+                  <text class="discussion-report-sub">下拉查看</text>
+                </view>
+              </scroll-view>
+            </view>
+          </view>
+          <view class="game-card game-card-active" wx:else>
+            <view class="action-card-body">
+              <view class="action-title-row" wx:if="{{isMasterMode}}">
+                <view class="master-mode-badge">MASTER模式</view>
+              </view>
+              <text class="action-title">出牌并解释</text>
+              <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+              <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
+              <view class="action-divider"></view>
+              <view class="action-grid">
+                <view class="action-cell action-cell-filled">
+                  <view class="action-illus action-illus-play"></view>
+                  <text class="action-cell-label">出 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-filled">
+                  <view class="action-illus action-illus-delete"></view>
+                  <text class="action-cell-label">删 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-empty">
+                  <text class="action-cell-label">调整 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-empty">
+                  <text class="action-cell-label">交换 2 张卡牌</text>
+                </view>
+              </view>
+            </view>
+            <view class="score-panel">
+              <view class="score-panel-head">
+                <text class="score-label">此次行动评分</text>
+                <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+              </view>
+              <view class="score-buttons">
+                <view
+                  class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}} {{isCurrentPlayer ? 'score-btn-disabled' : ''}}"
+                  wx:for="{{scoreOptions}}"
+                  wx:key="*this"
+                  data-score="{{item}}"
+                  bindtap="onScoreTap"
+                >
+                  <text class="score-num">{{item}}</text>
+                  <text class="score-unit">分</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </swiper-item>
+
+        <!-- 卡片 2：文字纪要 -->
+        <swiper-item class="card-swiper-item">
+          <view class="game-card game-card-muted">
+            <view class="card-header-row">
+              <text class="card-section-title card-section-title-inline">第一轮-出牌解释</text>
+              <view class="insert-image-btn" catchtap="handleInsertImage">
+                <view class="insert-image-icon"></view>
+                <text class="insert-image-text">插入图片</text>
+              </view>
+            </view>
+            <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+              <view class="card-bullet-list">
+                <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+              </view>
+              <view class="card-photo-wrap" wx:if="{{insertedImages.length}}">
+                <image
+                  class="card-photo"
+                  wx:for="{{insertedImages}}"
+                  wx:key="*this"
+                  src="{{item}}"
+                  mode="aspectFill"
+                />
+              </view>
+              <view class="card-section-title card-section-title-gap">第一轮-疑问讨论</view>
+              <view class="card-bullet-list">
+                <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
+              </view>
+            </scroll-view>
+          </view>
+        </swiper-item>
+      </swiper>
+
+      <view class="card-pagination">
+        <view class="pagination-dots">
+          <view class="dot {{cardIndex === 0 ? 'dot-active' : ''}}"></view>
+          <view class="dot {{cardIndex === 1 ? 'dot-active' : ''}}"></view>
+        </view>
+        <text class="pagination-text">{{cardIndex + 1}}/2</text>
+      </view>
+    </view>
+
+    <!-- 灵感记录 -->
+    <view class="inspiration-bar" bindtap="handleGoInspiration">
+      <view class="inspiration-badge-wrap">
+        <text class="inspiration-badge">💡</text>
+      </view>
+      <view class="inspiration-input-fake">
+        <text class="inspiration-placeholder">记录您的灵感...</text>
+      </view>
+      <view class="inspiration-submit">
+        <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+      </view>
+    </view>
+    </block>
+  </view>
+
+  <!-- 底部操作 -->
+  <view class="page-footer">
+    <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune'}}">
+      <button
+        class="closing-next-btn {{isHost ? '' : 'closing-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleClosingNextStep"
+      >
+        下一步
+      </button>
+    </view>
+    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'review'}}">
+      <button
+        class="end-brainstorm-btn {{isHost ? '' : 'closing-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleEndBrainstorm"
+      >
+        结束脑暴
+      </button>
+    </view>
+    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'discussion'}}">
+      <button
+        class="end-discussion-btn {{isHost ? '' : 'end-discussion-btn-disabled'}}"
+        disabled="{{!isHost}}"
+        bindtap="handleEndDiscussion"
+      >
+        结束讨论
+      </button>
+    </view>
+    <view class="bottom-actions" wx:else>
+      <button
+        class="special-btn {{isMasterMode ? 'special-btn-disabled' : ''}}"
+        disabled="{{isMasterMode}}"
+        bindtap="handleSpecialMove"
+      >
+        <text class="special-btn-line">特殊</text>
+        <text class="special-btn-line">行动</text>
+      </button>
+      <button
+        class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
+        disabled="{{!canStartStatement}}"
+        bindtap="handleStartStatement"
+      >
+        开始表态
+      </button>
+    </view>
+  </view>
+</view>

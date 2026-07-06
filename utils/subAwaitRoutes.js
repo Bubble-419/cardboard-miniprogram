@@ -1,3 +1,12 @@
+const { buildGamepageUrl, buildStatementUrl, buildClosingStatementUrl, buildClosingEndUrl } = require('./modeRoutes');
+const {
+  getCurrentRoute,
+  normalizeRoute,
+  openUrl,
+  safeOpenUrl,
+  openPartnerPage
+} = require('./pageNavigate');
+
 /** 副屏等待态：停留在 subAwait 并根据 scene 切换 UI */
 const SUB_AWAIT_ROUTE = 'pages/sub-pages/subAwait/index';
 
@@ -41,6 +50,34 @@ const SCENE_UI = {
   }
 };
 
+/** 副屏进度序：用于 subAwait 忽略滞后的「回跳」导航 */
+const PAGE_PROGRESS_RANK = {
+  addplayer: 0,
+  auth: 10,
+  selectbg: 10,
+  confirmbg: 10,
+  submitproblem: 20,
+  selectproblem: 30,
+  selectmode: 40,
+  selectplayer: 50,
+  confirmfirstplayer: 60,
+  gamepage: 70,
+  creativeinput: 80,
+  creativesummary: 90,
+  statement: 100,
+  closingstatement: 105,
+  discussion: 110,
+  closingend: 115,
+  leaderboard: 120
+};
+
+const SCENE_PROGRESS_RANK = {
+  bg: 10,
+  mode: 40,
+  player: 50,
+  confirmFirstPlayer: 60
+};
+
 function getSceneUI(scene) {
   return SCENE_UI[scene] || SCENE_UI.bg;
 }
@@ -53,14 +90,30 @@ function getSceneForPage(page) {
   return AWAIT_PAGE_TO_SCENE[(page || '').toLowerCase()] || 'bg';
 }
 
-function getCurrentRoute() {
-  const pages = getCurrentPages();
-  if (!pages.length) return '';
-  return pages[pages.length - 1].route || '';
+function getPageProgressRank(page) {
+  return PAGE_PROGRESS_RANK[(page || '').toLowerCase()] ?? -1;
 }
 
-function normalizeRoute(url) {
-  return (url || '').replace(/^\//, '').split('?')[0];
+function getSceneProgressRank(scene) {
+  return SCENE_PROGRESS_RANK[scene] ?? 0;
+}
+
+function getCurrentSubAwaitScene() {
+  const pages = getCurrentPages();
+  const current = pages[pages.length - 1];
+  if (current && current.route === SUB_AWAIT_ROUTE && current.data) {
+    return current.data.scene || 'bg';
+  }
+  return '';
+}
+
+/** subAwait 已处于较新等待态时，忽略滞后的业务页回跳（如 selectMode 时误跳 selectProblem） */
+function shouldSkipStaleSubScreenRedirect(targetPage) {
+  if (getCurrentRoute() !== SUB_AWAIT_ROUTE) return false;
+  const scene = getCurrentSubAwaitScene();
+  const sceneRank = getSceneProgressRank(scene);
+  const targetRank = getPageProgressRank(targetPage);
+  return sceneRank > 0 && targetRank >= 0 && targetRank < sceneRank;
 }
 
 function buildSubAwaitUrl(roomId, scene) {
@@ -77,7 +130,8 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-  const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
+  const playerName = state.currentPlayerName || `玩家${idx}`;
+  const modeId = (getApp().globalData && getApp().globalData.gameMode) || 'partner';
 
   if (isAwaitPage(p)) {
     return { action: 'await', scene: getSceneForPage(p) };
@@ -86,9 +140,16 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
   const redirectMap = {
     submitproblem: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
     selectproblem: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
-    gamepage: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
-    statement: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}&isSubScreen=1`,
-    discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+    gamepage: buildGamepageUrl(roomId, idx, modeId, {
+      phase: state.partnerGamePhase === 'discussion'
+        ? 'discussion'
+        : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
+      closingStep: state.partnerClosingStep || undefined
+    }),
+    statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
+    closingstatement: buildClosingStatementUrl(roomId),
+    closingend: buildClosingEndUrl(roomId),
+    discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
     creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
@@ -111,7 +172,17 @@ function applySubAwaitScene(scene) {
   return false;
 }
 
-/** 打开 subAwait：已在该页则只切换 scene，否则 reLaunch 避免 redirectTo 失败导致退回首页 */
+let _subAwaitNavLock = false;
+let _pendingSubAwaitUrl = '';
+
+function _releaseSubAwaitLock(delay = 2000) {
+  setTimeout(() => {
+    _subAwaitNavLock = false;
+    _pendingSubAwaitUrl = '';
+  }, delay);
+}
+
+/** 打开 subAwait：已在该页则只切换 scene；否则 redirectTo，避免重复 reLaunch 超时 */
 function openSubAwait(roomId, scene) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) {
@@ -125,50 +196,39 @@ function openSubAwait(roomId, scene) {
   }
 
   const url = buildSubAwaitUrl(id, scene);
-  wx.reLaunch({
-    url,
-    fail: (err) => {
-      console.warn('reLaunch subAwait failed', err, url);
+
+  if (_subAwaitNavLock) {
+    if (_pendingSubAwaitUrl === url) {
+      return false;
     }
-  });
-  return true;
-}
-
-let _navLock = false;
-
-function safeOpenUrl(url) {
-  const targetRoute = normalizeRoute(url);
-  const currentRoute = getCurrentRoute();
-  if (currentRoute === targetRoute) {
     return false;
   }
 
-  if (_navLock) return false;
-  _navLock = true;
-  setTimeout(() => {
-    _navLock = false;
-  }, 800);
-
-  wx.redirectTo({
-    url,
-    fail: (err) => {
-      console.warn('redirectTo failed, try reLaunch', err, url);
-      wx.reLaunch({
-        url,
-        fail: (err2) => console.warn('reLaunch failed', err2, url)
-      });
-    },
-    complete: () => {
-      setTimeout(() => {
-        _navLock = false;
-      }, 300);
-    }
-  });
+  _subAwaitNavLock = true;
+  _pendingSubAwaitUrl = url;
+  openUrl(url);
+  setTimeout(() => _releaseSubAwaitLock(), 2000);
   return true;
 }
 
 /** 副屏轮询：根据主屏 currentPage 跳转至 subAwait 或业务页 */
 function navigateByRoomState(page, roomState, roomId) {
+  const p = (page || '').toLowerCase();
+  const state = roomState || {};
+  const current = getCurrentRoute();
+
+  // 大厅页不应被拉回收尾过渡页（避免 closingEnd ↔ addPlayer 振荡）
+  if (p === 'closingend' && current === 'pages/main-pages/addPlayer/index') {
+    return false;
+  }
+
+  if (state.brainstormSessionEnded === true) {
+    const staleAfterEnd = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+    if (staleAfterEnd.includes(p) && current === 'pages/main-pages/addPlayer/index') {
+      return false;
+    }
+  }
+
   const nav = resolveSubScreenNavigation(page, roomState, roomId);
   if (!nav) return false;
 
@@ -177,10 +237,18 @@ function navigateByRoomState(page, roomState, roomId) {
   }
 
   if (nav.action === 'redirect') {
-    return safeOpenUrl(nav.url);
+    if (shouldSkipStaleSubScreenRedirect(page)) {
+      return false;
+    }
+    return openUrl(nav.url);
   }
 
   return false;
+}
+
+/** @deprecated 使用 navigateByRoomState */
+function followRoomState(page, roomState, roomId) {
+  return navigateByRoomState(page, roomState, roomId);
 }
 
 module.exports = {
@@ -190,10 +258,17 @@ module.exports = {
   getSceneUI,
   isAwaitPage,
   getSceneForPage,
+  getPageProgressRank,
+  getSceneProgressRank,
+  shouldSkipStaleSubScreenRedirect,
   getCurrentRoute,
   buildSubAwaitUrl,
   resolveSubScreenNavigation,
   applySubAwaitScene,
   openSubAwait,
-  navigateByRoomState
+  navigateByRoomState,
+  followRoomState,
+  openUrl,
+  safeOpenUrl,
+  openPartnerPage
 };

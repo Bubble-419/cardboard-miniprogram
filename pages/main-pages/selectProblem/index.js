@@ -5,7 +5,7 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -132,6 +132,12 @@ Page({
         this._updateRoomState('selectProblem');
         this._stopStatePolling();
       } else {
+        const roomState = result.roomState || {};
+        const page = roomState.currentPage || 'selectProblem';
+        navigateByRoomState(page, roomState, roomId);
+        if (isAwaitPage((page || '').toLowerCase())) {
+          return;
+        }
         this._startStatePolling();
       }
     } catch (e) {
@@ -344,7 +350,23 @@ Page({
     getApp().globalData.selectedProblem = problem;
 
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    await this._updateRoomState('selectPlayer');
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'selectMode',
+          selectedDesignProblem: {
+            id: problem.id,
+            text: problem.text
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('updateRoomState selectedDesignProblem', e);
+      wx.showToast({ title: '保存设计问题失败', icon: 'none' });
+      return;
+    }
 
     const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
     wx.navigateTo({

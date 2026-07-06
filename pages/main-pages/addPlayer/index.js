@@ -1,4 +1,11 @@
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, safeOpenUrl } = require('../../../utils/subAwaitRoutes');
+const {
+  saveLocalBrainstormProgress,
+  clearLocalBrainstormProgress,
+  resolveBrainstormProgress
+} = require('../../../utils/roomBrainstormProgress');
+const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
+const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -47,6 +54,7 @@ Page({
     memberCount: 0,
     memberCountBounce: false,
     hasSelectedMode: false,
+    brainstormSessionEnded: false,
     selectedModeId: '',
     selectedModeTitle: '',
     selectedModeDesc: '',
@@ -62,6 +70,13 @@ Page({
     // 进入可拖拽态的短暂动画标记（用于视觉反馈）
     dragEnterAnimating: false,
     showQRCodeModal: false
+  },
+
+  _syncLobbyRoomState(result) {
+    const hasSelectedMode = result && result.hasSelectedMode === true;
+    if (!hasSelectedMode) {
+      this._updateRoomState('addPlayer');
+    }
   },
 
   onLoad(options) {
@@ -106,7 +121,7 @@ Page({
         }
         console.log('[addPlayer] loadRoomData 完成', { isHost: result.isHost });
         if (result.isHost === true) {
-          this._updateRoomState('addPlayer');
+          this._syncLobbyRoomState(result);
           this._startMemberPolling();
         } else {
           console.log('[addPlayer] 副屏用户，启动页面状态轮询 + 成员列表轮询');
@@ -141,6 +156,7 @@ Page({
     return {
       memberCount,
       hasSelectedMode: result.hasSelectedMode === true,
+      brainstormSessionEnded: !!(result.roomState && result.roomState.brainstormSessionEnded),
       selectedModeId: result.selectedModeId || '',
       selectedModeTitle: result.selectedModeTitle || '',
       selectedModeDesc: result.selectedModeDesc || '',
@@ -171,7 +187,7 @@ Page({
     }, 1500);
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra = {}) {
     const roomId = this.data.roomId;
     if (!roomId) {
       console.warn('[主屏] updateRoomState 跳过：无 roomId');
@@ -179,13 +195,19 @@ Page({
     }
     try {
       console.log('[主屏] 调用 updateRoomState', { roomId, currentPage });
+      const data = { roomId, currentPage, ...extra };
+      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
+      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
       const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
-        data: { roomId, currentPage, currentPlayerIndex, currentPlayerName }
+        data
       });
       const result = (res && res.result) || {};
       if (result.ok === true) {
         console.log('[主屏] updateRoomState 成功', { currentPage: result.currentPage });
+        if (currentPage && currentPage !== 'addPlayer') {
+          saveLocalBrainstormProgress(roomId, currentPage);
+        }
         return result;
       }
       console.warn('[主屏] updateRoomState 失败', {
@@ -228,6 +250,17 @@ Page({
           return;
         }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
+        if (page === 'closingend') {
+          console.log('[副屏轮询] 忽略 closingEnd 跳转，保持房间页');
+          return;
+        }
+        if (result.roomState.brainstormSessionEnded === true) {
+          const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+          if (stalePages.includes(page)) {
+            console.log('[副屏轮询] 脑暴已结束，忽略滞后页面', { page });
+            return;
+          }
+        }
         if (navigateByRoomState(page, result.roomState, roomId)) {
           console.log('[副屏轮询] 已跟随主屏跳转', { page });
         } else {
@@ -321,7 +354,7 @@ Page({
         }
         console.log('[addPlayer] joinRoomThenLoad 完成', { isHost: result.isHost });
         if (result.isHost === true) {
-          this._updateRoomState('addPlayer');
+          this._syncLobbyRoomState(result);
           this._startMemberPolling();
         } else {
           console.log('[addPlayer] 副屏用户(扫码进入)，启动页面状态轮询 + 成员列表轮询');
@@ -377,6 +410,18 @@ Page({
         currentPlayerIndex: 1,
         currentPlayerName: '玩家1'
       };
+      const hasSelectedMode = result.hasSelectedMode === true;
+      const resolvedState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
+      if (
+        !resolvedState.brainstormSessionEnded
+        && resolvedState.currentPage
+        && resolvedState.currentPage !== 'addPlayer'
+      ) {
+        saveLocalBrainstormProgress(roomId, resolvedState.currentPage);
+      }
+      if (resolvedState.brainstormSessionEnded) {
+        clearLocalBrainstormProgress(roomId);
+      }
 
       if (silent) {
         if (!this.data.isDragging) {
@@ -412,6 +457,7 @@ Page({
           this.setData({
             members: expanded,
             memberSlots: this.buildMemberSlots(expanded),
+            roomState: resolvedState,
             ...roomMeta
           });
         }
@@ -464,10 +510,13 @@ Page({
         members,
         memberSlots,
         isHost,
-        roomState,
+        roomState: resolvedState,
         ...roomMeta
       });
-      return { isHost: result.isHost };
+      return {
+        isHost: result.isHost,
+        hasSelectedMode: result.hasSelectedMode === true
+      };
     } catch (err) {
       if (!silent) {
         wx.hideLoading();
@@ -962,16 +1011,73 @@ Page({
     });
   },
 
+  async handleAnotherRound() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间参数错误', icon: 'none' });
+      return;
+    }
+    if (!this.data.isHost) {
+      wx.showToast({ title: '请等待房主开始新一轮', icon: 'none' });
+      return;
+    }
+    if (!this.data.hasSelectedMode) {
+      wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '准备中…', mask: true });
+    clearLocalBrainstormProgress(roomId);
+    try {
+      const updateRes = await this._updateRoomState('selectPlayer', null, null, {
+        brainstormSessionEnded: false,
+        partnerGamePhase: 'play',
+        partnerMasterMode: false,
+        resetClosingVotes: true,
+        clearBrainstormProgress: true,
+        incrementRound: true
+      });
+      if (updateRes && updateRes.ok !== true) {
+        wx.showToast({ title: updateRes.errMsg || '状态同步失败', icon: 'none' });
+        return;
+      }
+      safeOpenUrl(`/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`);
+    } catch (e) {
+      console.warn('handleAnotherRound', e);
+      wx.showToast({ title: '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
   /** 根据已选模式与房间进度，解析「继续脑暴」跳转目标 */
-  _resolveContinueBrainstormTarget(roomId, selectedModeId, roomState) {
+  _resolveContinueBrainstormTarget(roomId, selectedModeId, roomState, selectedBG) {
     const roomIdEnc = encodeURIComponent(roomId);
     const modeId = selectedModeId || 'halliGalli';
     const state = roomState || {};
     const page = (state.currentPage || 'addPlayer').toLowerCase();
     const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
     const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
+    const bg = selectedBG || (getApp().globalData && getApp().globalData.selectedBG);
+
+    const modeIndexRoute = {
+      path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
+      nextPage: 'auth'
+    };
+
+    if (
+      modeId === 'partner'
+      && partnerPageNeedsBG(page)
+      && !isValidPartnerBG(bg, { requirePlatform: page === 'confirmbg' })
+    ) {
+      return modeIndexRoute;
+    }
 
     const resumeRoutes = {
+      auth: {
+        path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
+        nextPage: 'auth'
+      },
       submitproblem: {
         path: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
         nextPage: 'submitProblem'
@@ -1000,6 +1106,12 @@ Page({
         path: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}`,
         nextPage: 'confirmFirstPlayer'
       },
+      gamepage: {
+        path: buildGamepageUrl(roomId, idx, modeId, {
+          phase: state.partnerGamePhase === 'discussion' ? 'discussion' : undefined
+        }),
+        nextPage: 'gamepage'
+      },
       creativeinput: {
         path: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
         nextPage: 'creativeInput'
@@ -1009,7 +1121,7 @@ Page({
         nextPage: 'creativeSummary'
       },
       statement: {
-        path: `/pages/main-pages/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
+        path: buildStatementUrl(roomId, idx, state.currentPlayerName || `玩家${idx}`),
         nextPage: 'statement'
       },
       discussion: {
@@ -1018,20 +1130,13 @@ Page({
       }
     };
 
-    if (page === 'gamepage' && modeId === 'halliGalli') {
-      return {
-        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
-        nextPage: 'gamepage'
-      };
-    }
-
     if (page !== 'addplayer' && resumeRoutes[page]) {
       return resumeRoutes[page];
     }
 
     if (modeId === 'halliGalli') {
       return {
-        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=1`,
+        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
         nextPage: 'gamepage'
       };
     }
@@ -1053,17 +1158,65 @@ Page({
       return;
     }
 
-    const selectedModeId = this.data.selectedModeId || 'halliGalli';
-    const target = this._resolveContinueBrainstormTarget(
-      roomId,
-      selectedModeId,
-      this.data.roomState
-    );
+    wx.showLoading({ title: '同步进度…', mask: true });
+    let roomState = this.data.roomState;
+    let selectedModeId = this.data.selectedModeId || 'halliGalli';
+    let hasSelectedMode = this.data.hasSelectedMode;
+    let selectedBG = (getApp().globalData && getApp().globalData.selectedBG) || null;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true) {
+        hasSelectedMode = result.hasSelectedMode === true;
+        if (result.roomState) {
+          roomState = resolveBrainstormProgress(roomId, result.roomState, hasSelectedMode);
+        }
+        if (result.selectedModeId) {
+          selectedModeId = result.selectedModeId;
+        }
+        if (result.selectedBG) {
+          selectedBG = result.selectedBG;
+          getApp().globalData.selectedBG = result.selectedBG;
+        }
+        this.setData({
+          roomState,
+          selectedModeId,
+          hasSelectedMode,
+          selectedModeTitle: result.selectedModeTitle || this.data.selectedModeTitle,
+          selectedModeDesc: result.selectedModeDesc || this.data.selectedModeDesc
+        });
+      } else if (hasSelectedMode) {
+        roomState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
+      }
+    } catch (e) {
+      console.warn('handleContinueBrainstorm fetch state', e);
+      if (hasSelectedMode) {
+        roomState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
+      }
+    } finally {
+      wx.hideLoading();
+    }
 
     getApp().globalData.gameMode = selectedModeId;
 
-    if (this.data.isHost && target.nextPage) {
-      const state = this.data.roomState || {};
+    if (!this.data.isHost) {
+      const page = (roomState && roomState.currentPage) || 'addPlayer';
+      navigateByRoomState(page, roomState, roomId);
+      return;
+    }
+
+    const target = this._resolveContinueBrainstormTarget(
+      roomId,
+      selectedModeId,
+      roomState,
+      selectedBG
+    );
+
+    if (target.nextPage) {
+      const state = roomState || {};
       const updateRes = await this._updateRoomState(
         target.nextPage,
         state.currentPlayerIndex,
@@ -1074,7 +1227,7 @@ Page({
       }
     }
 
-    wx.navigateTo({ url: target.path });
+    safeOpenUrl(target.path);
   },
 
   handleExitBrainstorm() {
@@ -1096,6 +1249,7 @@ Page({
             wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
             return;
           }
+          clearLocalBrainstormProgress(this.data.roomId);
           wx.showToast({ title: '已退出脑暴', icon: 'success' });
           this.loadRoomData(this.data.roomId, { silent: true });
         } catch (err) {

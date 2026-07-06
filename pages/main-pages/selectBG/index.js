@@ -122,6 +122,7 @@ Page({
       delete bg.platform;
     }
     app.globalData.selectedBG = bg;
+    app.globalData.selectedBGSource = 'custom';
 
     const roomId = app.globalData.roomId || '';
     if (roomId) {
