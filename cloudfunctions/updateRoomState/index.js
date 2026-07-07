@@ -8,6 +8,7 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const PROBLEMS_COLLECTION = 'designProblems';
 const DESIGN_PROBLEM_ENTRY = 'designProblem';
+const CREATIVE_IDEA_ENTRY = 'creativeIdea';
 
 function normalizePartnerRoundContent(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -158,6 +159,33 @@ exports.main = async (event, context) => {
         console.warn('[updateRoomState] clear design problems skipped', clearErr);
       }
       updateData.selectedDesignProblem = db.command.remove();
+    }
+
+    if (event.startCreativeSession === true) {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可开启创意环节'
+        };
+      }
+      const prevSeq = room.creativeSessionSeq != null ? room.creativeSessionSeq : 0;
+      updateData.creativeSessionSeq = prevSeq + 1;
+    }
+
+    if (event.resetCreativeIdeas === true) {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可重置创意记录'
+        };
+      }
+      try {
+        await db.collection(PROBLEMS_COLLECTION).where({ roomId, entryType: CREATIVE_IDEA_ENTRY }).remove();
+      } catch (clearErr) {
+        console.warn('[updateRoomState] clear creative ideas skipped', clearErr);
+      }
     }
 
     const page = updateData.currentPage;

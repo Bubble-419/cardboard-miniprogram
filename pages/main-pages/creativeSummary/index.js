@@ -1,9 +1,6 @@
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 Page({
-  _ideaCollection: 'designProblems',
-  _ideaEntryType: 'creativeIdea',
-
   data: {
     roomId: '',
     members: [],
@@ -66,12 +63,14 @@ Page({
 
   async loadSummary(roomId) {
     try {
-      const db = await this._getDB();
-      const res = await db.collection(this._ideaCollection).where({
-        roomId,
-        entryType: this._ideaEntryType
-      }).get();
-      const ideas = (res && res.data) || [];
+      const res = await wx.cloud.callFunction({
+        name: 'listCreativeIdeas',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) return;
+
+      const ideas = result.ideas || [];
       const ideaMap = {};
       ideas.forEach(item => {
         ideaMap[item.playerIndex] = item;
@@ -120,6 +119,13 @@ Page({
               wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
               return true;
             }
+            if (page === 'addplayer') {
+              wx.redirectTo({
+                url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+              });
+              return true;
+            }
+            if (page === 'creativeinput') return true;
             return false;
           }
         });
@@ -164,12 +170,31 @@ Page({
     try {
       await wx.cloud.callFunction({
         name: 'updateRoomState',
-        data: { roomId, currentPage: 'auth' }
+        data: { roomId, currentPage: 'auth', resetCreativeIdeas: true }
       });
     } catch (e) {
       console.warn('creativeSummary handleFinish updateRoomState', e);
     }
     wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
+  },
+
+  async handleGoRoom() {
+    if (!this.data.isHost) return;
+    if (!this.data.canRestartRound) return;
+
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: { roomId, currentPage: 'addPlayer', resetCreativeIdeas: true }
+      });
+    } catch (e) {
+      console.warn('creativeSummary handleGoRoom updateRoomState', e);
+    }
+    wx.redirectTo({
+      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    });
   },
 
   handleGoBack() {
@@ -178,28 +203,5 @@ Page({
         wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
       }
     });
-  },
-
-  async _getDB() {
-    const cloud = wx.cloud || {};
-    let db = null;
-    try {
-      if (typeof cloud.database === 'function') {
-        const maybeDb = cloud.database();
-        if (maybeDb && typeof maybeDb.then === 'function') {
-          db = await maybeDb;
-        } else {
-          db = maybeDb;
-        }
-      } else if (cloud.database && typeof cloud.database.collection === 'function') {
-        db = cloud.database;
-      }
-    } catch (e) {
-      db = null;
-    }
-    if (!db || typeof db.collection !== 'function') {
-      throw new Error('云数据库不可用，请检查云开发初始化');
-    }
-    return db;
   }
 });

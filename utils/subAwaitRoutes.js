@@ -56,7 +56,6 @@ const SCENE_UI = {
   }
 };
 
-/** 副屏进度序：用于 subAwait 忽略滞后的「回跳」导航 */
 const PAGE_PROGRESS_RANK = {
   addplayer: 0,
   auth: 10,
@@ -76,6 +75,36 @@ const PAGE_PROGRESS_RANK = {
   closingend: 115,
   leaderboard: 120
 };
+
+const ROUTE_TO_PAGE = {
+  'pages/main-pages/addPlayer/index': 'addplayer',
+  'pages/main-pages/submitProblem/index': 'submitproblem',
+  'pages/main-pages/selectProblem/index': 'selectproblem',
+  'pages/main-pages/selectMode/index': 'selectmode',
+  'pages/main-pages/selectPlayer/index': 'selectplayer',
+  'pages/main-pages/partnerMode/confirmFirstPlayer/index': 'confirmfirstplayer',
+  'pages/main-pages/halliGalli/gamepage/index': 'gamepage',
+  'pages/main-pages/partnerMode/gamepage/index': 'gamepage',
+  'pages/main-pages/creativeInput/index': 'creativeinput',
+  'pages/main-pages/creativeSummary/index': 'creativesummary',
+  'pages/main-pages/partnerMode/statement/index': 'statement',
+  'pages/main-pages/partnerMode/closingStatement/index': 'closingstatement',
+  'pages/main-pages/partnerMode/closingEnd/index': 'closingend',
+  'pages/main-pages/discussion/index': 'discussion',
+  'pages/leaderboard/index': 'leaderboard'
+};
+
+function getPageKeyForCurrentRoute() {
+  return ROUTE_TO_PAGE[getCurrentRoute()] || '';
+}
+
+/** 已在较新页面时，忽略滞后的房间状态回跳（如已在 summary 时被拉回 input） */
+function shouldSkipStaleBackwardRedirect(targetPage) {
+  const currentPage = getPageKeyForCurrentRoute();
+  const currentRank = getPageProgressRank(currentPage);
+  const targetRank = getPageProgressRank(targetPage);
+  return currentRank >= 0 && targetRank >= 0 && currentRank > targetRank;
+}
 
 const SCENE_PROGRESS_RANK = {
   bg: 10,
@@ -259,6 +288,9 @@ function navigateByRoomState(page, roomState, roomId) {
     if (shouldSkipStaleSubScreenRedirect(page)) {
       return false;
     }
+    if (shouldSkipStaleBackwardRedirect(page)) {
+      return false;
+    }
     return openUrl(nav.url);
   }
 
@@ -278,6 +310,8 @@ module.exports = {
   isAwaitPage,
   getSceneForPage,
   getPageProgressRank,
+  getPageKeyForCurrentRoute,
+  shouldSkipStaleBackwardRedirect,
   getSceneProgressRank,
   shouldSkipStaleSubScreenRedirect,
   getCurrentRoute,

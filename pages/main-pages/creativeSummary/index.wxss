@@ -112,13 +112,16 @@
   padding: 20rpx 40rpx calc(20rpx + env(safe-area-inset-bottom));
 }
 
+.footer-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.room-btn,
 .finish-btn {
-  width: 100%;
+  flex: 1;
   height: 88rpx;
-  border: none;
   border-radius: 16rpx;
-  background: #5ec159;
-  color: #fff;
   font-size: 32rpx;
   font-weight: 500;
   display: flex;
@@ -127,11 +130,25 @@
   padding: 0;
 }
 
+.room-btn {
+  border: 2rpx solid #5ec159;
+  background: #fff;
+  color: #5ec159;
+}
+
+.finish-btn {
+  border: none;
+  background: #5ec159;
+  color: #fff;
+}
+
 .finish-btn-disabled {
+  width: 100%;
   background: #b6d8b5;
   color: #eef7ee;
 }
 
+.room-btn::after,
 .finish-btn::after {
   border: none;
 }

@@ -132,11 +132,11 @@ Page({
     }
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
+  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra = {}) {
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     try {
-      const data = { roomId, currentPage };
+      const data = { roomId, currentPage, ...extra };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
       await wx.cloud.callFunction({
@@ -156,7 +156,7 @@ Page({
     }
     const roomIdEnc = encodeURIComponent(roomId);
     wx.showLoading({ title: '请稍候…', mask: true });
-    this._updateRoomState('creativeInput').then(() => {
+    this._updateRoomState('creativeInput', null, null, { startCreativeSession: true }).then(() => {
       wx.hideLoading();
       wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
     }).catch(() => {

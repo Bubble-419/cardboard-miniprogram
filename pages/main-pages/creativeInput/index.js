@@ -1,24 +1,21 @@
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 Page({
-  _ideaCollection: 'designProblems',
-  _ideaEntryType: 'creativeIdea',
-
   data: {
     roomId: '',
     members: [],
-    memberCount: 0, // 仅用于 canViewSummary 判断，不展示
+    memberCount: 0,
     isHost: false,
     myPlayerIndex: null,
     myNickName: '',
     myAvatar: '',
     ideaText: '',
     submitted: false,
-    submittedCount: 0, // 仅用于 canViewSummary 判断，不展示
+    submittedCount: 0,
     canViewSummary: false
   },
 
-  onLoad(options) {
+  async onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
@@ -26,8 +23,8 @@ Page({
       return;
     }
     this.setData({ roomId });
-    this.loadRoomData(roomId);
-    this.loadIdeas(roomId);
+    await this.loadRoomData(roomId);
+    await this.loadIdeas(roomId);
     this._startStatePolling();
   },
 
@@ -51,15 +48,27 @@ Page({
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
       const me = members.find(m => m.isMe);
+      const isHost = result.isHost === true;
       this.setData({
         members,
-        memberCount: members.length, // 不展示，仅用于 canViewSummary
-        isHost: result.isHost === true,
+        memberCount: members.length,
+        isHost,
         myPlayerIndex: me ? me.playerIndex : null,
         myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
         myAvatar: me ? (me.avatarImage || me.avatarUrl || '') : ''
       });
-      this._updateCanViewSummary(this.data.submittedCount, members.length, result.isHost === true);
+      this._updateCanViewSummary(this.data.submittedCount, members.length, isHost);
+
+      if (isHost) {
+        try {
+          await wx.cloud.callFunction({
+            name: 'updateRoomState',
+            data: { roomId, currentPage: 'creativeInput' }
+          });
+        } catch (e) {
+          console.warn('creativeInput sync room state', e);
+        }
+      }
     } catch (e) {
       console.warn('creativeInput loadRoomData', e);
     }
@@ -67,20 +76,23 @@ Page({
 
   async loadIdeas(roomId) {
     try {
-      const db = await this._getDB();
-      const res = await db.collection(this._ideaCollection).where({
-        roomId,
-        entryType: this._ideaEntryType
-      }).get();
-      const list = (res && res.data) || [];
-      const submittedCount = list.length;
+      const res = await wx.cloud.callFunction({
+        name: 'listCreativeIdeas',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) return;
+
+      const list = result.ideas || [];
+      const submittedCount = result.submittedCount != null ? result.submittedCount : list.length;
       const mine = list.find(i => i.playerIndex === this.data.myPlayerIndex);
       this.setData({
-        submittedCount, // 不展示，仅用于 canViewSummary
+        submittedCount,
         submitted: !!mine,
-        ideaText: mine ? (mine.ideaText || '') : this.data.ideaText
+        ideaText: mine ? (mine.ideaText || '') : ''
       });
-      this._updateCanViewSummary(submittedCount, this.data.memberCount, this.data.isHost);
+      const memberCount = result.totalMembers || this.data.memberCount;
+      this._updateCanViewSummary(submittedCount, memberCount, this.data.isHost);
     } catch (e) {
       console.warn('creativeInput loadIdeas', e);
     }
@@ -92,11 +104,12 @@ Page({
   },
 
   async handleSubmit() {
+    if (this._submitting) return;
+
     const roomId = this.data.roomId;
-    const playerIndex = this.data.myPlayerIndex;
     const ideaText = (this.data.ideaText || '').trim();
     if (!roomId) return;
-    if (!playerIndex) {
+    if (!this.data.myPlayerIndex) {
       wx.showToast({ title: '未获取到玩家信息', icon: 'none' });
       return;
     }
@@ -105,40 +118,31 @@ Page({
       return;
     }
 
-    wx.showLoading({ title: '提交中…' });
+    this._submitting = true;
+    this._stopStatePolling();
+    wx.showLoading({ title: '提交中…', mask: true });
     try {
-      const db = await this._getDB();
-      const where = { roomId, playerIndex, entryType: this._ideaEntryType };
-      const existsRes = await db.collection(this._ideaCollection).where(where).get();
-      const nowData = {
-        roomId,
-        playerIndex,
-        entryType: this._ideaEntryType,
-        nickName: this.data.myNickName || `玩家${playerIndex}`,
-        avatarUrl: this.data.myAvatar || '',
-        ideaText,
-        updateTime: db.serverDate()
-      };
-      if (existsRes.data && existsRes.data.length) {
-        await db.collection(this._ideaCollection).doc(existsRes.data[0]._id).update({ data: nowData });
-      } else {
-        await db.collection(this._ideaCollection).add({
-          data: {
-            ...nowData,
-            createTime: db.serverDate()
-          }
-        });
+      const res = await wx.cloud.callFunction({
+        name: 'submitCreativeIdea',
+        data: { roomId, ideaText }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+        this._startStatePolling();
+        return;
       }
-      wx.showToast({ title: '提交成功', icon: 'success' });
+
       this.setData({ submitted: true });
-      this.loadIdeas(roomId);
       wx.redirectTo({
         url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
       });
     } catch (e) {
       console.error('creativeInput handleSubmit', e);
       wx.showToast({ title: '提交失败', icon: 'none' });
+      this._startStatePolling();
     } finally {
+      this._submitting = false;
       wx.hideLoading();
     }
   },
@@ -167,7 +171,7 @@ Page({
     this._stopStatePolling();
     const poll = async () => {
       const roomId = this.data.roomId || '';
-      if (!roomId) return;
+      if (!roomId || this._submitting) return;
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
@@ -182,6 +186,14 @@ Page({
               });
               return true;
             }
+            if (page === 'addplayer') {
+              wx.redirectTo({
+                url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+              });
+              return true;
+            }
+            if (page === 'creativeinput') return true;
+            if (['gamepage', 'playsuccess', 'playfail'].includes(page)) return true;
             return false;
           }
         });
@@ -189,6 +201,7 @@ Page({
         console.warn('creativeInput state poll', e);
       }
     };
+    poll();
     this._statePollTimer = setInterval(poll, 1000);
   },
 
@@ -205,28 +218,5 @@ Page({
         wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
       }
     });
-  },
-
-  async _getDB() {
-    const cloud = wx.cloud || {};
-    let db = null;
-    try {
-      if (typeof cloud.database === 'function') {
-        const maybeDb = cloud.database();
-        if (maybeDb && typeof maybeDb.then === 'function') {
-          db = await maybeDb;
-        } else {
-          db = maybeDb;
-        }
-      } else if (cloud.database && typeof cloud.database.collection === 'function') {
-        db = cloud.database;
-      }
-    } catch (e) {
-      db = null;
-    }
-    if (!db || typeof db.collection !== 'function') {
-      throw new Error('云数据库不可用，请检查云开发初始化');
-    }
-    return db;
   }
 });
