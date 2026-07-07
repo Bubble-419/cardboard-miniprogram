@@ -27,6 +27,25 @@
   align-items: center;
 }
 
+.room-entry {
+  width: 74rpx;
+  height: 74rpx;
+  border-radius: 9999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.room-entry:active {
+  opacity: 0.75;
+}
+
+.room-entry-icon {
+  width: 74rpx;
+  height: 74rpx;
+}
+
 .back-icon {
   width: 48rpx;
   height: 48rpx;

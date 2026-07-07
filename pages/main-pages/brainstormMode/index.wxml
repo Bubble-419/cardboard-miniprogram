@@ -3,12 +3,9 @@
   <!-- 顶部标题区 -->
   <view class="header-section">
     <view class="nav-row">
-      <image
-        class="back-btn"
-        src="/assets/icons/miniprogram-btn.png"
-        mode="aspectFit"
-        bindtap="handleGoBack"
-      />
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
     </view>
     <view class="title-block">
       <text class="page-title">脑暴模式</text>

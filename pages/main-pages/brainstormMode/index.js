@@ -15,6 +15,7 @@ const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const BRAINSTORM_MODES = [
   {
@@ -238,5 +239,9 @@ Page({
         });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

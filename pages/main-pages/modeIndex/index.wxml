@@ -3,7 +3,9 @@
   <block wx:if="{{!isHost || isWaiting}}">
     <view class="wait-page">
       <view class="wait-header" style="padding-top: {{navbarPaddingTop}}px">
-        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="handleGoBack" />
+        <view class="room-entry" bindtap="handleGoRoom">
+          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+        </view>
       </view>
       <view class="wait-body">
         <view class="mode-badge-row">
@@ -29,7 +31,9 @@
       <!-- 页面头部 -->
       <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
         <view class="nav-row">
-          <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="handleGoBack" />
+          <view class="room-entry" bindtap="handleGoRoom">
+            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+          </view>
         </view>
         <view class="mode-badge-row">
           <view class="mode-icon-wrap">

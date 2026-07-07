@@ -2,6 +2,7 @@ const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } =
 const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -262,5 +263,9 @@ Page({
         }
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

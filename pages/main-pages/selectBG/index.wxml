@@ -3,7 +3,9 @@
   <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
-        <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
+        <view class="room-entry" bindtap="handleGoRoom">
+          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+        </view>
       </view>
       <view class="navbar-title"></view>
       <view class="navbar-right"></view>

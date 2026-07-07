@@ -7,6 +7,7 @@ const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
@@ -268,5 +269,9 @@ Page({
         });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

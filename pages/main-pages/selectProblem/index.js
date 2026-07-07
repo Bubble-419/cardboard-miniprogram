@@ -7,6 +7,7 @@ const {
 } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -423,5 +424,9 @@ Page({
 
   goBack() {
     wx.navigateBack();
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

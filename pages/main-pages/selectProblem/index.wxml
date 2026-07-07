@@ -3,8 +3,11 @@
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}" style="height: {{scrollHeight}}px">
     <view class="main-content" style="padding-top: {{contentPaddingTop}}px">
 
-      <!-- 顶部：用户头像栏 -->
+      <!-- 顶部：房间入口 + 用户头像栏 -->
       <view class="header-bar">
+        <view class="room-entry" bindtap="handleGoRoom">
+          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+        </view>
         <view class="header-user-list">
           <user-list
             avatarList="{{avatarList}}"

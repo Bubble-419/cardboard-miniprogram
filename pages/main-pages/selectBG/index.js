@@ -11,6 +11,8 @@ const STEPS_WITHOUT_PLATFORM = [
   { type: 'function', label: '功能' }
 ];
 
+const { goRoomPage } = require('../../../utils/goRoomPage');
+
 Page({
   data: {
     includePlatform: false,
@@ -76,6 +78,10 @@ Page({
 
   goBack() {
     wx.navigateBack({ delta: 1 });
+  },
+
+  handleGoRoom() {
+    goRoomPage(getApp().globalData.roomId);
   },
 
   onSwiperChange(e) {
