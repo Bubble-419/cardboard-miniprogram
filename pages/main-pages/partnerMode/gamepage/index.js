@@ -42,6 +42,11 @@ const {
   isSamePlayerIndex
 } = require('../../../../utils/partnerRoundNavigation');
 const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
+const {
+  attachPrivateNotesToSummaries,
+  savePrivateRoundNote,
+  persistTempPhoto
+} = require('../../../../utils/partnerRoundPrivateNotes');
 
 Page({
   data: {
@@ -276,16 +281,23 @@ Page({
       filteredPlayerIndex,
       isPlayerFilterActive,
       currentPlayerIndex,
-      preferredCardIndex
+      preferredCardIndex,
+      roomId,
+      brainstormSessionSeq
     } = options || {};
 
     const filterActive = isPlayerFilterActive === true;
-    const displayRoundSummaries = buildDisplaySummaries(
-      roundSummaries,
-      members,
-      filteredPlayerIndex,
-      filterActive
+    const summaries = attachPrivateNotesToSummaries(
+      buildDisplaySummaries(
+        roundSummaries,
+        members,
+        filteredPlayerIndex,
+        filterActive
+      ),
+      roomId || this.data.roomId,
+      brainstormSessionSeq != null ? brainstormSessionSeq : this.data.brainstormSessionSeq
     );
+    const displayRoundSummaries = summaries;
     const summaryCount = displayRoundSummaries.length;
     const cardCount = Math.max(1, summaryCount + 1);
     const actionCardIndex = summaryCount;
@@ -591,7 +603,9 @@ Page({
       currentPlayerIndex: player.currentPlayerIndex,
       preferredCardIndex: (roundChanged || sessionChanged || options.resetTurnUi)
         ? undefined
-        : this.data.cardIndex
+        : this.data.cardIndex,
+      roomId: this.data.roomId,
+      brainstormSessionSeq
     });
 
     const patch = {
@@ -975,6 +989,116 @@ Page({
       cardIndexBeforeFilter: cardIndex,
       ...cardState
     });
+  },
+
+  _findSummaryIndexByRound(round) {
+    return (this.data.displayRoundSummaries || []).findIndex(
+      (item) => item && parseInt(item.round, 10) === parseInt(round, 10)
+    );
+  },
+
+  _saveRoundPrivateNote(round, note) {
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    savePrivateRoundNote(
+      this.data.roomId,
+      this.data.brainstormSessionSeq,
+      round,
+      note
+    );
+    this.setData({
+      [`displayRoundSummaries[${idx}].privateNote`]: note
+    });
+  },
+
+  onRoundPrivateNoteInput(e) {
+    const round = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.round
+      : null;
+    if (round == null) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const text = (e.detail && e.detail.value) || '';
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = (item.privateNote && item.privateNote.photos) || [];
+    this._saveRoundPrivateNote(round, { text, photos });
+  },
+
+  onRoundPrivateNotePhoto(e) {
+    const round = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.round
+      : null;
+    if (round == null) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = (item.privateNote && item.privateNote.photos) || [];
+    if (photos.length >= 9) {
+      wx.showToast({ title: '最多 9 张图片', icon: 'none' });
+      return;
+    }
+
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: 9 - photos.length,
+          sizeType: ['compressed'],
+          sourceType,
+          success: async (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) return;
+            wx.showLoading({ title: '保存中…', mask: true });
+            try {
+              const saved = [];
+              for (let i = 0; i < paths.length; i += 1) {
+                saved.push(await persistTempPhoto(paths[i]));
+              }
+              const text = (item.privateNote && item.privateNote.text) || '';
+              this._saveRoundPrivateNote(round, {
+                text,
+                photos: photos.concat(saved)
+              });
+            } catch (err) {
+              console.warn('onRoundPrivateNotePhoto', err);
+              wx.showToast({ title: '图片保存失败', icon: 'none' });
+            } finally {
+              wx.hideLoading();
+            }
+          },
+          fail: () => {
+            wx.showToast({ title: '选择图片失败', icon: 'none' });
+          }
+        });
+      }
+    });
+  },
+
+  onRoundPrivateNotePhotoRemove(e) {
+    const dataset = e.currentTarget && e.currentTarget.dataset;
+    const round = dataset && dataset.round;
+    const photoIndex = dataset && dataset.index != null ? parseInt(dataset.index, 10) : -1;
+    if (round == null || photoIndex < 0) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = ((item.privateNote && item.privateNote.photos) || []).slice();
+    if (photoIndex >= photos.length) return;
+    photos.splice(photoIndex, 1);
+    const text = (item.privateNote && item.privateNote.text) || '';
+    this._saveRoundPrivateNote(round, { text, photos });
+  },
+
+  onRoundPrivateNotePreview(e) {
+    const dataset = e.currentTarget && e.currentTarget.dataset;
+    const url = dataset && dataset.url;
+    const round = dataset && dataset.round;
+    if (!url) return;
+    const idx = this._findSummaryIndexByRound(round);
+    const item = idx >= 0 ? this.data.displayRoundSummaries[idx] : null;
+    const urls = item && item.privateNote ? item.privateNote.photos || [] : [url];
+    wx.previewImage({ current: url, urls });
   },
 
   handleInsertImage() {

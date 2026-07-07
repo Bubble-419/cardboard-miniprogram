@@ -173,6 +173,7 @@
         <swiper-item
           class="card-swiper-item"
           wx:for="{{displayRoundSummaries}}"
+          wx:for-index="summaryIdx"
           wx:key="round"
         >
           <view class="game-card game-card-muted">
@@ -180,7 +181,51 @@
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-              <text class="card-section-title">第{{item.round}}轮-语音纪要</text>
+              <view class="round-note-box">
+                <view class="round-note-photo-area">
+                  <view
+                    class="round-note-photo-item"
+                    wx:for="{{item.privateNote.photos}}"
+                    wx:for-item="photo"
+                    wx:for-index="photoIdx"
+                    wx:key="*this"
+                  >
+                    <image
+                      class="round-note-photo"
+                      src="{{photo}}"
+                      mode="aspectFill"
+                      catchtap="onRoundPrivateNotePreview"
+                      data-round="{{item.round}}"
+                      data-url="{{photo}}"
+                    />
+                    <view
+                      class="round-note-photo-remove"
+                      catchtap="onRoundPrivateNotePhotoRemove"
+                      data-round="{{item.round}}"
+                      data-index="{{photoIdx}}"
+                    >×</view>
+                  </view>
+                  <view
+                    class="round-note-photo-add"
+                    catchtap="onRoundPrivateNotePhoto"
+                    data-round="{{item.round}}"
+                  >
+                    <view class="round-note-photo-icon"></view>
+                    <text class="round-note-photo-add-text">拍照 / 相册</text>
+                  </view>
+                </view>
+                <textarea
+                  class="round-note-textarea"
+                  value="{{item.privateNote.text}}"
+                  placeholder="记录本回合想法（仅自己可见）"
+                  maxlength="500"
+                  auto-height
+                  show-confirm-bar="{{false}}"
+                  data-round="{{item.round}}"
+                  bindinput="onRoundPrivateNoteInput"
+                />
+              </view>
+              <text class="card-section-title card-section-title-gap">第{{item.round}}轮-语音纪要</text>
               <view class="card-bullet-list">
                 <view
                   class="card-bullet"
