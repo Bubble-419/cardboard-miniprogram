@@ -50,7 +50,7 @@
 
 .page-footer {
   flex-shrink: 0;
-  padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .top-bar {
@@ -581,22 +581,20 @@
 .bottom-actions {
   display: flex;
   align-items: stretch;
-  gap: 16rpx;
+  justify-content: space-between;
   width: 100%;
   box-sizing: border-box;
   padding: 0 48rpx;
 }
 
 .special-btn-wrap {
-  flex: 4;
-  min-width: 0;
-  width: 0;
+  flex: none;
+  width: calc((100% - 16rpx) * 4 / 17);
 }
 
 .statement-btn-wrap {
-  flex: 13;
-  min-width: 0;
-  width: 0;
+  flex: none;
+  width: calc((100% - 16rpx) * 13 / 17);
 }
 
 .special-btn {
