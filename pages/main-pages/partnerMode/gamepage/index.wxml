@@ -32,12 +32,16 @@
         avatarList="{{avatarList}}"
         actingUser="{{currentPlayerIndex}}"
         selectedUser="{{selectedPlayerIndex}}"
+        indicatorUser="{{indicatorPlayerIndex}}"
         enableAdd="{{false}}"
         isFold="{{true}}"
         showName="{{false}}"
         showActingFrame="{{gamepagePhase !== 'closing'}}"
         enableSelectedFrame="{{gamepagePhase !== 'closing'}}"
         enableAvatarTap="{{gamepagePhase !== 'closing'}}"
+        roundStartedAt="{{partnerRoundStartedAt}}"
+        roundTimerActive="{{roundTimerVisible}}"
+        roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
         bindavatartap="handleAvatarTap"
       />
     </view>
@@ -206,6 +210,8 @@
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible}}"
+            loop="{{true}}"
+            bind:timerexpire="handleRoundTimerExpire"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
             <view class="discussion-card-body">
@@ -254,6 +260,8 @@
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible}}"
+            loop="{{true}}"
+            bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >
             <view class="action-card-body">

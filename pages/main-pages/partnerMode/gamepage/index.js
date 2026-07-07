@@ -30,7 +30,8 @@ const {
 const {
   getRoundTimerState,
   buildPaginationIndexes,
-  isRoundTimerActive
+  isRoundTimerActive,
+  ROUND_DURATION_SEC
 } = require('../../../../utils/partnerRoundTimer');
 const {
   normalizePartnerRoundContent
@@ -50,6 +51,7 @@ Page({
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     selectedPlayerIndex: 1,
+    indicatorPlayerIndex: 1,
     members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
@@ -76,7 +78,7 @@ Page({
     partnerRoundStartedAt: null,
     roundTimerVisible: false,
     roundTimerElapsedRatio: 0,
-    roundTimerRemainingSec: 300,
+    roundTimerRemainingSec: 30,
     cardCount: 1,
     paginationIndexes: [0],
     playHistory: [],
@@ -290,6 +292,9 @@ Page({
     const cardIndex = preferredCardIndex != null
       ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
       : actionCardIndex;
+    const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
+      ? displayRoundSummaries[cardIndex].playerIndex
+      : currentPlayerIndex;
 
     return {
       displayRoundSummaries,
@@ -299,8 +304,17 @@ Page({
       isPlayerFilterActive: filterActive,
       selectedPlayerIndex: filterActive
         ? filteredPlayerIndex
-        : currentPlayerIndex
+        : currentPlayerIndex,
+      indicatorPlayerIndex
     };
+  },
+
+  _resolveIndicatorPlayerIndex(cardIndex) {
+    const summaries = this.data.displayRoundSummaries || [];
+    if (cardIndex < summaries.length && summaries[cardIndex]) {
+      return summaries[cardIndex].playerIndex;
+    }
+    return this.data.currentPlayerIndex;
   },
 
   _syncTimerFromStartedAt() {
@@ -379,7 +393,7 @@ Page({
     const fromServer = roomState.partnerRoundStartedAt != null
       ? Number(roomState.partnerRoundStartedAt)
       : 0;
-    if (Number.isFinite(fromServer) && fromServer > 0 && isRoundTimerActive(fromServer)) {
+    if (Number.isFinite(fromServer) && fromServer > 0) {
       this._cacheRoundStartedAt(roomId, currentRound, fromServer);
       return fromServer;
     }
@@ -405,11 +419,40 @@ Page({
     const visible = !!(this._roomLoaded
       && this._pageVisible
       && partnerRoundStartedAt
-      && isRoundTimerActive(partnerRoundStartedAt)
       && !isClosingPhase(this.data.gamepagePhase));
     if (visible !== this.data.roundTimerVisible) {
       this.setData({ roundTimerVisible: visible });
     }
+  },
+
+  async _rollRoundCountdown(startedAt) {
+    const ts = startedAt || Date.now();
+    const { roomId, currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
+
+    this._cacheRoundStartedAt(roomId, currentRound, ts);
+    this.setData({
+      partnerRoundStartedAt: ts,
+      roundTimerVisible: true,
+      roundTimerRemainingSec: ROUND_DURATION_SEC
+    });
+    this._restartRoundTimer();
+
+    if (!this.data.isHost) return;
+
+    try {
+      await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+        partnerRoundStartedAt: ts
+      });
+    } catch (e) {
+      console.warn('_rollRoundCountdown', e);
+    }
+  },
+
+  handleRoundTimerExpire(e) {
+    const detail = (e && e.detail) || {};
+    if (detail.loop !== true) return;
+    this._rollRoundCountdown(detail.startedAt);
   },
 
   async _ensureRoundTimerStarted(isHost) {
@@ -578,6 +621,7 @@ Page({
       paginationIndexes: paginationState.paginationIndexes,
       cardIndex: paginationState.cardIndex,
       selectedPlayerIndex: paginationState.selectedPlayerIndex,
+      indicatorPlayerIndex: paginationState.indicatorPlayerIndex,
       isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
 
@@ -591,7 +635,7 @@ Page({
       const serverTs = roomState.partnerRoundStartedAt != null
         ? Number(roomState.partnerRoundStartedAt)
         : 0;
-      patch.partnerRoundStartedAt = isRoundTimerActive(serverTs) ? serverTs : null;
+      patch.partnerRoundStartedAt = serverTs > 0 ? serverTs : null;
     }
 
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
@@ -617,6 +661,7 @@ Page({
         patch.paginationIndexes = resetCardState.paginationIndexes;
         patch.cardIndex = resetCardState.cardIndex;
         patch.selectedPlayerIndex = resetCardState.selectedPlayerIndex;
+        patch.indicatorPlayerIndex = resetCardState.indicatorPlayerIndex;
         patch.isPlayerFilterActive = false;
       }
     }
@@ -844,7 +889,11 @@ Page({
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
     const maxIndex = (this.data.displayRoundSummaries || []).length;
-    this.setData({ cardIndex: Math.min(index, maxIndex) });
+    const cardIndex = Math.min(index, maxIndex);
+    this.setData({
+      cardIndex,
+      indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
+    });
   },
 
   handleAvatarTap(e) {

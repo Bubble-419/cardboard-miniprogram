@@ -8,6 +8,7 @@ const {
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
 const BORDER_RADIUS_RPX = 28;
+const EXPIRE_ANIM_MS = 1200;
 
 Component({
   properties: {
@@ -22,40 +23,145 @@ Component({
     durationSec: {
       type: Number,
       value: ROUND_DURATION_SEC
+    },
+    loop: {
+      type: Boolean,
+      value: true
     }
   },
 
   data: {
-    borderVisible: false
+    borderVisible: false,
+    displayMode: 'idle'
   },
 
   lifetimes: {
     ready() {
-      this._initCanvas();
+      this._syncDisplayMode();
     },
     detached() {
       this._stopLocalTimer();
+      this._clearExpireTimer();
     }
   },
 
   pageLifetimes: {
     show() {
+      this._syncDisplayMode();
       this._restartLocalTimer();
     },
     hide() {
       this._stopLocalTimer();
+      this._clearExpireTimer();
       this._hideBorder();
     }
   },
 
   observers: {
     'startedAt, timerActive'() {
-      this._restartLocalTimer();
+      const serverTs = Number(this.properties.startedAt);
+      if (Number.isFinite(serverTs) && serverTs > (this._localCycleStartedAt || 0)) {
+        this._localCycleStartedAt = 0;
+      }
+      this._syncDisplayMode();
     }
   },
 
   methods: {
+    _clearExpireTimer() {
+      if (this._expireTimer) {
+        clearTimeout(this._expireTimer);
+        this._expireTimer = null;
+      }
+    },
+
+    _hasNaturallyExpired() {
+      const raw = this._getRawStartedAt();
+      const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
+      if (!Number.isFinite(raw) || raw <= 0) return false;
+      return (Date.now() - raw) / 1000 >= durationSec - 0.25;
+    },
+
+    _getRawStartedAt() {
+      const local = Number(this._localCycleStartedAt);
+      if (Number.isFinite(local) && local > 0) return local;
+      return Number(this.properties.startedAt);
+    },
+
+    _syncDisplayMode() {
+      if (this.data.displayMode === 'expiring') return;
+
+      const startedAt = this._resolveStartedAt();
+      const timerOn = this.properties.timerActive === true && (startedAt > 0 || this.properties.loop === true);
+
+      if (timerOn) {
+        const activeStartedAt = this._resolveStartedAt();
+        if (!activeStartedAt) {
+          if (this._hasNaturallyExpired() && (this.data.displayMode === 'timer' || this._timerWasActive)) {
+            this._triggerExpireAnimation();
+          }
+          return;
+        }
+        this._timerWasActive = true;
+        this._expiringTriggered = false;
+        this._clearExpireTimer();
+        if (this.data.displayMode !== 'timer') {
+          this.setData({ displayMode: 'timer' }, () => this._initCanvas());
+        } else {
+          this._restartLocalTimer();
+        }
+        return;
+      }
+
+      if (
+        this._timerWasActive
+        && this.data.displayMode === 'timer'
+        && this._hasNaturallyExpired()
+      ) {
+        this._triggerExpireAnimation();
+        return;
+      }
+
+      this._timerWasActive = false;
+      this._clearExpireTimer();
+      if (!this.properties.timerActive && this.data.displayMode !== 'idle') {
+        this._localCycleStartedAt = 0;
+        this.setData({ displayMode: 'idle' });
+      }
+    },
+
+    _restartCountdownCycle() {
+      const startedAt = Date.now();
+      this._localCycleStartedAt = startedAt;
+      this._expiringTriggered = false;
+      this._timerWasActive = true;
+      this.setData({ displayMode: 'timer' }, () => this._initCanvas());
+      this.triggerEvent('timerexpire', { startedAt, loop: true });
+    },
+
+    _triggerExpireAnimation() {
+      if (this._expiringTriggered || this.data.displayMode === 'expiring') return;
+      this._expiringTriggered = true;
+      this._timerWasActive = false;
+      this._stopLocalTimer();
+      this._hideBorder();
+      this.setData({ displayMode: 'expiring' });
+      this._expireTimer = setTimeout(() => {
+        this._expireTimer = null;
+        if (this.properties.loop === true && this.properties.timerActive === true) {
+          this._restartCountdownCycle();
+          return;
+        }
+        this._localCycleStartedAt = 0;
+        this.setData({ displayMode: 'idle' });
+        this._expiringTriggered = false;
+        this.triggerEvent('timerexpire', { loop: false });
+      }, EXPIRE_ANIM_MS);
+    },
+
     _initCanvas() {
+      if (this.data.displayMode !== 'timer') return;
+
       const query = this.createSelectorQuery().in(this);
       query.select('#gctCanvas')
         .fields({ node: true, size: true })
@@ -97,11 +203,15 @@ Component({
     },
 
     _resolveStartedAt() {
-      const raw = this.properties.startedAt;
-      const ts = Number(raw);
-      if (!Number.isFinite(ts) || ts <= 0) return 0;
       const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-      return isRoundTimerActive(ts, durationSec) ? ts : 0;
+      const candidates = [this._localCycleStartedAt, this.properties.startedAt];
+      for (let i = 0; i < candidates.length; i += 1) {
+        const ts = Number(candidates[i]);
+        if (Number.isFinite(ts) && ts > 0 && isRoundTimerActive(ts, durationSec)) {
+          return ts;
+        }
+      }
+      return 0;
     },
 
     _hideBorder() {
@@ -118,6 +228,7 @@ Component({
 
     _restartLocalTimer() {
       this._stopLocalTimer();
+      if (this.data.displayMode !== 'timer') return;
       const tick = () => this._drawBorder();
       tick();
       this._localTimer = setInterval(tick, 200);
@@ -205,7 +316,29 @@ Component({
 
       const startedAt = this._resolveStartedAt();
       if (!this.properties.timerActive || !startedAt) {
+        if (
+          this.properties.loop === true
+          && this.properties.timerActive === true
+          && this._hasNaturallyExpired()
+          && this.data.displayMode === 'timer'
+        ) {
+          this._triggerExpireAnimation();
+          return;
+        }
         this._hideBorder();
+        this._syncDisplayMode();
+        return;
+      }
+
+      const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
+      const ratio = Math.min(1, Math.max(0, (Date.now() - startedAt) / 1000 / durationSec));
+
+      if (ratio >= 0.9999) {
+        this._drawFullElapsedBorder(ctx, w, h);
+        if (!this.data.borderVisible) {
+          this.setData({ borderVisible: true });
+        }
+        this._triggerExpireAnimation();
         return;
       }
 
@@ -226,36 +359,44 @@ Component({
         Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2)
       );
 
-      const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-      const ratio = Math.min(1, Math.max(0, (Date.now() - startedAt) / 1000 / durationSec));
-
       if (ratio <= 0.0001) {
         this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
         this._strokePath(ctx, REMAIN_COLOR, thick);
       } else {
         const segP = getRoundRectSegmentProgresses(ratio, iw, ih, r);
 
-        // 0 右边：上 → 下
         this._drawLineProgress(ctx, xR, yT + r, xR, yB - r, segP[0], thick, thin);
-        // 1 右下圆角
         this._drawArcProgress(ctx, xR - r, yB - r, r, 0, Math.PI / 2, segP[1], thick, thin);
-        // 2 底边：右 → 左
         this._drawLineProgress(ctx, xR - r, yB, xL + r, yB, segP[2], thick, thin);
-        // 3 左下圆角
         this._drawArcProgress(ctx, xL + r, yB - r, r, Math.PI / 2, Math.PI, segP[3], thick, thin);
-        // 4 左边：下 → 上
         this._drawLineProgress(ctx, xL, yB - r, xL, yT + r, segP[4], thick, thin);
-        // 5 左上圆角
         this._drawArcProgress(ctx, xL + r, yT + r, r, Math.PI, Math.PI * 1.5, segP[5], thick, thin);
-        // 6 顶边：左 → 右
         this._drawLineProgress(ctx, xL + r, yT, xR - r, yT, segP[6], thick, thin);
-        // 7 右上圆角
         this._drawArcProgress(ctx, xR - r, yT + r, r, Math.PI * 1.5, Math.PI * 2, segP[7], thick, thin);
       }
 
       if (!this.data.borderVisible) {
         this.setData({ borderVisible: true });
       }
+    },
+
+    _drawFullElapsedBorder(ctx, w, h) {
+      ctx.clearRect(0, 0, w, h);
+      const rpxToPx = this._getRpxToPx();
+      const thin = 4 * rpxToPx;
+      const pad = thin / 2 + 0.5;
+      const xL = pad;
+      const yT = pad;
+      const xR = w - pad;
+      const yB = h - pad;
+      const iw = xR - xL;
+      const ih = yB - yT;
+      const r = Math.max(
+        0,
+        Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2)
+      );
+      this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
+      this._strokePath(ctx, ELAPSED_COLOR, thin);
     }
   }
 });

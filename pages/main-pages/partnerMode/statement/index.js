@@ -1,5 +1,5 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const {
   PHASE_PLAY,
@@ -121,7 +121,17 @@ Page({
         });
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => page === 'statement'
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'statement') return true;
+            if (page === 'gamepage') {
+              const state = pollResult.roomState || {};
+              const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
+              const phase = state.partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined;
+              safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner', { phase }));
+              return true;
+            }
+            return false;
+          }
         });
       } catch (e) {
         console.warn('statement state poll', e);

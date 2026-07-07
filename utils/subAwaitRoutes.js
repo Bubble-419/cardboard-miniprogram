@@ -101,9 +101,12 @@ function getPageKeyForCurrentRoute() {
 /** 已在较新页面时，忽略滞后的房间状态回跳（如已在 summary 时被拉回 input） */
 function shouldSkipStaleBackwardRedirect(targetPage) {
   const currentPage = getPageKeyForCurrentRoute();
-  const currentRank = getPageProgressRank(currentPage);
-  const targetRank = getPageProgressRank(targetPage);
-  return currentRank >= 0 && targetRank >= 0 && currentRank > targetRank;
+  const target = (targetPage || '').toLowerCase();
+  const staleTargetsByCurrent = {
+    creativesummary: ['creativeinput', 'gamepage', 'playsuccess', 'playfail']
+  };
+  const staleTargets = staleTargetsByCurrent[currentPage];
+  return Array.isArray(staleTargets) && staleTargets.includes(target);
 }
 
 const SCENE_PROGRESS_RANK = {

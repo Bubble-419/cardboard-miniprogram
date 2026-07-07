@@ -98,6 +98,75 @@
   box-shadow: 0 0 12rpx rgba(94, 193, 89, 0.55);
 }
 
+.acting-timer-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.acting-timer-canvas-visible {
+  opacity: 1;
+}
+
+.partner-ring-expiring {
+  animation: acting-ring-expire-pulse 1.2s ease-out forwards;
+}
+
+.partner-ring-expiring-inner {
+  animation: acting-ring-expire-spin 1.2s ease-out forwards;
+}
+
+.avatar-frame-expiring {
+  z-index: 4;
+}
+
+.avatar-wrap-expiring {
+  animation: acting-avatar-expire-pulse 1.2s ease-out forwards;
+}
+
+@keyframes acting-avatar-expire-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes acting-ring-expire-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.16);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes acting-ring-expire-spin {
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(200deg);
+    opacity: 0;
+  }
+}
+
 .me-indicator {
   width: 0;
   height: 0;
@@ -236,6 +305,10 @@
 }
 
 .layout-stack .avatar-item-me {
+  z-index: 10;
+}
+
+.layout-stack .avatar-item-indicator {
   z-index: 10;
 }
 

@@ -1,4 +1,4 @@
-const ROUND_DURATION_SEC = 5 * 60;
+const ROUND_DURATION_SEC = 30; // TODO: 测试用 30s，上线前改回 5 * 60
 
 /**
  * 从右上角起顺时针：右 → 底 → 左 → 顶，每边占 25% 进度
