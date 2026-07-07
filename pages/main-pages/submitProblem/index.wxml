@@ -87,15 +87,8 @@
   <page-footer
     wx:if="{{!hasSubmitted}}"
     extClass="footer-action"
-    bind:prev="handleGoBack"
+    showPrev="{{false}}"
   >
     <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
   </page-footer>
-
-  <page-footer
-    wx:if="{{hasSubmitted}}"
-    extClass="footer-action"
-    showPrimary="{{false}}"
-    bind:prev="handleGoBack"
-  ></page-footer>
 </view>

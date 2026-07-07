@@ -117,16 +117,9 @@
   <page-footer
     wx:if="{{isHost}}"
     extClass="footer"
-    bind:prev="goBack"
+    showPrev="{{false}}"
   >
     <view class="confirm-btn" bindtap="confirmSelection">确认问题</view>
   </page-footer>
-
-  <page-footer
-    wx:else
-    extClass="footer"
-    showPrimary="{{false}}"
-    bind:prev="goBack"
-  ></page-footer>
 
 </view>
