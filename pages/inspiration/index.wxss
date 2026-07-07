@@ -1,13 +1,14 @@
 .container {
   min-height: 100vh;
-  background-color: #f3f7f7;
-  padding-bottom: 120rpx;
+  background-color: #f8fbfa;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 自定义导航栏 */
 .custom-navbar {
-  background-color: #ffffff;
-  padding-top: env(safe-area-inset-top);
+  background-color: #f8fbfa;
+  padding-top: max(0px, calc(env(safe-area-inset-top, 0) - 18px));
+  flex-shrink: 0;
 }
 
 .navbar-content {
@@ -55,7 +56,6 @@
   justify-content: center;
 }
 
-/* 文本/图像切换 */
 .tab-switch {
   position: relative;
   width: 468rpx;
@@ -104,10 +104,10 @@
   color: #717b7e;
 }
 
-/* AI 灵感区域 */
 .ai-section {
   padding: 20rpx 24rpx;
   background-color: #ffffff;
+  flex-shrink: 0;
 }
 
 .ai-input-container {
@@ -155,13 +155,16 @@
   border: 0.4rpx solid #ffffff;
 }
 
+.ai-button-disabled {
+  opacity: 0.5;
+}
+
 .ai-button-text {
   font-size: 28rpx;
   color: #ffffff;
   font-weight: 500;
 }
 
-/* 已引用灵感标签 */
 .referenced-tag {
   display: inline-flex;
   align-items: center;
@@ -182,11 +185,23 @@
   color: #00b46a;
 }
 
-/* 瀑布流容器 */
 .inspirations-container {
-  height: calc(100vh - 400rpx);
-  width: 95%;
-  padding: 20rpx 24rpx;
+  flex: 1;
+  height: 0;
+  width: 100%;
+  padding: 20rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.waterfall-empty {
+  padding: 80rpx 32rpx;
+  text-align: center;
+}
+
+.waterfall-empty-text {
+  font-size: 28rpx;
+  color: #879487;
+  line-height: 1.5;
 }
 
 .waterfall-wrapper {
@@ -201,7 +216,6 @@
   gap: 16rpx;
 }
 
-/* 灵感卡片 */
 .inspiration-card {
   position: relative;
   background-color: #ffffff;
@@ -248,10 +262,19 @@
 .card-image {
   width: 100%;
   border-radius: 28rpx;
-  margin-bottom: 16rpx;
 }
 
-/* 音频播放器 */
+.card-ai-tag {
+  position: absolute;
+  top: 16rpx;
+  left: 16rpx;
+  font-size: 20rpx;
+  color: #00b46a;
+  background: #cdffe5;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+
 .audio-player {
   display: flex;
   flex-direction: column;
@@ -288,48 +311,3 @@
   border-radius: 2rpx;
   height: 20rpx;
 }
-
-/* 底部输入框 */
-.bottom-input {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: #eeeff3;
-  padding: 20rpx 24rpx;
-  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
-  border-top: 0.8rpx solid #d7d7d7;
-}
-
-.input-container {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  background-color: #ffffff;
-  border: 0.8rpx solid #d7d7d7;
-  border-radius: 28rpx;
-  padding: 20rpx 24rpx;
-}
-
-.add-icon {
-  width: 24rpx;
-  height: 24rpx;
-  flex-shrink: 0;
-}
-
-.record-input {
-  flex: 1;
-  font-size: 32rpx;
-  color: #424242;
-}
-
-.record-input::placeholder {
-  color: #aeaeae;
-}
-
-.mic-icon {
-  width: 48rpx;
-  height: 48rpx;
-  flex-shrink: 0;
-}
-

@@ -602,12 +602,15 @@ game-card-timer {
 .inspiration-bar {
   margin: 4rpx 28rpx 8rpx;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12rpx;
   flex-shrink: 0;
+  position: relative;
+  z-index: 51;
 }
 
 .inspiration-badge-wrap {
+  position: relative;
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
@@ -618,20 +621,88 @@ game-card-timer {
   flex-shrink: 0;
 }
 
+.inspiration-count-badge {
+  position: absolute;
+  top: -6rpx;
+  right: -6rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border-radius: 16rpx;
+  background: #5ec159;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
 .inspiration-badge {
   font-size: 36rpx;
 }
 
-.inspiration-input-fake {
+.inspiration-composer {
   flex: 1;
-  height: 72rpx;
-  padding: 0 24rpx;
+  min-width: 0;
+  min-height: 72rpx;
+  padding: 10rpx 20rpx;
   background: #fff;
   border: 1rpx solid #d7d7d7;
   border-radius: 28rpx;
-  display: flex;
-  align-items: center;
   box-sizing: border-box;
+}
+
+.inspiration-composer-focused {
+  border-color: #5ec159;
+}
+
+.inspiration-photo-strip {
+  width: 100%;
+  margin-bottom: 8rpx;
+  white-space: nowrap;
+}
+
+.inspiration-photo-strip-inner {
+  display: inline-flex;
+  gap: 12rpx;
+}
+
+.inspiration-photo-thumb-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 72rpx;
+  flex-shrink: 0;
+}
+
+.inspiration-photo-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 10rpx;
+  background: #eee;
+}
+
+.inspiration-photo-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 32rpx;
+  text-align: center;
+}
+
+.inspiration-textarea {
+  width: 100%;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.45;
 }
 
 .inspiration-placeholder {
@@ -639,7 +710,7 @@ game-card-timer {
   color: #b0b0b0;
 }
 
-.inspiration-submit {
+.inspiration-action-btn {
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
@@ -650,9 +721,55 @@ game-card-timer {
   flex-shrink: 0;
 }
 
-.inspiration-arrow {
+.inspiration-action-btn-disabled {
+  opacity: 0.55;
+}
+
+.inspiration-camera-icon {
+  width: 36rpx;
+  height: 30rpx;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.inspiration-camera-icon::before {
+  content: '';
+  position: absolute;
+  left: 2rpx;
+  top: 4rpx;
+  width: 32rpx;
+  height: 22rpx;
+  border: 3rpx solid #fff;
+  border-radius: 5rpx;
+  box-sizing: border-box;
+}
+
+.inspiration-camera-icon::after {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 0;
+  width: 14rpx;
+  height: 8rpx;
+  border: 3rpx solid #fff;
+  border-bottom: none;
+  border-radius: 4rpx 4rpx 0 0;
+  box-sizing: border-box;
+}
+
+.inspiration-send-icon {
   width: 32rpx;
   height: 32rpx;
+}
+
+.inspiration-focus-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+  background: transparent;
 }
 
 .bottom-actions {
