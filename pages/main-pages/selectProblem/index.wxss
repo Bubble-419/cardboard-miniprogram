@@ -23,7 +23,7 @@
 .header-section {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 24rpx;
 }
 
@@ -87,39 +87,6 @@
   height: 48rpx;
 }
 
-/* ===== 情境格子 ===== */
-/* Figma: grid 2×2, gap 3.96px → 8rpx, width fill */
-.context-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8rpx;
-  width: 100%;
-}
-
-/* Figma EL-fdd8eb8f: row, padding 4px 14px → 8rpx 28rpx, bg #E9F5E9,
-   border 0.99px #68D062 → 2rpx, border-radius 15.85px → 32rpx */
-.context-item {
-  background-color: #E9F5E9;
-  border: 2rpx solid #68D062;
-  border-radius: 32rpx;
-  padding: 8rpx 28rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-/* Figma 情境文字: 11.89px Medium 500, #1E293B */
-.context-value {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #1E293B;
-  line-height: 32rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ===== 标题区 ===== */
 /* Figma TitleSection gap: 12px → 24rpx（与主 gap 相同，通过外层控制） */
 .title-section {
@@ -172,17 +139,12 @@
   border-color: #5EC159;
 }
 
-/* 编辑态顶对齐 */
-.problem-item.editing {
-  align-items: flex-start;
-}
-
 .problem-item:active:not(.readonly) {
   opacity: 0.88;
 }
 
-.problem-item.readonly {
-  opacity: 0.92;
+.problem-item.readonly:active {
+  opacity: 1;
 }
 
 /* 左侧竖线: Figma 0×30px + stroke 4px → 8rpx×60rpx */
@@ -205,10 +167,6 @@
   align-self: center;
 }
 
-.problem-item.editing .problem-body {
-  align-self: flex-start;
-}
-
 /* Figma: 14px Regular 400, lineHeight 1.2em, #999999 */
 .problem-text {
   font-size: 28rpx;
@@ -218,7 +176,7 @@
   display: block;
 }
 
-/* Textarea 编辑态 */
+/* Textarea 编辑态：高度由 JS 测量锁定，与展示态文字一致 */
 .problem-textarea {
   width: 100%;
   font-size: 28rpx;
@@ -228,6 +186,8 @@
   background: transparent;
   padding: 0;
   margin: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* 右侧图标区 */
@@ -237,11 +197,6 @@
   justify-content: center;
   flex-shrink: 0;
   align-self: center;
-}
-
-.problem-item.editing .problem-right {
-  align-self: flex-start;
-  padding-top: 4rpx;
 }
 
 .right-icon-btn {

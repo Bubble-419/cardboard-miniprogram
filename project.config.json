@@ -4,5 +4,6 @@
   "setting": {
     "enhance": true,
     "es6": true
-  }
+  },
+  "compileType": "miniprogram"
 }

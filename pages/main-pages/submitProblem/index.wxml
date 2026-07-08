@@ -24,12 +24,8 @@
         </view>
       </view>
 
-      <!-- 情境格子 -->
-      <view class="context-grid" wx:if="{{categories.length}}">
-        <view class="context-item" wx:for="{{categories}}" wx:key="id">
-          <text class="context-value">{{item.name}}</text>
-        </view>
-      </view>
+      <!-- 情境展示 -->
+      <context-display items="{{categories}}" />
     </view>
 
     <!-- 主内容区（未提交状态） -->

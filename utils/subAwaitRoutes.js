@@ -22,9 +22,12 @@ const AWAIT_PAGE_TO_SCENE = {
 const SCENE_UI = {
   bg: {
     navbarTitle: '',
-    mainText: '等待主屏选择情境',
+    mainText: '等待房主设置情境',
     mainTextLines: [],
     subText: '等待中...',
+    subTextLine1: '房主正在准备本次工作坊的情境内容',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
     multiLine: false
   },
   mode: {

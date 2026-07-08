@@ -9,7 +9,7 @@
           bindtap="handleGoBack"
         ></image>
       </view>
-      <view class="navbar-title">确认首位出牌玩家</view>
+      <view class="navbar-title"></view>
       <view class="navbar-right"></view>
     </view>
   </view>
@@ -42,14 +42,6 @@
           <view class="deco-particle deco-particle-4"></view>
           <view class="deco-particle deco-particle-5"></view>
           <view class="deco-particle deco-particle-6"></view>
-
-          <view class="center-area">
-            <view class="center-card">
-              <text class="center-label">首位出牌</text>
-              <text class="center-name" wx:if="{{selectedPlayerName}}">{{selectedPlayerName}}</text>
-              <text class="center-hint" wx:else>请点击头像</text>
-            </view>
-          </view>
 
           <block wx:for="{{memberSlots}}" wx:key="index">
             <view

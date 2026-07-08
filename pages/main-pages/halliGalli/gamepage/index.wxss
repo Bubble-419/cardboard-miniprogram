@@ -101,41 +101,6 @@
   border-radius: 9999rpx;
 }
 
-/* 情境格子（与选择设计问题页一致） */
-.context-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx;
-}
-
-.context-item {
-  width: calc(50% - 4rpx);
-  padding: 4rpx 32rpx;
-  background-color: #E9F5E9;
-  border: 2rpx solid #68D062;
-  border-radius: 32rpx;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-.context-label {
-  font-size: 20rpx;
-  font-weight: 500;
-  color: #5EC159;
-  line-height: 30rpx;
-}
-
-.context-value {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #1E293B;
-  line-height: 32rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ===== 规则说明区 ===== */
 .rules-section {
   padding: 0 40rpx 40rpx;

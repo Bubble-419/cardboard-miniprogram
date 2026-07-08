@@ -463,3 +463,50 @@
   color: #d1d5db;
   line-height: 32rpx;
 }
+
+/* 调试用：输入房间号加入（fixed 不占布局，后续会移除） */
+.debug-join-bar {
+  position: fixed;
+  left: 32rpx;
+  right: 32rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 20rpx);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 16rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
+  border: 2rpx solid #e5e7eb;
+  box-sizing: border-box;
+}
+
+.debug-join-input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  color: #111827;
+  background-color: #f3f4f6;
+  border-radius: 12rpx;
+}
+
+.debug-join-btn {
+  flex-shrink: 0;
+  height: 64rpx;
+  padding: 0 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: #5ec159;
+  border-radius: 12rpx;
+}
+
+.debug-join-btn:active {
+  opacity: 0.85;
+}

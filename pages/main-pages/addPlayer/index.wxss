@@ -120,6 +120,34 @@
   text-align: center;
 }
 
+/* 调试用房间号展示 */
+.room-id-wrap {
+  margin-top: 8rpx;
+  padding: 12rpx 24rpx;
+  background-color: #f3f4f6;
+  border-radius: 12rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.room-id-label {
+  font-size: 26rpx;
+  color: #6b7280;
+}
+
+.room-id-value {
+  font-size: 40rpx;
+  color: #111827;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 2rpx rgba(17, 24, 39, 0.04);
+}
+
 .member-count-wrap {
   margin-top: 12rpx;
   display: flex;

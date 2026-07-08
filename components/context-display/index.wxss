@@ -1,0 +1,66 @@
+/* Figma SelectedContextsSection #5752:14483 */
+:host {
+  display: block;
+  width: 100%;
+}
+
+.context-display {
+  width: 100%;
+}
+
+/* Context Grid: 2×2, gap 3.96px → 8rpx */
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8rpx;
+  width: 100%;
+}
+
+/* Item: row, padding 4px 14px → 8rpx 28rpx, gap 6px → 12rpx */
+.context-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  width: 100%;
+  padding: 8rpx 28rpx;
+  background-color: #E9F5E9;
+  border: 2rpx solid #68D062;
+  border-radius: 32rpx;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Icon: 24×24px → 48rpx */
+.context-icon {
+  width: 48rpx;
+  height: 48rpx;
+  flex-shrink: 0;
+}
+
+.context-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Label: 10px Bold 700, #509D59, lineHeight 14px → 20rpx / 28rpx */
+.context-label {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #509D59;
+  line-height: 28rpx;
+}
+
+/* Value: 12px Medium 500, #242424, lineHeight 15.85px → 24rpx / 32rpx */
+.context-value {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #242424;
+  line-height: 32rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

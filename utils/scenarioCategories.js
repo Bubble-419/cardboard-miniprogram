@@ -1,9 +1,29 @@
+const CONTEXT_ICONS = {
+  scene: '/assets/icons/icon-context-scene.png',
+  user: '/assets/icons/icon-context-user.png',
+  platform: '/assets/icons/icon-context-platform.png',
+  function: '/assets/icons/icon-context-function.png'
+};
+
 const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', label: '用户', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', label: '平台', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
+  { id: 1, key: 'scene', label: '场景', name: '场景', icon: CONTEXT_ICONS.scene, selected: false },
+  { id: 2, key: 'user', label: '用户', name: '用户', icon: CONTEXT_ICONS.user, selected: false },
+  { id: 3, key: 'platform', label: '平台', name: '平台', icon: CONTEXT_ICONS.platform, selected: false },
+  { id: 4, key: 'function', label: '功能', name: '功能', icon: CONTEXT_ICONS.function, selected: false }
 ];
+
+/** 根据已选情境生成情境展示项（仅含有效值） */
+function buildContextDisplayItems(bg) {
+  const normalized = normalizeBG(bg);
+  if (!normalized) return [];
+  return DEFAULT_CATEGORIES
+    .filter((item) => normalized[item.key])
+    .map((item) => ({
+      ...item,
+      label: item.label,
+      name: normalized[item.key]
+    }));
+}
 
 /** 根据已选情境生成分类标签列表 */
 function buildCategoriesFromBG(bg) {
@@ -49,7 +69,9 @@ function normalizeBG(bg) {
 }
 
 module.exports = {
+  CONTEXT_ICONS,
   DEFAULT_CATEGORIES,
+  buildContextDisplayItems,
   buildCategoriesFromBG,
   applyBGToApp,
   normalizeBG

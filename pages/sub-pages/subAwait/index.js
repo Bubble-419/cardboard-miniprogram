@@ -14,6 +14,9 @@ Page({
     mainText: '',
     mainTextLines: [],
     subText: '等待中...',
+    subTextLine1: '',
+    subTextLine2: '',
+    statusText: '正在等待中...',
     multiLine: false
   },
 
@@ -26,7 +29,9 @@ Page({
     const initialScene = (options && options.scene) || 'bg';
     this.applyScene(initialScene);
     this.setData({ roomId });
-    this.startCountdown();
+    if (initialScene !== 'bg') {
+      this.startCountdown();
+    }
     this.startStateCheck();
   },
 
@@ -48,11 +53,15 @@ Page({
       mainText: ui.mainText,
       mainTextLines: ui.mainTextLines,
       subText: ui.subText,
+      subTextLine1: ui.subTextLine1 || '',
+      subTextLine2: ui.subTextLine2 || '',
+      statusText: ui.statusText || '正在等待中...',
       multiLine: ui.multiLine
     });
   },
 
   startCountdown() {
+    if (this.data.scene === 'bg') return;
     this.countdownTimer = setInterval(() => {
       const count = this.data.countdown > 0 ? this.data.countdown - 1 : 5;
       this.setData({ countdown: count || 5 });

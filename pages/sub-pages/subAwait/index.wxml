@@ -1,5 +1,6 @@
-<view class="container">
-  <view class="custom-navbar">
+<view class="container {{scene === 'bg' ? 'container-bg-scene' : ''}}">
+  <!-- 非情境等待场景保留原导航栏 -->
+  <view class="custom-navbar" wx:if="{{scene !== 'bg'}}">
     <view class="navbar-content">
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit"></image>
@@ -12,7 +13,35 @@
     </view>
   </view>
 
-  <view class="waiting-content">
+  <!-- 情境等待：Figma #5878:13766 -->
+  <view class="bg-wait-page" wx:if="{{scene === 'bg'}}">
+    <image class="bg-pattern" src="/assets/subAwait/bg-dotted-lines.svg" mode="widthFix" />
+    <view class="bg-wait-content">
+      <view class="hero-section">
+        <image
+          class="hero-image"
+          src="/assets/subAwait/wait-hero-5a8ea5.png"
+          mode="aspectFill"
+        />
+      </view>
+
+      <view class="text-section">
+        <text class="heading">{{mainText}}</text>
+        <view class="desc-group">
+          <text class="desc-line">{{subTextLine1}}</text>
+          <text class="desc-line">{{subTextLine2}}</text>
+        </view>
+      </view>
+
+      <view class="status-pill">
+        <image class="status-icon" src="/assets/subAwait/icon-waiting.png" mode="aspectFit" />
+        <text class="status-text">{{statusText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 其他等待场景：沿用原布局 -->
+  <view class="waiting-content" wx:else>
     <view class="countdown" wx:if="{{countdown > 0}}">{{countdown}}s</view>
 
     <view class="character-container">

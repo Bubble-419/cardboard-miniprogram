@@ -27,6 +27,10 @@
       <text class="instruction-title">请各成员扫码进入游戏</text>
       <text class="instruction-subtitle" wx:if="{{isHost}}">长按后拖动可调整成员顺序；长按其他成员头像可踢出</text>
       <text class="instruction-subtitle" wx:else>等待房主选择脑暴模式</text>
+      <view wx:if="{{roomId}}" class="room-id-wrap">
+        <text class="room-id-label">房间号：</text>
+        <text class="room-id-value" selectable>{{formattedRoomId || roomId}}</text>
+      </view>
       <view class="member-count-wrap">
         <text class="member-count-label">当前人数：</text>
         <text class="member-count-value {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}</text>

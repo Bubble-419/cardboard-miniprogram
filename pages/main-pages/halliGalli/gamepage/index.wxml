@@ -31,28 +31,8 @@
         </view>
       </view>
 
-      <!-- 情境格（2列 flex-wrap，与选择设计问题页保持一致） -->
-      <view
-        class="context-grid"
-        wx:if="{{selectedBG && (selectedBG.scene || selectedBG.user || selectedBG.function)}}"
-      >
-        <view class="context-item" wx:if="{{selectedBG.scene}}">
-          <text class="context-label">场景</text>
-          <text class="context-value">{{selectedBG.scene}}</text>
-        </view>
-        <view class="context-item" wx:if="{{selectedBG.user}}">
-          <text class="context-label">用户</text>
-          <text class="context-value">{{selectedBG.user}}</text>
-        </view>
-        <view class="context-item" wx:if="{{selectedBG.platform}}">
-          <text class="context-label">平台</text>
-          <text class="context-value">{{selectedBG.platform}}</text>
-        </view>
-        <view class="context-item" wx:if="{{selectedBG.function}}">
-          <text class="context-label">功能</text>
-          <text class="context-value">{{selectedBG.function}}</text>
-        </view>
-      </view>
+      <!-- 情境展示 -->
+      <context-display bg="{{selectedBG}}" />
     </view>
 
     <!-- 规则说明区 -->

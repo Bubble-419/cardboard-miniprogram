@@ -126,6 +126,8 @@ Page({
         isHost,
         myAvatar,
         otherAvatars
+      }, () => {
+        this.loadSubmittedProblems();
       });
 
       if (isHost) {
@@ -199,35 +201,50 @@ Page({
   async loadSubmittedProblems() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
+    const isHost = this.data.isHost === true;
     try {
       const problemList = await listProblems(roomId);
       const newProblems = problemList.map((item) => ({
         id: item.id,
         text: item.text,
-        selected: item.id === this.data.selectedProblemId,
+        selected: false,
         isAISummary: false
       }));
 
-      if (newProblems.length === 0) return;
+      if (newProblems.length === 0) {
+        if (this.data.problems.length > 0) {
+          this.setData({ problems: [], selectedProblemId: null, editingProblemId: '' });
+        }
+        return;
+      }
 
-      const currentIds = this.data.problems.map((p) => p.id);
-      const newIds = newProblems.map((p) => p.id);
-      const changed = newProblems.length !== this.data.problems.length
-        || newIds.some((id) => !currentIds.includes(id));
-
-      if (!changed) return;
-
-      let selectedProblemId = this.data.selectedProblemId;
-      if (!selectedProblemId || !newIds.includes(selectedProblemId)) {
+      let selectedProblemId = isHost ? this.data.selectedProblemId : null;
+      if (isHost && (!selectedProblemId || !newProblems.some((p) => p.id === selectedProblemId))) {
         selectedProblemId = newProblems[0].id;
       }
 
       const problems = newProblems.map((item) => ({
         ...item,
-        selected: item.id === selectedProblemId
+        selected: isHost && item.id === selectedProblemId
       }));
 
-      this.setData({ problems, selectedProblemId });
+      const currentIds = this.data.problems.map((p) => p.id);
+      const newIds = newProblems.map((p) => p.id);
+      const selectionChanged = isHost
+        ? problems.some((p, i) => p.selected !== (this.data.problems[i] && this.data.problems[i].selected))
+        : this.data.problems.some((p) => p.selected);
+      const changed = newProblems.length !== this.data.problems.length
+        || newIds.some((id) => !currentIds.includes(id))
+        || selectionChanged
+        || (!isHost && this.data.editingProblemId);
+
+      if (!changed) return;
+
+      this.setData({
+        problems,
+        selectedProblemId: isHost ? selectedProblemId : null,
+        editingProblemId: isHost ? this.data.editingProblemId : ''
+      });
     } catch (e) {
       console.warn('loadSubmittedProblems', e);
     }
@@ -260,34 +277,28 @@ Page({
     this.setData({ problems, selectedProblemId: problemId });
   },
 
+  _getTextLineHeight() {
+    const ww = this._windowWidth || 375;
+    return Math.ceil((28 / 750) * ww * 1.2);
+  },
+
   onEditProblem(e) {
     if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
-    const problem = this.data.problems.find((p) => p.id === problemId);
-    const text = problem ? (problem.text || '') : '';
 
-    // 预先计算 textarea 初始高度，避免 auto-height 首帧渲染跳变
-    // 28rpx font-size × 1.2 line-height，换算成 CSS px
-    const ww = this._windowWidth || 375;
-    const lineH = Math.ceil((28 / 750) * ww * 1.2);
-    // 按换行符估算行数（不含自动换行，作为下界）
-    const lineCount = Math.max(1, text.split('\n').length);
-    const initHeight = lineCount * lineH;
-
-    // 与 editingProblemId 同帧 setData，确保 textarea 首次渲染即带正确高度
-    this.setData({
-      editingProblemId: problemId,
-      [`textareaHeights.${problemId}`]: initHeight,
-    });
-  },
-
-  // textarea linechange 事件：内容行数变化时同步实际高度
-  onTextareaLineChange(e) {
-    const id = e.currentTarget.dataset.id;
-    const height = e.detail && e.detail.height;
-    if (id && height) {
-      this.setData({ [`textareaHeights.${id}`]: height });
-    }
+    // 进入编辑前先测量展示态文字高度，确保 textarea 与原文同高
+    wx.createSelectorQuery()
+      .in(this)
+      .select(`#problem-text-${problemId}`)
+      .boundingClientRect((rect) => {
+        const fallback = this._getTextLineHeight();
+        const height = rect && rect.height > 0 ? Math.ceil(rect.height) : fallback;
+        this.setData({
+          editingProblemId: problemId,
+          [`textareaHeights.${problemId}`]: height,
+        });
+      })
+      .exec();
   },
 
   stopPropagation() {},

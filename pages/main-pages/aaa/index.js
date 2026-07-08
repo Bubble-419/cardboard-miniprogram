@@ -16,6 +16,7 @@ Page({
     roomTimeText: '',
     timeLabel: '创建/加入时间',
     loading: false,
+    debugRoomIdInput: '',
     historyWorkshops: []
   },
 
@@ -176,10 +177,16 @@ Page({
   },
 
   _goToRoomPage(roomId) {
+    if (!roomId) return;
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`;
+    wx.redirectTo({
+      url,
+      fail: (err) => {
+        console.warn('redirectTo addPlayer failed, try reLaunch', err);
+        wx.reLaunch({ url });
+      }
     });
   },
 
@@ -196,7 +203,9 @@ Page({
       });
 
       const result = (res && res.result) || {};
-      if (result.ok !== true) {
+      const roomId = result.roomId || (result.data && result.data.roomId);
+
+      if (result.ok === false || !roomId) {
         console.error('roomCreate error', result);
         wx.showToast({
           title: result.errMsg || '创建失败，请重试',
@@ -205,13 +214,6 @@ Page({
         return;
       }
 
-      const roomId = result.roomId;
-      if (!roomId) {
-        wx.showToast({ title: '未返回房间号', icon: 'none' });
-        return;
-      }
-
-      wx.showToast({ title: '创建成功', icon: 'success', duration: 1500 });
       this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
@@ -219,6 +221,26 @@ Page({
         title: err.errMsg || '创建失败，请重试',
         icon: 'none'
       });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+
+  onDebugRoomIdInput(e) {
+    const value = ((e.detail && e.detail.value) || '').replace(/\D/g, '').slice(0, 8);
+    this.setData({ debugRoomIdInput: value });
+  },
+
+  async handleJoinByRoomId() {
+    if (this.data.loading) return;
+    const roomId = (this.data.debugRoomIdInput || '').trim();
+    if (!this._isValidRoomId(roomId)) {
+      wx.showToast({ title: '请输入8位房间号', icon: 'none' });
+      return;
+    }
+    this.setData({ loading: true });
+    try {
+      await this._joinRoomAndGo(roomId);
     } finally {
       this.setData({ loading: false });
     }
@@ -475,12 +497,7 @@ Page({
         return;
       }
 
-      wx.showToast({
-        title: '加入成功',
-        icon: 'success',
-        duration: 1500
-      });
-      await this._persistRoomAndRefresh(roomId);
+      this._goToRoomPage(roomId);
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
