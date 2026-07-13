@@ -1,0 +1,15 @@
+<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}}">
+  <canvas
+    wx:if="{{displayMode === 'timer'}}"
+    type="2d"
+    id="gctCanvas"
+    class="gct-canvas {{borderVisible ? 'gct-canvas-visible' : ''}}"
+  ></canvas>
+  <block wx:if="{{displayMode === 'expiring'}}">
+    <view class="gct-expire-ring gct-expire-ring-outer"></view>
+    <view class="gct-expire-ring gct-expire-ring-inner"></view>
+  </block>
+  <view class="gct-inner {{displayMode === 'expiring' ? 'gct-inner-expiring' : ''}}">
+    <slot></slot>
+  </view>
+</view>

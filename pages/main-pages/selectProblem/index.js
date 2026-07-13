@@ -6,6 +6,8 @@ const {
   normalizeBG
 } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const AVATAR_IMAGES = [
   '/assets/avatar/Frame 2085662241.png',
@@ -29,14 +31,13 @@ Page({
     categories: DEFAULT_CATEGORIES,
     problems: [],
     selectedProblemId: null,
+    myPlayerIndex: null,
     countdown: 5,
     editingProblemId: '',
     textareaHeights: {},
     navbarPaddingTop: 0,
     scrollHeight: 0,
-    contentPaddingTop: 0,
-    myAvatar: '',
-    otherAvatars: []
+    contentPaddingTop: 0
   },
 
   onLoad(options) {
@@ -60,16 +61,20 @@ Page({
     }
     this.setData({ roomId, navbarPaddingTop, scrollHeight, contentPaddingTop });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
-    this.loadRoomData();
-    this.loadSubmittedProblems();
+    this.loadRoomData().then(() => {
+      this.loadSubmittedProblems();
+    });
     this.startCountdown();
     this.startProblemCheck();
   },
 
   onShow() {
-    this.loadSubmittedProblems();
     if (this.data.roomId) {
-      this.loadRoomData();
+      this.loadRoomData().then(() => {
+        this.loadSubmittedProblems();
+      });
+    } else {
+      this.loadSubmittedProblems();
     }
   },
 
@@ -100,13 +105,16 @@ Page({
 
       const avatarList = (result.members || []).map((m, i) => {
         const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
+        const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length];
         return {
           id: m.userId || String(m.playerIndex),
           nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
+          avatar: avatarImage,
+          avatarImage,
           isMe: m.isMe === true
         };
       });
+      const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
       const roomBG = normalizeBG(result.selectedBG)
@@ -116,18 +124,12 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
-      const myAvatar = me ? (me.avatarImage || '') : '';
-      const otherAvatars = avatarList.filter((a) => !a.isMe).slice(0, 5);
-
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
         currentUser: me ? me.id : null,
-        isHost,
-        myAvatar,
-        otherAvatars
-      }, () => {
-        this.loadSubmittedProblems();
+        myPlayerIndex: meMember ? meMember.playerIndex : null,
+        isHost
       });
 
       if (isHost) {
@@ -136,7 +138,7 @@ Page({
       } else {
         const roomState = result.roomState || {};
         const page = roomState.currentPage || 'selectProblem';
-        navigateByRoomState(page, roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
         if (isAwaitPage((page || '').toLowerCase())) {
           return;
         }
@@ -171,8 +173,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        navigateByRoomState(result.roomState.currentPage, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('selectProblem state poll', e);
       }
@@ -198,52 +199,72 @@ Page({
     }, 1000);
   },
 
+  _mapProblemsForDisplay(problemList) {
+    const { isHost, myPlayerIndex, selectedProblemId, editingProblemId, problems } = this.data;
+    const editingText = editingProblemId
+      ? (problems.find((p) => p.id === editingProblemId) || {}).text
+      : null;
+
+    const mapped = problemList.map((item) => {
+      const isMine = myPlayerIndex != null && item.playerIndex === myPlayerIndex;
+      let text = item.text;
+      if (editingProblemId && item.id === editingProblemId && editingText != null) {
+        text = editingText;
+      }
+      return {
+        id: item.id,
+        text,
+        playerIndex: item.playerIndex,
+        submitTime: item.submitTime || 0,
+        isMine,
+        isAISummary: false,
+        selected: false
+      };
+    });
+
+    if (isHost) {
+      let hostSelectedId = selectedProblemId;
+      if (!hostSelectedId || !mapped.some((p) => p.id === hostSelectedId)) {
+        hostSelectedId = mapped.length ? mapped[0].id : null;
+      }
+      return mapped.map((item) => ({
+        ...item,
+        selected: item.id === hostSelectedId
+      }));
+    }
+
+    return mapped.map((item) => ({
+      ...item,
+      selected: item.isMine
+    }));
+  },
+
   async loadSubmittedProblems() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     const isHost = this.data.isHost === true;
     try {
       const problemList = await listProblems(roomId);
-      const newProblems = problemList.map((item) => ({
-        id: item.id,
-        text: item.text,
-        selected: false,
-        isAISummary: false
-      }));
+      const newProblems = this._mapProblemsForDisplay(problemList);
 
       if (newProblems.length === 0) {
-        if (this.data.problems.length > 0) {
-          this.setData({ problems: [], selectedProblemId: null, editingProblemId: '' });
+        if (this.data.problems.length) {
+          this.setData({ problems: [], selectedProblemId: null });
         }
+        this._problemsFingerprint = '';
         return;
       }
 
-      let selectedProblemId = isHost ? this.data.selectedProblemId : null;
-      if (isHost && (!selectedProblemId || !newProblems.some((p) => p.id === selectedProblemId))) {
-        selectedProblemId = newProblems[0].id;
-      }
+      const fingerprint = newProblems
+        .map((p) => `${p.id}:${p.text}:${p.submitTime || 0}`)
+        .join('|');
+      if (fingerprint === this._problemsFingerprint) return;
+      this._problemsFingerprint = fingerprint;
 
-      const problems = newProblems.map((item) => ({
-        ...item,
-        selected: isHost && item.id === selectedProblemId
-      }));
-
-      const currentIds = this.data.problems.map((p) => p.id);
-      const newIds = newProblems.map((p) => p.id);
-      const selectionChanged = isHost
-        ? problems.some((p, i) => p.selected !== (this.data.problems[i] && this.data.problems[i].selected))
-        : this.data.problems.some((p) => p.selected);
-      const changed = newProblems.length !== this.data.problems.length
-        || newIds.some((id) => !currentIds.includes(id))
-        || selectionChanged
-        || (!isHost && this.data.editingProblemId);
-
-      if (!changed) return;
-
+      const selectedProblem = newProblems.find((p) => p.selected) || null;
       this.setData({
-        problems,
-        selectedProblemId: isHost ? selectedProblemId : null,
-        editingProblemId: isHost ? this.data.editingProblemId : ''
+        problems: newProblems,
+        selectedProblemId: selectedProblem ? selectedProblem.id : null
       });
     } catch (e) {
       console.warn('loadSubmittedProblems', e);
@@ -268,8 +289,16 @@ Page({
   },
 
   selectProblem(e) {
-    if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
+    const problem = this.data.problems.find((p) => p.id === problemId);
+    if (!problem) return;
+
+    if (!this.data.isHost) {
+      if (!problem.isMine) return;
+      this.onEditProblem({ currentTarget: { dataset: { id: problemId } } });
+      return;
+    }
+
     const problems = this.data.problems.map((item) => ({
       ...item,
       selected: item.id === problemId
@@ -283,8 +312,10 @@ Page({
   },
 
   onEditProblem(e) {
-    if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
+    const problem = this.data.problems.find((p) => p.id === problemId);
+    if (!problem) return;
+    if (!this.data.isHost && !problem.isMine) return;
 
     // 进入编辑前先测量展示态文字高度，确保 textarea 与原文同高
     wx.createSelectorQuery()
@@ -304,11 +335,11 @@ Page({
   stopPropagation() {},
 
   async onSaveEdit() {
-    if (!this.data.isHost) return;
     const id = this.data.editingProblemId;
     if (!id) return;
-
     const problem = this.data.problems.find((p) => p.id === id);
+    if (!problem) return;
+    if (!this.data.isHost && !problem.isMine) return;
     const text = ((problem && problem.text) || '').trim();
     this.setData({ editingProblemId: '' });
 
@@ -331,8 +362,10 @@ Page({
   },
 
   async onProblemBlur(e) {
-    if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
+    const problem = this.data.problems.find((p) => p.id === id);
+    if (!problem) return;
+    if (!this.data.isHost && !problem.isMine) return;
     const text = (e.detail.value || '').trim();
     this.setData({ editingProblemId: '' });
     if (!id || !text) return;
@@ -366,7 +399,7 @@ Page({
         name: 'updateRoomState',
         data: {
           roomId,
-          currentPage: 'selectMode',
+          currentPage: 'selectPlayer',
           selectedDesignProblem: {
             id: problem.id,
             text: problem.text
@@ -387,5 +420,9 @@ Page({
 
   goBack() {
     wx.navigateBack();
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

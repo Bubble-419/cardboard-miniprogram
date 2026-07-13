@@ -1,5 +1,6 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const {
   PHASE_PLAY,
   PHASE_DISCUSSION,
@@ -119,10 +120,19 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'statement') return;
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'statement') return true;
+            if (page === 'gamepage') {
+              const state = pollResult.roomState || {};
+              const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
+              const phase = state.partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined;
+              safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner', { phase }));
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('statement state poll', e);
       }
@@ -177,6 +187,29 @@ Page({
     }
 
     this.setData({ isSubmitting: true });
+
+    try {
+      const finalizeRes = await wx.cloud.callFunction({
+        name: 'finalizePartnerTurnRecord',
+        data: {
+          roomId,
+          playerIndex: currentPlayerIndex,
+          playerName: currentPlayerName,
+          statementResult: result
+        }
+      });
+      const finalizeResult = (finalizeRes && finalizeRes.result) || {};
+      if (finalizeResult.ok !== true) {
+        console.warn('finalizePartnerTurnRecord failed', finalizeResult);
+        wx.showToast({
+          title: finalizeResult.errMsg || '表态记录保存失败',
+          icon: 'none'
+        });
+      }
+    } catch (e) {
+      console.warn('finalizePartnerTurnRecord', e);
+      wx.showToast({ title: '表态记录保存失败', icon: 'none' });
+    }
 
     const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
       partnerGamePhase,

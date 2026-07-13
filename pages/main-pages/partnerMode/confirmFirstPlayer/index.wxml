@@ -19,6 +19,12 @@
     <text class="wait-title">确认首位出牌玩家</text>
     <text class="wait-desc">等待房主确认首位出牌玩家</text>
   </view>
+  <page-footer
+    wx:if="{{!isHost || isWaiting}}"
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 
   <!-- 房主确认 -->
   <block wx:else>
@@ -72,7 +78,7 @@
       </view>
     </view>
 
-    <view class="footer">
+    <page-footer extClass="footer" bind:prev="handleGoBack">
       <button
         class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
         disabled="{{!canConfirm}}"
@@ -80,6 +86,6 @@
       >
         开始脑暴
       </button>
-    </view>
+    </page-footer>
   </block>
 </view>

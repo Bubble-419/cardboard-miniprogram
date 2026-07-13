@@ -166,6 +166,34 @@
   font-weight: 700;
 }
 
+/* DEV_TEST_START: 显示房间号（测试用） */
+.dev-room-id-banner {
+  flex-shrink: 0;
+  margin: 0 40rpx 16rpx;
+  padding: 16rpx 24rpx;
+  border: 2rpx dashed #f59e0b;
+  border-radius: 20rpx;
+  background: #fffbeb;
+  box-sizing: border-box;
+}
+
+.dev-room-id-label {
+  display: block;
+  font-size: 22rpx;
+  color: #b45309;
+  margin-bottom: 8rpx;
+}
+
+.dev-room-id-value {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #92400e;
+  letter-spacing: 4rpx;
+  text-align: center;
+}
+/* DEV_TEST_END */
+
 .mode-banner {
   flex-shrink: 0;
   margin: 0 54rpx 16rpx;

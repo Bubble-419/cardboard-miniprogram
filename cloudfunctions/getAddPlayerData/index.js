@@ -43,11 +43,21 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
+    if (room.status === 'DISSOLVED') {
+      return {
+        ok: false,
+        errCode: 'ROOM_DISSOLVED',
+        errMsg: '房间已解散',
+        roomDissolved: true
+      };
+    }
+
     const isHost = !!(room.creatorId && room.creatorId === currentUserId);
     const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
 
     const brainstormSessionEnded = room.brainstormSessionEnded === true;
+    const brainstormSessionSeq = room.brainstormSessionSeq != null ? room.brainstormSessionSeq : 0;
     let currentPage = room.currentPage || 'addPlayer';
     // 房主回到房间大厅时 currentPage 可能为 addPlayer，用 brainstormProgressPage 恢复脑暴进度
     if (
@@ -61,8 +71,12 @@ exports.main = async (event, context) => {
     }
 
     const roomState = {
+      selectedModeId: selectedModeId || null,
+      selectedDesignProblem: room.selectedDesignProblem || null,
       currentPage,
       brainstormSessionEnded,
+      brainstormSessionSeq,
+      currentRound: room.currentRound != null ? room.currentRound : 1,
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
       currentPlayerName: room.currentPlayerName || '玩家1',
       passCount: room.currentPassCount != null ? room.currentPassCount : null,
@@ -73,7 +87,17 @@ exports.main = async (event, context) => {
       closingQuestionPlayers: Array.isArray(room.closingQuestionPlayers)
         ? room.closingQuestionPlayers
         : [],
-      closingVotes: room.closingVotes || {}
+      closingVotes: room.closingVotes || {},
+      partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
+      partnerRoundSummaries: Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries : [],
+      partnerCurrentRoundContent: room.partnerCurrentRoundContent || {
+        playHistory: [],
+        discussionNotes: [],
+        images: [],
+        voiceLines: [],
+        turnRecords: [],
+        aiSummary: { status: 'pending' }
+      }
     };
 
     const membersRes = await db
@@ -84,6 +108,14 @@ exports.main = async (event, context) => {
 
     const rawMembers = membersRes.data || [];
     const myMember = rawMembers.find(m => m.userId === currentUserId) || null;
+
+    if (!isHost && !myMember) {
+      return {
+        ok: false,
+        errCode: 'NOT_IN_ROOM',
+        errMsg: '您已不在该房间'
+      };
+    }
 
     const members = rawMembers.map(m => {
       const out = {

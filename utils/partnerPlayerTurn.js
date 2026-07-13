@@ -15,7 +15,8 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
   return {
     nextIndex,
     nextName,
-    incrementRound: nextIndex === 1
+    // 脑暴模式：每轮仅一次出牌→打分→表态，结束即进入下一轮
+    incrementRound: true
   };
 }
 

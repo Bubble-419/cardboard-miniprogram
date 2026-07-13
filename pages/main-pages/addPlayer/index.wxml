@@ -38,6 +38,13 @@
     </view>
   </view>
 
+  <!-- DEV_TEST_START: 显示房间号（测试用，删除 utils/devJoinRoomById.js 及 DEV_TEST 段落） -->
+  <view class="dev-room-id-banner" wx:if="{{devShowRoomId}}" bindtap="handleDevCopyRoomId">
+    <text class="dev-room-id-label">测试：房间号（点击复制）</text>
+    <text class="dev-room-id-value">{{devRoomIdDisplay}}</text>
+  </view>
+  <!-- DEV_TEST_END -->
+
   <view class="mode-banner" wx:if="{{hasSelectedMode}}">
     <text class="mode-banner-label">当前脑暴模式</text>
     <text class="mode-banner-title">{{selectedModeTitle}}</text>

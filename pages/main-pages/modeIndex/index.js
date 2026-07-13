@@ -4,11 +4,15 @@
  * 入口参数：roomId, modeId (halliGalli | partner | spy)
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
+const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
-  partner: { title: '合伙人模式', gameMode: 'partner' },
+  partner: { title: PARTNER_MODE_DISPLAY_TITLE, gameMode: 'partner' },
   spy: { title: '谁是卧底模式', gameMode: 'spy' }
 };
 
@@ -16,7 +20,7 @@ Page({
   data: {
     roomId: '',
     modeId: 'partner',
-    modeTitle: '合伙人模式',
+    modeTitle: PARTNER_MODE_DISPLAY_TITLE,
     isHost: true,
     isWaiting: false,
     scenarios: [],
@@ -70,9 +74,15 @@ Page({
   },
 
   _loadScenarios() {
-    const scenarios = getScenariosForMode(this.data.modeId);
+    const { modeId } = this.data;
+    const scenarios = getScenariosForMode(modeId);
     const offlineScenario = scenarios.find((s) => s.isOffline || s.id === 'offline') || null;
-    const customScenarios = scenarios.filter((s) => !s.isOffline && s.id !== 'offline');
+    const customScenarios = scenarios
+      .filter((s) => !s.isOffline && s.id !== 'offline')
+      .map((item) => ({
+        ...item,
+        tags: buildScenarioTagsForMode(modeId, item.bg)
+      }));
     this.setData({ scenarios, offlineScenario, customScenarios });
   },
 
@@ -134,9 +144,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('modeIndex state poll', e);
       }
@@ -236,7 +244,7 @@ Page({
       return;
     }
 
-    // 合伙人：确认情境页 → 选择问题
+    // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
     if (this.data.modeId === 'partner') {
       app.globalData.selectedBG = { ...scenario.bg };
       app.globalData.gameMode = 'partner';
@@ -268,5 +276,9 @@ Page({
         });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

@@ -3,7 +3,7 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "user-list": "/components/user-list/index",
-    "context-display": "/components/context-display/index"
+    "context-display": "/components/context-display/index",
+    "page-footer": "/components/page-footer/index"
   }
 }
-

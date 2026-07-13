@@ -1,10 +1,11 @@
 /**
- * 合伙人模式 - 出牌页
+ * 脑暴大富翁（partnerMode）- 出牌页
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
 const { assignAvatarImages } = require('../../../../utils/avatars');
 const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
   PHASE_PLAY,
@@ -21,6 +22,36 @@ const {
   buildPartnerAvatarList,
   resolveCurrentPlayerFromRoom
 } = require('../../../../utils/partnerPlayerTurn');
+const {
+  clearPartnerSpecialMoveUsedFlag,
+  markPartnerSpecialMoveUsed,
+  isSpecialMoveUsedForCurrentTurn
+} = require('../../../../utils/partnerSpecialMove');
+const {
+  getRoundTimerState,
+  buildPaginationIndexes,
+  isRoundTimerActive,
+  ROUND_DURATION_SEC
+} = require('../../../../utils/partnerRoundTimer');
+const {
+  normalizePartnerRoundContent
+} = require('../../../../utils/partnerRoundContent');
+const {
+  buildDisplaySummaries,
+  playerHasSummaryCards,
+  isSamePlayerIndex
+} = require('../../../../utils/partnerRoundNavigation');
+const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
+const {
+  attachPrivateNotesToSummaries,
+  savePrivateRoundNote,
+  persistTempPhoto
+} = require('../../../../utils/partnerRoundPrivateNotes');
+const {
+  countSessionInspirations,
+  withSessionFields
+} = require('../../../../utils/partnerInspirationSession');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 Page({
   data: {
@@ -29,6 +60,8 @@ Page({
     avatarList: [],
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
+    selectedPlayerIndex: 1,
+    indicatorPlayerIndex: 1,
     members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
@@ -44,18 +77,35 @@ Page({
     closingQuestionPlayers: [],
     reviewPhotos: [],
     canStartStatement: false,
-    playHistory: [
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    ],
-    discussionNotes: [
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    ]
+    specialMoveUsedThisTurn: false,
+    currentRound: 1,
+    brainstormSessionSeq: 0,
+    roundSummaries: [],
+    displayRoundSummaries: [],
+    filteredPlayerIndex: null,
+    isPlayerFilterActive: false,
+    cardIndexBeforeFilter: 0,
+    partnerRoundStartedAt: null,
+    roundTimerVisible: false,
+    roundTimerElapsedRatio: 0,
+    roundTimerRemainingSec: 30,
+    cardCount: 1,
+    paginationIndexes: [0],
+    playHistory: [],
+    discussionNotes: [],
+    voiceLines: [],
+    turnRecords: [],
+    inspirationCount: 0,
+    inspirationDraftText: '',
+    inspirationDraftPhotos: [],
+    inspirationInputFocused: false,
+    inspirationHoldKeyboard: false,
+    inspirationSaving: false,
+    inspirationHasText: false
   },
 
   onLoad(options) {
+    this._playerFilterIndex = null;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -76,34 +126,417 @@ Page({
     const initialClosingStep = options && options.closingStep === CLOSING_STEP_REVIEW
       ? CLOSING_STEP_REVIEW
       : CLOSING_STEP_RUNE;
+    const specialMoveUsedFromUrl = options && (options.specialMoveUsed === '1' || options.specialMoveUsed === 1);
 
     this.setData({
       roomId,
       currentPlayerIndex,
       gamepagePhase: initialPhase,
       closingStep: initialClosingStep,
-      cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0
+      cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
+      specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
     });
 
     this.loadRoomData();
+    this._roundSpeech = createPartnerRoundSpeech({
+      onText: () => this._syncRoomContext()
+    });
+  },
+
+  _applyPendingSpecialMoveUsed() {
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+
+    const app = getApp();
+    const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
+    if (flag && flag.roomId === roomId) {
+      this.setData({ specialMoveUsedThisTurn: true });
+      return;
+    }
+
+    if (isSpecialMoveUsedForCurrentTurn(
+      roomId,
+      this.data.brainstormSessionSeq,
+      this.data.currentRound,
+      this.data.currentPlayerIndex
+    )) {
+      this.setData({ specialMoveUsedThisTurn: true });
+    }
   },
 
   onShow() {
-    this.refreshScoreStatus();
+    this._pageVisible = true;
+    this._applyPendingSpecialMoveUsed();
+    this._syncTimerFromStartedAt();
+    this._restartRoundTimer();
+    this._syncRoomContext().then(() => {
+      this._applyPendingSpecialMoveUsed();
+      this.refreshScoreStatus();
+      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+      this._syncRoundSpeech();
+      this._refreshInspirationCount();
+    });
     if (this.data.roomId) {
       this._startStatePolling();
       this._startScorePolling();
     }
+    this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+  },
+
+  async _syncRoomContext() {
+    const roomId = this.data.roomId;
+    if (!roomId) return null;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true && result.members && result.members.length) {
+        this._applyRoomContext(result);
+        const roomState = result.roomState || {};
+        return {
+          roundContent: this._applyRoundContentFromRoom(roomState),
+          currentPlayerIndex: roomState.currentPlayerIndex != null
+            ? roomState.currentPlayerIndex
+            : this.data.currentPlayerIndex
+        };
+      }
+    } catch (e) {
+      console.warn('partner gamepage syncRoomContext', e);
+    }
+    return null;
   },
 
   onHide() {
+    this._pageVisible = false;
+    this.setData({ roundTimerVisible: false });
+    this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimer();
+    this._syncRoundContentToRoom();
   },
 
   onUnload() {
+    this._stopRoundSpeech();
+    if (this._roundSpeech) {
+      this._roundSpeech.destroy();
+      this._roundSpeech = null;
+    }
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimer();
+  },
+
+  _applyRoundContentFromRoom(roomState) {
+    return normalizePartnerRoundContent(roomState && roomState.partnerCurrentRoundContent);
+  },
+
+  _buildClientRoundContentPatch() {
+    return {
+      playHistory: this.data.playHistory || [],
+      discussionNotes: this.data.discussionNotes || [],
+      images: this.data.insertedImages || []
+    };
+  },
+
+  _buildRoundSummaryPayload() {
+    return {
+      ...this._buildClientRoundContentPatch(),
+      voiceLines: this.data.voiceLines || [],
+      turnRecords: this.data.turnRecords || [],
+      aiSummary: { status: 'pending' }
+    };
+  },
+
+  _shouldRunRoundSpeech() {
+    return this.data.isHost
+      && this._pageVisible
+      && this._roomLoaded
+      && !isClosingPhase(this.data.gamepagePhase)
+      && !!this.data.roomId;
+  },
+
+  async _syncRoundSpeech() {
+    if (!this._roundSpeech) return;
+    if (!this._shouldRunRoundSpeech()) {
+      this._roundSpeech.stop();
+      return;
+    }
+    this._roundSpeech.setPhase(
+      isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
+    );
+    if (this._roundSpeech.isActive()) return;
+    await this._roundSpeech.start({
+      roomId: this.data.roomId,
+      phase: isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
+    });
+  },
+
+  _stopRoundSpeech() {
+    if (this._roundSpeech) {
+      this._roundSpeech.stop();
+    }
+  },
+
+  _resolveActivePlayerFilter() {
+    if (this._playerFilterIndex != null) {
+      return this._playerFilterIndex;
+    }
+    return this.data.isPlayerFilterActive ? this.data.filteredPlayerIndex : null;
+  },
+
+  _buildDisplayCardState(options) {
+    const {
+      roundSummaries,
+      members,
+      filteredPlayerIndex,
+      isPlayerFilterActive,
+      currentPlayerIndex,
+      preferredCardIndex,
+      roomId,
+      brainstormSessionSeq
+    } = options || {};
+
+    const filterActive = isPlayerFilterActive === true;
+    const summaries = attachPrivateNotesToSummaries(
+      buildDisplaySummaries(
+        roundSummaries,
+        members,
+        filteredPlayerIndex,
+        filterActive
+      ),
+      roomId || this.data.roomId,
+      brainstormSessionSeq != null ? brainstormSessionSeq : this.data.brainstormSessionSeq
+    );
+    const displayRoundSummaries = summaries;
+    const summaryCount = displayRoundSummaries.length;
+    const cardCount = Math.max(1, summaryCount + 1);
+    const actionCardIndex = summaryCount;
+    const cardIndex = preferredCardIndex != null
+      ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
+      : actionCardIndex;
+    const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
+      ? displayRoundSummaries[cardIndex].playerIndex
+      : currentPlayerIndex;
+
+    return {
+      displayRoundSummaries,
+      cardCount,
+      paginationIndexes: buildPaginationIndexes(cardCount),
+      cardIndex,
+      isPlayerFilterActive: filterActive,
+      selectedPlayerIndex: filterActive
+        ? filteredPlayerIndex
+        : currentPlayerIndex,
+      indicatorPlayerIndex
+    };
+  },
+
+  _resolveIndicatorPlayerIndex(cardIndex) {
+    const summaries = this.data.displayRoundSummaries || [];
+    if (cardIndex < summaries.length && summaries[cardIndex]) {
+      return summaries[cardIndex].playerIndex;
+    }
+    return this.data.currentPlayerIndex;
+  },
+
+  _syncTimerFromStartedAt() {
+    const { partnerRoundStartedAt, gamepagePhase } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) {
+      if (this.data.roundTimerElapsedRatio !== 0) {
+        this.setData({ roundTimerElapsedRatio: 0 });
+      }
+      return;
+    }
+    const timerState = getRoundTimerState(partnerRoundStartedAt);
+    this.setData({
+      roundTimerElapsedRatio: timerState.elapsedRatio,
+      roundTimerRemainingSec: timerState.remainingSec
+    });
+  },
+
+  _restartRoundTimer() {
+    this._stopRoundTimer();
+    const { partnerRoundStartedAt, gamepagePhase } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) return;
+
+    const tick = () => {
+      const startedAt = this.data.partnerRoundStartedAt;
+      if (!startedAt) return;
+      const timerState = getRoundTimerState(startedAt);
+      this.setData({
+        roundTimerElapsedRatio: timerState.elapsedRatio,
+        roundTimerRemainingSec: timerState.remainingSec
+      });
+    };
+
+    tick();
+    this._roundTimerInterval = setInterval(tick, 1000);
+  },
+
+  _stopRoundTimer() {
+    if (this._roundTimerInterval) {
+      clearInterval(this._roundTimerInterval);
+      this._roundTimerInterval = null;
+    }
+  },
+
+  async _syncRoundContentToRoom() {
+    const roomId = this.data.roomId;
+    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'gamepage',
+          partnerCurrentRoundContent: this._buildClientRoundContentPatch()
+        }
+      });
+    } catch (e) {
+      console.warn('syncRoundContentToRoom', e);
+    }
+  },
+
+  _cacheRoundStartedAt(roomId, round, startedAt) {
+    const app = getApp();
+    if (!app.globalData) app.globalData = {};
+    app.globalData.partnerRoundStartedAt = { roomId, round, startedAt };
+  },
+
+  _clearRoundStartedAtCache() {
+    const app = getApp();
+    if (app.globalData) {
+      app.globalData.partnerRoundStartedAt = null;
+    }
+  },
+
+  _resolvePartnerRoundStartedAt(roomState, currentRound) {
+    const roomId = this.data.roomId;
+    const fromServer = roomState.partnerRoundStartedAt != null
+      ? Number(roomState.partnerRoundStartedAt)
+      : 0;
+    if (Number.isFinite(fromServer) && fromServer > 0) {
+      this._cacheRoundStartedAt(roomId, currentRound, fromServer);
+      return fromServer;
+    }
+
+    const cached = getApp().globalData && getApp().globalData.partnerRoundStartedAt;
+    if (
+      cached
+      && cached.roomId === roomId
+      && cached.round === currentRound
+      && isRoundTimerActive(cached.startedAt)
+    ) {
+      return Number(cached.startedAt);
+    }
+
+    const local = Number(this.data.partnerRoundStartedAt);
+    if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local)) {
+      return local;
+    }
+    return null;
+  },
+
+  _syncRoundTimerVisible(partnerRoundStartedAt) {
+    const visible = !!(this._roomLoaded
+      && this._pageVisible
+      && partnerRoundStartedAt
+      && !isClosingPhase(this.data.gamepagePhase));
+    if (visible !== this.data.roundTimerVisible) {
+      this.setData({ roundTimerVisible: visible });
+    }
+  },
+
+  async _rollRoundCountdown(startedAt) {
+    const ts = startedAt || Date.now();
+    const { roomId, currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
+
+    this._cacheRoundStartedAt(roomId, currentRound, ts);
+    this.setData({
+      partnerRoundStartedAt: ts,
+      roundTimerVisible: true,
+      roundTimerRemainingSec: ROUND_DURATION_SEC
+    });
+    this._restartRoundTimer();
+
+    if (!this.data.isHost) return;
+
+    try {
+      await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+        partnerRoundStartedAt: ts
+      });
+    } catch (e) {
+      console.warn('_rollRoundCountdown', e);
+    }
+  },
+
+  handleRoundTimerExpire(e) {
+    const detail = (e && e.detail) || {};
+    if (detail.loop !== true) return;
+    this._rollRoundCountdown(detail.startedAt);
+  },
+
+  async _ensureRoundTimerStarted(isHost) {
+    if (isClosingPhase(this.data.gamepagePhase)) return;
+    if (!isHost) return;
+    if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+
+    const startedAt = Date.now();
+    const { currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+    this._cacheRoundStartedAt(this.data.roomId, currentRound, startedAt);
+    this.setData({ partnerRoundStartedAt: startedAt });
+    this._syncRoundTimerVisible(startedAt);
+
+    try {
+      await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+        partnerRoundStartedAt: startedAt
+      });
+    } catch (e) {
+      console.warn('_ensureRoundTimerStarted', e);
+    }
+  },
+
+  _validateSpecialMoveFlag(flag, patch, members) {
+    const me = members.find((m) => m.isMe);
+    if (!me || me.playerIndex !== flag.playerIndex) return false;
+    if (flag.playerIndex !== patch.currentPlayerIndex) return false;
+    return true;
+  },
+
+  _resolveSpecialMoveUsed(patch, members) {
+    if (!patch.isCurrentPlayer) {
+      return false;
+    }
+
+    if (patch.isMasterMode) {
+      return true;
+    }
+
+    const roomId = this.data.roomId;
+    const app = getApp();
+    const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
+
+    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch, members)) {
+      markPartnerSpecialMoveUsed(
+        roomId,
+        flag.playerIndex,
+        patch.currentRound,
+        patch.brainstormSessionSeq
+      );
+      app.globalData.partnerSpecialMoveUsedTurn = null;
+      return true;
+    }
+
+    return isSpecialMoveUsedForCurrentTurn(
+      roomId,
+      patch.brainstormSessionSeq,
+      patch.currentRound,
+      patch.currentPlayerIndex
+    );
   },
 
   _applyRoomContext(result, options = {}) {
@@ -123,10 +556,70 @@ Page({
       ? roomState.closingQuestionPlayers
       : [];
     const closingStep = roomState.partnerClosingStep || CLOSING_STEP_RUNE;
+    const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
+    const brainstormSessionSeq = roomState.brainstormSessionSeq != null
+      ? roomState.brainstormSessionSeq
+      : 0;
     const playerChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
     const phaseChanged = roomPhase !== this.data.gamepagePhase;
+    const roundChanged = currentRound !== this.data.currentRound;
+    const sessionChanged = brainstormSessionSeq !== this.data.brainstormSessionSeq;
+    const hadPriorContext = (this.data.members || []).length > 0;
+    const me = members.find((m) => m.isMe);
+    const myPlayerIndex = me ? me.playerIndex : null;
+    const turnIndexChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
+    const becameMyTurn = hadPriorContext
+      && turnIndexChanged
+      && myPlayerIndex != null
+      && player.currentPlayerIndex === myPlayerIndex;
+    const leftMyTurn = hadPriorContext
+      && turnIndexChanged
+      && myPlayerIndex != null
+      && this.data.currentPlayerIndex === myPlayerIndex
+      && player.currentPlayerIndex !== myPlayerIndex;
     const closingStepChanged = isClosingPhase(roomPhase)
       && closingStep !== this.data.closingStep;
+    const roundSummaries = (Array.isArray(roomState.partnerRoundSummaries)
+      ? roomState.partnerRoundSummaries
+      : [])
+      .slice()
+      .sort((a, b) => (a.round || 0) - (b.round || 0))
+      .map((item) => ({
+        ...item,
+        voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
+        turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : []
+      }));
+    const roundContent = this._applyRoundContentFromRoom(roomState);
+    const partnerRoundStartedAt = this._resolvePartnerRoundStartedAt(roomState, currentRound);
+    const timerPatch = (!isClosingPhase(roomPhase) && partnerRoundStartedAt)
+      ? (() => {
+        const timerState = getRoundTimerState(partnerRoundStartedAt);
+        return {
+          roundTimerElapsedRatio: timerState.elapsedRatio,
+          roundTimerRemainingSec: timerState.remainingSec
+        };
+      })()
+      : { roundTimerElapsedRatio: 0 };
+    const nextFilteredPlayerIndex = (playerChanged || roundChanged || sessionChanged || options.resetTurnUi)
+      ? null
+      : this._resolveActivePlayerFilter();
+    const nextFilterActive = nextFilteredPlayerIndex != null
+      && !Number.isNaN(parseInt(nextFilteredPlayerIndex, 10));
+    if (!nextFilterActive) {
+      this._playerFilterIndex = null;
+    }
+    const paginationState = this._buildDisplayCardState({
+      roundSummaries,
+      members,
+      filteredPlayerIndex: nextFilteredPlayerIndex,
+      isPlayerFilterActive: nextFilterActive,
+      currentPlayerIndex: player.currentPlayerIndex,
+      preferredCardIndex: (roundChanged || sessionChanged || options.resetTurnUi)
+        ? undefined
+        : this.data.cardIndex,
+      roomId: this.data.roomId,
+      brainstormSessionSeq
+    });
 
     const patch = {
       members,
@@ -140,23 +633,100 @@ Page({
       isMasterMode: roomState.partnerMasterMode === true,
       closingQuestionPlayers,
       closingStep,
-      totalRequired: Math.max(0, members.length - 1)
+      currentRound,
+      brainstormSessionSeq,
+      totalRequired: Math.max(0, members.length - 1),
+      roundSummaries,
+      filteredPlayerIndex: nextFilteredPlayerIndex,
+      isPlayerFilterActive: nextFilterActive,
+      partnerRoundStartedAt,
+      voiceLines: roundContent.voiceLines,
+      turnRecords: roundContent.turnRecords,
+      ...timerPatch,
+      displayRoundSummaries: paginationState.displayRoundSummaries,
+      cardCount: paginationState.cardCount,
+      paginationIndexes: paginationState.paginationIndexes,
+      cardIndex: paginationState.cardIndex,
+      selectedPlayerIndex: paginationState.selectedPlayerIndex,
+      indicatorPlayerIndex: paginationState.indicatorPlayerIndex,
+      isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
 
-    if (playerChanged || phaseChanged || options.resetTurnUi) {
+    if (roundChanged || sessionChanged) {
+      patch.playHistory = [];
+      patch.discussionNotes = [];
+      patch.insertedImages = [];
+      patch.voiceLines = [];
+      patch.turnRecords = [];
+      this._clearRoundStartedAtCache();
+      const serverTs = roomState.partnerRoundStartedAt != null
+        ? Number(roomState.partnerRoundStartedAt)
+        : 0;
+      patch.partnerRoundStartedAt = serverTs > 0 ? serverTs : null;
+    }
+
+    if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
-      if (!isClosingPhase(roomPhase)) {
-        patch.cardIndex = 0;
+      patch.scoredCount = 0;
+      if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
+        patch.filteredPlayerIndex = null;
+        patch.isPlayerFilterActive = false;
+        patch.cardIndexBeforeFilter = 0;
+        this._playerFilterIndex = null;
       }
+      if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
+        const resetCardState = this._buildDisplayCardState({
+          roundSummaries,
+          members,
+          filteredPlayerIndex: null,
+          isPlayerFilterActive: false,
+          currentPlayerIndex: player.currentPlayerIndex
+        });
+        patch.displayRoundSummaries = resetCardState.displayRoundSummaries;
+        patch.cardCount = resetCardState.cardCount;
+        patch.paginationIndexes = resetCardState.paginationIndexes;
+        patch.cardIndex = resetCardState.cardIndex;
+        patch.selectedPlayerIndex = resetCardState.selectedPlayerIndex;
+        patch.indicatorPlayerIndex = resetCardState.indicatorPlayerIndex;
+        patch.isPlayerFilterActive = false;
+      }
+    }
+
+    if (becameMyTurn || leftMyTurn || roundChanged || sessionChanged) {
+      patch.specialMoveUsedThisTurn = false;
+    }
+    if (becameMyTurn || roundChanged || sessionChanged) {
+      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
+    }
+
+    if (leftMyTurn) {
+      patch.specialMoveUsedThisTurn = false;
+    } else if (!(becameMyTurn || roundChanged || sessionChanged)) {
+      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch, members);
     }
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
     }
 
-    this.setData(patch);
-    return { playerChanged, phaseChanged, members, player, roomPhase };
+    this.setData(patch, () => {
+      this._restartRoundTimer();
+      this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
+      if (
+        !patch.partnerRoundStartedAt
+        && this.data.isHost
+        && !isClosingPhase(this.data.gamepagePhase)
+      ) {
+        this._ensureRoundTimerStarted(true).then(() => {
+          this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+          this._syncRoundSpeech();
+        });
+      } else {
+        this._syncRoundSpeech();
+      }
+    });
+    return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
 
   async loadRoomData() {
@@ -198,6 +768,11 @@ Page({
 
       this.refreshScoreStatus();
       this._startScorePolling();
+      this._roomLoaded = true;
+      await this._ensureRoundTimerStarted(result.isHost === true);
+      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+      await this._syncRoundSpeech();
+      await this._syncRoundContentToRoom();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -205,12 +780,12 @@ Page({
   },
 
   async refreshScoreStatus() {
-    const { roomId, currentPlayerIndex, isHost, gamepagePhase } = this.data;
+    const { roomId, isHost, gamepagePhase } = this.data;
     if (!roomId || isClosingPhase(gamepagePhase)) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getGameScoreStatus',
-        data: { roomId, currentPlayerIndex }
+        data: { roomId }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
@@ -258,23 +833,34 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage') {
-          const prevMaster = this.data.isMasterMode;
-          const prevClosingStep = this.data.closingStep;
-          const { playerChanged, phaseChanged } = this._applyRoomContext(result);
-          if (
-            playerChanged
-            || phaseChanged
-            || prevMaster !== this.data.isMasterMode
-            || prevClosingStep !== this.data.closingStep
-          ) {
-            this.refreshScoreStatus();
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'gamepage') {
+              const prevMaster = this.data.isMasterMode;
+              const prevClosingStep = this.data.closingStep;
+              const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
+              if (
+                playerChanged
+                || phaseChanged
+                || roundChanged
+                || prevMaster !== this.data.isMasterMode
+                || prevClosingStep !== this.data.closingStep
+              ) {
+                this.refreshScoreStatus();
+              }
+              return true;
+            }
+            if (this.data.isHost && page === 'statement') {
+              const idx = pollResult.roomState.currentPlayerIndex != null
+                ? pollResult.roomState.currentPlayerIndex
+                : this.data.currentPlayerIndex;
+              const playerName = pollResult.roomState.currentPlayerName || this.data.currentPlayerName;
+              safeOpenUrl(buildStatementUrl(roomId, idx, playerName));
+              return true;
+            }
+            return false;
           }
-          return;
-        }
-        navigateByRoomState(page, result.roomState, roomId);
+        });
       } catch (e) {
         console.warn('partner gamepage state poll', e);
       }
@@ -309,6 +895,15 @@ Page({
       if (extra && extra.partnerClosingStep != null) {
         data.partnerClosingStep = extra.partnerClosingStep;
       }
+      if (extra && extra.roundSummary) {
+        data.roundSummary = extra.roundSummary;
+      }
+      if (extra && extra.partnerCurrentRoundContent) {
+        data.partnerCurrentRoundContent = extra.partnerCurrentRoundContent;
+      }
+      if (extra && extra.partnerRoundStartedAt != null) {
+        data.partnerRoundStartedAt = extra.partnerRoundStartedAt;
+      }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
       return result.ok === true;
@@ -320,7 +915,203 @@ Page({
 
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
-    this.setData({ cardIndex: index });
+    const maxIndex = (this.data.displayRoundSummaries || []).length;
+    const cardIndex = Math.min(index, maxIndex);
+    this.setData({
+      cardIndex,
+      indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
+    });
+  },
+
+  handleAvatarTap(e) {
+    if (isClosingPhase(this.data.gamepagePhase)) return;
+    const id = e.detail && (e.detail.playerIndex != null ? e.detail.playerIndex : e.detail.id);
+    if (id == null || id === '') return;
+
+    const playerIndex = parseInt(id, 10);
+    if (Number.isNaN(playerIndex)) return;
+
+    const {
+      members,
+      roundSummaries,
+      currentPlayerIndex,
+      isPlayerFilterActive,
+      filteredPlayerIndex,
+      cardIndexBeforeFilter,
+      cardIndex
+    } = this.data;
+    const memberCount = (members || []).length;
+    const activeFilter = this._resolveActivePlayerFilter();
+
+    if (isPlayerFilterActive && isSamePlayerIndex(activeFilter, playerIndex)) {
+      this._playerFilterIndex = null;
+      const restoredIndex = cardIndexBeforeFilter != null
+        ? cardIndexBeforeFilter
+        : (roundSummaries || []).length;
+      const cardState = this._buildDisplayCardState({
+        roundSummaries,
+        members,
+        filteredPlayerIndex: null,
+        isPlayerFilterActive: false,
+        currentPlayerIndex,
+        preferredCardIndex: restoredIndex
+      });
+      this.setData({
+        filteredPlayerIndex: null,
+        isPlayerFilterActive: false,
+        cardIndexBeforeFilter: 0,
+        ...cardState
+      });
+      return;
+    }
+
+    if (!playerHasSummaryCards(playerIndex, {
+      roundSummaries,
+      memberCount,
+      currentPlayerIndex
+    })) {
+      wx.showToast({ title: '暂无发言纪要', icon: 'none' });
+      return;
+    }
+
+    this._playerFilterIndex = playerIndex;
+
+    const playerSummaries = buildDisplaySummaries(
+      roundSummaries,
+      members,
+      playerIndex,
+      true
+    );
+    const isActing = isSamePlayerIndex(playerIndex, currentPlayerIndex);
+    const preferredCardIndex = isActing
+      ? playerSummaries.length
+      : Math.max(0, playerSummaries.length - 1);
+
+    const cardState = this._buildDisplayCardState({
+      roundSummaries,
+      members,
+      filteredPlayerIndex: playerIndex,
+      isPlayerFilterActive: true,
+      currentPlayerIndex,
+      preferredCardIndex
+    });
+
+    this.setData({
+      filteredPlayerIndex: playerIndex,
+      isPlayerFilterActive: true,
+      cardIndexBeforeFilter: cardIndex,
+      ...cardState
+    });
+  },
+
+  _findSummaryIndexByRound(round) {
+    return (this.data.displayRoundSummaries || []).findIndex(
+      (item) => item && parseInt(item.round, 10) === parseInt(round, 10)
+    );
+  },
+
+  _saveRoundPrivateNote(round, note) {
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    savePrivateRoundNote(
+      this.data.roomId,
+      this.data.brainstormSessionSeq,
+      round,
+      note
+    );
+    this.setData({
+      [`displayRoundSummaries[${idx}].privateNote`]: note
+    });
+  },
+
+  onRoundPrivateNoteInput(e) {
+    const round = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.round
+      : null;
+    if (round == null) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const text = (e.detail && e.detail.value) || '';
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = (item.privateNote && item.privateNote.photos) || [];
+    this._saveRoundPrivateNote(round, { text, photos });
+  },
+
+  onRoundPrivateNotePhoto(e) {
+    const round = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.round
+      : null;
+    if (round == null) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = (item.privateNote && item.privateNote.photos) || [];
+    if (photos.length >= 9) {
+      wx.showToast({ title: '最多 9 张图片', icon: 'none' });
+      return;
+    }
+
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: 9 - photos.length,
+          sizeType: ['compressed'],
+          sourceType,
+          success: async (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) return;
+            wx.showLoading({ title: '保存中…', mask: true });
+            try {
+              const saved = [];
+              for (let i = 0; i < paths.length; i += 1) {
+                saved.push(await persistTempPhoto(paths[i]));
+              }
+              const text = (item.privateNote && item.privateNote.text) || '';
+              this._saveRoundPrivateNote(round, {
+                text,
+                photos: photos.concat(saved)
+              });
+            } catch (err) {
+              console.warn('onRoundPrivateNotePhoto', err);
+              wx.showToast({ title: '图片保存失败', icon: 'none' });
+            } finally {
+              wx.hideLoading();
+            }
+          },
+          fail: () => {
+            wx.showToast({ title: '选择图片失败', icon: 'none' });
+          }
+        });
+      }
+    });
+  },
+
+  onRoundPrivateNotePhotoRemove(e) {
+    const dataset = e.currentTarget && e.currentTarget.dataset;
+    const round = dataset && dataset.round;
+    const photoIndex = dataset && dataset.index != null ? parseInt(dataset.index, 10) : -1;
+    if (round == null || photoIndex < 0) return;
+    const idx = this._findSummaryIndexByRound(round);
+    if (idx < 0) return;
+    const item = this.data.displayRoundSummaries[idx] || {};
+    const photos = ((item.privateNote && item.privateNote.photos) || []).slice();
+    if (photoIndex >= photos.length) return;
+    photos.splice(photoIndex, 1);
+    const text = (item.privateNote && item.privateNote.text) || '';
+    this._saveRoundPrivateNote(round, { text, photos });
+  },
+
+  onRoundPrivateNotePreview(e) {
+    const dataset = e.currentTarget && e.currentTarget.dataset;
+    const url = dataset && dataset.url;
+    const round = dataset && dataset.round;
+    if (!url) return;
+    const idx = this._findSummaryIndexByRound(round);
+    const item = idx >= 0 ? this.data.displayRoundSummaries[idx] : null;
+    const urls = item && item.privateNote ? item.privateNote.photos || [] : [url];
+    wx.previewImage({ current: url, urls });
   },
 
   handleInsertImage() {
@@ -392,7 +1183,11 @@ Page({
   },
 
   handleSpecialMove() {
-    if (this.data.isMasterMode) return;
+    if (!this.data.isCurrentPlayer) {
+      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+      return;
+    }
+    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) return;
     const { roomId, members } = this.data;
     if (!roomId) return;
     const me = (members || []).find((m) => m.isMe);
@@ -403,11 +1198,16 @@ Page({
   async handleStartStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
 
+    this._stopRoundSpeech();
+    this._stopStatePolling();
+    await this._syncRoundContentToRoom();
+
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
     const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
       partnerMasterMode: false
     });
     if (!ok) {
+      this._startStatePolling();
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }
@@ -423,11 +1223,25 @@ Page({
 
     const { roomId, members, currentPlayerIndex } = this.data;
     const { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
-    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, {
+    const extra = {
       partnerGamePhase: PHASE_PLAY,
       partnerMasterMode: false,
       incrementRound
-    });
+    };
+    if (incrementRound) {
+      const ctx = await this._syncRoomContext();
+      const roundContent = ctx && ctx.roundContent;
+      extra.roundSummary = {
+        ...this._buildRoundSummaryPayload(),
+        voiceLines: (roundContent && roundContent.voiceLines.length)
+          ? roundContent.voiceLines
+          : (this.data.voiceLines || []),
+        turnRecords: (roundContent && roundContent.turnRecords.length)
+          ? roundContent.turnRecords
+          : (this.data.turnRecords || [])
+      };
+    }
+    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
     if (!ok) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
@@ -438,24 +1252,214 @@ Page({
       currentPlayerName: nextName,
       gamepagePhase: PHASE_PLAY,
       isMasterMode: false,
-      cardIndex: 0,
       selectedScore: null,
       canStartStatement: false,
-      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex))
+      scoredCount: 0,
+      specialMoveUsedThisTurn: false,
+      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex)),
+      playHistory: incrementRound ? [] : this.data.playHistory,
+      discussionNotes: incrementRound ? [] : this.data.discussionNotes,
+      insertedImages: incrementRound ? [] : this.data.insertedImages,
+      voiceLines: incrementRound ? [] : this.data.voiceLines,
+      turnRecords: incrementRound ? [] : this.data.turnRecords
+    }, () => {
+      if (incrementRound) {
+        this._roundSpeech && this._roundSpeech.stop();
+        this._syncRoomContext().then(() => this._syncRoundSpeech());
+      } else {
+        this.refreshScoreStatus();
+        this._syncRoundSpeech();
+      }
     });
-    this.refreshScoreStatus();
   },
 
   handleGoRoom() {
-    const roomId = this.data.roomId || '';
+    goRoomPage(this.data.roomId);
+  },
+
+  async _refreshInspirationCount() {
+    const { roomId, brainstormSessionSeq } = this.data;
     if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    const inspirationCount = await countSessionInspirations(roomId, brainstormSessionSeq);
+    if (inspirationCount !== this.data.inspirationCount) {
+      this.setData({ inspirationCount });
+    }
+  },
+
+  onInspirationComposerTap() {
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
+  },
+
+  onInspirationFocus() {
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this.setData({ inspirationInputFocused: true });
+  },
+
+  onInspirationBlur() {
+    if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
+    this._inspirationBlurTimer = setTimeout(() => {
+      this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+    }, 180);
+  },
+
+  onInspirationDismissFocus() {
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+  },
+
+  onInspirationInput(e) {
+    const text = (e.detail && e.detail.value) || '';
+    this.setData({
+      inspirationDraftText: text,
+      inspirationHasText: !!text.trim()
     });
   },
 
-  handleGoInspiration() {
-    wx.navigateTo({ url: '/pages/inspiration/index' });
+  _shouldShowInspirationCamera() {
+    return this.data.inspirationInputFocused && !this.data.inspirationHasText;
+  },
+
+  onInspirationActionTap() {
+    if (this._shouldShowInspirationCamera()) {
+      this.onInspirationAddPhoto();
+      return;
+    }
+    this.onInspirationSave();
+  },
+
+  onInspirationAddPhoto() {
+    const photos = this.data.inspirationDraftPhotos || [];
+    if (photos.length >= 9) {
+      wx.showToast({ title: '最多 9 张图片', icon: 'none' });
+      return;
+    }
+    this.setData({ inspirationHoldKeyboard: true });
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: 9 - photos.length,
+          sizeType: ['compressed'],
+          sourceType,
+          success: (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) {
+              this.setData({ inspirationHoldKeyboard: false });
+              return;
+            }
+            this.setData({
+              inspirationDraftPhotos: photos.concat(paths),
+              inspirationInputFocused: true,
+              inspirationHoldKeyboard: true
+            });
+          },
+          fail: () => {
+            this.setData({ inspirationHoldKeyboard: false, inspirationInputFocused: true });
+          }
+        });
+      },
+      fail: () => {
+        this.setData({ inspirationHoldKeyboard: false });
+      }
+    });
+  },
+
+  onInspirationRemovePhoto(e) {
+    const index = e.currentTarget.dataset.index;
+    if (index == null) return;
+    const photos = (this.data.inspirationDraftPhotos || []).slice();
+    photos.splice(index, 1);
+    this.setData({ inspirationDraftPhotos: photos });
+  },
+
+  onInspirationPreviewPhoto(e) {
+    const url = e.currentTarget.dataset.url;
+    const urls = this.data.inspirationDraftPhotos || [];
+    if (!url) return;
+    wx.previewImage({ current: url, urls });
+  },
+
+  async _uploadInspirationPhotos(paths) {
+    const roomId = this.data.roomId || 'default';
+    const results = [];
+    for (let i = 0; i < paths.length; i += 1) {
+      const filePath = paths[i];
+      try {
+        const cloudPath = `inspiration/${roomId}/${Date.now()}_${i}.jpg`;
+        const uploadRes = await wx.cloud.uploadFile({ cloudPath, filePath });
+        if (uploadRes && uploadRes.fileID) {
+          results.push(uploadRes.fileID);
+          continue;
+        }
+      } catch (e) {
+        console.warn('_uploadInspirationPhotos cloud fail', e);
+      }
+      results.push(await persistTempPhoto(filePath));
+    }
+    return results;
+  },
+
+  async onInspirationSave() {
+    if (this.data.inspirationSaving) return;
+    const content = (this.data.inspirationDraftText || '').trim();
+    const draftPhotos = this.data.inspirationDraftPhotos || [];
+    if (!content && !draftPhotos.length) {
+      wx.showToast({ title: '请输入灵感内容', icon: 'none' });
+      return;
+    }
+
+    this.setData({ inspirationSaving: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const imageUrls = draftPhotos.length
+        ? await this._uploadInspirationPhotos(draftPhotos)
+        : [];
+      const saveRes = await wx.cloud.callFunction({
+        name: 'saveInspiration',
+        data: withSessionFields({
+          type: imageUrls.length ? 'image' : 'text',
+          content,
+          imageUrls,
+          isAIGenerated: false
+        }, this.data.roomId, this.data.brainstormSessionSeq)
+      });
+      const result = (saveRes && saveRes.result) || {};
+      if (result.ok !== true) {
+        throw new Error(result.errMsg || '保存失败');
+      }
+      this.setData({
+        inspirationDraftText: '',
+        inspirationDraftPhotos: [],
+        inspirationHasText: false,
+        inspirationInputFocused: false,
+        inspirationHoldKeyboard: false
+      });
+      wx.showToast({ title: '已保存', icon: 'success' });
+      await this._refreshInspirationCount();
+    } catch (e) {
+      wx.showToast({ title: e.message || '保存失败', icon: 'none' });
+    } finally {
+      this.setData({ inspirationSaving: false });
+      wx.hideLoading();
+    }
+  },
+
+  handleGoInspirationCenter() {
+    const roomId = this.data.roomId || '';
+    let url = '/pages/inspiration/index?scope=workshop';
+    if (roomId) {
+      url += `&roomId=${encodeURIComponent(roomId)}`;
+    }
+    wx.navigateTo({ url });
   },
 
   async handleClosingNextStep() {

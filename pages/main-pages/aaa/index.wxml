@@ -65,6 +65,26 @@
           </view>
         </view>
 
+        <!-- DEV_TEST_START: 输入房间号加入（测试用，删除 utils/devJoinRoomById.js 及 DEV_TEST 段落） -->
+        <view class="dev-join-room" wx:if="{{devJoinEnabled && !isJoinedRoom}}">
+          <text class="dev-join-label">测试：输入房间号加入</text>
+          <view class="dev-join-row">
+            <input
+              class="dev-join-input"
+              type="number"
+              maxlength="8"
+              value="{{devJoinRoomIdInput}}"
+              placeholder="8位房间号"
+              placeholder-class="dev-join-placeholder"
+              bindinput="onDevJoinRoomIdInput"
+              confirm-type="go"
+              bindconfirm="handleDevJoinByRoomId"
+            />
+            <button class="dev-join-btn" bindtap="handleDevJoinByRoomId">加入</button>
+          </view>
+        </view>
+        <!-- DEV_TEST_END -->
+
         <!-- 已加入：查看房间 -->
         <view class="btn-grid btn-grid-single" wx:else>
           <view class="action-btn action-btn-primary action-btn-full" bindtap="handleViewRoom">

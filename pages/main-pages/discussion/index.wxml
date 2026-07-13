@@ -20,6 +20,7 @@
       currentUser="{{currentPlayerIndex}}"
       enableAdd="{{false}}"
       isFold="{{true}}"
+      showActingFrame="{{true}}"
     />
   </view>
 

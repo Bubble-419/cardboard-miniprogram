@@ -35,6 +35,26 @@ exports.main = async (event, context) => {
         selectedModeDesc: null,
         currentPage: 'addPlayer',
         brainstormProgressPage: null,
+        brainstormSessionEnded: false,
+        brainstormSessionSeq: db.command.inc(1),
+        currentRound: 1,
+        currentPlayerIndex: 1,
+        currentPlayerName: '玩家1',
+        partnerGamePhase: 'play',
+        partnerMasterMode: false,
+        partnerClosingStep: 'rune',
+        closingVotes: {},
+        closingQuestionPlayers: [],
+        partnerRoundSummaries: [],
+        partnerCurrentRoundContent: {
+          playHistory: [],
+          discussionNotes: [],
+          images: [],
+          voiceLines: [],
+          turnRecords: [],
+          aiSummary: { status: 'pending' }
+        },
+        partnerRoundStartedAt: null,
         updatedAt: Date.now()
       }
     });

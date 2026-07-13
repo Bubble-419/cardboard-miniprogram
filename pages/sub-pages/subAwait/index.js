@@ -1,9 +1,9 @@
 const {
   getSceneUI,
   resolveSubScreenNavigation,
-  navigateByRoomState,
   shouldSkipStaleSubScreenRedirect
 } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 Page({
   data: {
@@ -77,19 +77,20 @@ Page({
       data: { roomId }
     }).then((res) => {
       const result = (res && res.result) || {};
-      if (result.ok !== true || !result.roomState) return;
-
-      const page = result.roomState.currentPage || '';
-      const nav = resolveSubScreenNavigation(page, result.roomState, roomId);
-      if (!nav) return;
-
-      if (nav.action === 'redirect') {
-        if (!shouldSkipStaleSubScreenRedirect(page)) {
-          navigateByRoomState(page, result.roomState, roomId);
+      followSubScreenRoomPoll(result, roomId, {
+        beforeNavigate: (pollResult, page) => {
+          const nav = resolveSubScreenNavigation(page, pollResult.roomState, roomId);
+          if (!nav) return true;
+          if (nav.action === 'await') {
+            this.applyScene(nav.scene);
+            return true;
+          }
+          if (nav.action === 'redirect' && shouldSkipStaleSubScreenRedirect(page)) {
+            return true;
+          }
+          return false;
         }
-      } else if (nav.action === 'await') {
-        this.applyScene(nav.scene);
-      }
+      });
     }).catch((e) => console.warn('subAwait checkRoomState', e));
   },
 

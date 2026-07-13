@@ -39,20 +39,34 @@ exports.main = async (event, context) => {
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
     const room = roomRes.data && roomRes.data[0];
-    const currentRound = room && room.currentRound != null ? room.currentRound : 1;
+    if (!room) {
+      return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+    }
+    const currentRound = room.currentRound != null ? room.currentRound : 1;
+    const actingPlayerIndex = room.currentPlayerIndex != null
+      ? parseInt(room.currentPlayerIndex, 10)
+      : parseInt(currentPlayerIndex, 10);
 
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId })
-      .count();
-    const totalMembers = (membersRes && membersRes.total) || 0;
-    const totalRequired = Math.max(0, totalMembers - 1);
+      .get();
+    const members = membersRes.data || [];
+    const totalRequired = Math.max(0, members.length - 1);
+    const actingMember = members.find((m) => m.playerIndex === actingPlayerIndex);
+    if (actingMember && actingMember.userId === currentUserId) {
+      return {
+        ok: false,
+        errCode: 'SELF_SCORE',
+        errMsg: '当前出牌玩家无需打分'
+      };
+    }
 
     const existing = await db
       .collection(ROOM_SCORES_COLLECTION)
       .where({
         roomId,
-        currentPlayerIndex,
+        currentPlayerIndex: actingPlayerIndex,
         round: currentRound,
         userId: currentUserId
       })
@@ -68,7 +82,7 @@ exports.main = async (event, context) => {
       await db.collection(ROOM_SCORES_COLLECTION).add({
         data: {
           roomId,
-          currentPlayerIndex,
+          currentPlayerIndex: actingPlayerIndex,
           round: currentRound,
           userId: currentUserId,
           score: s,
@@ -80,9 +94,18 @@ exports.main = async (event, context) => {
 
     const countRes = await db
       .collection(ROOM_SCORES_COLLECTION)
-      .where({ roomId, currentPlayerIndex, round: currentRound })
-      .count();
-    const scoredCount = (countRes && countRes.total) || 0;
+      .where({ roomId, currentPlayerIndex: actingPlayerIndex, round: currentRound })
+      .get();
+    const actingUserId = actingMember && actingMember.userId;
+    const seen = new Set();
+    let scoredCount = 0;
+    for (const row of countRes.data || []) {
+      if (!row || !row.userId) continue;
+      if (actingUserId && row.userId === actingUserId) continue;
+      if (seen.has(row.userId)) continue;
+      seen.add(row.userId);
+      scoredCount += 1;
+    }
 
     return {
       ok: true,

@@ -1,0 +1,12 @@
+<view class="page-footer {{fixed ? 'page-footer--fixed' : ''}} {{extClass}}">
+  <view class="page-footer__row {{!showPrimary ? 'page-footer__row--solo' : ''}}">
+    <button
+      wx:if="{{showPrev}}"
+      class="page-footer__prev-btn"
+      bindtap="onPrevTap"
+    >{{prevText}}</button>
+    <view class="page-footer__slot" wx:if="{{showPrimary}}">
+      <slot></slot>
+    </view>
+  </view>
+</view>

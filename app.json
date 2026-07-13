@@ -35,6 +35,11 @@
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
   },
+  "permission": {
+    "scope.record": {
+      "desc": "用于记录本轮讨论并生成文字纪要"
+    }
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

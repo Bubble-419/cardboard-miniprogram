@@ -1,26 +1,28 @@
 <view class="container">
-  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view
+    class="main-scroll"
+    scroll-y="{{!inputFocused}}"
+    show-scrollbar="{{false}}"
+  >
 
     <!-- 顶部区：TopBar + 情境格 -->
     <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
 
-      <!-- TopBar：房间入口 + 堆叠头像 + 添加按钮 -->
+      <!-- TopBar：房间入口 + 成员头像 + 添加按钮 -->
       <view class="topbar">
-        <view class="room-entry" bindtap="handleGoBack">
+        <view class="room-entry" bindtap="handleGoRoom">
           <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
         </view>
-        <view class="avatar-stack">
-          <view
-            class="avatar-frame {{item.isMe ? 'avatar-me' : ''}}"
-            wx:for="{{avatarList}}"
-            wx:key="id"
-            style="margin-left: {{index > 0 ? '-16rpx' : '0'}}"
-          >
-            <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
-          </view>
+        <view class="avatar-bar">
+          <user-list
+            avatarList="{{avatarList}}"
+            enableAdd="{{false}}"
+            isFold="{{true}}"
+            showName="{{false}}"
+          />
         </view>
         <view class="add-btn">
-          <image class="add-btn-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
+          <image class="add-btn-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
         </view>
       </view>
 
@@ -51,13 +53,17 @@
         </view>
 
         <!-- 输入框 + 字数计数 + 提交图标 -->
-        <view class="form-input-wrap">
+        <view class="form-input-wrap" catchtouchmove="preventTouchMove">
           <view class="textarea-box">
             <textarea
               class="problem-input"
               placeholder="请输入设计问题..."
               value="{{problemText}}"
               maxlength="{{maxLength}}"
+              adjust-position="{{true}}"
+              show-confirm-bar="{{false}}"
+              bindfocus="onInputFocus"
+              bindblur="onInputBlur"
               bindinput="onInput"
               placeholder-class="input-placeholder"
             />
@@ -83,4 +89,13 @@
     </view>
 
   </scroll-view>
+
+  <!-- 固定底部按钮 -->
+  <page-footer
+    wx:if="{{!hasSubmitted}}"
+    extClass="footer-action"
+    showPrev="{{false}}"
+  >
+    <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
+  </page-footer>
 </view>

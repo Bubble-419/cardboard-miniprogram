@@ -8,19 +8,9 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
-
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
-];
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { buildUserListFromMembers } = require('../../../utils/userListData');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 Page({
   data: {
@@ -38,7 +28,8 @@ Page({
     hasSubmitted: false,
     submittedCount: 0,
     totalMembers: 0,
-    isSubmitting: false
+    isSubmitting: false,
+    inputFocused: false
   },
 
   onLoad(options) {
@@ -64,18 +55,26 @@ Page({
     this.loadRoomData().then(() => {
       this.refreshSubmitStatus();
       this._startPolling();
+      this._initialized = true;
     });
   },
 
   onShow() {
-    this.refreshSubmitStatus();
-    if (this.data.roomId) {
-      this.loadRoomData();
+    if (this._initialized) {
+      this.loadRoomData().then(() => {
+        if (!this._inputFocused) {
+          this.refreshSubmitStatus();
+        }
+      });
     }
   },
 
   onUnload() {
     this._stopPolling();
+    if (this._inputBlurTimer) {
+      clearTimeout(this._inputBlurTimer);
+      this._inputBlurTimer = null;
+    }
   },
 
   _syncCategoriesFromBG(bg) {
@@ -84,6 +83,21 @@ Page({
       applyBGToApp(normalized);
     }
     this.setData({ categories: buildCategoriesFromBG(normalized) });
+  },
+
+  _syncMembersFromResult(result) {
+    if (!result || result.ok !== true) return;
+    const members = result.members || [];
+    const avatarList = buildUserListFromMembers(members);
+    const me = members.find((m) => m.isMe);
+    this.setData({
+      workshopName: result.workshopName || this.data.workshopName,
+      avatarList,
+      currentUser: me ? me.playerIndex : null,
+      myPlayerIndex: me ? me.playerIndex : null,
+      myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
+      totalMembers: result.memberCount != null ? result.memberCount : avatarList.length
+    });
   },
 
   async loadRoomData() {
@@ -103,24 +117,7 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
-      const avatarList = (result.members || []).map((m, i) => {
-        const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-        return {
-          id: m.userId || String(m.playerIndex),
-          nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
-          isMe: m.isMe === true
-        };
-      });
-      const me = (result.members || []).find((m) => m.isMe);
-      this.setData({
-        workshopName: result.workshopName || '脑暴工作坊',
-        avatarList,
-        currentUser: me ? (me.userId || String(me.playerIndex)) : null,
-        myPlayerIndex: me ? me.playerIndex : null,
-        myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
-        totalMembers: result.memberCount || avatarList.length
-      });
+      this._syncMembersFromResult(result);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
@@ -129,18 +126,22 @@ Page({
   async refreshSubmitStatus() {
     const roomId = this.data.roomId;
     if (!roomId || this.data.myPlayerIndex == null) return;
+    if (this._inputFocused || this.data.isSubmitting) return;
     try {
       const status = await getSubmitStatus(
         roomId,
         this.data.myPlayerIndex,
         this.data.totalMembers
       );
-      this.setData({
+      const patch = {
         submittedCount: status.submittedCount || 0,
         totalMembers: status.totalMembers || this.data.totalMembers,
-        hasSubmitted: status.hasSubmitted === true,
-        problemText: status.hasSubmitted ? (status.myProblemText || '') : this.data.problemText
-      });
+        hasSubmitted: status.hasSubmitted === true
+      };
+      if (status.hasSubmitted) {
+        patch.problemText = status.myProblemText || '';
+      }
+      this.setData(patch);
       if (status.allSubmitted) {
         this._goSelectProblem();
       }
@@ -152,7 +153,7 @@ Page({
   _startPolling() {
     this._stopPolling();
     const poll = async () => {
-      if (this.data.myPlayerIndex != null) {
+      if (this.data.myPlayerIndex != null && !this._inputFocused && !this.data.isSubmitting) {
         await this.refreshSubmitStatus();
       }
       const roomId = this.data.roomId;
@@ -163,7 +164,6 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
 
         const roomBG = normalizeBG(result.selectedBG)
           || normalizeBG(getApp().globalData.selectedBG);
@@ -171,12 +171,16 @@ Page({
           this._syncCategoriesFromBG(roomBG);
         }
 
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'selectproblem') {
-          this._goSelectProblem();
-        } else {
-          navigateByRoomState(page, result.roomState, roomId);
-        }
+        this._syncMembersFromResult(result);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'selectproblem') {
+              this._goSelectProblem();
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('submitProblem poll', e);
       }
@@ -225,6 +229,10 @@ Page({
     });
   },
 
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
+  },
+
   selectCategory(e) {
     const categoryId = e.currentTarget.dataset.id;
     const categories = this.data.categories.map((item) => ({
@@ -233,6 +241,29 @@ Page({
     }));
     this.setData({ categories, selectedCategory: categoryId });
   },
+
+  onInputFocus() {
+    this._inputFocused = true;
+    if (this._inputBlurTimer) {
+      clearTimeout(this._inputBlurTimer);
+      this._inputBlurTimer = null;
+    }
+    if (!this.data.inputFocused) {
+      this.setData({ inputFocused: true });
+    }
+  },
+
+  onInputBlur() {
+    if (this._inputBlurTimer) clearTimeout(this._inputBlurTimer);
+    this._inputBlurTimer = setTimeout(() => {
+      this._inputFocused = false;
+      if (this.data.inputFocused) {
+        this.setData({ inputFocused: false });
+      }
+    }, 200);
+  },
+
+  preventTouchMove() {},
 
   onInput(e) {
     this.setData({ problemText: e.detail.value });

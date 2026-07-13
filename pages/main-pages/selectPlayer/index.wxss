@@ -124,7 +124,7 @@
 
 .skip-btn-green {
   width: 100%;
-  max-width: 600rpx;
+  max-width: none;
   height: 96rpx;
   background-color: #5ec159;
   color: #ffffff;
@@ -352,18 +352,9 @@
 
 /* 底部按钮 */
 .footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   background-color: transparent;
   padding: 30rpx 54rpx;
   padding-bottom: calc(30rpx + env(safe-area-inset-bottom));
-  z-index: 10;
-  pointer-events: auto;
-  display: flex;
-  gap: 24rpx;
-  align-items: center;
 }
 
 .reselect-btn {

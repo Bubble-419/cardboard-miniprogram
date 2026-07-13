@@ -1,8 +1,11 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
 const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { safeOpenUrl, navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
+const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 const WHEEL_ACTIONS = [
   { id: 'helpLuck', label: '求助AI或运气', zone: 'left' },
@@ -49,6 +52,8 @@ Page({
     roomId: '',
     initiatorPlayerIndex: 1,
     currentPlayerIndex: 1,
+    currentRound: 1,
+    brainstormSessionSeq: 0,
     avatarList: [],
     selectedProblemText: '',
     viewMode: 'wheel',
@@ -99,6 +104,29 @@ Page({
   onUnload() {
     this.clearSilentTimer();
     this._stopStatePolling();
+  },
+
+  _markSpecialMoveUsedForGamepage() {
+    const playerIndex = this.data.currentPlayerIndex || this.data.initiatorPlayerIndex;
+    markPartnerSpecialMoveUsed(
+      this.data.roomId,
+      playerIndex,
+      this.data.currentRound != null ? this.data.currentRound : 1,
+      this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0
+    );
+  },
+
+  _returnToGamepage() {
+    const pages = getCurrentPages();
+    const prev = pages.length > 1 ? pages[pages.length - 2] : null;
+    const prevRoute = prev ? (prev.route || '') : '';
+    if (prevRoute === 'pages/main-pages/partnerMode/gamepage/index') {
+      wx.navigateBack();
+      return;
+    }
+    const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
+    const idx = currentPlayerIndex || initiatorPlayerIndex;
+    safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner', { specialMoveUsed: true }));
   },
 
   formatSilentTime(sec) {
@@ -157,6 +185,12 @@ Page({
         members,
         avatarList: buildPartnerAvatarList(members),
         currentPlayerIndex: player.currentPlayerIndex,
+        currentRound: result.roomState && result.roomState.currentRound != null
+          ? result.roomState.currentRound
+          : 1,
+        brainstormSessionSeq: result.roomState && result.roomState.brainstormSessionSeq != null
+          ? result.roomState.brainstormSessionSeq
+          : 0,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : ''
       });
     } catch (e) {
@@ -200,12 +234,14 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'gamepage' && result.roomState.partnerMasterMode !== true) {
-          return;
-        }
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => {
+            if (page === 'gamepage' && pollResult.roomState.partnerMasterMode !== true) {
+              return true;
+            }
+            return false;
+          }
+        });
       } catch (e) {
         console.warn('specialMove state poll', e);
       }
@@ -222,11 +258,7 @@ Page({
   },
 
   handleGoRoom() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    goRoomPage(this.data.roomId);
   },
 
   handleGoBack() {
@@ -283,6 +315,7 @@ Page({
         this.setData({ viewMode: 'reverseRandom' });
         return;
       }
+      this._markSpecialMoveUsedForGamepage();
       this.setData({
         showChat: true,
         chatMessages: [{
@@ -340,6 +373,8 @@ Page({
       ? (initiator.nickName || `玩家${initiatorPlayerIndex}`)
       : `玩家${initiatorPlayerIndex}`;
 
+    this._markSpecialMoveUsedForGamepage();
+
     const ok = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
       partnerMasterMode: true
     });
@@ -349,28 +384,34 @@ Page({
     }
 
     this._stopStatePolling();
-    safeOpenUrl(buildGamepageUrl(roomId, initiatorPlayerIndex, 'partner'));
+    this._returnToGamepage();
   },
 
   handleCancelAdopt() {
     this.setData({ viewMode: 'wheel' });
   },
 
-  handleAdoptDeck() {
-    const { roomId, currentPlayerIndex } = this.data;
-    if (!roomId) return;
-    safeOpenUrl(buildGamepageUrl(roomId, currentPlayerIndex, 'partner'));
+  async handleAdoptDeck() {
+    if (!this.data.roomId) return;
+    if (this.data.currentRound == null) {
+      await this.loadRoomData();
+    }
+    this._markSpecialMoveUsedForGamepage();
+    this._returnToGamepage();
   },
 
-  handleEndSilent() {
+  async handleEndSilent() {
     this.clearSilentTimer();
-    const { roomId, currentPlayerIndex } = this.data;
-    if (!roomId) return;
-    safeOpenUrl(buildGamepageUrl(roomId, currentPlayerIndex, 'partner'));
+    if (!this.data.roomId) return;
+    if (this.data.currentRound == null) {
+      await this.loadRoomData();
+    }
+    this._markSpecialMoveUsedForGamepage();
+    this._returnToGamepage();
   },
 
   handleCloseChat() {
-    this.setData({ showChat: false });
+    this._returnToGamepage();
   },
 
   onChatInput(e) {

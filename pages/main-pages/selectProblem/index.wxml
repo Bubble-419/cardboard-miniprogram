@@ -8,7 +8,7 @@
 
         <!-- TopBar：房间入口 + 堆叠头像 + 添加按钮 -->
         <view class="topbar">
-          <view class="room-entry">
+          <view class="room-entry" bindtap="handleGoRoom">
             <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
           </view>
           <view class="avatar-stack">
@@ -28,7 +28,6 @@
 
         <!-- 情境展示 -->
         <context-display items="{{categories}}" />
-
       </view>
 
       <!-- 标题区 -->
@@ -36,12 +35,13 @@
         <text class="page-title" wx:if="{{isHost}}">选择设计问题</text>
         <text class="page-title" wx:else>等待房主选择设计问题</text>
         <text class="page-subtitle" wx:if="{{isHost}}">房主可以对设计问题进行选择、编辑</text>
+        <text class="page-subtitle" wx:else>可修改自己提交的问题，等待房主选择</text>
       </view>
 
       <!-- 设计问题列表 -->
       <view class="problem-list">
         <view
-          class="problem-item {{!isHost ? 'readonly' : ''}} {{isHost && item.selected ? 'selected' : ''}} {{isHost && editingProblemId === item.id ? 'editing' : ''}}"
+          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost && !item.isMine ? 'readonly' : ''}}"
           wx:for="{{problems}}"
           wx:key="id"
           data-id="{{item.id}}"
@@ -52,7 +52,7 @@
 
           <!-- 问题文字（含编辑态） -->
           <view class="problem-body">
-            <block wx:if="{{isHost && editingProblemId === item.id}}">
+            <block wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}">
               <textarea
                 class="problem-textarea"
                 value="{{item.text}}"
@@ -65,29 +65,34 @@
                 bindblur="onProblemBlur"
               />
             </block>
-            <text wx:else class="problem-text" id="problem-text-{{item.id}}">{{item.text}}</text>
+            <text wx:else class="problem-text {{item.isMine && !isHost ? 'problem-text-mine' : ''}}" id="problem-text-{{item.id}}">{{item.text}}</text>
           </view>
 
-          <!-- 右侧图标：仅房主展示编辑/选中态 -->
+          <!-- 右侧图标 -->
           <view class="problem-right">
-            <block wx:if="{{isHost}}">
-              <view
-                wx:if="{{editingProblemId === item.id}}"
-                class="right-icon-btn"
-                catchtap="onSaveEdit"
-              >
-                <image class="right-icon" src="/assets/icons/icon-problem-confirm.svg" mode="aspectFit" />
-              </view>
-              <view
-                wx:elif="{{item.selected}}"
-                class="right-icon-btn"
-                data-id="{{item.id}}"
-                catchtap="onEditProblem"
-              >
-                <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
-              </view>
-              <view wx:else class="right-icon-placeholder"></view>
-            </block>
+            <view
+              wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}"
+              class="right-icon-btn"
+              catchtap="onSaveEdit"
+            >
+              <image class="right-icon" src="/assets/icons/icon-problem-confirm.svg" mode="aspectFit" />
+            </view>
+            <view
+              wx:elif="{{isHost && item.selected}}"
+              class="right-icon-btn"
+              data-id="{{item.id}}"
+              catchtap="onEditProblem"
+            >
+              <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
+            </view>
+            <view
+              wx:elif="{{!isHost && item.isMine && item.selected}}"
+              class="right-icon-btn"
+              data-id="{{item.id}}"
+              catchtap="onEditProblem"
+            >
+              <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
+            </view>
             <view wx:else class="right-icon-placeholder"></view>
           </view>
         </view>
@@ -102,8 +107,12 @@
   </scroll-view>
 
   <!-- 底部确认按钮（仅房主可见） -->
-  <view class="footer" wx:if="{{isHost}}">
+  <page-footer
+    wx:if="{{isHost}}"
+    extClass="footer"
+    showPrev="{{false}}"
+  >
     <view class="confirm-btn" bindtap="confirmSelection">确认问题</view>
-  </view>
+  </page-footer>
 
 </view>

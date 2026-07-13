@@ -1,5 +1,7 @@
 {
   "navigationBarTitleText": "确认情境",
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "page-footer": "/components/page-footer/index"
+  }
 }

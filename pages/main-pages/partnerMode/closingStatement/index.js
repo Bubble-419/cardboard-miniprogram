@@ -1,5 +1,6 @@
 const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 
 function isValidClosingVote(vote) {
   return vote === 'pass' || vote === 'question';
@@ -84,10 +85,9 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        if (page === 'closingstatement') return;
-        navigateByRoomState(page, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId, {
+          beforeNavigate: (pollResult, page) => page === 'closingstatement'
+        });
       } catch (e) {
         console.warn('closingStatement state poll', e);
       }

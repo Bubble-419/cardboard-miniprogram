@@ -69,36 +69,13 @@
   height: 48rpx;
 }
 
-/* 堆叠头像 */
-.avatar-stack {
+/* 头像列表容器 */
+.avatar-bar {
   display: flex;
   align-items: center;
   flex: 1;
-  padding-left: 16rpx;
-}
-
-.avatar-frame {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #E5E7EB;
-  border: 4rpx solid #FFFFFF;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 1;
-}
-
-.avatar-frame.avatar-me {
-  border-color: #5EC159;
-  z-index: 10;
-}
-
-.avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 9999rpx;
+  min-width: 0;
+  overflow: visible;
 }
 
 /* ===== 规则说明区 ===== */

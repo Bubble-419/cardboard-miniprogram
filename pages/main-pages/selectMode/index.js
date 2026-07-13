@@ -17,6 +17,7 @@ const {
   normalizeBG
 } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../utils/selectedDesignProblem');
 
 Page({
@@ -135,7 +136,7 @@ Page({
       } else {
         const roomState = result.roomState || {};
         const page = roomState.currentPage || 'selectMode';
-        navigateByRoomState(page, roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
         if (isAwaitPage(page)) {
           return;
         }
@@ -157,8 +158,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        navigateByRoomState(result.roomState.currentPage, result.roomState, roomId);
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('selectMode state poll', e);
       }

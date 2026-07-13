@@ -12,6 +12,11 @@ const AVATAR_IMAGES = [
 
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
+const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
+const { goRoomPage } = require('../../../utils/goRoomPage');
+
 const BRAINSTORM_MODES = [
   {
     id: 'halliGalli',
@@ -22,7 +27,7 @@ const BRAINSTORM_MODES = [
   },
   {
     id: 'partner',
-    title: '合伙人模式',
+    title: PARTNER_MODE_DISPLAY_TITLE,
     description: '团队协作，\n共同打磨并提交最佳创意方案',
     coverImage: '/assets/brainstormMode/mode-cover-partner.png',
     pagePath: MODE_INDEX_PATH
@@ -144,17 +149,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        const roomIdEnc = encodeURIComponent(roomId);
-        if (page === 'gamepage') {
-          const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
-          wx.redirectTo({ url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}` });
-        } else if (page === 'creativeinput') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-        } else if (page === 'creativesummary') {
-          wx.redirectTo({ url: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}` });
-        }
+        followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('brainstormMode state poll', e);
       }
@@ -221,6 +216,7 @@ Page({
         title: mode.title,
         description: mode.description
       };
+      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
 
       wx.navigateTo({
         url: `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`,
@@ -243,5 +239,9 @@ Page({
         });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

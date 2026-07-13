@@ -3,12 +3,13 @@
   <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px">
     <view class="navbar-content">
       <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
+        <view class="room-entry" bindtap="handleGoRoom">
+          <image
+            class="room-entry-icon"
+            src="/assets/icons/icon-room-entry.svg"
+            mode="aspectFit"
+          />
+        </view>
       </view>
       <view class="navbar-title"></view>
       <view class="navbar-right"></view>
@@ -20,6 +21,12 @@
     <text class="wait-title">确认情境</text>
     <text class="wait-desc">等待房主确认情境…</text>
   </view>
+  <page-footer
+    wx:if="{{!isHost || isWaiting}}"
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 
   <!-- 房主确认视图 -->
   <block wx:else>
@@ -54,7 +61,7 @@
     </view>
 
     <!-- 确认按钮 -->
-    <view class="footer">
+    <page-footer extClass="footer" bind:prev="handleGoBack">
       <button
         class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
         disabled="{{!canConfirm}}"
@@ -62,6 +69,6 @@
       >
         确认情境
       </button>
-    </view>
+    </page-footer>
   </block>
 </view>

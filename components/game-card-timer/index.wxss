@@ -1,0 +1,125 @@
+.gct-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 28rpx;
+}
+
+.gct-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+}
+
+.gct-canvas-visible {
+  opacity: 1;
+}
+
+.gct-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  border-radius: 28rpx;
+  background: #fff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.gct-wrap-timer-on .gct-inner {
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  bottom: 8rpx;
+  border-radius: 20rpx;
+}
+
+.gct-wrap-expiring .gct-inner {
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  bottom: 8rpx;
+  border-radius: 20rpx;
+}
+
+.gct-inner-expiring {
+  animation: gct-inner-expire-pulse 1.2s ease-out forwards;
+}
+
+.gct-expire-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.gct-expire-ring-outer {
+  border: 4rpx solid #c3e4c1;
+  animation: gct-expire-ring-pulse 1.2s ease-out forwards;
+}
+
+.gct-expire-ring-inner {
+  left: 8rpx;
+  top: 8rpx;
+  width: calc(100% - 16rpx);
+  height: calc(100% - 16rpx);
+  border-radius: 20rpx;
+  border: 5rpx solid transparent;
+  border-top-color: #5ec159;
+  border-right-color: #5ec159;
+  animation: gct-expire-ring-spin 1.2s ease-out forwards;
+}
+
+@keyframes gct-inner-expire-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes gct-expire-ring-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.16);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes gct-expire-ring-spin {
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(200deg);
+    opacity: 0;
+  }
+}

@@ -16,6 +16,12 @@
   <view class="empty-wait-state" wx:if="{{isWaiting}}">
     <text class="empty-wait-text">请在主屏上参与抽取首位翻牌玩家</text>
   </view>
+  <page-footer
+    wx:if="{{isWaiting}}"
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="goBack"
+  ></page-footer>
 
   <!-- 房主：触摸交互区域 -->
   <block wx:else>
@@ -78,13 +84,21 @@
   </view>
 
     <!-- 底部：未选中时显示跳过按钮，选中后显示重新选择+确认 -->
-  <view class="footer footer-skip" wx:if="{{!selectedPlayerIndex}}">
+  <page-footer
+    wx:if="{{!selectedPlayerIndex}}"
+    extClass="footer footer-skip"
+    bind:prev="goBack"
+  >
     <button class="skip-btn-green" bindtap="handleSkip">跳过</button>
-  </view>
-  <view class="footer" wx:elif="{{selectionAnimationDone && selectedPlayerIndex}}">
+  </page-footer>
+  <page-footer
+    wx:elif="{{selectionAnimationDone && selectedPlayerIndex}}"
+    extClass="footer"
+    bind:prev="goBack"
+  >
     <button class="reselect-btn" bindtap="reselectSelection">重新选择</button>
     <button class="confirm-btn" bindtap="confirmSelection">确认</button>
-  </view>
+  </page-footer>
 
   <!-- 添加玩家按钮 -->
   <view class="add-player-btn" bindtap="addPlayer">

@@ -46,32 +46,12 @@
   height: 74rpx;
 }
 
-.avatar-stack {
+.avatar-bar {
   display: flex;
   align-items: center;
   flex: 1;
-  padding-left: 16rpx;
-}
-.avatar-frame {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #E5E7EB;
-  border: 4rpx solid #FFFFFF;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 1;
-}
-.avatar-frame.avatar-me {
-  border-color: #5EC159;
-  z-index: 10;
-}
-.avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 9999rpx;
+  min-width: 0;
+  overflow: visible;
 }
 
 .add-btn {
@@ -204,7 +184,9 @@
   font-size: 24rpx;
   color: #CBD5E1;
   font-weight: 500;
+  pointer-events: none;
 }
+
 /* 提交图标（Figma: 26×26，icon-submit-arrow.svg，绿色圆圈箭头） */
 .submit-icon {
   width: 52rpx;
@@ -240,3 +222,41 @@
   margin-top: 12rpx;
 }
 
+/* ===== 底部按钮（固定悬浮，带渐变遮罩） ===== */
+.footer-placeholder {
+  height: calc(180rpx + env(safe-area-inset-bottom));
+}
+
+.footer-action {
+  padding: 40rpx 40rpx calc(56rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(0deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.95) 50%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+
+.footer-action .page-footer__prev-btn,
+.footer-action .confirm-btn {
+  pointer-events: auto;
+}
+
+/* 按钮（Figma: 315.66px×44.56px，radius 11.14px，20.42px Regular，letterSpacing 0.0909em） */
+.confirm-btn {
+  width: 100%;
+  height: 90rpx;
+  font-size: 40rpx;
+  font-weight: 400;
+  color: #FFFFFF;
+  background-color: #5EC159;
+  border-radius: 22rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.0909em;
+  pointer-events: auto;
+}
+.confirm-btn::after {
+  border: none;
+}
+.confirm-btn:active {
+  opacity: 0.9;
+}
