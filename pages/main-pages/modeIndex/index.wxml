@@ -95,10 +95,8 @@
                     <text class="badge-text">{{item.type === 'history' ? '历史' : '案例'}}</text>
                   </view>
                   <text class="scenario-title">{{item.title}}</text>
-                  <view class="scenario-tags" wx:if="{{item.bg}}">
-                    <text class="scenario-tag" wx:if="{{item.bg.scene}}">{{item.bg.scene}}</text>
-                    <text class="scenario-tag" wx:if="{{item.bg.user}}">{{item.bg.user}}</text>
-                    <text class="scenario-tag" wx:if="{{item.bg.platform}}">{{item.bg.platform}}</text>
+                  <view class="scenario-tags" wx:if="{{item.tags.length}}">
+                    <text class="scenario-tag" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
                   </view>
                 </view>
                 <view class="arrow-wrap arrow-wrap-green">

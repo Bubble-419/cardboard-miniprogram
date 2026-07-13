@@ -5,6 +5,22 @@ const DEFAULT_CATEGORIES = [
   { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
 ];
 
+const PARTNER_TAG_KEYS = ['scene', 'user', 'platform', 'function'];
+const DEFAULT_TAG_KEYS = ['scene', 'user', 'function'];
+
+/** 按游戏模式返回情境卡片应展示的标签字段 */
+function getScenarioTagKeysForMode(modeId) {
+  return modeId === 'partner' ? PARTNER_TAG_KEYS : DEFAULT_TAG_KEYS;
+}
+
+/** 生成 modeIndex 情境卡片上的标签文案列表 */
+function buildScenarioTagsForMode(modeId, bg) {
+  if (!bg) return [];
+  return getScenarioTagKeysForMode(modeId)
+    .map((key) => (bg[key] || '').trim())
+    .filter(Boolean);
+}
+
 /** 根据已选情境生成分类标签列表 */
 function buildCategoriesFromBG(bg) {
   if (!bg) {
@@ -50,6 +66,10 @@ function normalizeBG(bg) {
 
 module.exports = {
   DEFAULT_CATEGORIES,
+  PARTNER_TAG_KEYS,
+  DEFAULT_TAG_KEYS,
+  getScenarioTagKeysForMode,
+  buildScenarioTagsForMode,
   buildCategoriesFromBG,
   applyBGToApp,
   normalizeBG

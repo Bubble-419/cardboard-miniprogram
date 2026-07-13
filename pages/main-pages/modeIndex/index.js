@@ -4,6 +4,7 @@
  * 入口参数：roomId, modeId (halliGalli | partner | spy)
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
+const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
@@ -73,9 +74,15 @@ Page({
   },
 
   _loadScenarios() {
-    const scenarios = getScenariosForMode(this.data.modeId);
+    const { modeId } = this.data;
+    const scenarios = getScenariosForMode(modeId);
     const offlineScenario = scenarios.find((s) => s.isOffline || s.id === 'offline') || null;
-    const customScenarios = scenarios.filter((s) => !s.isOffline && s.id !== 'offline');
+    const customScenarios = scenarios
+      .filter((s) => !s.isOffline && s.id !== 'offline')
+      .map((item) => ({
+        ...item,
+        tags: buildScenarioTagsForMode(modeId, item.bg)
+      }));
     this.setData({ scenarios, offlineScenario, customScenarios });
   },
 
