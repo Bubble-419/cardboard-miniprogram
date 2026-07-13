@@ -1,7 +1,15 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
-const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
 const { getDevJoinPageData } = require('../../../utils/devJoinRoomById');
+const {
+  DEFAULT_AVATAR,
+  getStoredProfile,
+  saveStoredProfile,
+  applyChooseAvatarEvent,
+  getOptionalProfileForRoom,
+  buildRoomJoinPayload
+} = require('../../../utils/wxUserAvatar');
+const { AVATAR_IMAGES } = require('../../../utils/avatars');
 
 Page({
   data: {
@@ -30,6 +38,7 @@ Page({
       console.warn('getSystemInfo for header', e);
     }
     this.setData({ headerPaddingTop, ...getDevJoinPageData() });
+    this._restoreUserProfile();
     this.loadJoinedRoomState();
   },
 
@@ -139,17 +148,39 @@ Page({
         userAvatarUrl: DEFAULT_AVATAR
       };
     }
-    let avatarUrl = member.avatarUrl || member.avatarImage || '';
+    let avatarUrl = member.avatarUrl || '';
     if (!avatarUrl && member.avatarIndex != null) {
-      try {
-        const { AVATAR_IMAGES } = require('../../../utils/avatars');
-        avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
-      } catch (_) {}
+      avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
     }
     return {
       userNickName: member.nickName || '微信用户',
       userAvatarUrl: avatarUrl || DEFAULT_AVATAR
     };
+  },
+
+  _restoreUserProfile() {
+    const stored = getStoredProfile();
+    if (!stored || !stored.avatarUrl) return;
+    this.setData({
+      userAvatarUrl: stored.avatarUrl,
+      userNickName: stored.nickName || this.data.userNickName || '微信用户'
+    });
+  },
+
+  onChooseAvatar(e) {
+    const profile = applyChooseAvatarEvent(e.detail);
+    if (!profile) return;
+    this.setData({
+      userAvatarUrl: profile.avatarUrl,
+      userNickName: profile.nickName || this.data.userNickName || '微信用户'
+    });
+  },
+
+  onNickNameInput(e) {
+    const nickName = (e.detail && e.detail.value) || '';
+    const stored = getStoredProfile() || {};
+    saveStoredProfile({ ...stored, nickName });
+    this.setData({ userNickName: nickName || '微信用户' });
   },
 
   _clearJoinedRoom(roomId) {
@@ -196,11 +227,12 @@ Page({
 
     this.setData({ loading: true });
     const clientCreateId = `client-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    const profile = await getOptionalProfileForRoom();
 
     try {
       const res = await wx.cloud.callFunction({
         name: 'roomCreate',
-        data: { clientCreateId }
+        data: buildRoomJoinPayload(profile, { clientCreateId })
       });
 
       const result = (res && res.result) || {};
@@ -274,7 +306,7 @@ Page({
         wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
-      await this._joinRoomAndGo(roomId);
+      await this._goToScanJoinRoom(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
         wx.showToast({ title: '已取消扫码', icon: 'none' });
@@ -293,7 +325,7 @@ Page({
 
     const roomId = this._parseRoomIdFromPath(path) || this._parseRoomId(path);
     if (this._isValidRoomId(roomId)) {
-      await this._joinRoomAndGo(roomId);
+      await this._goToScanJoinRoom(roomId);
       return true;
     }
 
@@ -484,12 +516,28 @@ Page({
     return '';
   },
 
+  _goToScanJoinRoom(roomId) {
+    if (!roomId) return;
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
+    wx.redirectTo({
+      url,
+      fail: (err) => {
+        console.warn('redirectTo addPlayer failed, try reLaunch', err);
+        wx.reLaunch({ url });
+      }
+    });
+  },
+
   async _joinRoomAndGo(roomId) {
+    const profile = await getOptionalProfileForRoom();
+
     wx.showLoading({ title: '加入中…' });
     try {
       const res = await wx.cloud.callFunction({
         name: 'roomJoin',
-        data: { roomId }
+        data: buildRoomJoinPayload(profile, { roomId })
       });
       const result = (res && res.result) || {};
       wx.hideLoading();

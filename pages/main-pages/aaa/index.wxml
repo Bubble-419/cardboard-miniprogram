@@ -3,10 +3,19 @@
   <view class="main-header" style="padding-top: {{headerPaddingTop}}px">
     <view class="user-info">
       <view class="avatar-wrap">
-        <image class="user-avatar" src="{{userAvatarUrl}}" mode="aspectFill" />
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image class="user-avatar" src="{{userAvatarUrl}}" mode="aspectFill" />
+        </button>
         <view class="online-dot" />
       </view>
-      <text class="user-name">{{userNickName}}</text>
+      <input
+        class="user-name"
+        type="nickname"
+        value="{{userNickName}}"
+        placeholder="微信用户"
+        bindinput="onNickNameInput"
+        bindblur="onNickNameInput"
+      />
     </view>
   </view>
 

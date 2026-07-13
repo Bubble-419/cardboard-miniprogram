@@ -8,7 +8,7 @@
     <!-- 顶部区：TopBar + 情境格 -->
     <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
 
-      <!-- TopBar：房间入口 + 成员头像 + 添加按钮 -->
+      <!-- TopBar：房间入口 + 成员头像 -->
       <view class="topbar">
         <view class="room-entry" bindtap="handleGoRoom">
           <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
@@ -19,10 +19,8 @@
             enableAdd="{{false}}"
             isFold="{{true}}"
             showName="{{false}}"
+            layout="stack"
           />
-        </view>
-        <view class="add-btn">
-          <image class="add-btn-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
         </view>
       </view>
 

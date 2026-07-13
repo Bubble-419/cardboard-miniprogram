@@ -115,7 +115,7 @@
 }
 
 .user-section {
-  padding: 0 20rpx 8rpx;
+  padding: 0 28rpx 8rpx;
   flex-shrink: 0;
 }
 

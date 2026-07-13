@@ -229,14 +229,18 @@
 }
 
 .fold .avatar-frame-box {
-  width: 72rpx;
-  height: 72rpx;
+  width: 80rpx;
+  height: 80rpx;
 }
 
+/* Figma TopBar 5901:2166 — 40×40px 圆形，2px #FFF 描边，#E5E7EB 底色 */
 .fold .avatar-wrap {
-  width: 60rpx;
-  height: 60rpx;
-  padding: 2rpx;
+  width: 80rpx;
+  height: 80rpx;
+  padding: 0;
+  box-sizing: border-box;
+  border: 4rpx solid #ffffff;
+  background-color: #e5e7eb;
 }
 
 .fold .partner-ring-acting-outer {
@@ -272,26 +276,26 @@
   height: 30rpx;
 }
 
-/* 堆叠布局（halliGalli 等顶栏） */
+/* 堆叠布局（TopBar 头像条，Figma 5901:2166） */
 .layout-stack {
   flex: 1;
   min-width: 0;
-  height: 88rpx;
+  height: 80rpx;
   display: flex;
   align-items: center;
 }
 
 .layout-stack .avatar-scroll {
   width: 100%;
-  height: 88rpx;
+  height: 80rpx;
 }
 
 .layout-stack .avatar-row-stack {
   display: inline-flex;
   align-items: center;
-  padding: 0 0 0 16rpx;
+  padding: 0;
   box-sizing: border-box;
-  height: 88rpx;
+  height: 80rpx;
 }
 
 .layout-stack .avatar-item {
@@ -314,7 +318,7 @@
 
 .layout-stack .avatar-slot {
   position: relative;
-  height: 88rpx;
+  height: 80rpx;
   justify-content: center;
   padding-bottom: 0;
 }
@@ -328,9 +332,9 @@
 }
 
 .layout-stack .avatar-wrap {
-  background-color: #fff;
-  border: 4rpx solid #fff;
-  box-shadow: 0 0 0 1rpx rgba(0, 0, 0, 0.04);
+  background-color: #e5e7eb;
+  border: 4rpx solid #ffffff;
+  box-shadow: none;
 }
 
 .layout-stack.fold .avatar-frame-box {
@@ -339,8 +343,10 @@
 }
 
 .layout-stack.fold .avatar-wrap {
-  width: 64rpx;
-  height: 64rpx;
+  width: 80rpx;
+  height: 80rpx;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 @keyframes acting-ring-spin {

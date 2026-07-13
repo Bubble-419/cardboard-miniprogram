@@ -49,46 +49,14 @@
   height: 74rpx;
 }
 
-/* 堆叠头像列表: margin-left 8px → 16rpx, 堆叠 -8px → -16rpx */
-.avatar-stack {
-  display: flex;
-  flex-direction: row;
-  margin-left: 16rpx;
-  flex: 1;
-}
-
-/* 单个头像: Figma 40×40px → 80rpx, border-radius 9999px, border 2px #FFF → 4rpx */
-.avatar-frame {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #E5E7EB;
-  border: 4rpx solid #FFFFFF;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.avatar-img {
-  width: 100%;
-  height: 100%;
-}
-
-/* 添加按钮: Figma 40×40px → 80rpx, bg #F3F4F6, border-radius 9999px */
-.add-btn {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #F3F4F6;
+/* 堆叠头像列表 */
+.avatar-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   margin-left: 16rpx;
-}
-
-.add-btn-icon {
-  width: 48rpx;
-  height: 48rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
 }
 
 /* ===== 标题区 ===== */

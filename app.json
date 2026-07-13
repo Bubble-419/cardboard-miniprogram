@@ -3,6 +3,7 @@
     "pages/main-pages/aaa/index",
     "pages/auth/index",
     "pages/main-pages/addPlayer/index",
+    "pages/main-pages/brainstormMode/index",
     "pages/sub-pages/subAwait/index",
     "pages/main-pages/submitProblem/index",
     "pages/main-pages/selectProblem/index",
@@ -19,7 +20,6 @@
     "pages/main-pages/playFail/index",
     "pages/main-pages/selectBG/index",
     "pages/main-pages/modeIndex/index",
-    "pages/main-pages/brainstormMode/index",
     "pages/main-pages/spyMode/modeIndex/index",
     "pages/main-pages/halliGalli/gamepage/index",
     "pages/main-pages/creativeInput/index",
@@ -34,11 +34,6 @@
     "navigationBarTitleText": "脑暴工作坊",
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
-  },
-  "permission": {
-    "scope.record": {
-      "desc": "用于记录本轮讨论并生成文字纪要"
-    }
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

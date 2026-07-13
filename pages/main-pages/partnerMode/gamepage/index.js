@@ -189,7 +189,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.members && result.members.length) {
@@ -710,6 +710,37 @@ Page({
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
     }
 
+    const contextFingerprint = [
+      player.currentPlayerIndex,
+      roomPhase,
+      currentRound,
+      brainstormSessionSeq,
+      closingStep,
+      partnerRoundStartedAt || 0,
+      members.map((m) => `${m.userId || m.playerIndex}:${m.avatarUrl || m.avatarImage || ''}:${m.nickName || ''}`).join('|'),
+      roundSummaries.length,
+      roundContent.voiceLines.length,
+      roundContent.turnRecords.length,
+      paginationState.cardIndex,
+      paginationState.cardCount,
+      !!patch.specialMoveUsedThisTurn,
+      options.resetTurnUi ? 1 : 0
+    ].join('#');
+    const forcePatch = !!(
+      options.resetTurnUi
+      || playerChanged
+      || phaseChanged
+      || roundChanged
+      || sessionChanged
+      || closingStepChanged
+      || becameMyTurn
+      || leftMyTurn
+    );
+    if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
+      return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
+    }
+    this._roomContextFingerprint = contextFingerprint;
+
     this.setData(patch, () => {
       this._restartRoundTimer();
       this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
@@ -734,7 +765,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true || !result.members || !result.members.length) {
@@ -812,7 +843,7 @@ Page({
 
   _startScorePolling() {
     this._stopScorePolling();
-    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 1500);
+    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
   },
 
   _stopScorePolling() {
@@ -830,7 +861,7 @@ Page({
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
-          data: { roomId }
+          data: { roomId, full: true }
         });
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
@@ -866,7 +897,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {

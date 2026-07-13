@@ -18,7 +18,15 @@ Page({
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
-    this.setData({ roomId, isWaiting: !!isWaiting });
+    const modeId = (options && options.modeId) || '';
+    if (modeId === 'partner') {
+      getApp().globalData.gameMode = 'partner';
+    }
+    this.setData({
+      roomId,
+      isWaiting: !!isWaiting,
+      selectedModeId: modeId || this.data.selectedModeId
+    });
     if (isWaiting) {
       this.setData({ isHost: false });
       this._startStatePolling();
@@ -72,7 +80,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1000);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {
@@ -306,7 +314,41 @@ Page({
   },
 
   _isPartnerMode() {
-    return getApp().globalData.gameMode === 'partner' || this.data.selectedModeId === 'partner';
+    const app = getApp();
+    const gd = app.globalData || {};
+    return gd.gameMode === 'partner'
+      || this.data.selectedModeId === 'partner'
+      || (gd.selectedMode && gd.selectedMode.id === 'partner');
+  },
+
+  /** 跳过：partner 模式直接进入「选择首位出牌玩家」页；其他模式随机后进入 gamepage */
+  handleSkip() {
+    if (this.data.selectedPlayerIndex) return;
+    const { members, roomId } = this.data;
+    const resolvedRoomId = roomId || getApp().globalData.roomId || '';
+
+    if (this._isPartnerMode()) {
+      getApp().globalData.selectedPlayer = {};
+      this._updateRoomState('confirmFirstPlayer');
+      wx.redirectTo({
+        url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(resolvedRoomId)}`
+      });
+      return;
+    }
+
+    let currentPlayerIndex = 1;
+    if (members && members.length > 0) {
+      const mIndex = Math.floor(Math.random() * members.length);
+      currentPlayerIndex = members[mIndex].playerIndex;
+    }
+    getApp().globalData.selectedPlayer = { currentPlayerIndex };
+    this.setData({
+      selectedPlayerIndex: currentPlayerIndex,
+      selectedPosition: null,
+      selectionAnimationDone: true,
+      isSelecting: false
+    });
+    this.navigateToGamepage(resolvedRoomId, currentPlayerIndex);
   },
 
   confirmSelection() {
@@ -375,29 +417,6 @@ Page({
     wx.redirectTo({
       url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
     });
-  },
-
-  /** 跳过：直接随机选出一名玩家并跳转 gamepage */
-  handleSkip() {
-    if (this.data.selectedPlayerIndex) return;
-    const { members, roomId } = this.data;
-    let currentPlayerIndex = 1;
-    if (members && members.length > 0) {
-      const mIndex = Math.floor(Math.random() * members.length);
-      currentPlayerIndex = members[mIndex].playerIndex;
-    }
-    getApp().globalData.selectedPlayer = { currentPlayerIndex };
-    this.setData({
-      selectedPlayerIndex: currentPlayerIndex,
-      selectedPosition: null,
-      selectionAnimationDone: true,
-      isSelecting: false
-    });
-    if (this._isPartnerMode()) {
-      this.navigateToConfirmFirstPlayer(roomId, currentPlayerIndex);
-    } else {
-      this.navigateToGamepage(roomId, currentPlayerIndex);
-    }
   },
 
   // 添加玩家

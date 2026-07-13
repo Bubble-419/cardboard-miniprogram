@@ -8,18 +8,7 @@ const {
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
-];
+const { buildAvatarList } = require('../../../utils/avatars');
 
 Page({
   data: {
@@ -41,6 +30,7 @@ Page({
   },
 
   onLoad(options) {
+    this._pageAlive = true;
     let navbarPaddingTop = 44;
     let screenHeight = 750;
     try {
@@ -62,6 +52,7 @@ Page({
     this.setData({ roomId, navbarPaddingTop, scrollHeight, contentPaddingTop });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
+      if (!this._pageAlive) return;
       this.loadSubmittedProblems();
     });
     this.startCountdown();
@@ -69,8 +60,10 @@ Page({
   },
 
   onShow() {
+    if (!this._pageAlive) return;
     if (this.data.roomId) {
       this.loadRoomData().then(() => {
+        if (!this._pageAlive) return;
         this.loadSubmittedProblems();
       });
     } else {
@@ -79,8 +72,15 @@ Page({
   },
 
   onUnload() {
-    if (this.countdownTimer) clearInterval(this.countdownTimer);
-    if (this.problemCheckTimer) clearInterval(this.problemCheckTimer);
+    this._pageAlive = false;
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
+      this.problemCheckTimer = null;
+    }
     this._stopStatePolling();
   },
 
@@ -103,17 +103,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
 
-      const avatarList = (result.members || []).map((m, i) => {
-        const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-        const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length];
-        return {
-          id: m.userId || String(m.playerIndex),
-          nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatar: avatarImage,
-          avatarImage,
-          isMe: m.isMe === true
-        };
-      });
+      const avatarList = buildAvatarList(result.members || []);
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
@@ -135,6 +125,7 @@ Page({
       if (isHost) {
         this._updateRoomState('selectProblem');
         this._stopStatePolling();
+        this.startProblemCheck();
       } else {
         const roomState = result.roomState || {};
         const page = roomState.currentPage || 'selectProblem';
@@ -165,6 +156,7 @@ Page({
   _startStatePolling() {
     this._stopStatePolling();
     const poll = async () => {
+      if (!this._pageAlive) return;
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
       if (!roomId) return;
       try {
@@ -172,14 +164,19 @@ Page({
           name: 'getAddPlayerData',
           data: { roomId }
         });
+        if (!this._pageAlive) return;
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId);
+        // 副屏合并问题列表刷新，避免并行双定时器
+        this.loadSubmittedProblems();
       } catch (e) {
-        console.warn('selectProblem state poll', e);
+        if (this._pageAlive) {
+          console.warn('selectProblem state poll', e);
+        }
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {
@@ -190,11 +187,21 @@ Page({
   },
 
   startCountdown() {
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
     this.countdownTimer = setInterval(() => {
+      if (!this._pageAlive) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+        return;
+      }
       if (this.data.countdown > 0) {
         this.setData({ countdown: this.data.countdown - 1 });
       } else {
         clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
       }
     }, 1000);
   },
@@ -272,10 +279,20 @@ Page({
   },
 
   startProblemCheck() {
-    if (this.problemCheckTimer) clearInterval(this.problemCheckTimer);
+    // 副屏由状态轮询顺带刷新问题列表；房主单独轮询
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
+      this.problemCheckTimer = null;
+    }
+    if (!this.data.isHost) return;
     this.problemCheckTimer = setInterval(() => {
+      if (!this._pageAlive) {
+        clearInterval(this.problemCheckTimer);
+        this.problemCheckTimer = null;
+        return;
+      }
       this.loadSubmittedProblems();
-    }, 1500);
+    }, 2500);
   },
 
   selectCategory(e) {
@@ -412,7 +429,9 @@ Page({
       return;
     }
 
-    const query = roomId ? `?roomId=${encodeURIComponent(roomId)}` : '';
+    const query = roomId
+      ? `?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+      : '?modeId=partner';
     wx.navigateTo({
       url: `/pages/main-pages/selectPlayer/index${query}`
     });

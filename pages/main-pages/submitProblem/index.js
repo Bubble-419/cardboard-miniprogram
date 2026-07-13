@@ -186,7 +186,7 @@ Page({
       }
     };
     poll();
-    this._pollTimer = setInterval(poll, 1500);
+    this._pollTimer = setInterval(poll, 2000);
   },
 
   _stopPolling() {

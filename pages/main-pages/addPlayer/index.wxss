@@ -904,3 +904,60 @@
   animation: count-bounce 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
   display: inline-block;
 }
+
+.avatar-auth-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.avatar-auth-dialog {
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 48rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+}
+
+.avatar-auth-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.avatar-auth-desc {
+  font-size: 28rpx;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.avatar-auth-btn {
+  width: 100%;
+  background: #5ec159;
+  color: #ffffff;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  padding: 20rpx 0;
+}
+
+.avatar-auth-btn::after {
+  border: none;
+}
+
+.avatar-auth-skip {
+  font-size: 28rpx;
+  color: #9ca3af;
+  padding: 8rpx 16rpx;
+}

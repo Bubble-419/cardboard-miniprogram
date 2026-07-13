@@ -224,3 +224,14 @@
     </view>
   </view>
 </view>
+
+<view class="avatar-auth-mask" wx:if="{{showAvatarAuth}}">
+  <view class="avatar-auth-dialog">
+    <text class="avatar-auth-title">授权微信头像</text>
+    <text class="avatar-auth-desc">加入房间可使用你的微信头像，也可稍后用随机头像加入</text>
+    <button class="avatar-auth-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatarAuth">
+      选择微信头像
+    </button>
+    <text class="avatar-auth-skip" bindtap="onSkipAvatarAuth">使用随机头像加入</text>
+  </view>
+</view>

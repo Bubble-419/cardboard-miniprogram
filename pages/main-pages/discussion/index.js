@@ -158,7 +158,7 @@ Page({
       }
     };
 
-    this._statePollTimer = setInterval(poll, 1000);
+    this._statePollTimer = setInterval(poll, 2000);
     poll();
   },
 

@@ -1,11 +1,10 @@
 /* ===== 全局容器 ===== */
 .container {
   min-height: 100vh;
-  background: linear-gradient(180deg, rgba(224, 242, 241, 1) 0%, rgba(240, 249, 247, 1) 100%);
-  background-attachment: fixed;
+  background-color: #fafafa;
 }
 
-/* scroll-view 透明，让容器渐变穿透 */
+/* scroll-view 透明，让容器背景穿透 */
 .main-scroll {
   min-height: 100vh;
   background: transparent;
@@ -16,12 +15,6 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-}
-
-.wait-header {
-  padding: 0 48rpx 0;
-  display: flex;
-  align-items: center;
 }
 
 .wait-body {
@@ -37,7 +30,6 @@
   font-size: 48rpx;
   font-weight: 700;
   color: #111827;
-  margin-top: 32rpx;
   margin-bottom: 16rpx;
 }
 
@@ -46,10 +38,29 @@
   color: #6b7280;
 }
 
-/* ===== 顶部导航返回行 ===== */
-.back-icon {
-  width: 64rpx;
-  height: 64rpx;
+/* ===== 页头 ===== */
+/* Figma MainHeader: padding 48px 24px 24px → 96rpx 48rpx 48rpx, gap 10px → 20rpx */
+.header-section {
+  padding: 0 48rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+/* 工作坊名称: Figma 18px Medium #45AD59 → 36rpx */
+.workshop-name {
+  font-size: 36rpx;
+  font-weight: 500;
+  color: #45ad59;
+  line-height: 56rpx;
+}
+
+/* TopBar: Figma row, alignItems center */
+.topbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
 }
 
 .room-entry {
@@ -71,46 +82,14 @@
   height: 74rpx;
 }
 
-
-/* ===== 页头 ===== */
-.header-section {
-  padding: 0 48rpx 48rpx;
-}
-
-.nav-row {
-  height: 88rpx;
+/* 堆叠头像列表 */
+.avatar-bar {
   display: flex;
   align-items: center;
-}
-
-/* ===== 模式徽章行 ===== */
-.mode-badge-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin-bottom: 32rpx;
-}
-
-.mode-icon-wrap {
-  width: 64rpx;
-  height: 64rpx;
-  background-color: #45ad59;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.mode-icon {
-  width: 40rpx;
-  height: 40rpx;
-}
-
-.mode-badge-text {
-  font-size: 36rpx;
-  font-weight: 500;
-  color: #45ad59;
+  margin-left: 16rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
 }
 
 /* ===== 标题区 ===== */
@@ -118,6 +97,7 @@
   display: flex;
   flex-direction: column;
   gap: 14rpx;
+  margin-top: 12rpx;
 }
 
 .page-main-title {
@@ -135,6 +115,7 @@
 }
 
 /* ===== 主内容区 ===== */
+/* Figma Main: padding 0 20px, gap 32px → 0 40rpx, gap 64rpx */
 .main-content {
   padding: 0 40rpx 80rpx;
   display: flex;
@@ -150,7 +131,6 @@
   padding: 24rpx 48rpx;
   box-shadow: 0 16rpx 20rpx -12rpx rgba(0, 0, 0, 0.05),
               0 20rpx 50rpx -10rpx rgba(0, 0, 0, 0.05);
-  active-opacity: 0.9;
 }
 
 .offline-card:active {

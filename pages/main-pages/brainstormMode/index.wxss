@@ -2,20 +2,20 @@
 .container {
   min-height: 100vh;
   background-color: #F3FAF9;
-  display: flex;
-  flex-direction: column;
+  box-sizing: border-box;
 }
 
 /* ===== 顶部标题区 ===== */
 .header-section {
-  padding: 0 48rpx 48rpx;
-  flex-shrink: 0;
+  padding: 0 48rpx 32rpx;
 }
 
-.nav-row {
-  height: 88rpx;
+.topbar {
   display: flex;
+  flex-direction: row;
   align-items: center;
+  width: 100%;
+  height: 88rpx;
 }
 
 .room-entry {
@@ -35,6 +35,15 @@
 .room-entry-icon {
   width: 74rpx;
   height: 74rpx;
+}
+
+.avatar-bar {
+  display: flex;
+  align-items: center;
+  margin-left: 16rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
 }
 
 .title-block {
@@ -61,11 +70,12 @@
 
 /* ===== 模式列表滚动区 ===== */
 .mode-scroll {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .mode-list {
-  padding: 0 40rpx 280rpx;
+  padding: 0 40rpx 32rpx;
   display: flex;
   flex-direction: column;
   gap: 32rpx;
@@ -93,7 +103,6 @@
   opacity: 0.88;
 }
 
-/* ===== 封面图 ===== */
 .mode-cover {
   width: 160rpx;
   height: 160rpx;
@@ -103,7 +112,6 @@
   background-color: #f0f0f0;
 }
 
-/* ===== 文字信息 ===== */
 .mode-info {
   flex: 1;
   display: flex;
@@ -131,7 +139,6 @@
   white-space: pre-line;
 }
 
-/* ===== 选中状态圆形指示器 ===== */
 .status-wrap {
   width: 56rpx;
   height: 56rpx;
@@ -155,7 +162,6 @@
   height: 40rpx;
 }
 
-/* ===== 底部确认按钮区 ===== */
 .footer {
   padding: 40rpx 40rpx calc(56rpx + env(safe-area-inset-bottom));
   background: linear-gradient(

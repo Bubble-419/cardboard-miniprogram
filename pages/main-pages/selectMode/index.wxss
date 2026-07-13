@@ -63,7 +63,7 @@
   display: flex;
   align-items: center;
   padding: 0 42rpx;
-  min-height: 72rpx;
+  min-height: 80rpx;
   background-color: #ffffff;
   border-bottom: 1rpx solid #f0f0f0;
 }

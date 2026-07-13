@@ -26,7 +26,6 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: 20rpx;
 }
 
 .room-entry {
@@ -49,25 +48,10 @@
 .avatar-bar {
   display: flex;
   align-items: center;
+  margin-left: 16rpx;
   flex: 1;
   min-width: 0;
   overflow: visible;
-}
-
-.add-btn {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #F3F4F6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-left: 16rpx;
-}
-.add-btn-icon {
-  width: 48rpx;
-  height: 48rpx;
 }
 
 /* ===== 主内容区 ===== */
