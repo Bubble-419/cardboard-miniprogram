@@ -1,5 +1,4 @@
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 Page({
   data: {
@@ -65,7 +64,9 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId);
+        if (result.ok !== true || !result.roomState) return;
+        const page = (result.roomState.currentPage || '').toLowerCase();
+        navigateByRoomState(page, result.roomState, roomId);
       } catch (e) {
         console.warn('state poll', e);
       }
@@ -341,7 +342,6 @@ Page({
       roomId = getApp().globalData.roomId || '';
     }
     if (!roomId) {
-      this._isSkipping = false;
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
@@ -365,7 +365,6 @@ Page({
       roomId = getApp().globalData.roomId || '';
     }
     if (!roomId) {
-      this._isSkipping = false;
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
@@ -378,10 +377,9 @@ Page({
     });
   },
 
-  /** 跳过：直接随机选出一名玩家并跳转（不更新选中 UI，避免跳转前闪现确认栏） */
+  /** 跳过：直接随机选出一名玩家并跳转 gamepage */
   handleSkip() {
-    if (this.data.selectedPlayerIndex || this._isSkipping) return;
-    this._isSkipping = true;
+    if (this.data.selectedPlayerIndex) return;
     const { members, roomId } = this.data;
     let currentPlayerIndex = 1;
     if (members && members.length > 0) {
@@ -389,6 +387,12 @@ Page({
       currentPlayerIndex = members[mIndex].playerIndex;
     }
     getApp().globalData.selectedPlayer = { currentPlayerIndex };
+    this.setData({
+      selectedPlayerIndex: currentPlayerIndex,
+      selectedPosition: null,
+      selectionAnimationDone: true,
+      isSelecting: false
+    });
     if (this._isPartnerMode()) {
       this.navigateToConfirmFirstPlayer(roomId, currentPlayerIndex);
     } else {

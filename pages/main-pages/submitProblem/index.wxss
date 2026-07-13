@@ -217,6 +217,7 @@
   bottom: 28rpx;
   font-size: 24rpx;
   color: #CBD5E1;
+  pointer-events: none;
 }
 
 /* ===== 已提交等待面板 ===== */

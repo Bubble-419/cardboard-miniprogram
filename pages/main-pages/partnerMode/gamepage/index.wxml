@@ -145,67 +145,15 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
-        <view class="inspiration-badge-wrap" catchtap="handleGoInspirationCenter">
+      <view class="inspiration-bar" bindtap="handleGoInspiration">
+        <view class="inspiration-badge-wrap">
           <text class="inspiration-badge">💡</text>
-          <view class="inspiration-count-badge" wx:if="{{inspirationCount > 0}}">{{inspirationCount}}</view>
         </view>
-        <view
-          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
-        >
-          <scroll-view
-            wx:if="{{inspirationDraftPhotos.length}}"
-            class="inspiration-photo-strip"
-            scroll-x
-            enhanced
-            show-scrollbar="{{false}}"
-          >
-            <view class="inspiration-photo-strip-inner">
-              <view
-                class="inspiration-photo-thumb-wrap"
-                wx:for="{{inspirationDraftPhotos}}"
-                wx:key="*this"
-              >
-                <image
-                  class="inspiration-photo-thumb"
-                  src="{{item}}"
-                  mode="aspectFill"
-                  catchtap="onInspirationPreviewPhoto"
-                  data-url="{{item}}"
-                />
-                <view
-                  class="inspiration-photo-remove"
-                  catchtap="onInspirationRemovePhoto"
-                  data-index="{{index}}"
-                >×</view>
-              </view>
-            </view>
-          </scroll-view>
-          <textarea
-            class="inspiration-textarea"
-            value="{{inspirationDraftText}}"
-            focus="{{inspirationInputFocused}}"
-            hold-keyboard="{{inspirationHoldKeyboard}}"
-            bindfocus="onInspirationFocus"
-            bindblur="onInspirationBlur"
-            bindinput="onInspirationInput"
-            placeholder="记录您的灵感..."
-            placeholder-class="inspiration-placeholder"
-            maxlength="2000"
-            auto-height
-            show-confirm-bar="{{false}}"
-            adjust-position="{{true}}"
-            cursor-spacing="24"
-          />
+        <view class="inspiration-input-fake">
+          <text class="inspiration-placeholder">记录您的灵感...</text>
         </view>
-        <view
-          class="inspiration-action-btn {{inspirationSaving ? 'inspiration-action-btn-disabled' : ''}}"
-          wx:if="{{inspirationInputFocused || inspirationDraftText || inspirationDraftPhotos.length}}"
-          catchtap="onInspirationActionTap"
-        >
-          <view wx:if="{{inspirationInputFocused && !inspirationHasText}}" class="inspiration-camera-icon"></view>
-          <image wx:else class="inspiration-send-icon" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        <view class="inspiration-submit">
+          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
         </view>
       </view>
     </block>
@@ -225,7 +173,6 @@
         <swiper-item
           class="card-swiper-item"
           wx:for="{{displayRoundSummaries}}"
-          wx:for-index="summaryIdx"
           wx:key="round"
         >
           <view class="game-card game-card-muted">
@@ -233,51 +180,7 @@
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-              <view class="round-note-box">
-                <view class="round-note-photo-area">
-                  <view
-                    class="round-note-photo-item"
-                    wx:for="{{item.privateNote.photos}}"
-                    wx:for-item="photo"
-                    wx:for-index="photoIdx"
-                    wx:key="*this"
-                  >
-                    <image
-                      class="round-note-photo"
-                      src="{{photo}}"
-                      mode="aspectFill"
-                      catchtap="onRoundPrivateNotePreview"
-                      data-round="{{item.round}}"
-                      data-url="{{photo}}"
-                    />
-                    <view
-                      class="round-note-photo-remove"
-                      catchtap="onRoundPrivateNotePhotoRemove"
-                      data-round="{{item.round}}"
-                      data-index="{{photoIdx}}"
-                    >×</view>
-                  </view>
-                  <view
-                    class="round-note-photo-add"
-                    catchtap="onRoundPrivateNotePhoto"
-                    data-round="{{item.round}}"
-                  >
-                    <view class="round-note-photo-icon"></view>
-                    <text class="round-note-photo-add-text">拍照 / 相册</text>
-                  </view>
-                </view>
-                <textarea
-                  class="round-note-textarea"
-                  value="{{item.privateNote.text}}"
-                  placeholder="记录本回合想法（仅自己可见）"
-                  maxlength="500"
-                  auto-height
-                  show-confirm-bar="{{false}}"
-                  data-round="{{item.round}}"
-                  bindinput="onRoundPrivateNoteInput"
-                />
-              </view>
-              <text class="card-section-title card-section-title-gap">第{{item.round}}轮-语音纪要</text>
+              <text class="card-section-title">第{{item.round}}轮-语音纪要</text>
               <view class="card-bullet-list">
                 <view
                   class="card-bullet"
@@ -428,67 +331,15 @@
     </view>
 
     <!-- 灵感记录 -->
-    <view class="inspiration-bar">
-      <view class="inspiration-badge-wrap" catchtap="handleGoInspirationCenter">
+    <view class="inspiration-bar" bindtap="handleGoInspiration">
+      <view class="inspiration-badge-wrap">
         <text class="inspiration-badge">💡</text>
-        <view class="inspiration-count-badge" wx:if="{{inspirationCount > 0}}">{{inspirationCount}}</view>
       </view>
-      <view
-        class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-        catchtap="onInspirationComposerTap"
-      >
-        <scroll-view
-          wx:if="{{inspirationDraftPhotos.length}}"
-          class="inspiration-photo-strip"
-          scroll-x
-          enhanced
-          show-scrollbar="{{false}}"
-        >
-          <view class="inspiration-photo-strip-inner">
-            <view
-              class="inspiration-photo-thumb-wrap"
-              wx:for="{{inspirationDraftPhotos}}"
-              wx:key="*this"
-            >
-              <image
-                class="inspiration-photo-thumb"
-                src="{{item}}"
-                mode="aspectFill"
-                catchtap="onInspirationPreviewPhoto"
-                data-url="{{item}}"
-              />
-              <view
-                class="inspiration-photo-remove"
-                catchtap="onInspirationRemovePhoto"
-                data-index="{{index}}"
-              >×</view>
-            </view>
-          </view>
-        </scroll-view>
-        <textarea
-          class="inspiration-textarea"
-          value="{{inspirationDraftText}}"
-          focus="{{inspirationInputFocused}}"
-          hold-keyboard="{{inspirationHoldKeyboard}}"
-          bindfocus="onInspirationFocus"
-          bindblur="onInspirationBlur"
-          bindinput="onInspirationInput"
-          placeholder="记录您的灵感..."
-          placeholder-class="inspiration-placeholder"
-          maxlength="2000"
-          auto-height
-          show-confirm-bar="{{false}}"
-          adjust-position="{{true}}"
-          cursor-spacing="24"
-        />
+      <view class="inspiration-input-fake">
+        <text class="inspiration-placeholder">记录您的灵感...</text>
       </view>
-      <view
-        class="inspiration-action-btn {{inspirationSaving ? 'inspiration-action-btn-disabled' : ''}}"
-        wx:if="{{inspirationInputFocused || inspirationDraftText || inspirationDraftPhotos.length}}"
-        catchtap="onInspirationActionTap"
-      >
-        <view wx:if="{{inspirationInputFocused && !inspirationHasText}}" class="inspiration-camera-icon"></view>
-        <image wx:else class="inspiration-send-icon" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+      <view class="inspiration-submit">
+        <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
       </view>
     </view>
     </block>
@@ -558,10 +409,4 @@
       </button>
     </view>
   </view>
-
-  <view
-    class="inspiration-focus-mask"
-    wx:if="{{inspirationInputFocused}}"
-    catchtap="onInspirationDismissFocus"
-  ></view>
 </view>

@@ -1,5 +1,9 @@
 <view class="container">
-  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view
+    class="main-scroll"
+    scroll-y="{{!inputFocused}}"
+    show-scrollbar="{{false}}"
+  >
 
     <!-- 顶部区：TopBar + 情境格 -->
     <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
@@ -55,13 +59,17 @@
         </view>
 
         <!-- 输入框 + 字数计数 -->
-        <view class="form-input-wrap">
+        <view class="form-input-wrap" catchtouchmove="preventTouchMove">
           <view class="textarea-box">
             <textarea
               class="problem-input"
               placeholder="请输入设计问题..."
               value="{{problemText}}"
               maxlength="{{maxLength}}"
+              adjust-position="{{true}}"
+              show-confirm-bar="{{false}}"
+              bindfocus="onInputFocus"
+              bindblur="onInputBlur"
               bindinput="onInput"
               placeholder-class="input-placeholder"
             />

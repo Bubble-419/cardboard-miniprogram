@@ -29,7 +29,8 @@ Page({
     hasSubmitted: false,
     submittedCount: 0,
     totalMembers: 0,
-    isSubmitting: false
+    isSubmitting: false,
+    inputFocused: false
   },
 
   onLoad(options) {
@@ -55,16 +56,26 @@ Page({
     this.loadRoomData().then(() => {
       this.refreshSubmitStatus();
       this._startPolling();
+      this._initialized = true;
     });
   },
 
   onShow() {
-    this.loadRoomData();
-    this.refreshSubmitStatus();
+    if (this._initialized) {
+      this.loadRoomData().then(() => {
+        if (!this._inputFocused) {
+          this.refreshSubmitStatus();
+        }
+      });
+    }
   },
 
   onUnload() {
     this._stopPolling();
+    if (this._inputBlurTimer) {
+      clearTimeout(this._inputBlurTimer);
+      this._inputBlurTimer = null;
+    }
   },
 
   _applySelectedBGCategories() {
@@ -115,18 +126,22 @@ Page({
   async refreshSubmitStatus() {
     const roomId = this.data.roomId;
     if (!roomId || this.data.myPlayerIndex == null) return;
+    if (this._inputFocused || this.data.isSubmitting) return;
     try {
       const status = await getSubmitStatus(
         roomId,
         this.data.myPlayerIndex,
         this.data.totalMembers
       );
-      this.setData({
+      const patch = {
         submittedCount: status.submittedCount || 0,
         totalMembers: status.totalMembers || this.data.totalMembers,
-        hasSubmitted: status.hasSubmitted === true,
-        problemText: status.hasSubmitted ? (status.myProblemText || '') : this.data.problemText
-      });
+        hasSubmitted: status.hasSubmitted === true
+      };
+      if (status.hasSubmitted) {
+        patch.problemText = status.myProblemText || '';
+      }
+      this.setData(patch);
       if (status.allSubmitted) {
         this._goSelectProblem();
       }
@@ -138,7 +153,7 @@ Page({
   _startPolling() {
     this._stopPolling();
     const poll = async () => {
-      if (this.data.myPlayerIndex != null) {
+      if (this.data.myPlayerIndex != null && !this._inputFocused && !this.data.isSubmitting) {
         await this.refreshSubmitStatus();
       }
       const roomId = this.data.roomId;
@@ -219,6 +234,29 @@ Page({
     }));
     this.setData({ categories, selectedCategory: categoryId });
   },
+
+  onInputFocus() {
+    this._inputFocused = true;
+    if (this._inputBlurTimer) {
+      clearTimeout(this._inputBlurTimer);
+      this._inputBlurTimer = null;
+    }
+    if (!this.data.inputFocused) {
+      this.setData({ inputFocused: true });
+    }
+  },
+
+  onInputBlur() {
+    if (this._inputBlurTimer) clearTimeout(this._inputBlurTimer);
+    this._inputBlurTimer = setTimeout(() => {
+      this._inputFocused = false;
+      if (this.data.inputFocused) {
+        this.setData({ inputFocused: false });
+      }
+    }, 200);
+  },
+
+  preventTouchMove() {},
 
   onInput(e) {
     this.setData({ problemText: e.detail.value });
