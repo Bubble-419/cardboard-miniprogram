@@ -4,6 +4,7 @@ const {
 } = require('../../../utils/roomDesignProblems');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { buildUserListFromMembers } = require('../../../utils/userListData');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const DEFAULT_CATEGORIES = [
   { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
@@ -204,6 +205,10 @@ Page({
         wx.reLaunch({ url: '/pages/main-pages/modeIndex/index' });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   },
 
   selectCategory(e) {

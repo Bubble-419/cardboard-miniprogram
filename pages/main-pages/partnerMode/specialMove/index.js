@@ -5,6 +5,7 @@ const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 const WHEEL_ACTIONS = [
   { id: 'helpLuck', label: '求助AI或运气', zone: 'left' },
@@ -257,11 +258,7 @@ Page({
   },
 
   handleGoRoom() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    goRoomPage(this.data.roomId);
   },
 
   handleGoBack() {

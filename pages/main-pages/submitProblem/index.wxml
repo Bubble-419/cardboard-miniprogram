@@ -6,7 +6,7 @@
 
       <!-- TopBar：房间入口 + 成员头像 + 添加按钮 -->
       <view class="topbar">
-        <view class="room-entry" bindtap="handleGoBack">
+        <view class="room-entry" bindtap="handleGoRoom">
           <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
         </view>
         <view class="avatar-bar">

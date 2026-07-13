@@ -51,6 +51,7 @@ const {
   countSessionInspirations,
   withSessionFields
 } = require('../../../../utils/partnerInspirationSession');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 Page({
   data: {
@@ -1273,11 +1274,7 @@ Page({
   },
 
   handleGoRoom() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    goRoomPage(this.data.roomId);
   },
 
   async _refreshInspirationCount() {

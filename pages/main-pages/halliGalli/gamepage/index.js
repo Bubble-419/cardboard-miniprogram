@@ -3,6 +3,7 @@
  * 路径：pages/main-pages/halliGalli/gamepage/
  */
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 Page({
   data: {
@@ -171,5 +172,9 @@ Page({
         wx.reLaunch({ url: '/pages/main-pages/addPlayer/index' });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });
