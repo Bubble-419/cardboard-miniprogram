@@ -17,7 +17,8 @@ Page({
     subTextLine1: '',
     subTextLine2: '',
     statusText: '正在等待中...',
-    multiLine: false
+    multiLine: false,
+    useHeroLayout: true
   },
 
   onLoad(options) {
@@ -29,7 +30,7 @@ Page({
     const initialScene = (options && options.scene) || 'bg';
     this.applyScene(initialScene);
     this.setData({ roomId });
-    if (initialScene !== 'bg') {
+    if (!this.data.useHeroLayout) {
       this.startCountdown();
     }
     this.startStateCheck();
@@ -46,7 +47,13 @@ Page({
 
   applyScene(scene) {
     const ui = getSceneUI(scene);
-    if (this.data.scene === scene && this.data.mainText === ui.mainText) return;
+    if (
+      this.data.scene === scene
+      && this.data.mainText === ui.mainText
+      && this.data.useHeroLayout === !!ui.useHeroLayout
+    ) {
+      return;
+    }
     this.setData({
       scene,
       navbarTitle: ui.navbarTitle,
@@ -56,12 +63,13 @@ Page({
       subTextLine1: ui.subTextLine1 || '',
       subTextLine2: ui.subTextLine2 || '',
       statusText: ui.statusText || '正在等待中...',
-      multiLine: ui.multiLine
+      multiLine: ui.multiLine,
+      useHeroLayout: ui.useHeroLayout === true
     });
   },
 
   startCountdown() {
-    if (this.data.scene === 'bg') return;
+    if (this.data.useHeroLayout) return;
     this.countdownTimer = setInterval(() => {
       const count = this.data.countdown > 0 ? this.data.countdown - 1 : 5;
       this.setData({ countdown: count || 5 });

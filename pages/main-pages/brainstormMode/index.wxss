@@ -109,7 +109,7 @@
   border-radius: 28rpx;
   flex-shrink: 0;
   overflow: hidden;
-  background-color: #f0f0f0;
+  background-color: #ffffff;
 }
 
 .mode-info {
@@ -173,6 +173,8 @@
 }
 
 .confirm-btn {
+  flex: 1;
+  width: 100%;
   background-color: #5EC159;
   color: #FFFFFF;
   border-radius: 24rpx;

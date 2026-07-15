@@ -65,6 +65,8 @@ Page({
     members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
+    problemExpanded: false,
+    problemTextOverflow: false,
     gamepagePhase: PHASE_PLAY,
     cardIndex: 0,
     insertedImages: [],
@@ -101,7 +103,24 @@ Page({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationSaving: false,
-    inspirationHasText: false
+    inspirationHasText: false,
+    topBarPaddingRight: 30
+  },
+
+  _applyTopBarSafeInset() {
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const windowWidth = (sys && sys.windowWidth) || 375;
+      // 避开右上角胶囊：保留「屏幕右边距到胶囊左边」的空间
+      const rightPx = Math.max(12, windowWidth - (menu.left || windowWidth) + 8);
+      const rightRpx = Math.ceil((rightPx * 750) / windowWidth);
+      this.setData({ topBarPaddingRight: rightRpx });
+    } catch (e) {
+      this.setData({ topBarPaddingRight: 200 });
+    }
   },
 
   onLoad(options) {
@@ -137,6 +156,7 @@ Page({
       specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
     });
 
+    this._applyTopBarSafeInset();
     this.loadRoomData();
     this._roundSpeech = createPartnerRoundSpeech({
       onText: () => this._syncRoomContext()
@@ -787,7 +807,11 @@ Page({
 
       this.setData({
         isHost: result.isHost === true,
-        selectedProblemText
+        selectedProblemText,
+        problemExpanded: false,
+        problemTextOverflow: false
+      }, () => {
+        this._checkProblemTextOverflow();
       });
 
       if (result.isHost === true) {
@@ -1308,6 +1332,43 @@ Page({
     goRoomPage(this.data.roomId);
   },
 
+  handleToggleProblemExpand() {
+    const text = this.data.selectedProblemText;
+    if (!text) return;
+    if (!this.data.problemExpanded && !this.data.problemTextOverflow) return;
+    const next = !this.data.problemExpanded;
+    this.setData({ problemExpanded: next }, () => {
+      if (!next) this._checkProblemTextOverflow();
+    });
+  },
+
+  _checkProblemTextOverflow() {
+    if (!this.data.selectedProblemText || this.data.problemExpanded) {
+      if (this.data.problemTextOverflow) {
+        this.setData({ problemTextOverflow: false });
+      }
+      return;
+    }
+    const run = () => {
+      this.createSelectorQuery()
+        .select('#problemText')
+        .boundingClientRect()
+        .select('#problemTextMeasure')
+        .boundingClientRect()
+        .exec((res) => {
+          const clamped = res && res[0];
+          const full = res && res[1];
+          if (!clamped || !full || !full.height) return;
+          const overflow = full.height > clamped.height + 1;
+          if (overflow !== this.data.problemTextOverflow) {
+            this.setData({ problemTextOverflow: overflow });
+          }
+        });
+    };
+    if (typeof wx.nextTick === 'function') wx.nextTick(run);
+    else setTimeout(run, 50);
+  },
+
   async _refreshInspirationCount() {
     const { roomId, brainstormSessionSeq } = this.data;
     if (!roomId) return;
@@ -1359,7 +1420,9 @@ Page({
   },
 
   onInspirationActionTap() {
-    if (this._shouldShowInspirationCamera()) {
+    const hasPhotos = (this.data.inspirationDraftPhotos || []).length > 0;
+    // 加号：选图加入灵感草稿；上箭头：保存到灵感空间
+    if (!this.data.inspirationHasText && !hasPhotos) {
       this.onInspirationAddPhoto();
       return;
     }

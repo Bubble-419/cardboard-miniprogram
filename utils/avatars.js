@@ -7,15 +7,15 @@ const {
 
 /** 本地随机头像池，按 avatarIndex 分配（房间内不重复） */
 const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
+  '/assets/avatar/frame_2085662311_1x.webp',
+  '/assets/avatar/frame_2085662312_1x.webp',
+  '/assets/avatar/frame_2085662313_1x.webp',
+  '/assets/avatar/frame_2085662314_1x.webp',
+  '/assets/avatar/frame_2085662315_1x.webp',
+  '/assets/avatar/frame_2085662316_1x.webp',
+  '/assets/avatar/frame_2085662317_1x.webp',
+  '/assets/avatar/frame_2085662318_1x.webp',
+  '/assets/avatar/frame_2085662319_1x.webp'
 ];
 
 function pickFallbackAvatarImage(member, index) {

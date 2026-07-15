@@ -73,7 +73,8 @@ Page({
     dragEnterAnimating: false,
     showQRCodeModal: false,
     showAvatarAuth: false,
-    pendingJoinRoomId: ''
+    pendingJoinRoomId: '',
+    navFreeze: false
   },
 
   _syncLobbyRoomState(result) {
@@ -140,12 +141,23 @@ Page({
         } else {
           this._startMemberPolling();
         }
+        this._preloadBrainstormMode();
       });
+    }
+  },
+
+  _preloadBrainstormMode() {
+    if (typeof wx.preloadPage !== 'function') return;
+    try {
+      wx.preloadPage({ url: '/pages/main-pages/brainstormMode/index' });
+    } catch (e) {
+      // preload 非关键路径，忽略
     }
   },
 
   onShow() {
     if (!this._pageAlive || this._navigatingToBrainstorm) return;
+    this.setData({ navFreeze: false });
     if (this.data.roomId) {
       this._startMemberPolling();
       this.loadRoomData(this.data.roomId, { silent: true });
@@ -274,13 +286,13 @@ Page({
   _startMemberPolling() {
     this._stopMemberPolling();
     const poll = async () => {
-      if (!this._pageAlive || this._memberPollInFlight) return;
+      if (!this._pageAlive || this._memberPollInFlight || this._navigatingToBrainstorm) return;
       const roomId = this.data.roomId || getApp().globalData.roomId;
       if (!roomId) return;
       this._memberPollInFlight = true;
       try {
         const result = await this.loadRoomData(roomId, { silent: true });
-        if (!this._pageAlive) return;
+        if (!this._pageAlive || this._navigatingToBrainstorm) return;
         if (!this.data.isHost && result) {
           this._followRoomPageFromResult(result, roomId);
         }
@@ -290,7 +302,7 @@ Page({
     };
     this._statePollFn = poll;
     poll();
-    this._memberPollTimer = setInterval(poll, 2500);
+    this._memberPollTimer = setInterval(poll, this.data.isHost ? 4000 : 2500);
   },
 
   _stopMemberPolling() {
@@ -495,7 +507,8 @@ Page({
       }
 
       if (silent) {
-        if (!this._pageAlive || this.data.isDragging) {
+        // 跳转脑暴模式途中禁止 setData，否则主线程被拖死易触发 navigateTo:fail timeout
+        if (!this._pageAlive || this.data.isDragging || this._navigatingToBrainstorm) {
           return result;
         }
         // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
@@ -1098,26 +1111,79 @@ Page({
       wx.showToast({ title: '房间参数错误', icon: 'none' });
       return;
     }
+    if (this._navigatingToBrainstorm) return;
+
     this._navigatingToBrainstorm = true;
     this._stopMemberPolling();
     this._stopStatePolling();
     wx.hideLoading();
-    setTimeout(() => {
-      wx.navigateTo({
-        url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`,
-        success: () => {
-          this._navigatingToBrainstorm = false;
-        },
+    // 停掉大厅重动画，给路由让出主线程（模拟器尤其明显）
+    this.setData({ navFreeze: true });
+
+    const url = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`;
+
+    const onNavOk = () => {
+      this._navigatingToBrainstorm = false;
+    };
+    const onNavFatal = (err, stage) => {
+      this._navigatingToBrainstorm = false;
+      console.error(`${stage} brainstormMode fail:`, err && err.errMsg, err);
+      if (this._pageAlive) {
+        this.setData({ navFreeze: false });
+        this._startMemberPolling();
+      }
+      wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+    };
+
+    const openWithReLaunch = () => {
+      wx.reLaunch({
+        url,
+        success: onNavOk,
+        fail: (err) => onNavFatal(err, 'reLaunch')
+      });
+    };
+
+    // 房主优先 redirectTo：卸载大厅页（动画/轮询/大 DOM），比 navigateTo 叠层更稳
+    const openPage = () => {
+      const preferRedirect = this.data.isHost === true;
+      const primary = preferRedirect ? wx.redirectTo : wx.navigateTo;
+      const primaryName = preferRedirect ? 'redirectTo' : 'navigateTo';
+      primary({
+        url,
+        success: onNavOk,
         fail: (err) => {
-          this._navigatingToBrainstorm = false;
-          console.warn('navigateTo brainstormMode fail', err);
-          if (this._pageAlive) {
-            this._startMemberPolling();
+          const msg = (err && err.errMsg) || '';
+          console.error(`${primaryName} brainstormMode fail:`, msg, err);
+          if (/timeout|busy/i.test(msg)) {
+            setTimeout(openWithReLaunch, 400);
+            return;
           }
-          wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+          const secondary = preferRedirect ? wx.navigateTo : wx.redirectTo;
+          secondary({
+            url,
+            success: onNavOk,
+            fail: (err2) => {
+              const msg2 = (err2 && err2.errMsg) || '';
+              console.error('fallback brainstormMode fail:', msg2, err2);
+              if (/timeout|busy|limit/i.test(msg2)) {
+                setTimeout(openWithReLaunch, 400);
+              } else {
+                onNavFatal(err2, 'fallback');
+              }
+            }
+          });
         }
       });
-    }, 50);
+    };
+
+    const waitAndGo = (attempt = 0) => {
+      if (!this._memberPollInFlight || attempt >= 20) {
+        setTimeout(openPage, 80);
+        return;
+      }
+      setTimeout(() => waitAndGo(attempt + 1), 50);
+    };
+    waitAndGo();
   },
 
   async handleAnotherRound() {

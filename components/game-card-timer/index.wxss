@@ -6,6 +6,11 @@
   border-radius: 28rpx;
 }
 
+/* 静止态：与 Figma #5848:3392 对齐的浅绿描边 */
+.gct-wrap:not(.gct-wrap-timer-on):not(.gct-wrap-expiring) .gct-inner {
+  border: 8rpx solid #b0e0ae;
+}
+
 .gct-canvas {
   position: absolute;
   left: 0;
@@ -45,16 +50,16 @@
   border-radius: 20rpx;
 }
 
+.gct-wrap-expiring {
+  overflow: visible;
+}
+
 .gct-wrap-expiring .gct-inner {
   left: 8rpx;
   top: 8rpx;
   right: 8rpx;
   bottom: 8rpx;
   border-radius: 20rpx;
-}
-
-.gct-inner-expiring {
-  animation: gct-inner-expire-pulse 1.2s ease-out forwards;
 }
 
 .gct-expire-ring {
@@ -69,57 +74,59 @@
   z-index: 3;
 }
 
-.gct-expire-ring-outer {
-  border: 4rpx solid #c3e4c1;
-  animation: gct-expire-ring-pulse 1.2s ease-out forwards;
+/* 满圈收束：深绿实线 → 浅绿，略带外扩柔光 */
+.gct-expire-settle {
+  border: 8rpx solid #5ec159;
+  animation: gct-expire-settle 1.1s ease-out forwards;
+  z-index: 4;
 }
 
-.gct-expire-ring-inner {
-  left: 8rpx;
-  top: 8rpx;
-  width: calc(100% - 16rpx);
-  height: calc(100% - 16rpx);
-  border-radius: 20rpx;
-  border: 5rpx solid transparent;
-  border-top-color: #5ec159;
-  border-right-color: #5ec159;
-  animation: gct-expire-ring-spin 1.2s ease-out forwards;
+/* 涟漪描边：自卡片外缘轻轻扩开并淡出 */
+.gct-expire-ripple {
+  border: 4rpx solid rgba(94, 193, 89, 0.75);
+  transform-origin: center center;
 }
 
-@keyframes gct-inner-expire-pulse {
+.gct-expire-ripple-1 {
+  animation: gct-expire-ripple 1.1s ease-out forwards;
+}
+
+.gct-expire-ripple-2 {
+  border-color: rgba(176, 224, 174, 0.9);
+  animation: gct-expire-ripple 1.1s ease-out 0.12s forwards;
+  opacity: 0;
+}
+
+@keyframes gct-expire-settle {
   0% {
-    transform: scale(1);
-  }
-  35% {
-    transform: scale(1.08);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes gct-expire-ring-pulse {
-  0% {
-    transform: scale(1);
+    border-color: #5ec159;
+    box-shadow: 0 0 0 0 rgba(94, 193, 89, 0.4);
     opacity: 1;
   }
-  40% {
-    transform: scale(1.16);
-    opacity: 0.7;
+  28% {
+    border-color: #5ec159;
+    box-shadow: 0 0 0 10rpx rgba(94, 193, 89, 0.22);
+    opacity: 1;
   }
-  100% {
-    transform: scale(1);
-    opacity: 0;
-  }
-}
-
-@keyframes gct-expire-ring-spin {
-  0% {
-    transform: rotate(0deg);
+  70% {
+    border-color: #7ec97a;
+    box-shadow: 0 0 0 4rpx rgba(176, 224, 174, 0.18);
     opacity: 1;
   }
   100% {
-    transform: rotate(200deg);
+    border-color: #b0e0ae;
+    box-shadow: 0 0 0 0 rgba(94, 193, 89, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes gct-expire-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.07);
     opacity: 0;
   }
 }

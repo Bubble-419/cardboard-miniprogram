@@ -52,7 +52,7 @@
               <textarea
                 class="problem-textarea"
                 value="{{item.text}}"
-                maxlength="120"
+                maxlength="50"
                 auto-height="{{false}}"
                 style="height: {{textareaHeights[item.id]}}px;"
                 data-id="{{item.id}}"
@@ -82,7 +82,7 @@
               <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
             </view>
             <view
-              wx:elif="{{!isHost && item.isMine && item.selected}}"
+              wx:elif="{{!isHost && item.isMine}}"
               class="right-icon-btn"
               data-id="{{item.id}}"
               catchtap="onEditProblem"
@@ -93,9 +93,14 @@
           </view>
         </view>
 
-        <!-- 空状态 -->
+        <!-- 空状态 Figma #5912:50988 -->
         <view class="empty-state" wx:if="{{problems.length === 0}}">
-          <text class="empty-text">等待成员提交设计问题…</text>
+          <image
+            class="empty-illus"
+            src="/assets/selectProblem/empty-wait-problems.svg"
+            mode="aspectFit"
+          />
+          <text class="empty-text">等待所有玩家提交设计问题...</text>
         </view>
       </view>
 

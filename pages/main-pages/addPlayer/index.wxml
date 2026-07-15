@@ -1,5 +1,5 @@
-<view
-  class="container {{isDragging ? 'container-dragging' : ''}}"
+  <view
+  class="container {{isDragging ? 'container-dragging' : ''}} {{navFreeze ? 'container-nav-freeze' : ''}}"
   catchtouchmove="onContentTouchMove"
   catchtouchend="onContentTouchEnd"
   catchtouchcancel="onContentTouchEnd"

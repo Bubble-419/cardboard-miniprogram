@@ -1,6 +1,6 @@
-<view class="container {{scene === 'bg' ? 'container-bg-scene' : ''}}">
-  <!-- 非情境等待场景保留原导航栏 -->
-  <view class="custom-navbar" wx:if="{{scene !== 'bg'}}">
+<view class="container {{useHeroLayout ? 'container-hero-scene' : ''}}">
+  <!-- 非 hero 等待场景保留原导航栏 -->
+  <view class="custom-navbar" wx:if="{{!useHeroLayout}}">
     <view class="navbar-content">
       <view class="navbar-left">
         <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit"></image>
@@ -13,15 +13,15 @@
     </view>
   </view>
 
-  <!-- 情境等待：Figma #5878:13766 -->
-  <view class="bg-wait-page" wx:if="{{scene === 'bg'}}">
+  <!-- Hero 等待页：情境 / 首位玩家等（Figma #5904:13756） -->
+  <view class="hero-wait-page" wx:if="{{useHeroLayout}}">
     <image class="bg-pattern" src="/assets/subAwait/bg-dotted-lines.svg" mode="widthFix" />
-    <view class="bg-wait-content">
+    <view class="hero-wait-content">
       <view class="hero-section">
         <image
           class="hero-image"
-          src="/assets/subAwait/wait-hero-5a8ea5.png"
-          mode="aspectFill"
+          src="/assets/subAwait/wait-hero-5a8ea5.webp"
+          mode="widthFix"
         />
       </view>
 

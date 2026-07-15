@@ -12,27 +12,31 @@ const BRAINSTORM_MODES = [
     id: 'halliGalli',
     title: '德国心脏病模式',
     description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
-    coverImage: '/assets/brainstormMode/mode-cover-halligalli.png',
+    coverImage: '/assets/brainstormMode/mode-cover-halligalli.jpg',
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'partner',
     title: PARTNER_MODE_DISPLAY_TITLE,
     description: '团队协作，\n共同打磨并提交最佳创意方案',
-    coverImage: '/assets/brainstormMode/mode-cover-partner.png',
+    coverImage: '/assets/brainstormMode/mode-cover-partner.jpg',
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'spy',
     title: '谁是卧底模式',
     description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
-    coverImage: '/assets/brainstormMode/mode-cover-spy.png',
+    coverImage: '/assets/brainstormMode/mode-cover-spy.jpg',
     pagePath: MODE_INDEX_PATH
   }
 ];
 
 function cloneModes() {
   return BRAINSTORM_MODES.map((item) => ({ ...item }));
+}
+
+function cloneModesWithoutCover() {
+  return BRAINSTORM_MODES.map((item) => ({ ...item, coverImage: '' }));
 }
 
 function parseIsHostOption(options) {
@@ -62,7 +66,7 @@ Page({
     workshopName: '脑暴工作坊',
     avatarList: [],
     currentUser: null,
-    brainstormModes: cloneModes(),
+    brainstormModes: cloneModesWithoutCover(),
     selectedModeId: null,
     isSelecting: false,
     navbarPaddingTop: 44,
@@ -88,19 +92,27 @@ Page({
     }
 
     getApp().globalData.roomId = roomId;
+    // 首帧不挂封面，先把路由落地；封面延后挂载
     this.setData({
       roomId,
       isHost,
       navbarPaddingTop,
       scrollHeight: computeScrollHeight(navbarPaddingTop),
-      brainstormModes: cloneModes()
+      brainstormModes: cloneModesWithoutCover()
     });
   },
 
   onReady() {
     this._readyOnce = true;
     if (!this._pageAlive || !this.data.roomId) return;
+    // 先刷房间数据，封面再延后一帧挂载，降低首屏解码压力
     this._scheduleRoomRefresh({ silent: true });
+    this._coverLoadTimer = setTimeout(() => {
+      this._coverLoadTimer = null;
+      if (this._pageAlive) {
+        this.setData({ brainstormModes: cloneModes() });
+      }
+    }, 280);
   },
 
   onShow() {
@@ -114,6 +126,10 @@ Page({
       clearTimeout(this._roomRefreshTimer);
       this._roomRefreshTimer = null;
     }
+    if (this._coverLoadTimer) {
+      clearTimeout(this._coverLoadTimer);
+      this._coverLoadTimer = null;
+    }
   },
 
   onUnload() {
@@ -122,6 +138,10 @@ Page({
     if (this._roomRefreshTimer) {
       clearTimeout(this._roomRefreshTimer);
       this._roomRefreshTimer = null;
+    }
+    if (this._coverLoadTimer) {
+      clearTimeout(this._coverLoadTimer);
+      this._coverLoadTimer = null;
     }
   },
 
@@ -258,14 +278,41 @@ Page({
       };
       clearPartnerSpecialMoveUsedFlag(this.data.roomId);
 
-      wx.navigateTo({
-        url: `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`,
-        complete: () => {
-          if (this._pageAlive) {
-            this.setData({ isSelecting: false });
+      const targetUrl = `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`;
+      const openModePage = () => {
+        wx.navigateTo({
+          url: targetUrl,
+          fail: (err) => {
+            const msg = (err && err.errMsg) || '';
+            console.error('navigateTo modeIndex fail:', msg, err);
+            if (/timeout|busy/i.test(msg)) {
+              setTimeout(() => {
+                wx.reLaunch({
+                  url: targetUrl,
+                  fail: (err2) => {
+                    console.error('reLaunch modeIndex fail:', err2 && err2.errMsg, err2);
+                    wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+                  }
+                });
+              }, 320);
+              return;
+            }
+            wx.redirectTo({
+              url: targetUrl,
+              fail: (err2) => {
+                console.error('redirectTo modeIndex fail:', err2 && err2.errMsg, err2);
+                wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+              }
+            });
+          },
+          complete: () => {
+            if (this._pageAlive) {
+              this.setData({ isSelecting: false });
+            }
           }
-        }
-      });
+        });
+      };
+      openModePage();
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });

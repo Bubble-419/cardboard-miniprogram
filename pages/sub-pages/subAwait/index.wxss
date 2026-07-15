@@ -5,13 +5,13 @@
   flex-direction: column;
 }
 
-/* ===== 情境等待页 Figma #5878:13766 ===== */
-.container-bg-scene {
+/* ===== Hero 等待页 Figma #5904:13756 / #5878:13766 ===== */
+.container-hero-scene {
   min-height: 100vh;
   background-color: #F7F9F5;
 }
 
-.bg-wait-page {
+.hero-wait-page {
   position: relative;
   flex: 1;
   min-height: 100vh;
@@ -27,29 +27,36 @@
   pointer-events: none;
 }
 
-.bg-wait-content {
+.hero-wait-content {
   position: relative;
   z-index: 1;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: calc(env(safe-area-inset-top) + 46rpx);
+  justify-content: center;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 48rpx);
   box-sizing: border-box;
 }
 
-/* Illustration: height 443px → 886rpx, bottom padding 40px → 80rpx */
+/* 插画：宽度贴齐界面，水平居中；整体随内容块垂直居中 */
 .hero-section {
   width: 100%;
-  height: 886rpx;
-  padding-bottom: 80rpx;
-  box-sizing: content-box;
+  align-self: stretch;
+  padding-bottom: 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overflow: hidden;
 }
 
 .hero-image {
   display: block;
   width: 100%;
-  height: 886rpx;
+  height: auto;
+  margin: 0 auto;
 }
 
 /* Text section: padding 0 16px → 32rpx, gap 15px → 30rpx */

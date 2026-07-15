@@ -17,6 +17,20 @@
   touch-action: none;
 }
 
+/* 跳转前冻结重动画，减轻模拟器路由 timeout */
+.container-nav-freeze .deco-ring,
+.container-nav-freeze .deco-glow,
+.container-nav-freeze .deco-particle,
+.container-nav-freeze .orbit-wrap,
+.container-nav-freeze .orbit-dot,
+.container-nav-freeze .scan-line,
+.container-nav-freeze .avatar-img,
+.container-nav-freeze .avatar-placeholder,
+.container-nav-freeze .primary-btn {
+  animation: none !important;
+  transition: none !important;
+}
+
 .drag-mask {
   position: fixed;
   left: 0;

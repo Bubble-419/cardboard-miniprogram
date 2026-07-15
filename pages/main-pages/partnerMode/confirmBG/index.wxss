@@ -7,17 +7,17 @@
   flex-direction: column;
 }
 
-/* ===== 导航栏 ===== */
+/* ===== 导航栏（TopBar：房间入口 + 堆叠头像，对齐 Figma 5901:2166） ===== */
 .custom-navbar { background-color: transparent; flex-shrink: 0; }
 .navbar-content {
   height: 88rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding-left: 42rpx;
-  padding-right: 42rpx;
+  /* 右侧预留胶囊按钮空间 */
+  padding-right: 220rpx;
+  box-sizing: border-box;
 }
-.navbar-left  { width: 80rpx; display: flex; align-items: center; }
 .room-entry {
   width: 74rpx;
   height: 74rpx;
@@ -29,9 +29,14 @@
 }
 .room-entry:active { opacity: 0.75; }
 .room-entry-icon { width: 74rpx; height: 74rpx; }
-.back-icon    { width: 48rpx; height: 48rpx; }
-.navbar-title { font-size: 32rpx; font-weight: 500; color: #1f2937; text-align: center; flex: 1; }
-.navbar-right { width: 80rpx; }
+.avatar-bar {
+  display: flex;
+  align-items: center;
+  margin-left: 16rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
+}
 
 /* ===== 等待视图 ===== */
 .wait-wrap {

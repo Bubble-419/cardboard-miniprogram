@@ -49,7 +49,7 @@
         <view class="steps-row">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-deal.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-deal.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">发牌</text>
                 <text class="step-desc">每位玩家获得3张交互方式卡</text>
@@ -60,7 +60,7 @@
           <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-flip.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-flip.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">翻牌</text>
                 <text class="step-desc">展示本轮控件形态卡</text>
@@ -79,7 +79,7 @@
         <view class="steps-row">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-ring.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-ring.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">抢铃</text>
                 <text class="step-desc">准备完成后抢铃争取出牌权</text>
@@ -90,7 +90,7 @@
           <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-play.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-play.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">出牌</text>
                 <text class="step-desc">说明如何与情境信息结合</text>
@@ -109,7 +109,7 @@
         <view class="steps-row">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-vote.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-vote.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">表决</text>
                 <text class="step-desc">其他玩家投票或提问评分</text>
@@ -120,7 +120,7 @@
           <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="/assets/halliGalli/step-judge.png" mode="aspectFill" />
+              <image class="step-img" src="/assets/halliGalli/step-judge.webp" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">判定</text>
                 <text class="step-desc">半数通过即成功，否则失败并摸1张牌</text>

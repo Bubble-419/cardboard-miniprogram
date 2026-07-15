@@ -240,10 +240,8 @@ Page({
       }));
     }
 
-    return mapped.map((item) => ({
-      ...item,
-      selected: item.isMine
-    }));
+    // 非房主：全部非选中态，仅通过 isMine / problem-text-mine 区分自己的问题
+    return mapped;
   },
 
   async loadSubmittedProblems() {
@@ -325,7 +323,7 @@ Page({
 
   _getTextLineHeight() {
     const ww = this._windowWidth || 375;
-    return Math.ceil((28 / 750) * ww * 1.2);
+    return Math.ceil((28 / 750) * ww * 1.4);
   },
 
   onEditProblem(e) {
@@ -441,7 +439,7 @@ Page({
     wx.navigateBack();
   },
 
-  handleGoRoom() {
+      handleGoRoom() {
     goRoomPage(this.data.roomId);
   }
 });

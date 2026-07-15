@@ -82,7 +82,7 @@ Component({
   },
 
   data: {
-    defaultAvatar: '/assets/avatar/Frame 2085662241.png',
+    defaultAvatar: '/assets/avatar/frame_2085662311_1x.webp',
     resolvedActingUser: null,
     resolvedSelectedUser: null,
     resolvedIndicatorUser: null,

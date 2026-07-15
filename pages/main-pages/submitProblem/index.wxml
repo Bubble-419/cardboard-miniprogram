@@ -79,11 +79,14 @@
       </view>
     </view>
 
-    <!-- 已提交等待状态 -->
+    <!-- 已提交等待状态（Figma #5912:50988） -->
     <view class="wait-panel" wx:if="{{hasSubmitted}}">
-      <text class="wait-title">已提交设计问题</text>
-      <text class="wait-desc">等待其他成员提交后进入选择问题</text>
-      <text class="wait-problem">{{problemText}}</text>
+      <image
+        class="wait-empty-illus"
+        src="/assets/submitProblem/empty-wait-problems.svg"
+        mode="aspectFit"
+      />
+      <text class="wait-empty-text">等待所有玩家提交设计问题...</text>
     </view>
 
   </scroll-view>

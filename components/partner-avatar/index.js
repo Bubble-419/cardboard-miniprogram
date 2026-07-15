@@ -35,6 +35,6 @@ Component({
   },
 
   data: {
-    defaultSrc: '/assets/avatar/Frame 2085662241.png'
+    defaultSrc: '/assets/avatar/frame_2085662311_1x.webp'
   }
 });

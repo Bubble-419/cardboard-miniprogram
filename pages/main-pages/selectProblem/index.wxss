@@ -119,10 +119,11 @@
   opacity: 1;
 }
 
-/* 左侧竖线: Figma 0×30px + stroke 4px → 8rpx×60rpx */
+/* 左侧竖线: Figma 0×30px + stroke 4px → 8rpx×60rpx；多行时随内容拉高 */
 .problem-indicator {
   width: 8rpx;
-  height: 60rpx;
+  min-height: 60rpx;
+  align-self: stretch;
   border-radius: 4rpx;
   background-color: rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
@@ -137,15 +138,20 @@
   flex: 1;
   min-width: 0;
   align-self: center;
+  overflow: hidden;
 }
 
 /* Figma: 14px Regular 400, lineHeight 1.2em, #999999 */
 .problem-text {
+  width: 100%;
   font-size: 28rpx;
   font-weight: 400;
   color: #999999;
-  line-height: 1.2;
+  line-height: 1.4;
   display: block;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .problem-text-mine {
@@ -162,12 +168,13 @@
   font-size: 28rpx;
   font-weight: 400;
   color: #575757;
-  line-height: 1.2;
+  line-height: 1.4;
   background: transparent;
   padding: 0;
   margin: 0;
   box-sizing: border-box;
   overflow: hidden;
+  word-break: break-all;
 }
 
 /* 右侧图标区 */
@@ -198,15 +205,28 @@
   height: 48rpx;
 }
 
-/* ===== 空状态 ===== */
+/* ===== 空状态 Figma #5912:50988 ===== */
 .empty-state {
-  padding: 80rpx 20rpx;
-  text-align: center;
+  padding: 64rpx 20rpx 80rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 44rpx;
+}
+
+.empty-illus {
+  width: 376rpx;
+  height: 280rpx;
 }
 
 .empty-text {
-  font-size: 28rpx;
-  color: #9CA3AF;
+  width: 100%;
+  max-width: 460rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #5EC159;
+  line-height: 1.5;
+  text-align: center;
 }
 
 /* ===== 底部确认按钮 =====

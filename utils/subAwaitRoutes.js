@@ -34,28 +34,38 @@ const SCENE_UI = {
     subTextLine1: '房主正在准备本次工作坊的情境内容',
     subTextLine2: '请稍作等待，精彩即将开始~',
     statusText: '正在等待中...',
-    multiLine: false
+    multiLine: false,
+    useHeroLayout: true
   },
   mode: {
     navbarTitle: '',
     mainText: '等待主屏幕选择游戏模式和目标',
     mainTextLines: [],
     subText: '等待中...',
-    multiLine: false
+    multiLine: false,
+    useHeroLayout: false
   },
   player: {
-    navbarTitle: '确认首位翻牌玩家',
-    mainText: '',
-    mainTextLines: ['请到主屏幕上抽取', '首位翻牌玩家'],
+    navbarTitle: '',
+    mainText: '等待房主抽取首位翻牌玩家',
+    mainTextLines: [],
     subText: '等待中...',
-    multiLine: true
+    subTextLine1: '房主正在抽取首位翻牌玩家',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
+    multiLine: false,
+    useHeroLayout: true
   },
   confirmFirstPlayer: {
-    navbarTitle: '确认首位出牌玩家',
+    navbarTitle: '',
     mainText: '等待房主确认首位出牌玩家',
     mainTextLines: [],
     subText: '等待中...',
-    multiLine: false
+    subTextLine1: '房主正在确认首位出牌玩家',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
+    multiLine: false,
+    useHeroLayout: true
   }
 };
 

@@ -49,6 +49,11 @@
           <view class="deco-particle deco-particle-5"></view>
           <view class="deco-particle deco-particle-6"></view>
 
+          <!-- 轨道光点：与房间页一致 -->
+          <view class="orbit-wrap">
+            <view class="orbit-dot"></view>
+          </view>
+
           <block wx:for="{{memberSlots}}" wx:key="index">
             <view
               class="avatar-slot {{item.member && item.member.playerIndex === selectedPlayerIndex ? 'avatar-slot-selected' : ''}} {{item.member && item.member.isMe ? 'avatar-slot-me' : ''}}"
@@ -56,12 +61,19 @@
               data-index="{{item.index}}"
               bindtap="onSlotTap"
             >
-              <image
-                wx:if="{{item.member && item.member.avatarImage}}"
-                class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
-                src="{{item.member.avatarImage}}"
-                mode="aspectFill"
-              />
+              <view class="avatar-wrap" wx:if="{{item.member && item.member.avatarImage}}">
+                <image
+                  class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
+                  src="{{item.member.avatarImage}}"
+                  mode="aspectFill"
+                />
+                <view
+                  wx:if="{{item.member.playerIndex === selectedPlayerIndex}}"
+                  class="first-player-badge"
+                >
+                  <text class="first-player-badge-num">1</text>
+                </view>
+              </view>
               <view
                 wx:if="{{!item.member}}"
                 class="avatar-placeholder avatar-placeholder-animate"
