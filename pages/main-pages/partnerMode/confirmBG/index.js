@@ -3,6 +3,7 @@ const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
+const { buildAvatarList } = require('../../../../utils/avatars');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -18,7 +19,8 @@ Page({
     canConfirm: false,
     isHost: true,
     isWaiting: false,
-    navbarPaddingTop: 44
+    navbarPaddingTop: 44,
+    avatarList: []
   },
 
   onLoad(options) {
@@ -37,11 +39,36 @@ Page({
 
     if (isWaiting) {
       this.setData({ roomId, isWaiting: true, isHost: false });
+      this._syncAvatarList();
       this._startStatePolling();
       return;
     }
 
     this._initPage(roomId);
+  },
+
+  _syncAvatarListFromResult(result) {
+    if (!result || result.ok !== true) return;
+    try {
+      const avatarList = buildAvatarList(result.members || []);
+      this.setData({ avatarList });
+    } catch (e) {
+      console.warn('confirmBG buildAvatarList', e);
+    }
+  },
+
+  async _syncAvatarList() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      this._syncAvatarListFromResult((res && res.result) || {});
+    } catch (e) {
+      console.warn('confirmBG syncAvatarList', e);
+    }
   },
 
   async _initPage(roomId) {
@@ -120,6 +147,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok === true) {
         const isHost = result.isHost === true;
+        this._syncAvatarListFromResult(result);
         this.setData({ isHost, roomId });
         if (isHost) {
           const bg = getApp().globalData.selectedBG;
@@ -159,6 +187,7 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+        this._syncAvatarListFromResult(result);
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
             const roomIdEnc = encodeURIComponent(roomId);
@@ -180,7 +209,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {

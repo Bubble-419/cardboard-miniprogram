@@ -122,7 +122,7 @@ Page({
         console.warn('halliGalli gamepage state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
     poll();
   },
 

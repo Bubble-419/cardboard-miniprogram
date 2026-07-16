@@ -15,6 +15,64 @@ function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
 }
 
+function isLocalTempAvatar(url) {
+  if (typeof url !== 'string' || !url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.startsWith('wxfile://') ||
+    lower.startsWith('file://') ||
+    lower.startsWith('http://tmp/') ||
+    lower.startsWith('https://tmp/') ||
+    lower.indexOf('://tmp/') !== -1
+  );
+}
+
+async function resolveCloudAvatarUrls(members) {
+  const list = (members || []).map((m) => {
+    if (!m) return m;
+    // 本机临时路径无法跨设备加载，返回前清掉，客户端回退 avatarIndex
+    if (isLocalTempAvatar(m.avatarUrl)) {
+      return { ...m, avatarUrl: null };
+    }
+    return m;
+  });
+  const fileIds = [];
+  list.forEach((m) => {
+    const url = m && m.avatarUrl;
+    if (typeof url === 'string' && url.startsWith('cloud://') && !fileIds.includes(url)) {
+      fileIds.push(url);
+    }
+  });
+  if (!fileIds.length) return list;
+
+  try {
+    const res = await cloud.getTempFileURL({ fileList: fileIds });
+    const urlMap = {};
+    (res.fileList || []).forEach((item) => {
+      if (item.fileID && item.tempFileURL) {
+        urlMap[item.fileID] = item.tempFileURL;
+      }
+    });
+    return list.map((m) => {
+      if (m && m.avatarUrl && urlMap[m.avatarUrl]) {
+        return { ...m, avatarUrl: urlMap[m.avatarUrl] };
+      }
+      if (m && typeof m.avatarUrl === 'string' && m.avatarUrl.startsWith('cloud://')) {
+        return { ...m, avatarUrl: null };
+      }
+      return m;
+    });
+  } catch (e) {
+    console.warn('resolveCloudAvatarUrls failed', e);
+    return list.map((m) => {
+      if (m && typeof m.avatarUrl === 'string' && m.avatarUrl.startsWith('cloud://')) {
+        return { ...m, avatarUrl: null };
+      }
+      return m;
+    });
+  }
+}
+
 /**
  * 供 addPlayer 页使用：返回房间小程序码 fileID 与成员列表（含 isMe）
  */
@@ -80,6 +138,7 @@ exports.main = async (event, context) => {
         seq: 0,
         sessionId: 0
       };
+    const includeFullPartnerContent = event && event.full === true;
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -103,17 +162,23 @@ exports.main = async (event, context) => {
       closingVoteSessionId: activeClosing.sessionId || 0,
       partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
       // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
-      partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null,
-      partnerRoundSummaries: Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries : [],
-      partnerCurrentRoundContent: room.partnerCurrentRoundContent || {
+      partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null
+    };
+
+    // 默认不返回大体积脑暴内容，避免各页轮询拖垮测试性能；gamepage 传 full:true
+    if (includeFullPartnerContent) {
+      roomState.partnerRoundSummaries = Array.isArray(room.partnerRoundSummaries)
+        ? room.partnerRoundSummaries
+        : [];
+      roomState.partnerCurrentRoundContent = room.partnerCurrentRoundContent || {
         playHistory: [],
         discussionNotes: [],
         images: [],
         voiceLines: [],
         turnRecords: [],
         aiSummary: { status: 'pending' }
-      }
-    };
+      };
+    }
 
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
@@ -137,18 +202,21 @@ exports.main = async (event, context) => {
         playerIndex: m.playerIndex,
         nickName: m.nickName || `玩家${m.playerIndex}`,
         avatarColor: m.avatarColor || '#5EC159',
+        avatarUrl: m.avatarUrl || null,
         isMe: m.userId === currentUserId,
         userId: m.userId || null
       };
+      // 始终带回 avatarIndex，便于 avatarUrl 不可用时客户端回退随机头像
       if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;
       return out;
     });
+    const membersWithDisplayUrls = await resolveCloudAvatarUrls(members);
 
     return {
       ok: true,
       qrcodeFileID: room.qrcodeFileID || null,
-      members,
-      memberCount: members.length,
+      members: membersWithDisplayUrls,
+      memberCount: membersWithDisplayUrls.length,
       isHost,
       role: myMember && myMember.role ? myMember.role : (isHost ? 'GOD' : 'PLAYER'),
       workshopName: room.workshopName || '脑暴工作坊',

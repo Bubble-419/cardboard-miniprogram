@@ -364,7 +364,6 @@ exports.main = async (event, context) => {
     if (updated === 0) {
       console.warn('[updateRoomState] 未更新到任何记录', { roomId, updateRes });
     }
-    console.log('[updateRoomState] 更新完成', { roomId, currentPage: updateData.currentPage, updated });
 
     const closingVoteState = resolvedClosingVoteState
       || normalizeClosingVoteState(room.closingVoteState, sessionSeq)

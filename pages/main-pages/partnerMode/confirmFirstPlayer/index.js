@@ -188,7 +188,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {
@@ -247,7 +247,7 @@ Page({
       fail: () => {
         if (roomId) {
           wx.redirectTo({
-            url: `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+            url: `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
           });
         } else {
           wx.navigateBack();

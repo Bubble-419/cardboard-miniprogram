@@ -5,6 +5,127 @@
   flex-direction: column;
 }
 
+/* ===== Hero 等待页 Figma #5904:13756 / #5878:13766 ===== */
+.container-hero-scene {
+  min-height: 100vh;
+  background-color: #F7F9F5;
+}
+
+.hero-wait-page {
+  position: relative;
+  flex: 1;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.bg-pattern {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.hero-wait-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 48rpx);
+  box-sizing: border-box;
+}
+
+/* 插画：宽度贴齐界面，水平居中；整体随内容块垂直居中 */
+.hero-section {
+  width: 100%;
+  align-self: stretch;
+  padding-bottom: 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.hero-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* Text section: padding 0 16px → 32rpx, gap 15px → 30rpx */
+.text-section {
+  width: 100%;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30rpx;
+}
+
+/* Heading: 28px Medium, #2B2B2B, line-height 36px → 56rpx / 72rpx */
+.heading {
+  width: 100%;
+  font-size: 56rpx;
+  font-weight: 500;
+  color: #2B2B2B;
+  line-height: 72rpx;
+  letter-spacing: -0.0268em;
+  text-align: center;
+}
+
+/* Desc: 16px Regular, #909090, line-height 24px → 32rpx / 48rpx */
+.desc-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.desc-line {
+  font-size: 32rpx;
+  font-weight: 400;
+  color: #909090;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+/* Status pill margin-top 36px → 72rpx */
+.status-pill {
+  margin-top: 72rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 56rpx;
+  background-color: #EDF6EC;
+  border-radius: 9999rpx;
+}
+
+.status-icon {
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+}
+
+/* Status text: 14px Medium, #6EBA62, line-height 28px → 28rpx / 56rpx */
+.status-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #6EBA62;
+  line-height: 56rpx;
+  white-space: nowrap;
+}
+
+/* ===== 其他等待场景（原样式） ===== */
 .custom-navbar {
   background-color: #ffffff;
   padding-top: env(safe-area-inset-top);

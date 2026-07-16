@@ -3,42 +3,35 @@
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}" style="height: {{scrollHeight}}px">
     <view class="main-content" style="padding-top: {{contentPaddingTop}}px">
 
-      <!-- 顶部：房间入口 + 用户头像栏 -->
-      <view class="header-bar">
-        <view class="room-entry" bindtap="handleGoRoom">
-          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-        </view>
-        <view class="header-user-list">
-          <user-list
-            avatarList="{{avatarList}}"
-            enableAdd="{{false}}"
-            isFold="{{true}}"
-            showName="{{false}}"
-          />
-        </view>
-        <view class="add-member-btn">
-          <image class="add-member-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
-        </view>
-      </view>
+      <!-- 顶部：TopBar + 情境格 -->
+      <view class="header-section">
 
-      <!-- 情境标签区（2×2 网格） -->
-      <view class="context-grid" wx:if="{{categories.length > 0}}">
-        <view
-          class="context-item"
-          wx:for="{{categories}}"
-          wx:key="id"
-        >
-          <text class="context-label">{{item.label}}</text>
-          <text class="context-value">{{item.name}}</text>
+        <!-- TopBar：房间入口 + 堆叠头像 -->
+        <view class="topbar">
+          <view class="room-entry" bindtap="handleGoRoom">
+            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+          </view>
+          <view class="avatar-bar">
+            <user-list
+              avatarList="{{avatarList}}"
+              enableAdd="{{false}}"
+              isFold="{{true}}"
+              showName="{{false}}"
+              layout="stack"
+            />
+          </view>
         </view>
+
+        <!-- 情境展示 -->
+        <context-display items="{{categories}}" />
       </view>
 
       <!-- 标题区 -->
       <view class="title-section">
-        <text class="page-title">选择设计问题</text>
-        <text class="page-subtitle">
-          {{isHost ? '请选择一种模式，房主可进行切换' : '可修改自己提交的问题，等待房主选择'}}
-        </text>
+        <text class="page-title" wx:if="{{isHost}}">选择设计问题</text>
+        <text class="page-title" wx:else>等待房主选择设计问题</text>
+        <text class="page-subtitle" wx:if="{{isHost}}">房主可以对设计问题进行选择、编辑</text>
+        <text class="page-subtitle" wx:else>可修改自己提交的问题，等待房主选择</text>
       </view>
 
       <!-- 设计问题列表 -->
@@ -51,7 +44,7 @@
           bindtap="selectProblem"
         >
           <!-- 左侧竖线指示器 -->
-          <view class="problem-indicator {{item.selected ? 'selected' : ''}}"></view>
+          <view class="problem-indicator {{isHost && item.selected ? 'indicator-selected' : ''}}"></view>
 
           <!-- 问题文字（含编辑态） -->
           <view class="problem-body">
@@ -59,21 +52,20 @@
               <textarea
                 class="problem-textarea"
                 value="{{item.text}}"
-                maxlength="120"
-                style="height: {{textareaHeights[item.id] || 17}}px;"
+                maxlength="50"
+                auto-height="{{false}}"
+                style="height: {{textareaHeights[item.id]}}px;"
                 data-id="{{item.id}}"
                 catchtap="stopPropagation"
                 bindinput="onProblemInput"
                 bindblur="onProblemBlur"
-                bindlinechange="onTextareaLineChange"
               />
             </block>
-            <text wx:else class="problem-text {{item.isMine && !isHost ? 'problem-text-mine' : ''}}">{{item.text}}</text>
+            <text wx:else class="problem-text {{item.isMine && !isHost ? 'problem-text-mine' : ''}}" id="problem-text-{{item.id}}">{{item.text}}</text>
           </view>
 
-          <!-- 右侧图标区：三种状态各显示不同图标 -->
+          <!-- 右侧图标 -->
           <view class="problem-right">
-            <!-- 编辑态：勾选确认图标 -->
             <view
               wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}"
               class="right-icon-btn"
@@ -81,7 +73,6 @@
             >
               <image class="right-icon" src="/assets/icons/icon-problem-confirm.svg" mode="aspectFit" />
             </view>
-            <!-- 选中态（房主）：箭头图标，点击进入编辑 -->
             <view
               wx:elif="{{isHost && item.selected}}"
               class="right-icon-btn"
@@ -90,23 +81,26 @@
             >
               <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
             </view>
-            <!-- 选中态（副屏自己的问题）：箭头图标，点击进入编辑 -->
             <view
-              wx:elif="{{!isHost && item.isMine && item.selected}}"
+              wx:elif="{{!isHost && item.isMine}}"
               class="right-icon-btn"
               data-id="{{item.id}}"
               catchtap="onEditProblem"
             >
               <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
             </view>
-            <!-- 普通态：空占位 -->
             <view wx:else class="right-icon-placeholder"></view>
           </view>
         </view>
 
-        <!-- 空状态 -->
+        <!-- 空状态 Figma #5912:50988 -->
         <view class="empty-state" wx:if="{{problems.length === 0}}">
-          <text class="empty-text">等待成员提交设计问题…</text>
+          <image
+            class="empty-illus"
+            src="/assets/selectProblem/empty-wait-problems.svg"
+            mode="aspectFit"
+          />
+          <text class="empty-text">等待所有玩家提交设计问题...</text>
         </view>
       </view>
 

@@ -10,6 +10,16 @@ const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRout
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
+const { assignAvatarImages, resolveCloudAvatarUrls } = require('../../../utils/avatars');
+const {
+  getStoredProfile,
+  applyChooseAvatarEvent,
+  getOptionalProfileForRoom,
+  buildRoomJoinPayload,
+  prepareProfileForRoom,
+  syncRoomMemberProfile,
+  isCloudFileId
+} = require('../../../utils/wxUserAvatar');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 280;     // 头像圆心半径 rpx
@@ -32,22 +42,10 @@ const DRAG_CANCEL_THRESHOLD_PX = 8;
 /** 拖拽兜底超时：防止 touchend/cancel 丢失导致一直停在拖拽态 */
 const DRAG_WATCHDOG_MS = 3000;
 
-/** 头像图片列表，按 avatarIndex 分配给成员 */
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
-];
-
 Page({
   data: {
     roomId: '',
+    formattedRoomId: '',
     workshopName: '脑暴工作坊',
     qrcodeUrl: '',
     qrcodeStatus: 'loading',
@@ -73,7 +71,10 @@ Page({
     dropTargetIndex: null,
     // 进入可拖拽态的短暂动画标记（用于视觉反馈）
     dragEnterAnimating: false,
-    showQRCodeModal: false
+    showQRCodeModal: false,
+    showAvatarAuth: false,
+    pendingJoinRoomId: '',
+    navFreeze: false
   },
 
   _syncLobbyRoomState(result) {
@@ -83,9 +84,19 @@ Page({
     }
   },
 
+  _formatRoomId(roomId) {
+    if (!roomId || typeof roomId !== 'string') return '';
+    const digits = roomId.replace(/\D/g, '');
+    if (digits.length <= 4) return digits;
+    const padded = digits.padStart(8, '0').slice(-8);
+    return `${padded.slice(0, 4)}-${padded.slice(4)}`;
+  },
+
   onLoad(options) {
+    this._pageAlive = true;
     let roomId = (options && options.roomId) || '';
     const scene = options && options.scene;
+    const fromScanQuery = options && (options.fromScan === '1' || options.fromScan === 'true');
 
     if (scene) {
       try {
@@ -110,43 +121,58 @@ Page({
       console.warn('setStorage joinedRoomId failed', e);
     }
 
+    const fromScan = !!scene || fromScanQuery;
+
     this.setData({
       roomId,
-      isFromScan: !!scene,
+      formattedRoomId: this._formatRoomId(roomId),
+      isFromScan: fromScan,
       ...getDevRoomIdDisplayPatch(roomId)
     });
 
-    if (scene) {
-      this.joinRoomThenLoad(roomId);
+    if (fromScan) {
+      this._beginScanJoinWithAvatarPrompt(roomId);
     } else {
       this.loadRoomData(roomId).then((result) => {
-        if (!result) {
-          console.log('[addPlayer] loadRoomData 返回空，跳过');
-          return;
-        }
-        console.log('[addPlayer] loadRoomData 完成', { isHost: result.isHost });
+        if (!this._pageAlive || !result) return;
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
           this._startMemberPolling();
         } else {
-          console.log('[addPlayer] 副屏用户，启动页面状态轮询 + 成员列表轮询');
-          this._startStatePolling();
           this._startMemberPolling();
         }
+        this._preloadBrainstormMode();
       });
     }
   },
 
-  onShow() {
-    if (!this.data.isHost && this.data.roomId && this._statePollTimer && typeof this._statePollFn === 'function') {
-      this._statePollFn();
+  _preloadBrainstormMode() {
+    if (typeof wx.preloadPage !== 'function') return;
+    try {
+      wx.preloadPage({ url: '/pages/main-pages/brainstormMode/index' });
+    } catch (e) {
+      // preload 非关键路径，忽略
     }
+  },
+
+  onShow() {
+    if (!this._pageAlive || this._navigatingToBrainstorm) return;
+    this.setData({ navFreeze: false });
     if (this.data.roomId) {
+      this._startMemberPolling();
       this.loadRoomData(this.data.roomId, { silent: true });
     }
   },
 
+  onHide() {
+    // 进入子页（如选择脑暴模式）时必须停掉轮询，否则后台 setData 易导致目标页白屏
+    this._stopMemberPolling();
+    this._stopStatePolling();
+    wx.hideLoading();
+  },
+
   onUnload() {
+    this._pageAlive = false;
     this._stopMemberPolling();
     this._stopStatePolling();
     this._clearLongPressTimer();
@@ -203,7 +229,6 @@ Page({
       return { ok: false };
     }
     try {
-      console.log('[主屏] 调用 updateRoomState', { roomId, currentPage });
       const data = { roomId, currentPage, ...extra };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
@@ -213,7 +238,6 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true) {
-        console.log('[主屏] updateRoomState 成功', { currentPage: result.currentPage });
         if (currentPage && currentPage !== 'addPlayer') {
           saveLocalBrainstormProgress(roomId, currentPage);
         }
@@ -232,56 +256,23 @@ Page({
     }
   },
 
+  _followRoomPageFromResult(result, roomId) {
+    if (!result || result.ok !== true || !result.roomState) {
+      followSubScreenRoomPoll(result, roomId);
+      return;
+    }
+    const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
+    if (page === 'closingend') return;
+    if (result.roomState.brainstormSessionEnded === true) {
+      const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+      if (stalePages.includes(page)) return;
+    }
+    followSubScreenRoomPoll(result, roomId);
+  },
+
   _startStatePolling() {
+    // 副屏不再单独轮询：统一走成员轮询，顺带跟随主屏页面
     this._stopStatePolling();
-    console.log('[副屏轮询] 已启动 _startStatePolling');
-    const poll = async () => {
-      const roomId = this.data.roomId || getApp().globalData.roomId;
-      if (!roomId) {
-        console.log('[副屏轮询] 无 roomId，跳过', { dataRoomId: this.data.roomId, globalRoomId: getApp().globalData.roomId });
-        return;
-      }
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        console.log('[副屏轮询] getAddPlayerData 返回', {
-          ok: result.ok,
-          isHost: result.isHost,
-          hasRoomState: !!result.roomState,
-          currentPage: result.roomState && result.roomState.currentPage,
-          raw: result
-        });
-        if (result.ok !== true || !result.roomState) {
-          console.log('[副屏轮询] 数据无效，跳过', { ok: result.ok, errMsg: result.errMsg });
-          followSubScreenRoomPoll(result, roomId);
-          return;
-        }
-        const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
-        if (page === 'closingend') {
-          // 已落在 ending：允许跟随；结束态由 closingEnd 写 brainstormSessionEnded
-          console.log('[副屏轮询] closingEnd，准备跟随', { page });
-        } else if (result.roomState.brainstormSessionEnded === true) {
-          const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
-          if (stalePages.includes(page)) {
-            console.log('[副屏轮询] 脑暴已结束，忽略滞后页面', { page });
-            return;
-          }
-        }
-        if (followSubScreenRoomPoll(result, roomId)) {
-          console.log('[副屏轮询] 已跟随主屏跳转', { page });
-        } else {
-          console.log('[副屏轮询] 主屏在 addPlayer，保持当前页', { page });
-        }
-      } catch (e) {
-        console.warn('[副屏轮询] 异常', e);
-      }
-    };
-    this._statePollFn = poll;
-    poll();
-    this._statePollTimer = setInterval(poll, 1500);
   },
 
   _stopStatePolling() {
@@ -294,11 +285,24 @@ Page({
 
   _startMemberPolling() {
     this._stopMemberPolling();
-    const poll = () => {
-      const roomId = this.data.roomId;
-      if (roomId) this.loadRoomData(roomId, { silent: true });
+    const poll = async () => {
+      if (!this._pageAlive || this._memberPollInFlight || this._navigatingToBrainstorm) return;
+      const roomId = this.data.roomId || getApp().globalData.roomId;
+      if (!roomId) return;
+      this._memberPollInFlight = true;
+      try {
+        const result = await this.loadRoomData(roomId, { silent: true });
+        if (!this._pageAlive || this._navigatingToBrainstorm) return;
+        if (!this.data.isHost && result) {
+          this._followRoomPageFromResult(result, roomId);
+        }
+      } finally {
+        this._memberPollInFlight = false;
+      }
     };
-    this._memberPollTimer = setInterval(poll, 3000);
+    this._statePollFn = poll;
+    poll();
+    this._memberPollTimer = setInterval(poll, this.data.isHost ? 4000 : 2500);
   },
 
   _stopMemberPolling() {
@@ -308,14 +312,81 @@ Page({
     }
   },
 
-  /** 为成员列表补充 avatarImage（按 avatarIndex 映射，无则按顺序分配） */
+  /** 为成员列表补充 avatarImage（微信头像优先，否则随机头像） */
   _assignAvatarImages(members) {
-    return (members || []).map((m, i) => {
-      if (!m) return m;
-      const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-      const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length] || AVATAR_IMAGES[0];
-      return { ...m, avatarImage };
+    return assignAvatarImages(members);
+  },
+
+  /** 本人优先使用本地已选微信头像（wxfile 临时路径），避免等待云同步 */
+  _applyLocalAvatarForMe(members) {
+    const stored = getStoredProfile();
+    const localUrl = stored && stored.avatarUrl;
+    if (!localUrl || isCloudFileId(localUrl)) return members;
+    return (members || []).map((m) => {
+      if (m && m.isMe) {
+        return { ...m, avatarUrl: localUrl };
+      }
+      return m;
     });
+  },
+
+  async _prepareMembersForDisplay(rawMembers) {
+    const deduped = this._dedupeMembersById(rawMembers);
+    const withResolvedUrls = await resolveCloudAvatarUrls(deduped);
+    const withLocalMe = this._applyLocalAvatarForMe(withResolvedUrls);
+    return this._assignAvatarImages(withLocalMe);
+  },
+
+  _hasAuthorizedWechatAvatar() {
+    const stored = getStoredProfile();
+    return !!(stored && stored.avatarUrl);
+  },
+
+  _beginScanJoinWithAvatarPrompt(roomId) {
+    if (this._hasAuthorizedWechatAvatar()) {
+      this.joinRoomThenLoad(roomId);
+      return;
+    }
+    this.setData({
+      showAvatarAuth: true,
+      pendingJoinRoomId: roomId
+    });
+  },
+
+  onChooseAvatarAuth(e) {
+    const profile = applyChooseAvatarEvent(e.detail);
+    if (!profile) return;
+    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
+    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+    if (roomId) {
+      this.joinRoomThenLoad(roomId);
+    }
+  },
+
+  onSkipAvatarAuth() {
+    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
+    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+    if (roomId) {
+      this.joinRoomThenLoad(roomId);
+    }
+  },
+
+  async _ensureMyAvatarSynced(roomId, result) {
+    if (!roomId || !result) return;
+    const me = (result.members || []).find((m) => m.isMe);
+    if (me && me.avatarUrl) return;
+
+    const stored = getStoredProfile();
+    if (!stored || !stored.avatarUrl) return;
+
+    try {
+      const profile = await prepareProfileForRoom(stored);
+      if (!profile) return;
+      await syncRoomMemberProfile(roomId, profile);
+      this.loadRoomData(roomId, { silent: true });
+    } catch (e) {
+      console.warn('_ensureMyAvatarSynced', e);
+    }
   },
 
   /** 将成员列表扩展为固定 6 槽位，空位填 null，保证拖拽后“空位”正确挤到玩家原位置 */
@@ -344,11 +415,13 @@ Page({
   },
 
   async joinRoomThenLoad(roomId) {
+    const profile = await getOptionalProfileForRoom();
+
     wx.showLoading({ title: '加入中…' });
     try {
       const joinRes = await wx.cloud.callFunction({
         name: 'roomJoin',
-        data: { roomId }
+        data: buildRoomJoinPayload(profile, { roomId })
       });
       const result = (joinRes && joinRes.result) || {};
       wx.hideLoading();
@@ -357,19 +430,12 @@ Page({
         return;
       }
       this.loadRoomData(roomId).then((result) => {
-        if (!result) {
-          console.log('[addPlayer] joinRoomThenLoad loadRoomData 返回空');
-          return;
-        }
-        console.log('[addPlayer] joinRoomThenLoad 完成', { isHost: result.isHost });
+        if (!this._pageAlive || !result) return;
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
-          this._startMemberPolling();
-        } else {
-          console.log('[addPlayer] 副屏用户(扫码进入)，启动页面状态轮询 + 成员列表轮询');
-          this._startStatePolling();
-          this._startMemberPolling();
         }
+        this._startMemberPolling();
+        this._ensureMyAvatarSynced(roomId, result);
       });
     } catch (err) {
       wx.hideLoading();
@@ -419,9 +485,7 @@ Page({
       }
 
       const roomMeta = this._applyRoomMeta(result, deduped);
-      const withAvatars = this._assignAvatarImages(deduped);
-      const members = this._expandMembersToSlots(withAvatars);
-      const memberSlots = this.buildMemberSlots(members);
+      const withAvatars = await this._prepareMembersForDisplay(rawMembers);
       /* 仅创建者为主屏，其余（含扫码/输入加入）均为副屏 */
       const isHost = result.isHost === true;
       const roomState = result.roomState || {
@@ -443,41 +507,55 @@ Page({
       }
 
       if (silent) {
-        if (!this.data.isDragging) {
-          const deduped = this._dedupeMembersById(rawMembers);
-          const withAvatars = this._assignAvatarImages(deduped);
-          // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
-          const localExpanded = this._expandMembersToSlots(this.data.members || []);
-          const localFilledCount = localExpanded.filter((m) => !!m).length;
-          // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
-          let expanded;
-          if (deduped.length !== localFilledCount) {
-            expanded = this._expandMembersToSlots(withAvatars);
-          } else if (localFilledCount > 0) {
-            const serverById = new Map();
-            withAvatars.forEach((m) => {
-              const id = this._getMemberId(m);
-              if (id) serverById.set(id, m);
-            });
-            const canMerge = serverById.size > 0;
-            const merged = canMerge
-              ? localExpanded.map((m) => {
-                  if (!m) return null;
-                  const id = this._getMemberId(m);
-                  const s = id ? serverById.get(id) : null;
-                  return s ? { ...s } : m;
-                })
-              : localExpanded;
-            expanded = this._expandMembersToSlots(merged);
-          } else {
-            expanded = this._expandMembersToSlots(withAvatars);
-          }
+        // 跳转脑暴模式途中禁止 setData，否则主线程被拖死易触发 navigateTo:fail timeout
+        if (!this._pageAlive || this.data.isDragging || this._navigatingToBrainstorm) {
+          return result;
+        }
+        // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
+        const localExpanded = this._expandMembersToSlots(this.data.members || []);
+        const localFilledCount = localExpanded.filter((m) => !!m).length;
+        // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
+        let expanded;
+        if (deduped.length !== localFilledCount) {
+          expanded = this._expandMembersToSlots(withAvatars);
+        } else if (localFilledCount > 0) {
+          const serverById = new Map();
+          withAvatars.forEach((m) => {
+            const id = this._getMemberId(m);
+            if (id) serverById.set(id, m);
+          });
+          const canMerge = serverById.size > 0;
+          const merged = canMerge
+            ? localExpanded.map((m) => {
+                if (!m) return null;
+                const id = this._getMemberId(m);
+                const s = id ? serverById.get(id) : null;
+                return s ? { ...s } : m;
+              })
+            : localExpanded;
+          expanded = this._expandMembersToSlots(merged);
+        } else {
+          expanded = this._expandMembersToSlots(withAvatars);
+        }
+
+        const memberSlots = this.buildMemberSlots(expanded);
+        const fingerprint = [
+          roomMeta.memberCount,
+          roomMeta.hasSelectedMode ? 1 : 0,
+          resolvedState.currentPage || '',
+          expanded.map((m) => (m
+            ? `${this._getMemberId(m)}:${m.nickName || ''}:${m.avatarImage || m.avatarUrl || ''}:${m.avatarIndex != null ? m.avatarIndex : ''}`
+            : '-'
+          )).join('|')
+        ].join('#');
+        if (fingerprint !== this._silentMembersFingerprint) {
+          this._silentMembersFingerprint = fingerprint;
           this._triggerCountBounceIfNeeded(roomMeta.memberCount);
           const wasHost = this.data.isHost === true;
           const nowHost = result.isHost === true;
           this.setData({
             members: expanded,
-            memberSlots: this.buildMemberSlots(expanded),
+            memberSlots,
             roomState: resolvedState,
             isHost: nowHost,
             ...roomMeta
@@ -493,6 +571,9 @@ Page({
         }
         return result;
       }
+
+      const members = this._expandMembersToSlots(withAvatars);
+      const memberSlots = this.buildMemberSlots(members);
 
       let qrcodeFileID = result.qrcodeFileID;
       if (!qrcodeFileID) {
@@ -543,9 +624,11 @@ Page({
         roomState: resolvedState,
         ...roomMeta
       });
+      this._ensureMyAvatarSynced(roomId, result);
       return {
         isHost: result.isHost,
-        hasSelectedMode: result.hasSelectedMode === true
+        hasSelectedMode: result.hasSelectedMode === true,
+        members: result.members
       };
     } catch (err) {
       if (!silent) {
@@ -1034,11 +1117,84 @@ Page({
   },
 
   handleGoBrainstormMode() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`
-    });
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间参数错误', icon: 'none' });
+      return;
+    }
+    if (this._navigatingToBrainstorm) return;
+
+    this._navigatingToBrainstorm = true;
+    this._stopMemberPolling();
+    this._stopStatePolling();
+    wx.hideLoading();
+    // 停掉大厅重动画，给路由让出主线程（模拟器尤其明显）
+    this.setData({ navFreeze: true });
+
+    const url = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`;
+
+    const onNavOk = () => {
+      this._navigatingToBrainstorm = false;
+    };
+    const onNavFatal = (err, stage) => {
+      this._navigatingToBrainstorm = false;
+      console.error(`${stage} brainstormMode fail:`, err && err.errMsg, err);
+      if (this._pageAlive) {
+        this.setData({ navFreeze: false });
+        this._startMemberPolling();
+      }
+      wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+    };
+
+    const openWithReLaunch = () => {
+      wx.reLaunch({
+        url,
+        success: onNavOk,
+        fail: (err) => onNavFatal(err, 'reLaunch')
+      });
+    };
+
+    // 房主优先 redirectTo：卸载大厅页（动画/轮询/大 DOM），比 navigateTo 叠层更稳
+    const openPage = () => {
+      const preferRedirect = this.data.isHost === true;
+      const primary = preferRedirect ? wx.redirectTo : wx.navigateTo;
+      const primaryName = preferRedirect ? 'redirectTo' : 'navigateTo';
+      primary({
+        url,
+        success: onNavOk,
+        fail: (err) => {
+          const msg = (err && err.errMsg) || '';
+          console.error(`${primaryName} brainstormMode fail:`, msg, err);
+          if (/timeout|busy/i.test(msg)) {
+            setTimeout(openWithReLaunch, 400);
+            return;
+          }
+          const secondary = preferRedirect ? wx.navigateTo : wx.redirectTo;
+          secondary({
+            url,
+            success: onNavOk,
+            fail: (err2) => {
+              const msg2 = (err2 && err2.errMsg) || '';
+              console.error('fallback brainstormMode fail:', msg2, err2);
+              if (/timeout|busy|limit/i.test(msg2)) {
+                setTimeout(openWithReLaunch, 400);
+              } else {
+                onNavFatal(err2, 'fallback');
+              }
+            }
+          });
+        }
+      });
+    };
+
+    const waitAndGo = (attempt = 0) => {
+      if (!this._memberPollInFlight || attempt >= 20) {
+        setTimeout(openPage, 80);
+        return;
+      }
+      setTimeout(() => waitAndGo(attempt + 1), 50);
+    };
+    waitAndGo();
   },
 
   async handleAnotherRound() {

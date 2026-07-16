@@ -6,10 +6,11 @@
     class="gct-canvas {{borderVisible ? 'gct-canvas-visible' : ''}}"
   ></canvas>
   <block wx:if="{{displayMode === 'expiring'}}">
-    <view class="gct-expire-ring gct-expire-ring-outer"></view>
-    <view class="gct-expire-ring gct-expire-ring-inner"></view>
+    <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-1"></view>
+    <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-2"></view>
+    <view class="gct-expire-ring gct-expire-settle"></view>
   </block>
-  <view class="gct-inner {{displayMode === 'expiring' ? 'gct-inner-expiring' : ''}}">
+  <view class="gct-inner">
     <slot></slot>
   </view>
 </view>

@@ -2,16 +2,15 @@ const {
   getSubmitStatus,
   submitProblem: saveProblem
 } = require('../../../utils/roomDesignProblems');
+const {
+  DEFAULT_CATEGORIES,
+  buildCategoriesFromBG,
+  applyBGToApp,
+  normalizeBG
+} = require('../../../utils/scenarioCategories');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { buildUserListFromMembers } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-
-const DEFAULT_CATEGORIES = [
-  { id: 1, key: 'scene', label: '场景', name: '场景', icon: '/assets/icons/display.png', selected: false },
-  { id: 2, key: 'user', label: '用户', name: '用户', icon: '/assets/icons/wearable.png', selected: false },
-  { id: 3, key: 'platform', label: '平台', name: '平台', icon: '/assets/icons/passenger.png', selected: false },
-  { id: 4, key: 'function', label: '功能', name: '功能', icon: '/assets/icons/share.png', selected: false }
-];
 
 Page({
   data: {
@@ -52,7 +51,7 @@ Page({
 
     getApp().globalData.roomId = roomId;
     this.setData({ roomId, navbarPaddingTop });
-    this._applySelectedBGCategories();
+    this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
       this.refreshSubmitStatus();
       this._startPolling();
@@ -78,18 +77,12 @@ Page({
     }
   },
 
-  _applySelectedBGCategories() {
-    const bg = getApp().globalData.selectedBG;
-    if (!bg) return;
-    const categories = DEFAULT_CATEGORIES.map((item) => {
-      let name = item.name;
-      if (item.key === 'scene' && bg.scene) name = bg.scene;
-      if (item.key === 'user' && bg.user) name = bg.user;
-      if (item.key === 'platform' && bg.platform) name = bg.platform;
-      if (item.key === 'function' && bg.function) name = bg.function;
-      return { ...item, name };
-    }).filter((item) => !(item.key === 'platform' && !bg.platform));
-    this.setData({ categories });
+  _syncCategoriesFromBG(bg) {
+    const normalized = normalizeBG(bg);
+    if (normalized) {
+      applyBGToApp(normalized);
+    }
+    this.setData({ categories: buildCategoriesFromBG(normalized) });
   },
 
   _syncMembersFromResult(result) {
@@ -117,6 +110,13 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
+
+      const roomBG = normalizeBG(result.selectedBG)
+        || normalizeBG(getApp().globalData.selectedBG);
+      if (roomBG) {
+        this._syncCategoriesFromBG(roomBG);
+      }
+
       this._syncMembersFromResult(result);
     } catch (e) {
       console.warn('loadRoomData', e);
@@ -164,6 +164,13 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+
+        const roomBG = normalizeBG(result.selectedBG)
+          || normalizeBG(getApp().globalData.selectedBG);
+        if (roomBG) {
+          this._syncCategoriesFromBG(roomBG);
+        }
+
         this._syncMembersFromResult(result);
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
@@ -179,7 +186,7 @@ Page({
       }
     };
     poll();
-    this._pollTimer = setInterval(poll, 1500);
+    this._pollTimer = setInterval(poll, 2000);
   },
 
   _stopPolling() {

@@ -1,0 +1,11 @@
+<view class="partner-avatar size-{{size}}">
+  <view class="avatar-frame type-{{type}} {{isSelf ? 'is-self' : ''}}">
+    <image
+      class="avatar-img"
+      src="{{src || defaultSrc}}"
+      mode="aspectFill"
+      lazy-load
+    />
+  </view>
+  <view class="avatar-arrow" wx:if="{{showArrow}}"></view>
+</view>

@@ -9,6 +9,7 @@ const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { buildAvatarList } = require('../../../utils/avatars');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
@@ -23,6 +24,9 @@ Page({
     modeTitle: PARTNER_MODE_DISPLAY_TITLE,
     isHost: true,
     isWaiting: false,
+    workshopName: '脑暴工作坊',
+    avatarList: [],
+    currentUser: null,
     scenarios: [],
     offlineScenario: null,
     customScenarios: [],
@@ -57,6 +61,7 @@ Page({
 
     if (isWaiting) {
       this.setData({ isHost: false });
+      this._fetchRoomMembers();
       this._startStatePolling();
       return;
     }
@@ -64,6 +69,9 @@ Page({
   },
 
   onShow() {
+    if (this.data.roomId) {
+      this._fetchRoomMembers({ silent: true });
+    }
     if (this.data.isHost && !this.data.isWaiting) {
       this._loadScenarios();
     }
@@ -86,6 +94,38 @@ Page({
     this.setData({ scenarios, offlineScenario, customScenarios });
   },
 
+  _syncMembersFromResult(result) {
+    if (!result || result.ok !== true) return;
+    const avatarList = buildAvatarList(result.members || []);
+    const me = avatarList.find((item) => item.isMe);
+    this.setData({
+      workshopName: result.workshopName || this.data.workshopName,
+      avatarList,
+      currentUser: me ? me.id : null
+    });
+  },
+
+  async _fetchRoomMembers(opts = {}) {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return null;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true) {
+        this._syncMembersFromResult(result);
+      }
+      return result;
+    } catch (e) {
+      if (!opts.silent) {
+        console.warn('modeIndex fetchRoomMembers', e);
+      }
+      return null;
+    }
+  },
+
   async _fetchHostStatus() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
@@ -94,12 +134,8 @@ Page({
       return;
     }
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok === true) {
+      const result = await this._fetchRoomMembers();
+      if (result && result.ok === true) {
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
         if (isHost) {
@@ -144,13 +180,14 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+        this._syncMembersFromResult(result);
         followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('modeIndex state poll', e);
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {

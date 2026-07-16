@@ -11,6 +11,25 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 /** 成员头像随机颜色池（兼容旧逻辑） */
 const AVATAR_COLORS = ['#5EC159', '#4A90E2', '#E24A4A', '#E2B84A', '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB'];
 
+function isLocalTempAvatar(url) {
+  if (typeof url !== 'string' || !url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.startsWith('wxfile://') ||
+    lower.startsWith('file://') ||
+    lower.startsWith('http://tmp/') ||
+    lower.startsWith('https://tmp/') ||
+    lower.indexOf('://tmp/') !== -1
+  );
+}
+
+function normalizeShareableAvatarUrl(avatarUrl) {
+  if (typeof avatarUrl !== 'string' || !avatarUrl.trim()) return null;
+  const trimmed = avatarUrl.trim();
+  if (isLocalTempAvatar(trimmed)) return null;
+  return trimmed;
+}
+
 function pickAvatarColor(usedColors) {
   const available = AVATAR_COLORS.filter(c => !usedColors.includes(c));
   return available.length > 0 ? available[Math.floor(Math.random() * available.length)] : AVATAR_COLORS[0];
@@ -61,7 +80,11 @@ async function generateWxacode(roomId) {
 }
 
 exports.main = async (event, context) => {
-  const { clientCreateId } = event || {};
+  const { clientCreateId, avatarUrl, nickName: clientNickName } = event || {};
+  const normalizedAvatarUrl = normalizeShareableAvatarUrl(avatarUrl);
+  const normalizedNickName = typeof clientNickName === 'string' && clientNickName.trim()
+    ? clientNickName.trim()
+    : '玩家1';
 
   if (!clientCreateId) {
     return {
@@ -128,8 +151,9 @@ exports.main = async (event, context) => {
     // 生成 8 位数字的房间号，满足「不超过 8 位数字」的要求
     const roomId = await generateNumericRoomId();
     const creatorColor = pickAvatarColor([]);
+    const creatorAvatarIndex = normalizedAvatarUrl ? null : 0;
 
-    // 使用事务同时写 Room 与 RoomMember（创建者，role=GOD，playerIndex=1，随机头像色）
+    // 使用事务同时写 Room 与 RoomMember（创建者，role=GOD，playerIndex=1）
     await db.runTransaction(async (transaction) => {
       await transaction.collection(ROOMS_COLLECTION).add({
         data: {
@@ -147,10 +171,10 @@ exports.main = async (event, context) => {
           roomId,
           userId: currentUserId,
           role: 'GOD',
-          nickName: '玩家1',
-          avatarUrl: null,
+          nickName: normalizedNickName,
+          avatarUrl: normalizedAvatarUrl,
           avatarColor: creatorColor,
-          avatarIndex: 0,
+          avatarIndex: creatorAvatarIndex,
           joinedAt: now,
           playerIndex: 1
         }

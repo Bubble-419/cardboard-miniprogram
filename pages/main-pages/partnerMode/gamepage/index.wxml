@@ -16,17 +16,26 @@
 
   <view class="page-body">
     <!-- 顶部：房间入口 + 设计问题 -->
-    <view class="top-bar">
+    <view class="top-bar" style="padding-right: {{topBarPaddingRight}}rpx;">
       <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/add-icon.png" mode="aspectFit" />
+        <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
       </view>
-      <view class="problem-chip">
-        <image class="problem-icon" src="/assets/icons/question-mark.png" mode="aspectFit" />
-        <text class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}}">{{selectedProblemText || '暂无设计问题'}}</text>
+      <view
+        class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{problemTextOverflow || problemExpanded ? 'problem-chip-tappable' : ''}}"
+        bindtap="handleToggleProblemExpand"
+      >
+        <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
+        <view class="problem-text-wrap">
+          <text
+            id="problemText"
+            class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}} {{problemExpanded ? 'problem-text-expanded' : ''}}"
+          >{{selectedProblemText || '暂无设计问题'}}</text>
+          <text wx:if="{{selectedProblemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{selectedProblemText}}</text>
+        </view>
       </view>
     </view>
 
-    <!-- 玩家列表（不展示工作坊名称） -->
+    <!-- 玩家列表：使用 partner-avatar 展示六种头像状态 -->
     <view class="user-section">
       <user-list
         avatarList="{{avatarList}}"
@@ -114,7 +123,11 @@
                     <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
                   </view>
                   <view class="closing-photo-placeholder" catchtap="handleClosingPhoto">
-                    <view class="discussion-photo-icon"></view>
+                    <image
+                      class="discussion-empty-illus"
+                      src="/assets/partnerMode/discussion-empty-icon.svg"
+                      mode="aspectFit"
+                    />
                   </view>
                   <view class="card-photo-wrap" wx:if="{{reviewPhotos.length}}">
                     <image
@@ -145,15 +158,80 @@
         </view>
       </view>
 
-      <view class="inspiration-bar" bindtap="handleGoInspiration">
-        <view class="inspiration-badge-wrap">
-          <text class="inspiration-badge">💡</text>
+      <view class="inspiration-bar">
+        <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
+          <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
+          <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
+            <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
+          </view>
         </view>
-        <view class="inspiration-input-fake">
-          <text class="inspiration-placeholder">记录您的灵感...</text>
-        </view>
-        <view class="inspiration-submit">
-          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        <view
+          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+          catchtap="onInspirationComposerTap"
+        >
+          <scroll-view
+            wx:if="{{inspirationDraftPhotos.length}}"
+            class="inspiration-photo-strip"
+            scroll-x
+            enhanced
+            show-scrollbar="{{false}}"
+          >
+            <view class="inspiration-photo-strip-inner">
+              <view
+                class="inspiration-photo-thumb-wrap"
+                wx:for="{{inspirationDraftPhotos}}"
+                wx:key="*this"
+              >
+                <image
+                  class="inspiration-photo-thumb"
+                  src="{{item}}"
+                  mode="aspectFill"
+                  catchtap="onInspirationPreviewPhoto"
+                  data-url="{{item}}"
+                />
+                <view
+                  class="inspiration-photo-remove"
+                  catchtap="onInspirationRemovePhoto"
+                  data-index="{{index}}"
+                >×</view>
+              </view>
+            </view>
+          </scroll-view>
+          <view class="inspiration-row">
+            <textarea
+              class="inspiration-textarea"
+              value="{{inspirationDraftText}}"
+              focus="{{inspirationInputFocused}}"
+              hold-keyboard="{{inspirationHoldKeyboard}}"
+              bindfocus="onInspirationFocus"
+              bindblur="onInspirationBlur"
+              bindinput="onInspirationInput"
+              placeholder="记录您的灵感..."
+              placeholder-class="inspiration-placeholder"
+              maxlength="2000"
+              auto-height
+              show-confirm-bar="{{false}}"
+              adjust-position="{{true}}"
+              cursor-spacing="24"
+            />
+            <view
+              class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
+              catchtap="onInspirationActionTap"
+            >
+              <image
+                wx:if="{{inspirationHasText || inspirationDraftPhotos.length}}"
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-send.svg"
+                mode="aspectFit"
+              />
+              <image
+                wx:else
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-plus.svg"
+                mode="aspectFit"
+              />
+            </view>
+          </view>
         </view>
       </view>
     </block>
@@ -246,7 +324,11 @@
                   <view class="card-bullet card-bullet-empty" wx:if="{{!turnRecords.length}}">· 暂无记录</view>
                 </view>
                 <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
-                  <view class="discussion-photo-icon"></view>
+                  <image
+                    class="discussion-empty-illus"
+                    src="/assets/partnerMode/discussion-empty-icon.svg"
+                    mode="aspectFit"
+                  />
                 </view>
                 <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
                 <view class="discussion-report-hint">
@@ -264,53 +346,90 @@
             bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >
-            <view class="action-card-body">
-              <view class="action-title-row" wx:if="{{isMasterMode}}">
-                <view class="master-mode-badge">MASTER模式</view>
-              </view>
-              <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
-              <text class="action-title">出牌并解释</text>
-              <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
-              <text class="action-desc">能够新开卡组置于自己前面或选择别人的卡组出牌</text>
-              <view class="action-divider"></view>
-              <text class="card-section-title">第{{currentRound}}轮-语音纪要</text>
-              <view class="card-bullet-list action-voice-list">
-                <view class="card-bullet" wx:for="{{voiceLines}}" wx:key="at">· {{item.text}}</view>
-                <view class="card-bullet card-bullet-empty" wx:if="{{!voiceLines.length}}">· 正在聆听…</view>
-              </view>
-              <view class="action-divider"></view>
-              <view class="action-grid">
-                <view class="action-cell action-cell-filled">
-                  <view class="action-illus action-illus-play"></view>
-                  <text class="action-cell-label">出 1 张卡牌</text>
+            <view class="action-card-wrap">
+              <!-- 当前出牌玩家：出牌并解释 -->
+              <scroll-view
+                class="action-card-scroll"
+                scroll-y
+                enhanced
+                show-scrollbar="{{false}}"
+                wx:if="{{isCurrentPlayer}}"
+              >
+                <view class="action-card-inner">
+                  <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
+                    <view class="action-title-row" wx:if="{{isMasterMode}}">
+                      <view class="master-mode-badge">MASTER模式</view>
+                      <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                    </view>
+                    <text class="action-title" wx:else>出牌并解释</text>
+                    <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : '您可以进行1—3次行动，1 次行动可以是以下任意一种'}}</text>
+                  </view>
+                  <view class="action-divider"></view>
+                  <view class="action-grid">
+                    <view class="action-cell">
+                      <view class="action-illus"></view>
+                      <text class="action-cell-label">出 1 张卡牌</text>
+                    </view>
+                    <view class="action-cell">
+                      <view class="action-illus"></view>
+                      <text class="action-cell-label">删 1 张卡牌</text>
+                    </view>
+                    <view class="action-cell">
+                      <view class="action-illus"></view>
+                      <text class="action-cell-label">调整 1 张卡牌</text>
+                    </view>
+                    <view class="action-cell">
+                      <view class="action-illus"></view>
+                      <text class="action-cell-label">交换 2 张卡牌</text>
+                    </view>
+                  </view>
                 </view>
-                <view class="action-cell action-cell-filled">
-                  <view class="action-illus action-illus-delete"></view>
-                  <text class="action-cell-label">删 1 张卡牌</text>
+              </scroll-view>
+
+              <!-- 非出牌玩家：玩家正在出牌 Figma #5914:51127 -->
+              <scroll-view
+                class="action-card-scroll"
+                scroll-y
+                enhanced
+                show-scrollbar="{{false}}"
+                wx:else
+              >
+                <view class="action-card-inner action-card-inner-spectator">
+                  <view class="action-header">
+                    <text class="action-title">玩家正在出牌</text>
+                    <text class="action-desc">待玩家出牌完毕，您可以对它的出牌进行打分</text>
+                  </view>
+                  <view class="action-divider"></view>
+                  <view class="spectator-waiting">
+                    <image
+                      class="spectator-waiting-illus"
+                      src="/assets/partnerMode/spectator-waiting-illus.svg"
+                      mode="aspectFit"
+                    />
+                    <text class="spectator-waiting-text">脑暴纪要生成中...</text>
+                  </view>
                 </view>
-                <view class="action-cell action-cell-empty">
-                  <text class="action-cell-label">调整 1 张卡牌</text>
+              </scroll-view>
+
+              <!-- 打分浮层：仅非出牌玩家显示 -->
+              <view class="score-panel score-panel-float" wx:if="{{!isCurrentPlayer}}">
+                <view class="score-panel-head">
+                  <text class="score-label">此次行动评分</text>
+                  <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
                 </view>
-                <view class="action-cell action-cell-empty">
-                  <text class="action-cell-label">交换 2 张卡牌</text>
-                </view>
-              </view>
-            </view>
-            <view class="score-panel">
-              <view class="score-panel-head">
-                <text class="score-label">{{isCurrentPlayer ? '此次行动无需评分' : '此次行动评分'}}</text>
-                <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
-              </view>
-              <view class="score-buttons" wx:if="{{!isCurrentPlayer}}">
-                <view
-                  class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
-                  wx:for="{{scoreOptions}}"
-                  wx:key="*this"
-                  data-score="{{item}}"
-                  bindtap="onScoreTap"
-                >
-                  <text class="score-num">{{item}}</text>
-                  <text class="score-unit">分</text>
+                <view class="score-buttons">
+                  <view
+                    class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
+                    wx:for="{{scoreOptions}}"
+                    wx:key="*this"
+                    data-score="{{item}}"
+                    bindtap="onScoreTap"
+                  >
+                    <view class="score-btn-content">
+                      <text class="score-num">{{item}}</text>
+                      <text class="score-unit">分</text>
+                    </view>
+                  </view>
                 </view>
               </view>
             </view>
@@ -331,15 +450,80 @@
     </view>
 
     <!-- 灵感记录 -->
-    <view class="inspiration-bar" bindtap="handleGoInspiration">
-      <view class="inspiration-badge-wrap">
-        <text class="inspiration-badge">💡</text>
+    <view class="inspiration-bar">
+      <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
+        <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
+        <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
+          <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
+        </view>
       </view>
-      <view class="inspiration-input-fake">
-        <text class="inspiration-placeholder">记录您的灵感...</text>
-      </view>
-      <view class="inspiration-submit">
-        <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+      <view
+        class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+        catchtap="onInspirationComposerTap"
+      >
+        <scroll-view
+          wx:if="{{inspirationDraftPhotos.length}}"
+          class="inspiration-photo-strip"
+          scroll-x
+          enhanced
+          show-scrollbar="{{false}}"
+        >
+          <view class="inspiration-photo-strip-inner">
+            <view
+              class="inspiration-photo-thumb-wrap"
+              wx:for="{{inspirationDraftPhotos}}"
+              wx:key="*this"
+            >
+              <image
+                class="inspiration-photo-thumb"
+                src="{{item}}"
+                mode="aspectFill"
+                catchtap="onInspirationPreviewPhoto"
+                data-url="{{item}}"
+              />
+              <view
+                class="inspiration-photo-remove"
+                catchtap="onInspirationRemovePhoto"
+                data-index="{{index}}"
+              >×</view>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="inspiration-row">
+          <textarea
+            class="inspiration-textarea"
+            value="{{inspirationDraftText}}"
+            focus="{{inspirationInputFocused}}"
+            hold-keyboard="{{inspirationHoldKeyboard}}"
+            bindfocus="onInspirationFocus"
+            bindblur="onInspirationBlur"
+            bindinput="onInspirationInput"
+            placeholder="记录您的灵感..."
+            placeholder-class="inspiration-placeholder"
+            maxlength="2000"
+            auto-height
+            show-confirm-bar="{{false}}"
+            adjust-position="{{true}}"
+            cursor-spacing="24"
+          />
+          <view
+            class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
+            catchtap="onInspirationActionTap"
+          >
+            <image
+              wx:if="{{inspirationHasText || inspirationDraftPhotos.length}}"
+              class="inspiration-action-icon"
+              src="/assets/partnerMode/icon-insp-send.svg"
+              mode="aspectFit"
+            />
+            <image
+              wx:else
+              class="inspiration-action-icon"
+              src="/assets/partnerMode/icon-insp-plus.svg"
+              mode="aspectFit"
+            />
+          </view>
+        </view>
       </view>
     </view>
     </block>
@@ -374,39 +558,47 @@
         结束讨论
       </button>
     </view>
-    <view class="bottom-actions" wx:else>
-      <!-- 他人轮次：灰色禁用 -->
-      <button
-        wx:if="{{!isCurrentPlayer}}"
-        class="special-btn special-btn-disabled"
-        disabled
-      >
-        <text class="special-btn-line">特殊</text>
-        <text class="special-btn-line">行动</text>
-      </button>
-      <!-- 自己轮次且(已使用 / MASTER)：浅绿灰底 + 深绿打勾 -->
-      <view
-        wx:elif="{{isCurrentPlayer && (specialMoveUsedThisTurn || isMasterMode)}}"
-        class="special-btn special-btn-used"
-      >
-        <text class="special-btn-check-mark">✓</text>
+    <view class="bottom-actions" wx:elif="{{isHost}}">
+      <view class="special-btn-wrap">
+        <view
+          wx:if="{{specialMoveUsedThisTurn || isMasterMode}}"
+          class="special-btn special-btn-used"
+        >
+          <text class="special-btn-line">特殊</text>
+          <text class="special-btn-line">行动</text>
+          <image
+            class="special-btn-used-check"
+            src="/assets/partnerMode/icon-special-used-check.svg"
+            mode="aspectFit"
+          />
+        </view>
+        <button
+          wx:else
+          class="special-btn"
+          hover-class="none"
+          catchtap="onTapSpecialMove"
+        >
+          <text class="special-btn-line">特殊</text>
+          <text class="special-btn-line">行动</text>
+        </button>
       </view>
-      <!-- 自己轮次且未使用：可点击 -->
-      <button
-        wx:else
-        class="special-btn"
-        bindtap="handleSpecialMove"
-      >
-        <text class="special-btn-line">特殊</text>
-        <text class="special-btn-line">行动</text>
-      </button>
-      <button
-        class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
-        disabled="{{!canStartStatement}}"
-        bindtap="handleStartStatement"
-      >
-        开始表态
-      </button>
+      <view class="bottom-actions-gap"></view>
+      <view class="statement-btn-wrap">
+        <button
+          class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
+          disabled="{{!canStartStatement}}"
+          hover-class="none"
+          bindtap="handleStartStatement"
+        >
+          开始表态
+        </button>
+      </view>
     </view>
   </view>
+
+  <view
+    class="inspiration-focus-mask"
+    wx:if="{{inspirationInputFocused}}"
+    catchtap="onInspirationDismissFocus"
+  ></view>
 </view>

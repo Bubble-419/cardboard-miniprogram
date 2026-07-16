@@ -18,6 +18,7 @@
   padding: 60rpx 40rpx 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 24rpx;
 }
 
@@ -25,7 +26,6 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: 20rpx;
 }
 
 .room-entry {
@@ -48,57 +48,10 @@
 .avatar-bar {
   display: flex;
   align-items: center;
+  margin-left: 16rpx;
   flex: 1;
   min-width: 0;
   overflow: visible;
-}
-
-.add-btn {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 9999rpx;
-  background-color: #F3F4F6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-left: 16rpx;
-}
-.add-btn-icon {
-  width: 48rpx;
-  height: 48rpx;
-}
-
-/* 情境格子（Figma: 2列 grid, gap 4px, item padding 2px 16px, bg #E9F5E9, border #68D062 1px, radius 16px） */
-.context-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx;
-}
-.context-item {
-  width: calc(50% - 4rpx);
-  padding: 4rpx 32rpx;
-  background-color: #E9F5E9;
-  border: 2rpx solid #68D062;
-  border-radius: 32rpx;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-.context-label {
-  font-size: 20rpx;
-  font-weight: 500;
-  color: #5EC159;
-  line-height: 30rpx;
-}
-.context-value {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #1E293B;
-  line-height: 32rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ===== 主内容区 ===== */
@@ -111,23 +64,16 @@
   gap: 24rpx;
 }
 
-/* 标题区（Figma: gap 12px，title 24px/500/#0F172A，subtitle 12px/500/#6B7280） */
+/* 标题区（Figma: title 24px/700/#509D59） */
 .title-section {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 .page-title {
   font-size: 48rpx;
-  font-weight: 500;
-  color: #0F172A;
+  font-weight: 700;
+  color: #509D59;
   line-height: 60rpx;
-}
-.page-subtitle {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #6B7280;
-  line-height: 40rpx;
 }
 
 /* 输入整体区域（Figma: height 263px = 526rpx，gap 6px） */
@@ -137,10 +83,8 @@
   gap: 12rpx;
 }
 
-/* 示例框（Figma: bg #E9F5E9，border 1px #F3FFF0，radius 16px，padding 6px 10px，gap 4px） */
+/* 示例框（无背景色，radius 16px，padding 6px 10px，gap 4px） */
 .example-box {
-  background-color: #E9F5E9;
-  border: 2rpx solid #F3FFF0;
   border-radius: 32rpx;
   padding: 12rpx 20rpx;
   display: flex;
@@ -183,10 +127,9 @@
   line-height: 40rpx;
 }
 
-/* 输入框区（Figma: padding-bottom 7px，内部 textarea 填满剩余高度） */
+/* 输入框区（Figma: padding-bottom 7px） */
 .form-input-wrap {
   position: relative;
-  padding-bottom: 14rpx;
 }
 /* 文本框容器（Figma: bg white，border 1px rgba(76,175,80,0.3)，radius 16px，padding 16px） */
 .textarea-box {
@@ -194,12 +137,13 @@
   border: 2rpx solid rgba(76, 175, 80, 0.3);
   border-radius: 32rpx;
   padding: 32rpx;
+  padding-bottom: 96rpx;
   box-sizing: border-box;
 }
 /* 输入框（Figma: 14px/500/#CBD5E1 placeholder，颜色 #3F3F3F） */
 .problem-input {
   width: 100%;
-  height: 260rpx;
+  height: 320rpx;
   font-size: 28rpx;
   font-weight: 500;
   color: #3F3F3F;
@@ -210,42 +154,55 @@
   color: #CBD5E1;
   font-size: 28rpx;
 }
-/* 字数计数（Figma: 12px/#CBD5E1，绝对定位右下角） */
-.char-count {
+/* 字数计数 + 提交图标行（Figma: 绝对定位右下角，row，gap 8px） */
+.counter-row {
   position: absolute;
   right: 32rpx;
-  bottom: 28rpx;
+  bottom: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+/* 字数计数（Figma: 12px/#CBD5E1） */
+.char-count {
   font-size: 24rpx;
   color: #CBD5E1;
+  font-weight: 500;
   pointer-events: none;
 }
 
-/* ===== 已提交等待面板 ===== */
+/* 提交图标（Figma: 26×26，icon-submit-arrow.svg，绿色圆圈箭头） */
+.submit-icon {
+  width: 52rpx;
+  height: 52rpx;
+  flex-shrink: 0;
+}
+
+/* ===== 已提交等待面板 Figma #5912:50988 ===== */
 .wait-panel {
-  padding: 40rpx 32rpx;
-  background-color: #ffffff;
-  border-radius: 48rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  margin: 60rpx 40rpx 0;
+  justify-content: center;
+  padding: 80rpx 40rpx 40rpx;
+  margin: 40rpx 0 0;
+  gap: 44rpx;
+  background: transparent;
 }
-.wait-title {
+
+.wait-empty-illus {
+  width: 376rpx;
+  height: 280rpx;
+}
+
+.wait-empty-text {
+  width: 100%;
+  max-width: 460rpx;
   font-size: 36rpx;
   font-weight: 600;
   color: #5EC159;
-}
-.wait-desc {
-  font-size: 28rpx;
-  color: #6B7280;
-}
-.wait-problem {
-  font-size: 28rpx;
-  color: #374151;
-  text-align: center;
   line-height: 1.5;
-  margin-top: 12rpx;
+  text-align: center;
 }
 
 /* ===== 底部按钮（固定悬浮，带渐变遮罩） ===== */

@@ -1,0 +1,11 @@
+<view class="context-display" wx:if="{{displayItems.length > 0}}">
+  <view class="context-grid">
+    <view class="context-item" wx:for="{{displayItems}}" wx:key="key">
+      <image class="context-icon" src="{{item.icon}}" mode="aspectFit" wx:if="{{item.icon}}" />
+      <view class="context-body">
+        <text class="context-label">{{item.label}}</text>
+        <text class="context-value">{{item.name}}</text>
+      </view>
+    </view>
+  </view>
+</view>

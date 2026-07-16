@@ -1,7 +1,15 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
-const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
 const { getDevJoinPageData } = require('../../../utils/devJoinRoomById');
+const {
+  DEFAULT_AVATAR,
+  getStoredProfile,
+  saveStoredProfile,
+  applyChooseAvatarEvent,
+  getOptionalProfileForRoom,
+  buildRoomJoinPayload
+} = require('../../../utils/wxUserAvatar');
+const { AVATAR_IMAGES } = require('../../../utils/avatars');
 
 Page({
   data: {
@@ -17,6 +25,7 @@ Page({
     roomTimeText: '',
     timeLabel: '创建/加入时间',
     loading: false,
+    debugRoomIdInput: '',
     historyWorkshops: []
   },
 
@@ -29,6 +38,7 @@ Page({
       console.warn('getSystemInfo for header', e);
     }
     this.setData({ headerPaddingTop, ...getDevJoinPageData() });
+    this._restoreUserProfile();
     this.loadJoinedRoomState();
   },
 
@@ -138,17 +148,39 @@ Page({
         userAvatarUrl: DEFAULT_AVATAR
       };
     }
-    let avatarUrl = member.avatarUrl || member.avatarImage || '';
+    let avatarUrl = member.avatarUrl || '';
     if (!avatarUrl && member.avatarIndex != null) {
-      try {
-        const { AVATAR_IMAGES } = require('../../../utils/avatars');
-        avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
-      } catch (_) {}
+      avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
     }
     return {
       userNickName: member.nickName || '微信用户',
       userAvatarUrl: avatarUrl || DEFAULT_AVATAR
     };
+  },
+
+  _restoreUserProfile() {
+    const stored = getStoredProfile();
+    if (!stored || !stored.avatarUrl) return;
+    this.setData({
+      userAvatarUrl: stored.avatarUrl,
+      userNickName: stored.nickName || this.data.userNickName || '微信用户'
+    });
+  },
+
+  onChooseAvatar(e) {
+    const profile = applyChooseAvatarEvent(e.detail);
+    if (!profile) return;
+    this.setData({
+      userAvatarUrl: profile.avatarUrl,
+      userNickName: profile.nickName || this.data.userNickName || '微信用户'
+    });
+  },
+
+  onNickNameInput(e) {
+    const nickName = (e.detail && e.detail.value) || '';
+    const stored = getStoredProfile() || {};
+    saveStoredProfile({ ...stored, nickName });
+    this.setData({ userNickName: nickName || '微信用户' });
   },
 
   _clearJoinedRoom(roomId) {
@@ -177,10 +209,16 @@ Page({
   },
 
   _goToRoomPage(roomId) {
+    if (!roomId) return;
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+    const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`;
+    wx.redirectTo({
+      url,
+      fail: (err) => {
+        console.warn('redirectTo addPlayer failed, try reLaunch', err);
+        wx.reLaunch({ url });
+      }
     });
   },
 
@@ -189,15 +227,18 @@ Page({
 
     this.setData({ loading: true });
     const clientCreateId = `client-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    const profile = await getOptionalProfileForRoom();
 
     try {
       const res = await wx.cloud.callFunction({
         name: 'roomCreate',
-        data: { clientCreateId }
+        data: buildRoomJoinPayload(profile, { clientCreateId })
       });
 
       const result = (res && res.result) || {};
-      if (result.ok !== true) {
+      const roomId = result.roomId || (result.data && result.data.roomId);
+
+      if (result.ok === false || !roomId) {
         console.error('roomCreate error', result);
         wx.showToast({
           title: result.errMsg || '创建失败，请重试',
@@ -206,13 +247,6 @@ Page({
         return;
       }
 
-      const roomId = result.roomId;
-      if (!roomId) {
-        wx.showToast({ title: '未返回房间号', icon: 'none' });
-        return;
-      }
-
-      wx.showToast({ title: '创建成功', icon: 'success', duration: 1500 });
       this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
@@ -220,6 +254,26 @@ Page({
         title: err.errMsg || '创建失败，请重试',
         icon: 'none'
       });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+
+  onDebugRoomIdInput(e) {
+    const value = ((e.detail && e.detail.value) || '').replace(/\D/g, '').slice(0, 8);
+    this.setData({ debugRoomIdInput: value });
+  },
+
+  async handleJoinByRoomId() {
+    if (this.data.loading) return;
+    const roomId = (this.data.debugRoomIdInput || '').trim();
+    if (!this._isValidRoomId(roomId)) {
+      wx.showToast({ title: '请输入8位房间号', icon: 'none' });
+      return;
+    }
+    this.setData({ loading: true });
+    try {
+      await this._joinRoomAndGo(roomId);
     } finally {
       this.setData({ loading: false });
     }
@@ -252,7 +306,7 @@ Page({
         wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
-      await this._joinRoomAndGo(roomId);
+      await this._goToScanJoinRoom(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
         wx.showToast({ title: '已取消扫码', icon: 'none' });
@@ -271,7 +325,7 @@ Page({
 
     const roomId = this._parseRoomIdFromPath(path) || this._parseRoomId(path);
     if (this._isValidRoomId(roomId)) {
-      await this._joinRoomAndGo(roomId);
+      await this._goToScanJoinRoom(roomId);
       return true;
     }
 
@@ -462,12 +516,28 @@ Page({
     return '';
   },
 
+  _goToScanJoinRoom(roomId) {
+    if (!roomId) return;
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
+    wx.redirectTo({
+      url,
+      fail: (err) => {
+        console.warn('redirectTo addPlayer failed, try reLaunch', err);
+        wx.reLaunch({ url });
+      }
+    });
+  },
+
   async _joinRoomAndGo(roomId) {
+    const profile = await getOptionalProfileForRoom();
+
     wx.showLoading({ title: '加入中…' });
     try {
       const res = await wx.cloud.callFunction({
         name: 'roomJoin',
-        data: { roomId }
+        data: buildRoomJoinPayload(profile, { roomId })
       });
       const result = (res && res.result) || {};
       wx.hideLoading();
@@ -476,12 +546,7 @@ Page({
         return;
       }
 
-      wx.showToast({
-        title: '加入成功',
-        icon: 'success',
-        duration: 1500
-      });
-      await this._persistRoomAndRefresh(roomId);
+      this._goToRoomPage(roomId);
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });

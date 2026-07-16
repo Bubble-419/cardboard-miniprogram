@@ -1,24 +1,15 @@
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png',
-  '/assets/avatar/Frame 2085662248.png',
-  '/assets/avatar/Frame 2085662249.png'
-];
+const { resolveSelectedDesignProblem } = require('../../../utils/selectedDesignProblem');
+const { buildAvatarList } = require('../../../utils/avatars');
+const scenarioCategories = require('../../../utils/scenarioCategories');
+const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
+const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 
 const {
   DEFAULT_CATEGORIES,
   buildCategoriesFromBG,
   applyBGToApp,
   normalizeBG
-} = require('../../../utils/scenarioCategories');
-const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
-const { resolveSelectedDesignProblem } = require('../../../utils/selectedDesignProblem');
+} = scenarioCategories;
 
 Page({
   data: {
@@ -102,15 +93,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
 
-      const avatarList = (result.members || []).map((m, i) => {
-        const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-        return {
-          id: m.userId || String(m.playerIndex),
-          nickName: m.nickName || `玩家${m.playerIndex}`,
-          avatarImage: AVATAR_IMAGES[idx % AVATAR_IMAGES.length],
-          isMe: m.isMe === true
-        };
-      });
+      const avatarList = buildAvatarList(result.members || []);
       const me = avatarList.find((item) => item.isMe);
       const roomBG = normalizeBG(result.selectedBG)
         || normalizeBG(getApp().globalData.selectedBG);
@@ -164,7 +147,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {

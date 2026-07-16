@@ -75,7 +75,7 @@ Page({
       }
     };
     poll();
-    this._followPollTimer = setInterval(poll, 1500);
+    this._followPollTimer = setInterval(poll, 2000);
   },
 
   _stopFollowPoll() {

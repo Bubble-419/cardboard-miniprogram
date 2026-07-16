@@ -4,24 +4,7 @@ const AVATAR_SIZE = 80;
 const CENTER_XY = 300;
 const START_ANGLE = -Math.PI / 2;
 
-const AVATAR_IMAGES = [
-  '/assets/avatar/Frame 2085662241.png',
-  '/assets/avatar/Frame 2085662242.png',
-  '/assets/avatar/Frame 2085662243.png',
-  '/assets/avatar/Frame 2085662244.png',
-  '/assets/avatar/Frame 2085662245.png',
-  '/assets/avatar/Frame 2085662246.png',
-  '/assets/avatar/Frame 2085662247.png'
-];
-
-function assignAvatarImages(members) {
-  return (members || []).map((m, i) => {
-    if (!m) return m;
-    const idx = m.avatarIndex != null ? m.avatarIndex : i % AVATAR_IMAGES.length;
-    const avatarImage = AVATAR_IMAGES[idx % AVATAR_IMAGES.length] || AVATAR_IMAGES[0];
-    return { ...m, avatarImage };
-  });
-}
+const { assignAvatarImages } = require('./avatars');
 
 function expandMembersToSlots(members) {
   const arr = [...(members || [])];
@@ -77,7 +60,6 @@ module.exports = {
   CIRCLE_R,
   AVATAR_SIZE,
   CENTER_XY,
-  AVATAR_IMAGES,
   assignAvatarImages,
   expandMembersToSlots,
   dedupeMembersById,

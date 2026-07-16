@@ -1,0 +1,135 @@
+/**
+ * partner-avatar — 合伙人模式头像框组件
+ *
+ * 对应 Figma "头像类型" 组件集（node 5842-76797），共 6 种状态：
+ *
+ *   type        isSelf   描述
+ *   ─────────── ──────   ──────────────────────────────────────
+ *   normal      false    普通 · 非独立查看   → 无装饰
+ *   normal      true     普通 · 独立查看     → 细绿边框 + 发光
+ *   active-nonaction false  行动中&&非行动页 · 非独立 → 浅绿+绿双环
+ *   active-nonaction true   行动中&&非行动页 · 独立   → 粗绿边框 + 强发光 + 双环
+ *   active      false    行动中 · 非独立查看 → 绿色实线圆圈
+ *   active      true     行动中 · 独立查看   → 绿色实线圆圈 + 发光
+ *
+ *   showArrow 控制下方向上的绿色三角指示箭头（▲）是否显示
+ */
+
+/* ── 容器 ─────────────────────────────────────────── */
+.partner-avatar {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  /* 为 box-shadow 环效果留出上下左右空间，避免被父级裁切 */
+  padding: 12rpx;
+  box-sizing: content-box;
+  flex-shrink: 0;
+}
+
+/* ── 头像外框 ─────────────────────────────────────── */
+.avatar-frame {
+  position: relative;
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 52rpx;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 52rpx;
+  display: block;
+  background-color: #f2f2f2;
+}
+
+/* ── Case 1：普通 · 非独立 — 无装饰 ─────────────── */
+.avatar-frame.type-normal {
+  /* no extra decoration */
+}
+
+/* ── Case 2：行动中&&非行动页 · 非独立 — 浅绿+绿双环 */
+/* 双环位于头像圆外侧：浅绿色间隔环 + 绿色外环                 */
+.avatar-frame.type-active-nonaction {
+  box-shadow: 0 0 0 5rpx #c3e4c1, 0 0 0 9rpx #5ec159;
+}
+
+/* ── Case 3：普通 · 独立 — 细绿边框 + 发光 ────────── */
+.avatar-frame.type-normal.is-self {
+  border: 2rpx solid #5ec159;
+  box-shadow: 0 0 10rpx rgba(94, 193, 89, 0.8);
+}
+
+/* ── Case 4：行动中&&非行动页 · 独立 — 粗边框 + 强发光 + 双环 */
+.avatar-frame.type-active-nonaction.is-self {
+  border: 6rpx solid #5ec159;
+  box-shadow:
+    0 0 12rpx rgba(94, 193, 89, 1),
+    0 0 0 5rpx rgba(195, 228, 193, 0.8),
+    0 0 0 9rpx #5ec159;
+}
+
+/* ── Case 5：行动中 · 非独立 — 绿色实线单圈 ─────── */
+.avatar-frame.type-active {
+  box-shadow: 0 0 0 4rpx #5ec159;
+}
+
+/* ── Case 6：行动中 · 独立 — 绿色实线单圈 + 发光 ── */
+.avatar-frame.type-active.is-self {
+  box-shadow: 0 0 0 4rpx #5ec159, 0 0 12rpx rgba(94, 193, 89, 0.8);
+}
+
+/* ── 向上三角指示箭头 ▲ ─────────────────────────── */
+.avatar-arrow {
+  margin-top: 6rpx;
+  width: 0;
+  height: 0;
+  border-left: 14rpx solid transparent;
+  border-right: 14rpx solid transparent;
+  border-bottom: 16rpx solid #5ec159;
+}
+
+/* ── 小号：游戏主流程页 ───────────────────────────── */
+.partner-avatar.size-sm {
+  padding: 8rpx;
+}
+
+.partner-avatar.size-sm .avatar-frame {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+}
+
+.partner-avatar.size-sm .avatar-img {
+  border-radius: 44rpx;
+}
+
+.partner-avatar.size-sm .avatar-frame.type-active-nonaction {
+  box-shadow: 0 0 0 4rpx #c3e4c1, 0 0 0 7rpx #5ec159;
+}
+
+.partner-avatar.size-sm .avatar-frame.type-active-nonaction.is-self {
+  border-width: 5rpx;
+  box-shadow:
+    0 0 10rpx rgba(94, 193, 89, 1),
+    0 0 0 4rpx rgba(195, 228, 193, 0.8),
+    0 0 0 7rpx #5ec159;
+}
+
+.partner-avatar.size-sm .avatar-frame.type-active {
+  box-shadow: 0 0 0 3rpx #5ec159;
+}
+
+.partner-avatar.size-sm .avatar-frame.type-active.is-self {
+  box-shadow: 0 0 0 3rpx #5ec159, 0 0 10rpx rgba(94, 193, 89, 0.8);
+}
+
+.partner-avatar.size-sm .avatar-arrow {
+  margin-top: 4rpx;
+  border-left-width: 12rpx;
+  border-right-width: 12rpx;
+  border-bottom-width: 13rpx;
+}
