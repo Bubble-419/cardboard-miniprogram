@@ -281,17 +281,30 @@
 
 .action-title-row {
   display: flex;
-  justify-content: center;
-  margin-bottom: 12rpx;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 8rpx;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .master-mode-badge {
-  padding: 8rpx 24rpx;
+  flex-shrink: 0;
+  width: auto;
+  min-width: 0;
+  height: 56rpx;
+  padding: 0 16rpx;
   background: #5ec159;
-  border-radius: 16rpx;
+  border-radius: 14rpx;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 500;
   color: #fff;
+  letter-spacing: -0.06em;
+  line-height: 56rpx;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
 /* Figma #5848:3395 — title + desc gap 17px */
@@ -302,6 +315,14 @@
   gap: 34rpx;
   width: 100%;
   margin-bottom: 16rpx;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Figma #5933:8003 — MASTER：徽章+标题同行，与说明间距 7px */
+.action-header-master {
+  gap: 14rpx;
+  align-items: stretch;
 }
 
 .action-title {
@@ -315,14 +336,33 @@
   letter-spacing: -0.06em;
 }
 
+.action-title-master {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  font-size: 36rpx;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
 .action-desc {
   display: block;
   width: 100%;
   text-align: center;
-  font-size: 28rpx;
+  font-size: 26rpx;
   color: rgba(0, 0, 0, 0.4);
   line-height: 1.3;
   letter-spacing: -0.06em;
+  box-sizing: border-box;
+}
+
+.action-header-master .action-desc {
+  font-size: 24rpx;
 }
 
 .action-divider {
@@ -903,17 +943,22 @@ game-card-timer {
   opacity: 1 !important;
 }
 
+/* Figma #5933:8010 — 已使用：底色不变，文案 50% 透明 + 绿色勾选叠加 */
 .special-btn-used {
-  background: #e3ebe3;
-  border: 2rpx solid #d4e0d4;
+  position: relative;
+  background: #e9f5e9;
+  color: rgba(94, 193, 89, 0.5);
   box-sizing: border-box;
 }
 
-.special-btn-check-mark {
-  font-size: 56rpx;
-  font-weight: 700;
-  color: #2f8a2f;
-  line-height: 1;
+.special-btn-used-check {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64rpx;
+  height: 50rpx;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .statement-btn {

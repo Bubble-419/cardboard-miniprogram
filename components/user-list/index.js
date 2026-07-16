@@ -6,7 +6,7 @@ const {
 
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
-const EXPIRE_ANIM_MS = 1200;
+const EXPIRE_ANIM_MS = 2000;
 
 Component({
   properties: {

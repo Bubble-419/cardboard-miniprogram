@@ -514,40 +514,59 @@
 /* 全场静默：进行中页面 */
 .silent-main {
   padding: 0 20rpx;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.silent-card-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .silent-card {
   position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
+/* 与 MASTER模式标签尺寸一致 */
 .silent-badge {
   position: absolute;
-  left: 24rpx;
-  top: 24rpx;
-  z-index: 2;
-  padding: 8rpx 24rpx;
+  left: 30rpx;
+  top: 30rpx;
+  z-index: 5;
+  width: auto;
+  height: 56rpx;
+  padding: 0 16rpx;
   background: #5ec159;
-  border-radius: 16rpx;
+  border-radius: 14rpx;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 500;
   color: #fff;
+  letter-spacing: -0.06em;
+  line-height: 56rpx;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .silent-card-body {
   flex: 1;
-  height: 0;
-  padding: 88rpx 24rpx 24rpx;
+  min-height: 0;
+  padding: 100rpx 30rpx 40rpx;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.silent-timer {
-  font-size: 40rpx;
-  font-weight: 600;
-  color: #5ec159;
-  margin-bottom: 16rpx;
+  overflow-y: auto;
 }
 
 .silent-main-title {
@@ -556,6 +575,7 @@
   color: #5ec159;
   text-align: center;
   line-height: 1.3;
+  letter-spacing: -0.06em;
   margin-bottom: 20rpx;
 }
 
@@ -564,6 +584,7 @@
   color: rgba(0, 0, 0, 0.4);
   text-align: center;
   line-height: 1.4;
+  letter-spacing: -0.06em;
   margin-bottom: 4rpx;
 }
 
@@ -573,60 +594,91 @@
   justify-content: flex-end;
 }
 
+/* 与脑暴主流程灵感栏样式尺寸一致 */
 .inspiration-bar {
-  margin: 4rpx 8rpx 8rpx;
+  margin: 18rpx 10rpx 0;
   display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-shrink: 0;
-}
-
-.inspiration-badge-wrap {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #e3fae2;
-  display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  gap: 18rpx;
   flex-shrink: 0;
-}
-
-.inspiration-badge {
-  font-size: 36rpx;
-}
-
-.inspiration-input-fake {
-  flex: 1;
-  height: 72rpx;
-  padding: 0 24rpx;
-  background: #fff;
-  border: 1rpx solid #d7d7d7;
-  border-radius: 28rpx;
-  display: flex;
-  align-items: center;
+  position: relative;
+  z-index: 51;
+  min-height: 100rpx;
   box-sizing: border-box;
 }
 
-.inspiration-placeholder {
-  font-size: 28rpx;
-  color: #b0b0b0;
+.insp-icon-wrap {
+  width: 98rpx;
+  height: 100rpx;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 2;
 }
 
-.inspiration-submit {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #5ec159;
+.insp-icon-img {
+  width: 92rpx;
+  height: 92rpx;
+  margin-top: 8rpx;
+}
+
+.inspiration-composer {
+  flex: 1;
+  min-width: 0;
+  min-height: 92rpx;
+  padding: 18rpx 30rpx;
+  background: #fff;
+  border: 1rpx solid #d7d7d7;
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.inspiration-composer-focused {
+  border-color: #d7d7d7;
+}
+
+.inspiration-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inspiration-textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  font-size: 32rpx;
+  color: #333;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-placeholder {
+  font-size: 32rpx;
+  color: #aeaeae;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-action {
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 
-.inspiration-arrow {
-  width: 32rpx;
-  height: 32rpx;
+.inspiration-action-icon {
+  width: 44rpx;
+  height: 44rpx;
 }
 
 .end-silent-btn {

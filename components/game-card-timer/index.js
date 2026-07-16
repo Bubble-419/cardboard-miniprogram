@@ -8,7 +8,7 @@ const {
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
 const BORDER_RADIUS_RPX = 28;
-const EXPIRE_ANIM_MS = 1100;
+const EXPIRE_ANIM_MS = 2000;
 
 Component({
   properties: {
@@ -140,13 +140,18 @@ Component({
     },
 
     _vibrateExpireFeedback() {
-      try {
-        if (typeof wx.vibrateShort === 'function') {
-          wx.vibrateShort({ type: 'medium' });
+      const buzz = () => {
+        try {
+          if (typeof wx.vibrateShort === 'function') {
+            wx.vibrateShort({ type: 'medium' });
+          }
+        } catch (e) {
+          // 模拟器或不支持震动时忽略
         }
-      } catch (e) {
-        // 模拟器或不支持震动时忽略
-      }
+      };
+      // zeng~ zeng~：两下短震，间隔约半拍
+      buzz();
+      setTimeout(buzz, 600);
     },
 
     _triggerExpireAnimation() {

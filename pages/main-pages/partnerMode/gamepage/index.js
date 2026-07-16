@@ -167,20 +167,30 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId) return;
 
+    const currentPlayerIndex = this.data.currentPlayerIndex;
     const app = getApp();
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
     if (flag && flag.roomId === roomId) {
-      this.setData({ specialMoveUsedThisTurn: true });
-      return;
+      // 仅当标记属于当前轮次玩家时才视为已使用（房主代操作）
+      if (flag.playerIndex === currentPlayerIndex) {
+        this.setData({ specialMoveUsedThisTurn: true });
+        return;
+      }
+      // 过期轮次标记清掉，避免误锁按钮
+      if (app.globalData) {
+        app.globalData.partnerSpecialMoveUsedTurn = null;
+      }
     }
 
     if (isSpecialMoveUsedForCurrentTurn(
       roomId,
       this.data.brainstormSessionSeq,
       this.data.currentRound,
-      this.data.currentPlayerIndex
+      currentPlayerIndex
     )) {
       this.setData({ specialMoveUsedThisTurn: true });
+    } else {
+      this.setData({ specialMoveUsedThisTurn: false });
     }
   },
 
@@ -520,18 +530,12 @@ Page({
     }
   },
 
-  _validateSpecialMoveFlag(flag, patch, members) {
-    const me = members.find((m) => m.isMe);
-    if (!me || me.playerIndex !== flag.playerIndex) return false;
-    if (flag.playerIndex !== patch.currentPlayerIndex) return false;
-    return true;
+  _validateSpecialMoveFlag(flag, patch) {
+    // 房主代操作：标记归属当前轮次玩家即可
+    return flag.playerIndex === patch.currentPlayerIndex;
   },
 
-  _resolveSpecialMoveUsed(patch, members) {
-    if (!patch.isCurrentPlayer) {
-      return false;
-    }
-
+  _resolveSpecialMoveUsed(patch) {
     if (patch.isMasterMode) {
       return true;
     }
@@ -540,7 +544,7 @@ Page({
     const app = getApp();
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
 
-    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch, members)) {
+    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch)) {
       markPartnerSpecialMoveUsed(
         roomId,
         flag.playerIndex,
@@ -713,17 +717,11 @@ Page({
       }
     }
 
-    if (becameMyTurn || leftMyTurn || roundChanged || sessionChanged) {
+    if (playerChanged || roundChanged || sessionChanged) {
       patch.specialMoveUsedThisTurn = false;
-    }
-    if (becameMyTurn || roundChanged || sessionChanged) {
       clearPartnerSpecialMoveUsedFlag(this.data.roomId);
-    }
-
-    if (leftMyTurn) {
-      patch.specialMoveUsedThisTurn = false;
-    } else if (!(becameMyTurn || roundChanged || sessionChanged)) {
-      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch, members);
+    } else {
+      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch);
     }
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
@@ -1237,17 +1235,41 @@ Page({
     }
   },
 
-  handleSpecialMove() {
-    if (!this.data.isCurrentPlayer) {
-      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+  onTapSpecialMove() {
+    // 房主代当前轮次玩家操作：不校验 isCurrentPlayer
+    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) {
+      wx.showToast({ title: '本轮特殊行动已使用', icon: 'none' });
       return;
     }
-    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) return;
-    const { roomId, members } = this.data;
-    if (!roomId) return;
-    const me = (members || []).find((m) => m.isMe);
-    const initiatorIndex = me ? me.playerIndex : this.data.currentPlayerIndex;
-    wx.navigateTo({ url: buildSpecialMoveUrl(roomId, initiatorIndex) });
+    const roomId = this.data.roomId;
+    const currentPlayerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : 1;
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    const url = buildSpecialMoveUrl(roomId, currentPlayerIndex);
+    this._stopStatePolling();
+    wx.navigateTo({
+      url,
+      fail: (err) => {
+        console.warn('navigateTo specialMove fail', err);
+        // 栈满或并发冲突时降级 redirect
+        wx.redirectTo({
+          url,
+          fail: (err2) => {
+            console.warn('redirectTo specialMove fail', err2);
+            this._startStatePolling();
+            wx.showToast({ title: '打开特殊行动失败', icon: 'none' });
+          }
+        });
+      }
+    });
+  },
+
+  handleSpecialMove() {
+    this.onTapSpecialMove();
   },
 
   async handleStartStatement() {

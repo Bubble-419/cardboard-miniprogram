@@ -356,12 +356,13 @@
                 wx:if="{{isCurrentPlayer}}"
               >
                 <view class="action-card-inner">
-                  <view class="action-title-row" wx:if="{{isMasterMode}}">
-                    <view class="master-mode-badge">MASTER模式</view>
-                  </view>
-                  <view class="action-header">
-                    <text class="action-title">出牌并解释</text>
-                    <text class="action-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+                  <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
+                    <view class="action-title-row" wx:if="{{isMasterMode}}">
+                      <view class="master-mode-badge">MASTER模式</view>
+                      <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                    </view>
+                    <text class="action-title" wx:else>出牌并解释</text>
+                    <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : '您可以进行1—3次行动，1 次行动可以是以下任意一种'}}</text>
                   </view>
                   <view class="action-divider"></view>
                   <view class="action-grid">
@@ -559,26 +560,23 @@
     </view>
     <view class="bottom-actions" wx:elif="{{isHost}}">
       <view class="special-btn-wrap">
-        <button
-          wx:if="{{!isCurrentPlayer}}"
-          class="special-btn special-btn-disabled"
-          disabled
-          hover-class="none"
+        <view
+          wx:if="{{specialMoveUsedThisTurn || isMasterMode}}"
+          class="special-btn special-btn-used"
         >
           <text class="special-btn-line">特殊</text>
           <text class="special-btn-line">行动</text>
-        </button>
-        <view
-          wx:elif="{{isCurrentPlayer && (specialMoveUsedThisTurn || isMasterMode)}}"
-          class="special-btn special-btn-used"
-        >
-          <text class="special-btn-check-mark">✓</text>
+          <image
+            class="special-btn-used-check"
+            src="/assets/partnerMode/icon-special-used-check.svg"
+            mode="aspectFit"
+          />
         </view>
         <button
           wx:else
           class="special-btn"
           hover-class="none"
-          bindtap="handleSpecialMove"
+          catchtap="onTapSpecialMove"
         >
           <text class="special-btn-line">特殊</text>
           <text class="special-btn-line">行动</text>

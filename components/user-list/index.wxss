@@ -114,11 +114,11 @@
 }
 
 .partner-ring-expiring {
-  animation: acting-ring-expire-pulse 1.2s ease-out forwards;
+  animation: acting-ring-expire-pulse 2s ease-in-out forwards;
 }
 
 .partner-ring-expiring-inner {
-  animation: acting-ring-expire-spin 1.2s ease-out forwards;
+  animation: acting-ring-expire-spin 2s ease-out forwards;
 }
 
 .avatar-frame-expiring {
@@ -126,15 +126,26 @@
 }
 
 .avatar-wrap-expiring {
-  animation: acting-avatar-expire-pulse 1.2s ease-out forwards;
+  animation: acting-avatar-expire-pulse 2s ease-in-out forwards;
 }
 
 @keyframes acting-avatar-expire-pulse {
   0% {
     transform: scale(1);
   }
-  35% {
+  /* 第一下 zeng~ */
+  12% {
+    transform: scale(1.1);
+  }
+  24% {
+    transform: scale(1);
+  }
+  /* 第二下 zeng~ */
+  42% {
     transform: scale(1.08);
+  }
+  56% {
+    transform: scale(1);
   }
   100% {
     transform: scale(1);
@@ -146,9 +157,21 @@
     transform: scale(1);
     opacity: 1;
   }
-  40% {
+  12% {
+    transform: scale(1.18);
+    opacity: 0.75;
+  }
+  24% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  42% {
     transform: scale(1.16);
-    opacity: 0.7;
+    opacity: 0.65;
+  }
+  56% {
+    transform: scale(1);
+    opacity: 0.35;
   }
   100% {
     transform: scale(1);

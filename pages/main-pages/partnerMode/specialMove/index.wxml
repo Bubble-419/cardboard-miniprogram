@@ -138,41 +138,76 @@
 
     <!-- 全场静默 -->
     <view class="main-content main-content-fill silent-main" wx:elif="{{viewMode === 'silent'}}">
-      <view class="card-area">
-        <view class="game-card game-card-active silent-card">
-          <view class="silent-badge">静默模式</view>
-          <view class="silent-card-body">
-            <text class="silent-timer">{{silentTimerText}}</text>
-            <text class="silent-main-title">保持分贝低于40dB</text>
-            <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
-            <view class="action-divider"></view>
-            <view class="action-grid">
-              <view class="action-cell action-cell-muted">
-                <text class="action-cell-label">出 1 张卡牌</text>
-              </view>
-              <view class="action-cell action-cell-muted">
-                <text class="action-cell-label">删 1 张卡牌</text>
-              </view>
-              <view class="action-cell action-cell-muted">
-                <text class="action-cell-label">调整 1 张卡牌</text>
-              </view>
-              <view class="action-cell action-cell-muted">
-                <text class="action-cell-label">交换 2 张卡牌</text>
+      <view class="card-area silent-card-area">
+        <game-card-timer
+          startedAt="{{silentStartedAt}}"
+          timerActive="{{silentTimerActive}}"
+          durationSec="{{silentDurationSec}}"
+          loop="{{false}}"
+          bind:timerexpire="handleSilentTimerExpire"
+        >
+          <view class="silent-card">
+            <view class="silent-badge">静默模式</view>
+            <view class="silent-card-body">
+              <text class="silent-main-title">保持分贝低于40dB</text>
+              <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+              <view class="action-divider"></view>
+              <view class="action-grid">
+                <view class="action-cell action-cell-muted">
+                  <text class="action-cell-label">出 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-muted">
+                  <text class="action-cell-label">删 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-muted">
+                  <text class="action-cell-label">调整 1 张卡牌</text>
+                </view>
+                <view class="action-cell action-cell-muted">
+                  <text class="action-cell-label">交换 2 张卡牌</text>
+                </view>
               </view>
             </view>
           </view>
-        </view>
+        </game-card-timer>
       </view>
 
       <view class="inspiration-bar">
-        <view class="inspiration-badge-wrap">
-          <text class="inspiration-badge">💡</text>
+        <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
+          <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         </view>
-        <view class="inspiration-input-fake">
-          <text class="inspiration-placeholder">记录您的灵感...</text>
-        </view>
-        <view class="inspiration-submit">
-          <image class="inspiration-arrow" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
+        <view
+          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+          catchtap="onInspirationComposerTap"
+        >
+          <view class="inspiration-row">
+            <input
+              class="inspiration-textarea"
+              value="{{inspirationDraftText}}"
+              focus="{{inspirationInputFocused}}"
+              maxlength="200"
+              adjust-position="{{true}}"
+              placeholder="记录您的灵感..."
+              placeholder-class="inspiration-placeholder"
+              bindinput="onInspirationInput"
+              bindfocus="onInspirationFocus"
+              bindblur="onInspirationBlur"
+              confirm-type="done"
+            />
+            <view class="inspiration-action" catchtap="onInspirationActionTap">
+              <image
+                wx:if="{{inspirationHasText}}"
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-send.svg"
+                mode="aspectFit"
+              />
+              <image
+                wx:else
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-plus.svg"
+                mode="aspectFit"
+              />
+            </view>
+          </view>
         </view>
       </view>
     </view>

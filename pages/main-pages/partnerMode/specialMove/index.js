@@ -70,8 +70,12 @@ Page({
     silentHintLines: SILENT_HINT_LINES,
     masterHintLines: MASTER_HINT_LINES,
     closingHintLines: CLOSING_HINT_LINES,
-    silentRemainingSec: SILENT_DURATION_SEC,
-    silentTimerText: '05:00',
+    silentDurationSec: SILENT_DURATION_SEC,
+    silentStartedAt: 0,
+    silentTimerActive: false,
+    inspirationDraftText: '',
+    inspirationInputFocused: false,
+    inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
     randomDeckCards: [1, 2, 3, 4, 5],
     topBarPaddingRight: 30
@@ -161,30 +165,81 @@ Page({
 
   startSilentTimer() {
     this.clearSilentTimer();
-    let remaining = SILENT_DURATION_SEC;
+    const startedAt = Date.now();
     this.setData({
-      silentRemainingSec: remaining,
-      silentTimerText: this.formatSilentTime(remaining)
+      silentStartedAt: startedAt,
+      silentTimerActive: true
     });
-    this._silentTimer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        this.clearSilentTimer();
-        this.handleEndSilent();
-        return;
-      }
-      this.setData({
-        silentRemainingSec: remaining,
-        silentTimerText: this.formatSilentTime(remaining)
-      });
-    }, 1000);
+    // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
+    this._silentTimer = setTimeout(() => {
+      this._silentTimer = null;
+      this.handleEndSilent();
+    }, (SILENT_DURATION_SEC + 4) * 1000);
   },
 
   clearSilentTimer() {
     if (this._silentTimer) {
-      clearInterval(this._silentTimer);
+      clearTimeout(this._silentTimer);
       this._silentTimer = null;
     }
+  },
+
+  _stopSilentTimerUi() {
+    this.clearSilentTimer();
+    if (this.data.silentTimerActive || this.data.silentStartedAt) {
+      this.setData({
+        silentTimerActive: false,
+        silentStartedAt: 0
+      });
+    }
+  },
+
+  handleSilentTimerExpire() {
+    this.handleEndSilent();
+  },
+
+  handleGoInspirationCenter() {
+    const roomId = this.data.roomId || '';
+    const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+    let url = '/pages/inspiration/index?scope=workshop';
+    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
+    if (seq) url += `&brainstormSessionSeq=${seq}`;
+    wx.navigateTo({ url });
+  },
+
+  onInspirationComposerTap() {
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
+  },
+
+  onInspirationFocus() {
+    this.setData({ inspirationInputFocused: true });
+  },
+
+  onInspirationBlur() {
+    this.setData({ inspirationInputFocused: false });
+  },
+
+  onInspirationInput(e) {
+    const text = (e.detail && e.detail.value) || '';
+    this.setData({
+      inspirationDraftText: text,
+      inspirationHasText: !!text.trim()
+    });
+  },
+
+  onInspirationActionTap() {
+    if (this.data.inspirationHasText) {
+      wx.showToast({ title: '灵感已记录（本地）', icon: 'none' });
+      this.setData({
+        inspirationDraftText: '',
+        inspirationHasText: false,
+        inspirationInputFocused: false
+      });
+      return;
+    }
+    this.handleGoInspirationCenter();
   },
 
   async loadRoomData() {
@@ -337,11 +392,9 @@ Page({
       return;
     }
     if (viewMode === 'silent') {
-      this.clearSilentTimer();
+      this._stopSilentTimerUi();
       this.setData({
-        viewMode: 'wheel',
-        silentRemainingSec: SILENT_DURATION_SEC,
-        silentTimerText: this.formatSilentTime(SILENT_DURATION_SEC)
+        viewMode: 'wheel'
       });
       return;
     }
@@ -467,13 +520,19 @@ Page({
   },
 
   async handleEndSilent() {
-    this.clearSilentTimer();
-    if (!this.data.roomId) return;
-    if (this.data.currentRound == null) {
-      await this.loadRoomData();
+    if (this._endingSilent) return;
+    this._endingSilent = true;
+    this._stopSilentTimerUi();
+    try {
+      if (!this.data.roomId) return;
+      if (this.data.currentRound == null) {
+        await this.loadRoomData();
+      }
+      this._markSpecialMoveUsedForGamepage();
+      this._returnToGamepage();
+    } finally {
+      this._endingSilent = false;
     }
-    this._markSpecialMoveUsedForGamepage();
-    this._returnToGamepage();
   },
 
   handleCloseChat() {
