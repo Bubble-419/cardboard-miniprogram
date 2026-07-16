@@ -75,6 +75,16 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
 
   const page = (result.roomState.currentPage || 'addplayer').toLowerCase();
 
+  if (typeof options.beforeNavigate === 'function') {
+    const handled = options.beforeNavigate(result, page);
+    if (handled === true) return true;
+  }
+
+  // 房主不做副屏页面跳转，但仍允许 beforeNavigate 更新页内状态（如倒计时）
+  if (result.isHost === true) {
+    return false;
+  }
+
   if (page === 'addplayer' && result.hasSelectedMode !== true) {
     const current = getCurrentRoute();
     // 正在「选择脑暴模式」页时不要强行拉回大厅（房主/成员主动进入）
@@ -87,12 +97,7 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
     return false;
   }
 
-  if (typeof options.beforeNavigate === 'function') {
-    const handled = options.beforeNavigate(result, page);
-    if (handled === true) return true;
-  }
-
-  return navigateByRoomState(page, result.roomState, id);
+  return navigateByRoomState(page, result.roomState, id, { isHost: false });
 }
 
 module.exports = {

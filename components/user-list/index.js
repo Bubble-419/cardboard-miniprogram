@@ -62,6 +62,7 @@ Component({
       type: Boolean,
       value: false
     },
+    /** 本回合首次倒计时起点（全员共享；卡片循环不得变化） */
     roundStartedAt: {
       type: null,
       value: 0
@@ -74,7 +75,7 @@ Component({
       type: Number,
       value: ROUND_DURATION_SEC
     },
-    /** 轮次+行动玩家标识，变化时重置头像倒计时（卡片循环重启不计入） */
+    /** 轮次+行动玩家标识；变化时重置头像倒计时 */
     roundTimerKey: {
       type: String,
       value: ''
@@ -92,10 +93,10 @@ Component({
   observers: {
     'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame': function syncFrameUsers() {
       this._syncFrameUsers();
+      this._syncActingFrameMode();
     },
-    'roundStartedAt, roundTimerActive, showActingFrame, actingUser, durationSec, roundTimerKey': function syncActingFrame() {
+    'roundStartedAt, roundTimerActive, durationSec, roundTimerKey': function syncActingFrame() {
       this._syncRoundTimerKey();
-      this._onRoundStartedAtBump();
       this._syncActingFrameMode();
     }
   },
@@ -105,46 +106,34 @@ Component({
       this._syncFrameUsers();
       this._syncRoundTimerKey();
       this._syncActingFrameMode();
+      this._startExpireWatch();
     },
     detached() {
       this._stopActingTimerDraw();
       this._clearExpireTimer();
+      this._stopExpireWatch();
     }
   },
 
   pageLifetimes: {
     show() {
       this._syncActingFrameMode();
+      this._startExpireWatch();
     },
     hide() {
       this._stopActingTimerDraw();
+      this._stopExpireWatch();
     }
   },
 
   methods: {
     _syncRoundTimerKey() {
       const key = this.properties.roundTimerKey || '';
-      if (key && key !== this._seenRoundTimerKey) {
+      if (key !== this._seenRoundTimerKey) {
         this._seenRoundTimerKey = key;
-        this._countdownFinished = false;
-        this._lastSeenStartedAt = 0;
-      }
-    },
-
-    _onRoundStartedAtBump() {
-      const next = Number(this.properties.roundStartedAt);
-      const prev = this._lastSeenStartedAt;
-      const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-
-      if (Number.isFinite(prev) && prev > 0 && next !== prev) {
-        const elapsedSec = (Date.now() - prev) / 1000;
-        if (elapsedSec >= durationSec - 0.5) {
-          this._countdownFinished = true;
-        }
-      }
-
-      if (Number.isFinite(next) && next > 0) {
-        this._lastSeenStartedAt = next;
+        this._expireAnimPlayed = false;
+        this._expiringTriggered = false;
+        this._clearExpireTimer();
       }
     },
 
@@ -164,19 +153,24 @@ Component({
       });
     },
 
-    _resolveStartedAt() {
-      const raw = this.properties.roundStartedAt;
-      const ts = Number(raw);
-      const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-      if (!Number.isFinite(ts) || ts <= 0) return 0;
-      return isRoundTimerActive(ts, durationSec) ? ts : 0;
+    _getTurnStartedAt() {
+      const ts = Number(this.properties.roundStartedAt);
+      return Number.isFinite(ts) && ts > 0 ? ts : 0;
     },
 
-    _hasNaturallyExpired() {
-      const raw = Number(this.properties.roundStartedAt);
+    /** 是否仍在「本回合第一次倒计时」窗口内（全员用同一墙钟判断，保证同步） */
+    _isFirstCountdownActive() {
+      const ts = this._getTurnStartedAt();
+      if (!ts) return false;
+      if (this.properties.roundTimerActive !== true) return false;
+      return isRoundTimerActive(ts, this.properties.durationSec || ROUND_DURATION_SEC);
+    },
+
+    _hasFirstCountdownEnded() {
+      const ts = this._getTurnStartedAt();
+      if (!ts) return false;
       const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-      if (!Number.isFinite(raw) || raw <= 0) return false;
-      return (Date.now() - raw) / 1000 >= durationSec - 0.25;
+      return (Date.now() - ts) / 1000 >= durationSec - 0.25;
     },
 
     _clearExpireTimer() {
@@ -186,49 +180,72 @@ Component({
       }
     },
 
+    _startExpireWatch() {
+      this._stopExpireWatch();
+      // 定时按共享锚点判定是否该切循环动效，避免只靠属性变化导致各端不同步
+      this._expireWatch = setInterval(() => {
+        if (this.data.actingFrameMode === 'timer' && this._hasFirstCountdownEnded()) {
+          this._triggerExpireAnimation();
+        } else if (
+          this.data.actingFrameMode !== 'spin'
+          && this.data.actingFrameMode !== 'expiring'
+          && this._hasFirstCountdownEnded()
+          && this.properties.showActingFrame
+          && this.data.resolvedActingUser != null
+        ) {
+          this._enterSpinMode();
+        }
+      }, 200);
+    },
+
+    _stopExpireWatch() {
+      if (this._expireWatch) {
+        clearInterval(this._expireWatch);
+        this._expireWatch = null;
+      }
+    },
+
+    _enterSpinMode() {
+      this._stopActingTimerDraw();
+      if (this.data.actingFrameMode !== 'spin') {
+        this.setData({ actingFrameMode: 'spin' });
+      }
+    },
+
     _triggerExpireAnimation() {
       if (this._expiringTriggered || this.data.actingFrameMode === 'expiring') return;
+      if (this._expireAnimPlayed) {
+        this._enterSpinMode();
+        return;
+      }
       this._expiringTriggered = true;
-      this._countdownFinished = true;
-      this._timerWasActive = false;
+      this._expireAnimPlayed = true;
       this._stopActingTimerDraw();
       this.setData({ actingFrameMode: 'expiring' });
       this._expireTimer = setTimeout(() => {
         this._expireTimer = null;
-        this.setData({ actingFrameMode: 'spin' });
         this._expiringTriggered = false;
-        this.triggerEvent('timerexpire');
+        this.setData({ actingFrameMode: 'spin' });
       }, EXPIRE_ANIM_MS);
     },
 
     _syncActingFrameMode() {
-      if (this.data.actingFrameMode === 'expiring') return;
-
       if (!this.properties.showActingFrame || this.data.resolvedActingUser == null) {
         this._clearExpireTimer();
         this._stopActingTimerDraw();
-        this._timerWasActive = false;
         this._expiringTriggered = false;
-        this._countdownFinished = false;
-        if (this.data.actingFrameMode !== 'spin') {
-          this.setData({ actingFrameMode: 'spin' });
-        }
+        this._expireAnimPlayed = false;
+        this._enterSpinMode();
         return;
       }
 
-      if (this._countdownFinished) {
-        this._stopActingTimerDraw();
-        if (this.data.actingFrameMode !== 'spin') {
-          this.setData({ actingFrameMode: 'spin' });
-        }
+      if (this.data.actingFrameMode === 'expiring') {
         return;
       }
 
-      const startedAt = this._resolveStartedAt();
-      const timerOn = this.properties.roundTimerActive === true && startedAt > 0;
-
-      if (timerOn && !this._countdownFinished) {
-        this._timerWasActive = true;
+      // 核心规则（全员同一墙钟）：第一次倒计时窗口内 → timer；结束后 → spin，直到换人
+      if (this._isFirstCountdownActive()) {
+        this._expireAnimPlayed = false;
         this._expiringTriggered = false;
         this._clearExpireTimer();
         if (this.data.actingFrameMode !== 'timer') {
@@ -239,17 +256,19 @@ Component({
         return;
       }
 
-      if (this._timerWasActive && this.data.actingFrameMode === 'timer' && this._hasNaturallyExpired()) {
-        this._triggerExpireAnimation();
+      if (this._hasFirstCountdownEnded()) {
+        // 正在倒计时绘制中：播一次到期过渡；否则直接循环动效（中途加入/已播过）
+        if (this.data.actingFrameMode === 'timer' && !this._expireAnimPlayed) {
+          this._triggerExpireAnimation();
+        } else {
+          this._expireAnimPlayed = true;
+          this._enterSpinMode();
+        }
         return;
       }
 
-      this._timerWasActive = false;
-      this._clearExpireTimer();
-      this._stopActingTimerDraw();
-      if (this.data.actingFrameMode !== 'spin') {
-        this.setData({ actingFrameMode: 'spin' });
-      }
+      // 尚无锚点：循环动效占位，等共享锚点到达后再进倒计时
+      this._enterSpinMode();
     },
 
     _initActingTimerCanvas() {
@@ -330,13 +349,17 @@ Component({
       const size = this._canvasSize;
       if (!ctx || !size) return;
 
-      const startedAt = this._resolveStartedAt();
-      if (this.properties.roundTimerActive !== true || !startedAt) {
+      if (!this._isFirstCountdownActive()) {
         this._stopActingTimerDraw();
-        this._syncActingFrameMode();
+        if (this._hasFirstCountdownEnded()) {
+          this._triggerExpireAnimation();
+        } else {
+          this._syncActingFrameMode();
+        }
         return;
       }
 
+      const startedAt = this._getTurnStartedAt();
       const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
       const timerState = getRoundTimerState(startedAt, durationSec);
       const ratio = timerState.elapsedRatio;

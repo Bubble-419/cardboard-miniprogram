@@ -15,7 +15,6 @@
     </view>
     <text class="main-text">出牌失败，请出牌者从牌区罚摸一张</text>
     <text class="sub-text">通过人数 {{passCount}} / {{memberCount}}</text>
->>>>>>> origin/main
   </view>
 
   <view class="footer" wx:if="{{isHost && !isWaiting}}">

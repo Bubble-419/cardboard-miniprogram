@@ -6,6 +6,7 @@ const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesi
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
+const { openUrl } = require('../../../../utils/pageNavigate');
 
 const WHEEL_ACTIONS = [
   { id: 'helpLuck', label: '求助AI或运气', zone: 'left' },
@@ -283,7 +284,7 @@ Page({
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra) {
     const roomId = this.data.roomId || '';
-    if (!roomId) return false;
+    if (!roomId) return { ok: false };
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
@@ -299,10 +300,14 @@ Page({
       }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
-      return result.ok === true;
+      return {
+        ok: result.ok === true,
+        closingVoteSessionId: result.closingVoteSessionId || 0,
+        closingVoteSeq: result.closingVoteSeq || 0
+      };
     } catch (e) {
       console.warn('updateRoomState', e);
-      return false;
+      return { ok: false };
     }
   },
 
@@ -319,6 +324,16 @@ Page({
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
+            // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
+            if (page === 'closingstatement') {
+              const state = pollResult.roomState || {};
+              openUrl(buildClosingStatementUrl(roomId, {
+                closingVoteSessionId: state.closingVoteSessionId || '',
+                _t: Date.now()
+              }), { immediate: true });
+              return true;
+            }
+            // 仍在 gamepage 且非 master：勿被旧 poll 打回 gamepage（防卡顿回跳）
             if (page === 'gamepage' && pollResult.roomState.partnerMasterMode !== true) {
               return true;
             }
@@ -468,19 +483,48 @@ Page({
   async activateClosing() {
     const { roomId } = this.data;
     if (!roomId) return;
+    if (this._activatingClosing) return;
+    this._activatingClosing = true;
 
-    const ok = await this._updateRoomState('closingStatement', null, null, {
-      partnerGamePhase: 'closing',
-      partnerMasterMode: false,
-      resetClosingVotes: true
-    });
-    if (!ok) {
-      wx.showToast({ title: '状态同步失败', icon: 'none' });
-      return;
+    try {
+      const result = await this._updateRoomState('closingStatement', null, null, {
+        partnerGamePhase: 'closing',
+        partnerMasterMode: false,
+        resetClosingVotes: true
+      });
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        return;
+      }
+
+      const url = buildClosingStatementUrl(roomId, {
+        closingVoteSessionId: result.closingVoteSessionId || '',
+        _t: Date.now()
+      });
+      // 先跳转再停轮询：失败时仍可靠 poll 自救到 closingStatement
+      const opened = openUrl(url, { immediate: true });
+      if (opened) {
+        this._stopStatePolling();
+        return;
+      }
+      // openUrl 防抖/同路由失败时强制 redirectTo，避免卡死在特殊行动页
+      wx.redirectTo({
+        url,
+        success: () => this._stopStatePolling(),
+        fail: () => {
+          wx.reLaunch({
+            url,
+            success: () => this._stopStatePolling(),
+            fail: () => {
+              this._startStatePolling();
+              wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
+            }
+          });
+        }
+      });
+    } finally {
+      this._activatingClosing = false;
     }
-
-    this._stopStatePolling();
-    safeOpenUrl(buildClosingStatementUrl(roomId));
   },
 
   async activateMasterMode() {
@@ -494,10 +538,10 @@ Page({
 
     this._markSpecialMoveUsedForGamepage();
 
-    const ok = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
+    const result = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
       partnerMasterMode: true
     });
-    if (!ok) {
+    if (!result || result.ok !== true) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }

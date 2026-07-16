@@ -175,10 +175,13 @@ function _runNav(url, targetRoute, options, retryCount) {
   wx.redirectTo({ url, success: onSuccess, fail: (e) => onFail(e, 'redirectTo') });
 }
 
-/** @deprecated 使用 openUrl */
-function safeOpenUrl(url, retryCount) {
-  if (typeof retryCount === 'number' && retryCount > 0) {
-    return openUrl(url, { retryCount });
+/** @deprecated 使用 openUrl；兼容旧调用，第二参数可为 retryCount 或 options */
+function safeOpenUrl(url, retryCountOrOptions) {
+  if (typeof retryCountOrOptions === 'number' && retryCountOrOptions > 0) {
+    return openUrl(url, { retryCount: retryCountOrOptions });
+  }
+  if (retryCountOrOptions && typeof retryCountOrOptions === 'object') {
+    return openUrl(url, retryCountOrOptions);
   }
   return openUrl(url);
 }

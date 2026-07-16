@@ -1,14 +1,30 @@
 const cloud = require('wx-server-sdk');
+const {
+  getBrainstormSessionSeq,
+  buildEmptyClosingVoteState,
+  buildNewClosingVoteState,
+  normalizeClosingVoteState
+} = require('./closingVoteState');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
 });
 
 const db = cloud.database();
+const _ = db.command;
 const ROOMS_COLLECTION = 'rooms';
 const PROBLEMS_COLLECTION = 'designProblems';
 const DESIGN_PROBLEM_ENTRY = 'designProblem';
 const CREATIVE_IDEA_ENTRY = 'creativeIdea';
+
+function clearClosingVoteFields(updateData, brainstormSessionSeq) {
+  // 必须用 _.set：云库对象字段是浅合并，votes:{} 清不掉旧票
+  const emptyState = buildEmptyClosingVoteState(brainstormSessionSeq);
+  updateData.closingVotes = _.set({});
+  updateData.closingQuestionPlayers = _.set([]);
+  updateData.closingVoteState = _.set(emptyState);
+  return emptyState;
+}
 
 function normalizePartnerRoundContent(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -117,6 +133,8 @@ exports.main = async (event, context) => {
       if (event.clearBrainstormProgress === true) {
         roundPatch.partnerRoundSummaries = [];
         roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+        roundPatch.brainstormSessionSeq = getBrainstormSessionSeq(room) + 1;
+        roundPatch.partnerTurnStartedAt = null;
       } else {
         const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
         const contentRoom = (freshRes.data && freshRes.data[0]) || room;
@@ -189,12 +207,38 @@ exports.main = async (event, context) => {
     }
 
     const page = updateData.currentPage;
-    if (page === 'closingstatement') {
-      updateData.closingVotes = {};
-      updateData.closingQuestionPlayers = [];
+    const prevPage = (room.currentPage || '').toLowerCase();
+    const sessionSeq = updateData.brainstormSessionSeq != null
+      ? updateData.brainstormSessionSeq
+      : getBrainstormSessionSeq(room);
+    const enteringClosing = page === 'closingstatement';
+    let resolvedClosingVoteState = null;
+    // 新开一轮收尾表态：必须换新 session，禁止沿用上一轮 closingVotes
+    if (enteringClosing) {
+      const forceNewSession = prevPage !== 'closingstatement' || resetClosingVotes === true;
+      if (forceNewSession) {
+        resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq);
+        updateData.closingVotes = _.set({});
+        updateData.closingQuestionPlayers = _.set([]);
+        updateData.closingVoteState = _.set(resolvedClosingVoteState);
+      } else if (
+        !normalizeClosingVoteState(room.closingVoteState, sessionSeq)
+        && Object.keys(
+          (room.closingVoteState && room.closingVoteState.votes) || room.closingVotes || {}
+        ).length > 0
+      ) {
+        // 旧数据残留且无有效 session：强制开新会话
+        resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq);
+        updateData.closingVotes = _.set({});
+        updateData.closingQuestionPlayers = _.set([]);
+        updateData.closingVoteState = _.set(resolvedClosingVoteState);
+      }
+    } else if (resetClosingVotes === true) {
+      resolvedClosingVoteState = clearClosingVoteFields(updateData, sessionSeq);
     }
     if (event.clearBrainstormProgress === true || brainstormSessionEnded === true) {
       updateData.brainstormProgressPage = null;
+      resolvedClosingVoteState = clearClosingVoteFields(updateData, sessionSeq);
     } else if (page && page !== 'addplayer') {
       updateData.brainstormProgressPage = page;
     }
@@ -279,10 +323,6 @@ exports.main = async (event, context) => {
     if (Array.isArray(closingQuestionPlayers)) {
       updateData.closingQuestionPlayers = closingQuestionPlayers;
     }
-    if (resetClosingVotes === true) {
-      updateData.closingVotes = {};
-      updateData.closingQuestionPlayers = [];
-    }
     if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
       const existing = normalizePartnerRoundContent(room.partnerCurrentRoundContent);
       const incoming = partnerCurrentRoundContent;
@@ -298,7 +338,23 @@ exports.main = async (event, context) => {
       };
     }
     if (partnerRoundStartedAt != null && Number.isFinite(Number(partnerRoundStartedAt))) {
-      updateData.partnerRoundStartedAt = Number(partnerRoundStartedAt);
+      const nextStartedAt = Number(partnerRoundStartedAt);
+      updateData.partnerRoundStartedAt = nextStartedAt;
+      // 头像框倒计时锚点：仅在换人/换轮/显式同步时更新；卡片循环重启不刷新
+      const playerChanging = currentPlayerIndex != null
+        && Number(currentPlayerIndex) !== Number(room.currentPlayerIndex);
+      let shouldSyncTurnTimer = playerChanging || incrementRound === true;
+      if (event.syncPartnerTurnTimer === true) {
+        shouldSyncTurnTimer = true;
+      } else if (event.syncPartnerTurnTimer === false) {
+        // 卡片倒计时循环：明确禁止刷新头像锚点
+        shouldSyncTurnTimer = false;
+      } else if (room.partnerTurnStartedAt == null) {
+        shouldSyncTurnTimer = true;
+      }
+      if (shouldSyncTurnTimer) {
+        updateData.partnerTurnStartedAt = nextStartedAt;
+      }
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
@@ -309,9 +365,18 @@ exports.main = async (event, context) => {
       console.warn('[updateRoomState] 未更新到任何记录', { roomId, updateRes });
     }
 
+    const closingVoteState = resolvedClosingVoteState
+      || normalizeClosingVoteState(room.closingVoteState, sessionSeq)
+      || null;
     return {
       ok: true,
-      currentPage: updateData.currentPage
+      currentPage: updateData.currentPage,
+      closingVoteSessionId: closingVoteState && closingVoteState.sessionId
+        ? closingVoteState.sessionId
+        : 0,
+      closingVoteSeq: closingVoteState && closingVoteState.seq
+        ? closingVoteState.seq
+        : 0
     };
   } catch (e) {
     console.error('updateRoomState error', e);

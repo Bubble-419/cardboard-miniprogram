@@ -18,10 +18,10 @@ function getRoundElapsedSec(startedAt) {
   if (!startedAt) return 0;
   const ts = Number(startedAt);
   if (!Number.isFinite(ts) || ts <= 0) return 0;
-  return Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  return Math.max(0, (Date.now() - ts) / 1000);
 }
 
-/** 计时仍在 5 分钟窗口内，过期时间戳视为无效 */
+/** 计时仍在窗口内，过期时间戳视为无效 */
 function isRoundTimerActive(startedAt, durationSec = ROUND_DURATION_SEC) {
   const ts = Number(startedAt);
   if (!Number.isFinite(ts) || ts <= 0) return false;
@@ -30,12 +30,13 @@ function isRoundTimerActive(startedAt, durationSec = ROUND_DURATION_SEC) {
 }
 
 function getRoundTimerState(startedAt, durationSec = ROUND_DURATION_SEC) {
-  const elapsedSec = getRoundElapsedSec(startedAt);
-  const elapsedRatio = Math.min(1, elapsedSec / durationSec);
+  const elapsedSecExact = getRoundElapsedSec(startedAt);
+  const elapsedSec = Math.floor(elapsedSecExact);
+  const elapsedRatio = Math.min(1, elapsedSecExact / durationSec);
   return {
     elapsedSec,
     elapsedRatio,
-    remainingSec: Math.max(0, durationSec - elapsedSec),
+    remainingSec: Math.max(0, Math.ceil(durationSec - elapsedSecExact)),
     border: getBorderSegmentProgress(elapsedRatio)
   };
 }

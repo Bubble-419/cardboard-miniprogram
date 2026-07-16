@@ -3,7 +3,7 @@
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
 const { assignAvatarImages } = require('../../../../utils/avatars');
-const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
+const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
@@ -88,6 +88,8 @@ Page({
     isPlayerFilterActive: false,
     cardIndexBeforeFilter: 0,
     partnerRoundStartedAt: null,
+    /** 当前行动玩家本轮首次倒计时起点；卡片循环重启不更新，供头像框同步 */
+    avatarRoundStartedAt: null,
     roundTimerVisible: false,
     roundTimerElapsedRatio: 0,
     roundTimerRemainingSec: 30,
@@ -197,20 +199,17 @@ Page({
   onShow() {
     this._pageVisible = true;
     this._applyPendingSpecialMoveUsed();
-    this._syncTimerFromStartedAt();
-    this._restartRoundTimer();
-    this._syncRoomContext().then(() => {
-      this._applyPendingSpecialMoveUsed();
-      this.refreshScoreStatus();
-      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
-      this._syncRoundSpeech();
-      this._refreshInspirationCount();
-    });
     if (this.data.roomId) {
       this._startStatePolling();
       this._startScorePolling();
     }
-    this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+    // 进入页：同步房间倒计时（房主负责重开并广播，其他人跟随）
+    this._ensureSharedRoundTimerOnEnter().then(() => {
+      this._applyPendingSpecialMoveUsed();
+      this.refreshScoreStatus();
+      this._syncRoundSpeech();
+      this._refreshInspirationCount();
+    });
   },
 
   async _syncRoomContext() {
@@ -244,6 +243,7 @@ Page({
     this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
     this._syncRoundContentToRoom();
   },
@@ -256,6 +256,7 @@ Page({
     }
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
   },
 
@@ -400,16 +401,72 @@ Page({
         roundTimerElapsedRatio: timerState.elapsedRatio,
         roundTimerRemainingSec: timerState.remainingSec
       });
+      // 房主兜底：本地到期立刻开下一轮，避免只靠组件事件导致全员卡住
+      if (timerState.remainingSec <= 0) {
+        if (this.data.isHost === true && !this._rollingRoundCountdown) {
+          this._rollRoundCountdown();
+        }
+        if (!this._roundTimerBurstTimer) {
+          this._startRoundTimerBurstPoll();
+        }
+      }
     };
 
     tick();
-    this._roundTimerInterval = setInterval(tick, 1000);
+    this._roundTimerInterval = setInterval(tick, 250);
   },
 
   _stopRoundTimer() {
     if (this._roundTimerInterval) {
       clearInterval(this._roundTimerInterval);
       this._roundTimerInterval = null;
+    }
+  },
+
+  /**
+   * 倒计时到期后加速拉取服务器 startedAt，缩短非房主刷新延迟
+   */
+  _startRoundTimerBurstPoll() {
+    this._stopRoundTimerBurstPoll();
+    let count = 0;
+    const tick = async () => {
+      count += 1;
+      if (count > 16 || !this.data.roomId || isClosingPhase(this.data.gamepagePhase)) {
+        this._stopRoundTimerBurstPoll();
+        return;
+      }
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId: this.data.roomId }
+        });
+        const result = (res && res.result) || {};
+        const next = result.roomState && result.roomState.partnerRoundStartedAt != null
+          ? Number(result.roomState.partnerRoundStartedAt)
+          : 0;
+        // 非房主：仅在服务端戳更新且不被本地防回滚拒绝时应用
+        if (
+          next > 0
+          && next !== Number(this.data.partnerRoundStartedAt)
+          && isRoundTimerActive(next)
+        ) {
+          this._applySharedRoundTimer(next);
+          if (Number(this.data.partnerRoundStartedAt) === next) {
+            this._stopRoundTimerBurstPoll();
+          }
+        }
+      } catch (e) {
+        console.warn('_startRoundTimerBurstPoll', e);
+      }
+    };
+    tick();
+    this._roundTimerBurstTimer = setInterval(tick, 350);
+  },
+
+  _stopRoundTimerBurstPoll() {
+    if (this._roundTimerBurstTimer) {
+      clearInterval(this._roundTimerBurstTimer);
+      this._roundTimerBurstTimer = null;
     }
   },
 
@@ -444,90 +501,259 @@ Page({
   },
 
   _resolvePartnerRoundStartedAt(roomState, currentRound) {
-    const roomId = this.data.roomId;
+    // 全体玩家统一只信服务器时间戳；忽略过期戳，避免轮询把已滚的新周期打回旧周期
     const fromServer = roomState.partnerRoundStartedAt != null
       ? Number(roomState.partnerRoundStartedAt)
       : 0;
-    if (Number.isFinite(fromServer) && fromServer > 0) {
-      this._cacheRoundStartedAt(roomId, currentRound, fromServer);
+    if (!Number.isFinite(fromServer) || fromServer <= 0) return null;
+
+    const pending = Number(this._pendingRoundStartedAt) || 0;
+    // 房主刚写入的本地戳优先，防止写库完成前被旧服务端戳回滚
+    if (pending > 0 && fromServer < pending) {
+      return pending;
+    }
+
+    if (isRoundTimerActive(fromServer)) {
+      this._cacheRoundStartedAt(this.data.roomId, currentRound, fromServer);
       return fromServer;
     }
 
-    const cached = getApp().globalData && getApp().globalData.partnerRoundStartedAt;
-    if (
-      cached
-      && cached.roomId === roomId
-      && cached.round === currentRound
-      && isRoundTimerActive(cached.startedAt)
-    ) {
-      return Number(cached.startedAt);
-    }
-
-    const local = Number(this.data.partnerRoundStartedAt);
-    if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local)) {
+    // 服务端戳已过期：若本地仍活跃则保留本地；否则返回 null 等待滚下一轮
+    const local = Number(this.data.partnerRoundStartedAt) || 0;
+    if (local > 0 && isRoundTimerActive(local)) {
       return local;
     }
     return null;
   },
 
+  /**
+   * 应用共享倒计时：设置起点并让所有玩家都可见（卡片框 + 头像框）
+   * @param {number|null} startedAt
+   * @param {{force?: boolean}} [options] force=true 时允许覆盖（进页初始化）
+   */
+  _turnTimerKey(round, playerIndex) {
+    return `${round != null ? round : this.data.currentRound}-${playerIndex != null ? playerIndex : this.data.currentPlayerIndex}`;
+  },
+
+  /**
+   * 解析头像框锚点：只信 partnerTurnStartedAt；缺失时同回合锁定本地首次值，绝不跟卡片循环戳
+   */
+  _resolveAvatarRoundStartedAt(roomState, partnerRoundStartedAt, turnChanged, currentRound, playerIndex) {
+    if (isClosingPhase(this.data.gamepagePhase)) return null;
+    const turnTs = roomState && roomState.partnerTurnStartedAt != null
+      ? Number(roomState.partnerTurnStartedAt)
+      : 0;
+    const cardTs = Number(partnerRoundStartedAt) || 0;
+    if (Number.isFinite(turnTs) && turnTs > 0) {
+      // 换人后若服务端回合锚点尚未刷新（仍是上一玩家），用更新的卡片戳
+      if (turnChanged && cardTs > turnTs) return cardTs;
+      return turnTs;
+    }
+
+    const key = this._turnTimerKey(currentRound, playerIndex);
+    const locked = Number(this.data.avatarRoundStartedAt) || 0;
+    // 同一行动回合：保持已锁定锚点，防止被卡片循环的 partnerRoundStartedAt 污染
+    if (!turnChanged && this._avatarTimerTurnKey === key && locked > 0) {
+      return locked;
+    }
+    // 仅新回合允许用卡片戳作为首次锚点（兼容未部署 partnerTurnStartedAt 的旧房间）
+    return cardTs > 0 ? cardTs : null;
+  },
+
+  /**
+   * 头像框只用「本回合首次」时间戳；卡片循环滚动 partnerRoundStartedAt 时不得覆盖
+   */
+  _syncAvatarRoundStartedAt(ts, options = {}) {
+    const force = options.force === true;
+    const next = Number(ts);
+    if (!Number.isFinite(next) || next <= 0 || isClosingPhase(this.data.gamepagePhase)) {
+      if (this.data.avatarRoundStartedAt != null) {
+        this.setData({ avatarRoundStartedAt: null });
+      }
+      this._avatarTimerTurnKey = '';
+      return;
+    }
+    const key = options.turnKey || this._turnTimerKey();
+    // 非强制：同回合已有锚点则永不覆盖（卡片循环/轮询都走这里）
+    if (!force && this._avatarTimerTurnKey === key && this.data.avatarRoundStartedAt) {
+      return;
+    }
+    this._avatarTimerTurnKey = key;
+    if (Number(this.data.avatarRoundStartedAt) !== next) {
+      this.setData({ avatarRoundStartedAt: next });
+    }
+  },
+
+  _applySharedRoundTimer(startedAt, options = {}) {
+    const force = options.force === true;
+    const ts = Number(startedAt);
+    if (!Number.isFinite(ts) || ts <= 0 || isClosingPhase(this.data.gamepagePhase)) {
+      this.setData({
+        partnerRoundStartedAt: null,
+        avatarRoundStartedAt: null,
+        roundTimerVisible: false,
+        roundTimerElapsedRatio: 0
+      });
+      this._avatarTimerTurnKey = '';
+      this._stopRoundTimer();
+      return;
+    }
+
+    const current = Number(this.data.partnerRoundStartedAt) || 0;
+    const pending = Number(this._pendingRoundStartedAt) || 0;
+
+    // 禁止更旧戳覆盖（含写库竞态期的服务端旧值）
+    if (!force) {
+      if (pending > 0 && ts < pending) return;
+      if (current > 0 && ts < current) return;
+      if (current > 0 && isRoundTimerActive(current) && !isRoundTimerActive(ts)) return;
+    }
+
+    if (pending > 0 && ts >= pending) {
+      this._pendingRoundStartedAt = 0;
+    }
+
+    const timerState = getRoundTimerState(ts);
+    this._cacheRoundStartedAt(this.data.roomId, this.data.currentRound, ts);
+    this.setData({
+      partnerRoundStartedAt: ts,
+      roundTimerVisible: this._pageVisible !== false,
+      roundTimerRemainingSec: timerState.remainingSec,
+      roundTimerElapsedRatio: timerState.elapsedRatio
+    });
+    // 仅换人/进页显式同步头像锚点；卡片循环禁止碰头像锚点
+    if (options.syncTurnAvatar === true) {
+      this._syncAvatarRoundStartedAt(ts, { force: true });
+    }
+    this._restartRoundTimer();
+  },
+
+  /**
+   * 进入 gamepage：有活跃服务端计时则跟随；否则仅房主开新一轮并广播
+   */
+  async _ensureSharedRoundTimerOnEnter() {
+    if (isClosingPhase(this.data.gamepagePhase)) {
+      this._pendingRoundStartedAt = 0;
+      this._applySharedRoundTimer(null, { force: true });
+      return;
+    }
+    if (!this.data.roomId) return;
+    if (this._syncingRoundTimer) return;
+    this._syncingRoundTimer = true;
+    try {
+      let serverStartedAt = null;
+      let serverTurnStartedAt = null;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId: this.data.roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok === true && result.roomState) {
+          if (result.isHost === true && this.data.isHost !== true) {
+            this.setData({ isHost: true });
+          } else if (result.isHost === false && this.data.isHost === true) {
+            this.setData({ isHost: false });
+          }
+          const ts = result.roomState.partnerRoundStartedAt != null
+            ? Number(result.roomState.partnerRoundStartedAt)
+            : 0;
+          if (Number.isFinite(ts) && ts > 0 && isRoundTimerActive(ts)) {
+            serverStartedAt = ts;
+          }
+          const turnTs = result.roomState.partnerTurnStartedAt != null
+            ? Number(result.roomState.partnerTurnStartedAt)
+            : 0;
+          if (Number.isFinite(turnTs) && turnTs > 0) {
+            serverTurnStartedAt = turnTs;
+          }
+        }
+      } catch (e) {
+        console.warn('_ensureSharedRoundTimerOnEnter fetch', e);
+      }
+
+      // 已有活跃计时：全员（含房主）只跟随；头像锚点用回合级时间戳，勿被卡片循环戳覆盖
+      if (serverStartedAt) {
+        this._applySharedRoundTimer(serverStartedAt, { force: true, syncTurnAvatar: false });
+        this._syncAvatarRoundStartedAt(serverTurnStartedAt || serverStartedAt, { force: true });
+        return;
+      }
+
+      if (this.data.isHost === true) {
+        const startedAt = Date.now();
+        this._pendingRoundStartedAt = startedAt;
+        this._applySharedRoundTimer(startedAt, { force: true, syncTurnAvatar: true });
+        const { currentPlayerIndex, currentPlayerName } = this.data;
+        try {
+          await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+            partnerRoundStartedAt: startedAt,
+            partnerGamePhase: this.data.gamepagePhase,
+            syncPartnerTurnTimer: true
+          });
+        } catch (e) {
+          console.warn('_ensureSharedRoundTimerOnEnter write', e);
+        }
+        return;
+      }
+
+      // 非房主等待房主广播，不使用本地 Date.now() 占位（会永久不同步）
+      this._syncRoundTimerVisible(null);
+      this._startRoundTimerBurstPoll();
+    } finally {
+      this._syncingRoundTimer = false;
+    }
+  },
+
   _syncRoundTimerVisible(partnerRoundStartedAt) {
-    const visible = !!(this._roomLoaded
-      && this._pageVisible
+    const visible = !!(
+      this._pageVisible !== false
       && partnerRoundStartedAt
-      && !isClosingPhase(this.data.gamepagePhase));
+      && !isClosingPhase(this.data.gamepagePhase)
+    );
     if (visible !== this.data.roundTimerVisible) {
       this.setData({ roundTimerVisible: visible });
     }
   },
 
-  async _rollRoundCountdown(startedAt) {
-    const ts = startedAt || Date.now();
-    const { roomId, currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+  async _rollRoundCountdown() {
+    // 只由房主重启循环，避免多端各自 Date.now() 导致不同步
+    if (!this.data.isHost) return;
+    if (this._rollingRoundCountdown) return;
+    // 卡片框与头像框都会触发到期；当前周期仍有效则不再开新一轮
+    if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
     if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
 
-    this._cacheRoundStartedAt(roomId, currentRound, ts);
-    this.setData({
-      partnerRoundStartedAt: ts,
-      roundTimerVisible: true,
-      roundTimerRemainingSec: ROUND_DURATION_SEC
-    });
-    this._restartRoundTimer();
-
-    if (!this.data.isHost) return;
-
+    this._rollingRoundCountdown = true;
+    const ts = Date.now();
+    this._pendingRoundStartedAt = ts;
+    // 卡片循环：只滚 partnerRoundStartedAt，不刷新头像首次锚点
+    this._applySharedRoundTimer(ts, { force: true, syncTurnAvatar: false });
     try {
       await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
-        partnerRoundStartedAt: ts
+        partnerRoundStartedAt: ts,
+        syncPartnerTurnTimer: false
       });
     } catch (e) {
       console.warn('_rollRoundCountdown', e);
+    } finally {
+      this._rollingRoundCountdown = false;
     }
   },
 
   handleRoundTimerExpire(e) {
     const detail = (e && e.detail) || {};
-    if (detail.loop !== true) return;
-    this._rollRoundCountdown(detail.startedAt);
-  },
-
-  async _ensureRoundTimerStarted(isHost) {
-    if (isClosingPhase(this.data.gamepagePhase)) return;
-    if (!isHost) return;
-    if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
-
-    const startedAt = Date.now();
-    const { currentPlayerIndex, currentPlayerName, currentRound } = this.data;
-    this._cacheRoundStartedAt(this.data.roomId, currentRound, startedAt);
-    this.setData({ partnerRoundStartedAt: startedAt });
-    this._syncRoundTimerVisible(startedAt);
-
-    try {
-      await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
-        partnerRoundStartedAt: startedAt
-      });
-    } catch (e) {
-      console.warn('_ensureRoundTimerStarted', e);
+    // 卡片框/头像框到期都会进这里；防抖合并，避免双通道打出两轮不同 Date.now()
+    if (detail.loop === false) return;
+    const now = Date.now();
+    if (this._lastExpireHandledAt && now - this._lastExpireHandledAt < 1500) {
+      return;
     }
+    this._lastExpireHandledAt = now;
+    if (this.data.isHost === true) {
+      this._rollRoundCountdown();
+    }
+    this._startRoundTimerBurstPoll();
   },
 
   _validateSpecialMoveFlag(flag, patch) {
@@ -615,6 +841,16 @@ Page({
       }));
     const roundContent = this._applyRoundContentFromRoom(roomState);
     const partnerRoundStartedAt = this._resolvePartnerRoundStartedAt(roomState, currentRound);
+    const turnChanged = playerChanged || roundChanged || sessionChanged || options.resetTurnUi;
+    const avatarRoundStartedAt = isClosingPhase(roomPhase)
+      ? null
+      : this._resolveAvatarRoundStartedAt(
+        roomState,
+        partnerRoundStartedAt,
+        turnChanged,
+        currentRound,
+        player.currentPlayerIndex
+      );
     const timerPatch = (!isClosingPhase(roomPhase) && partnerRoundStartedAt)
       ? (() => {
         const timerState = getRoundTimerState(partnerRoundStartedAt);
@@ -664,6 +900,7 @@ Page({
       filteredPlayerIndex: nextFilteredPlayerIndex,
       isPlayerFilterActive: nextFilterActive,
       partnerRoundStartedAt,
+      avatarRoundStartedAt: isClosingPhase(roomPhase) ? null : avatarRoundStartedAt,
       voiceLines: roundContent.voiceLines,
       turnRecords: roundContent.turnRecords,
       ...timerPatch,
@@ -759,21 +996,39 @@ Page({
     }
     this._roomContextFingerprint = contextFingerprint;
 
+    const prevStartedAt = Number(this.data.partnerRoundStartedAt) || 0;
+    const nextStartedAt = Number(patch.partnerRoundStartedAt) || 0;
+    // 先锁定本回合头像 key，避免 setData 后被卡片戳二次覆盖
+    if (!isClosingPhase(roomPhase) && avatarRoundStartedAt) {
+      this._avatarTimerTurnKey = this._turnTimerKey(currentRound, player.currentPlayerIndex);
+    } else if (isClosingPhase(roomPhase) || turnChanged) {
+      // turnChanged 时下面会用新锚点重锁
+      if (isClosingPhase(roomPhase)) this._avatarTimerTurnKey = '';
+    }
     this.setData(patch, () => {
-      this._restartRoundTimer();
-      this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
-      if (
-        !patch.partnerRoundStartedAt
-        && this.data.isHost
-        && !isClosingPhase(this.data.gamepagePhase)
-      ) {
-        this._ensureRoundTimerStarted(true).then(() => {
-          this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
-          this._syncRoundSpeech();
-        });
+      if (!isClosingPhase(roomPhase) && patch.partnerRoundStartedAt) {
+        // 卡片时间戳变化：绝不 syncTurnAvatar（头像锚点已在 patch 中按回合锁定）
+        if (nextStartedAt !== prevStartedAt) {
+          this._applySharedRoundTimer(patch.partnerRoundStartedAt, {
+            syncTurnAvatar: false
+          });
+        } else {
+          this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
+          this._syncTimerFromStartedAt();
+        }
+        if (patch.avatarRoundStartedAt) {
+          this._syncAvatarRoundStartedAt(patch.avatarRoundStartedAt, {
+            force: turnChanged,
+            turnKey: this._turnTimerKey(currentRound, player.currentPlayerIndex)
+          });
+        }
+      } else if (isClosingPhase(roomPhase)) {
+        this._applySharedRoundTimer(null, { force: true });
       } else {
-        this._syncRoundSpeech();
+        this._restartRoundTimer();
+        this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
       }
+      this._syncRoundSpeech();
     });
     return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
@@ -791,14 +1046,13 @@ Page({
         return;
       }
 
-      const members = assignAvatarImages(result.members);
       const app = getApp();
       const selectedProblem = resolveSelectedDesignProblem(app, result);
       const selectedProblemText = selectedProblem && selectedProblem.text
         ? selectedProblem.text
         : '';
 
-      const { player } = this._applyRoomContext(result, {
+      this._applyRoomContext(result, {
         fallbackPlayerIndex: this.data.currentPlayerIndex,
         resetTurnUi: true
       });
@@ -812,18 +1066,12 @@ Page({
         this._checkProblemTextOverflow();
       });
 
-      if (result.isHost === true) {
-        await this._updateRoomState('gamepage', player.currentPlayerIndex, player.currentPlayerName, {
-          partnerGamePhase: this.data.gamepagePhase
-        });
-      }
       this._startStatePolling();
-
       this.refreshScoreStatus();
       this._startScorePolling();
       this._roomLoaded = true;
-      await this._ensureRoundTimerStarted(result.isHost === true);
-      this._syncRoundTimerVisible(this.data.partnerRoundStartedAt);
+      // 房主重开并广播；其他端跟随同一时间戳显示倒计时
+      await this._ensureSharedRoundTimerOnEnter();
       await this._syncRoundSpeech();
       await this._syncRoundContentToRoom();
     } catch (e) {
@@ -888,10 +1136,24 @@ Page({
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
+            const state = pollResult.roomState || {};
+            // 房主/副屏：收尾相关页必须主动跳转（followSubScreenRoomPoll 对房主不会 navigate）
+            if (page === 'closingstatement') {
+              safeOpenUrl(buildClosingStatementUrl(roomId, {
+                closingVoteSessionId: state.closingVoteSessionId || '',
+                _t: Date.now()
+              }), { immediate: true });
+              return true;
+            }
+            if (page === 'closingend') {
+              safeOpenUrl(buildClosingEndUrl(roomId), { immediate: true });
+              return true;
+            }
             if (page === 'gamepage') {
               const prevMaster = this.data.isMasterMode;
               const prevClosingStep = this.data.closingStep;
               const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
+              // 倒计时已由 _applyRoomContext 统一处理，避免二次 apply 造成回滚
               if (
                 playerChanged
                 || phaseChanged
@@ -903,12 +1165,17 @@ Page({
               }
               return true;
             }
-            if (this.data.isHost && page === 'statement') {
-              const idx = pollResult.roomState.currentPlayerIndex != null
-                ? pollResult.roomState.currentPlayerIndex
+            if (page === 'statement') {
+              const idx = state.currentPlayerIndex != null
+                ? state.currentPlayerIndex
                 : this.data.currentPlayerIndex;
-              const playerName = pollResult.roomState.currentPlayerName || this.data.currentPlayerName;
-              safeOpenUrl(buildStatementUrl(roomId, idx, playerName));
+              const playerName = state.currentPlayerName || this.data.currentPlayerName;
+              // 仅主屏进选择页；副屏进等待表态页
+              const isHost = pollResult.isHost === true || this.data.isHost === true;
+              safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
+                isSubScreen: !isHost,
+                isWaiting: !isHost
+              }), { immediate: true });
               return true;
             }
             return false;
@@ -919,7 +1186,8 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    // 缩短间隔，让非房主更快跟上新一轮 startedAt（到期后另有 burst poll）
+    this._statePollTimer = setInterval(poll, 800);
   },
 
   _stopStatePolling() {
@@ -956,6 +1224,9 @@ Page({
       }
       if (extra && extra.partnerRoundStartedAt != null) {
         data.partnerRoundStartedAt = extra.partnerRoundStartedAt;
+      }
+      if (extra && extra.syncPartnerTurnTimer != null) {
+        data.syncPartnerTurnTimer = extra.syncPartnerTurnTimer === true;
       }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
@@ -1251,6 +1522,7 @@ Page({
     }
     const url = buildSpecialMoveUrl(roomId, currentPlayerIndex);
     this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
     wx.navigateTo({
       url,
       fail: (err) => {
@@ -1277,6 +1549,7 @@ Page({
 
     this._stopRoundSpeech();
     this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
     await this._syncRoundContentToRoom();
 
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;

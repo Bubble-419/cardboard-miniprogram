@@ -188,15 +188,37 @@ function resolveModeIdForNavigation(state) {
   return getSelectedModeId('halliGalli');
 }
 
-function resolveSubScreenNavigation(page, roomState, roomId) {
+function resolveHostMainPageUrl(page, roomState, roomId) {
+  const p = (page || '').toLowerCase();
+  const roomIdEnc = encodeURIComponent(roomId);
+  const state = roomState || {};
+  const hostMap = {
+    auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}`,
+    selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}`,
+    confirmbg: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
+    selectmode: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}`,
+    selectplayer: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&isHost=1`,
+    confirmfirstplayer: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isHost=1`
+  };
+  return hostMap[p] || null;
+}
+
+function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
   const p = (page || '').toLowerCase();
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
   const playerName = state.currentPlayerName || `玩家${idx}`;
   const modeId = resolveModeIdForNavigation(state);
+  const isHost = options.isHost === true;
 
   if (isAwaitPage(p)) {
+    if (isHost) {
+      const hostUrl = resolveHostMainPageUrl(p, state, roomId);
+      if (hostUrl) {
+        return { action: 'redirect', url: hostUrl };
+      }
+    }
     return { action: 'await', scene: getSceneForPage(p) };
   }
 
@@ -210,8 +232,14 @@ function resolveSubScreenNavigation(page, roomState, roomId) {
         : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
       closingStep: state.partnerClosingStep || undefined
     }),
-    statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
-    closingstatement: buildClosingStatementUrl(roomId),
+    statement: buildStatementUrl(roomId, idx, playerName, {
+      isSubScreen: true,
+      isWaiting: true
+    }),
+    closingstatement: buildClosingStatementUrl(roomId, {
+      closingVoteSessionId: state.closingVoteSessionId || '',
+      _t: Date.now()
+    }),
     closingend: buildClosingEndUrl(roomId),
     discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
@@ -276,7 +304,7 @@ function openSubAwait(roomId, scene) {
 }
 
 /** 副屏轮询：根据主屏 currentPage 跳转至 subAwait 或业务页 */
-function navigateByRoomState(page, roomState, roomId) {
+function navigateByRoomState(page, roomState, roomId, options = {}) {
   const p = (page || '').toLowerCase();
   const state = roomState || {};
   const current = getCurrentRoute();
@@ -293,7 +321,7 @@ function navigateByRoomState(page, roomState, roomId) {
     }
   }
 
-  const nav = resolveSubScreenNavigation(page, roomState, roomId);
+  const nav = resolveSubScreenNavigation(page, roomState, roomId, options);
   if (!nav) return false;
 
   if (nav.action === 'await') {

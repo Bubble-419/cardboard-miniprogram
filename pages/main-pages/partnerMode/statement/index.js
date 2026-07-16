@@ -1,8 +1,7 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const { openUrl } = require('../../../../utils/pageNavigate');
 const {
-  PHASE_PLAY,
   PHASE_DISCUSSION,
   phaseFromStatementResult,
   STATEMENT_ALL_PASS
@@ -15,6 +14,7 @@ Page({
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     members: [],
+    isHost: false,
     isWaiting: false,
     isSubmitting: false
   },
@@ -27,8 +27,12 @@ Page({
     const currentPlayerName = (options && options.currentPlayerName)
       ? decodeURIComponent(options.currentPlayerName)
       : `玩家${currentPlayerIndex}`;
-    const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
-    const isSubScreen = options && (options.isSubScreen === '1' || options.isSubScreen === true);
+    const waitingHint = options && (
+      options.isWaiting === '1'
+      || options.isWaiting === true
+      || options.isSubScreen === '1'
+      || options.isSubScreen === true
+    );
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
@@ -42,16 +46,12 @@ Page({
       roomId,
       currentPlayerIndex,
       currentPlayerName,
-      isWaiting: !!(isWaiting || isSubScreen)
+      // 先按 URL 提示展示；随后以云端 isHost 为准纠正
+      isWaiting: !!waitingHint,
+      isHost: !waitingHint
     });
 
-    if (isWaiting || isSubScreen) {
-      this._startStatePolling();
-      return;
-    }
-
-    this._updateRoomState('statement', currentPlayerIndex, currentPlayerName);
-    this._loadMembers(roomId);
+    this._bootstrapRole(waitingHint);
   },
 
   onShow() {
@@ -68,6 +68,54 @@ Page({
     this._stopStatePolling();
   },
 
+  /**
+   * 以云端身份为准：仅主屏可选择表态；副屏强制等待页并轮询跟随
+   */
+  async _bootstrapRole(waitingHint) {
+    const roomId = this.data.roomId;
+    let isHost = !waitingHint;
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok === true) {
+        isHost = result.isHost === true;
+        if (result.members && result.members.length) {
+          this.setData({ members: result.members });
+        }
+        const state = result.roomState || {};
+        if (state.currentPlayerIndex != null) {
+          this.setData({
+            currentPlayerIndex: state.currentPlayerIndex,
+            currentPlayerName: state.currentPlayerName || this.data.currentPlayerName
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('statement _bootstrapRole', e);
+    }
+
+    const isWaiting = !isHost;
+    this.setData({ isHost, isWaiting });
+
+    if (isWaiting) {
+      this._startStatePolling();
+      return;
+    }
+
+    // 主屏：写入 statement 态并展示选择 UI
+    await this._updateRoomState(
+      'statement',
+      this.data.currentPlayerIndex,
+      this.data.currentPlayerName
+    );
+    if (!this.data.members.length) {
+      this._loadMembers(roomId);
+    }
+  },
+
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra) {
     const roomId = this.data.roomId || '';
     if (!roomId) return false;
@@ -79,6 +127,12 @@ Page({
         if (extra.partnerGamePhase != null) data.partnerGamePhase = extra.partnerGamePhase;
         if (extra.incrementRound === true) data.incrementRound = true;
         if (extra.partnerMasterMode != null) data.partnerMasterMode = extra.partnerMasterMode;
+        if (extra.partnerRoundStartedAt != null) {
+          data.partnerRoundStartedAt = extra.partnerRoundStartedAt;
+        }
+        if (extra.syncPartnerTurnTimer != null) {
+          data.syncPartnerTurnTimer = extra.syncPartnerTurnTimer === true;
+        }
       }
       const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
@@ -109,6 +163,20 @@ Page({
     return this.data.members || [];
   },
 
+  _goGamepageFromState(state) {
+    const roomId = this.data.roomId;
+    if (!roomId || !state) return false;
+    const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
+    const phase = state.partnerGamePhase === PHASE_DISCUSSION
+      ? PHASE_DISCUSSION
+      : (state.partnerGamePhase === 'closing' ? 'closing' : undefined);
+    this._stopStatePolling();
+    return openUrl(buildGamepageUrl(roomId, idx, 'partner', {
+      phase,
+      closingStep: state.partnerClosingStep || undefined
+    }), { immediate: true });
+  },
+
   _startStatePolling() {
     this._stopStatePolling();
     const poll = async () => {
@@ -120,14 +188,20 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+
+        // 副屏等待中若身份被纠正为主屏，不在此页开放选择（避免误操作）
+        if (result.ok === true && result.isHost === true && this.data.isWaiting) {
+          // 保持等待并由主屏设备上的主屏页操作；此处仅跟随房间态
+        }
+
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
-            if (page === 'statement') return true;
+            if (page === 'statement') {
+              return true;
+            }
+            // 主屏表态完成 → 全员进入新轮次 gamepage
             if (page === 'gamepage') {
-              const state = pollResult.roomState || {};
-              const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-              const phase = state.partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined;
-              safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner', { phase }));
+              this._goGamepageFromState(pollResult.roomState || {});
               return true;
             }
             return false;
@@ -138,7 +212,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    this._statePollTimer = setInterval(poll, 800);
   },
 
   _stopStatePolling() {
@@ -162,6 +236,11 @@ Page({
   },
 
   async handleStatementResult(e) {
+    // 仅主屏可选择表态结果
+    if (this.data.isWaiting || this.data.isHost !== true) {
+      wx.showToast({ title: '请等待主屏表态', icon: 'none' });
+      return;
+    }
     if (this.data.isSubmitting) return;
     const result = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.result;
     if (!result) return;
@@ -206,15 +285,17 @@ Page({
           icon: 'none'
         });
       }
-    } catch (e) {
-      console.warn('finalizePartnerTurnRecord', e);
+    } catch (err) {
+      console.warn('finalizePartnerTurnRecord', err);
       wx.showToast({ title: '表态记录保存失败', icon: 'none' });
     }
 
     const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
       partnerGamePhase,
       partnerMasterMode: false,
-      incrementRound
+      incrementRound,
+      partnerRoundStartedAt: Date.now(),
+      syncPartnerTurnTimer: true
     });
 
     this.setData({ isSubmitting: false });
@@ -224,8 +305,16 @@ Page({
       return;
     }
 
-    safeOpenUrl(buildGamepageUrl(roomId, targetIndex, 'partner', {
+    // 主屏立即进入新轮次；副屏通过轮询跟随同一 gamepage
+    const opened = openUrl(buildGamepageUrl(roomId, targetIndex, 'partner', {
       phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
-    }));
+    }), { immediate: true });
+    if (!opened) {
+      wx.redirectTo({
+        url: buildGamepageUrl(roomId, targetIndex, 'partner', {
+          phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
+        })
+      });
+    }
   }
 });

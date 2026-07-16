@@ -1,4 +1,4 @@
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
+const { navigateByRoomState, openSubAwait } = require('../../../utils/subAwaitRoutes');
 
 Page({
   data: {
@@ -11,30 +11,75 @@ Page({
     roomId: '',
     members: [],
     selectedModeId: '',
-    isHost: true,
+    isHost: false,
     isWaiting: false // 普通玩家等待房主在主屏抽取首位玩家
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+    const forceHost = options && (options.isHost === '1' || options.isHost === true);
     const modeId = (options && options.modeId) || '';
     if (modeId === 'partner') {
       getApp().globalData.gameMode = 'partner';
     }
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    getApp().globalData.roomId = roomId;
     this.setData({
       roomId,
       isWaiting: !!isWaiting,
       selectedModeId: modeId || this.data.selectedModeId
     });
-    if (isWaiting) {
-      this.setData({ isHost: false });
+    if (isWaiting && !forceHost) {
+      this.setData({ isHost: false, isWaiting: true });
       this._startStatePolling();
       return;
     }
-    if (roomId) {
-      this.loadMembers(roomId);
+
+    this._bootstrapAsHostOrWait(roomId, { forceHost: !!forceHost });
+  },
+
+  async _bootstrapAsHostOrWait(roomId, options = {}) {
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
+        return;
+      }
+
+      const isHost = result.isHost === true;
+      if (!isHost) {
+        this.setData({ isHost: false, isWaiting: true });
+        // 非房主进入抽首位页时，统一进副屏等待
+        openSubAwait(roomId, 'player');
+        return;
+      }
+
+      const selectedModeId = result.selectedModeId || '';
+      if (selectedModeId === 'partner') {
+        getApp().globalData.gameMode = 'partner';
+      }
+      const update = {
+        isHost: true,
+        isWaiting: false,
+        selectedModeId
+      };
+      if (result.members && result.members.length) {
+        update.members = result.members;
+        update.minPlayers = result.members.length;
+      }
+      this.setData(update);
       this._updateRoomState('selectPlayer');
+    } catch (e) {
+      console.warn('selectPlayer bootstrap', e);
+      wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
 

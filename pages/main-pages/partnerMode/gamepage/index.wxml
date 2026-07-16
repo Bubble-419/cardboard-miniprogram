@@ -48,7 +48,7 @@
         showActingFrame="{{gamepagePhase !== 'closing'}}"
         enableSelectedFrame="{{gamepagePhase !== 'closing'}}"
         enableAvatarTap="{{gamepagePhase !== 'closing'}}"
-        roundStartedAt="{{partnerRoundStartedAt}}"
+        roundStartedAt="{{avatarRoundStartedAt}}"
         roundTimerActive="{{roundTimerVisible}}"
         roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
         bindavatartap="handleAvatarTap"

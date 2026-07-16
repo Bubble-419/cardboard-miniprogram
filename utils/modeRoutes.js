@@ -46,9 +46,16 @@ function buildSpecialMoveUrl(roomId, currentPlayerIndex) {
   return `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
 
-function buildClosingStatementUrl(roomId) {
+function buildClosingStatementUrl(roomId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId);
-  return `/pages/main-pages/partnerMode/closingStatement/index?roomId=${roomIdEnc}`;
+  let url = `/pages/main-pages/partnerMode/closingStatement/index?roomId=${roomIdEnc}`;
+  if (options.closingVoteSessionId) {
+    url += `&closingVoteSessionId=${encodeURIComponent(options.closingVoteSessionId)}`;
+  }
+  if (options._t) {
+    url += `&_t=${encodeURIComponent(options._t)}`;
+  }
+  return url;
 }
 
 function buildClosingEndUrl(roomId) {

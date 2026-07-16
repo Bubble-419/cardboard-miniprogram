@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { resolveActiveClosingVotes } = require('./closingVoteState');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -110,7 +111,7 @@ exports.main = async (event, context) => {
       };
     }
 
-    const isHost = !!(room.creatorId && room.creatorId === currentUserId);
+    const isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
     const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
 
@@ -129,6 +130,15 @@ exports.main = async (event, context) => {
     }
 
     const includeFullPartnerContent = event && event.full === true;
+    const pageLower = (currentPage || '').toLowerCase();
+    // 仅在收尾表态页返回本会话选票；其它页一律空，避免串入上一轮残留
+    const activeClosing = pageLower === 'closingstatement'
+      ? resolveActiveClosingVotes(room)
+      : {
+        votes: {},
+        seq: 0,
+        sessionId: 0
+      };
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -147,8 +157,12 @@ exports.main = async (event, context) => {
       closingQuestionPlayers: Array.isArray(room.closingQuestionPlayers)
         ? room.closingQuestionPlayers
         : [],
-      closingVotes: room.closingVotes || {},
-      partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null
+      closingVotes: activeClosing.votes || {},
+      closingVoteSeq: activeClosing.seq || 0,
+      closingVoteSessionId: activeClosing.sessionId || 0,
+      partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
+      // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
+      partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null
     };
 
     // 默认不返回大体积脑暴内容，避免各页轮询拖垮测试性能；gamepage 传 full:true
