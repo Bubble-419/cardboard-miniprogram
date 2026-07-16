@@ -167,6 +167,20 @@ Page({
     }
   },
 
+  /** 反面随机拼「采用卡组」返回后：提示打分 / 房主开始表态 */
+  _applyAdoptDeckHint() {
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+    const app = getApp();
+    const hint = app.globalData && app.globalData.partnerAdoptDeckHint;
+    if (!hint || hint.roomId !== roomId) return;
+    app.globalData.partnerAdoptDeckHint = null;
+    const title = this.data.isHost
+      ? '请其他玩家打分，完成后点击开始表态'
+      : '已采用卡组，请其他玩家打分';
+    wx.showToast({ title, icon: 'none', duration: 2500 });
+  },
+
   onShow() {
     this._pageVisible = true;
     this._applyPendingSpecialMoveUsed();
@@ -177,6 +191,7 @@ Page({
     // 进入页：同步房间倒计时（房主负责重开并广播，其他人跟随）
     this._ensureSharedRoundTimerOnEnter().then(() => {
       this._applyPendingSpecialMoveUsed();
+      this._applyAdoptDeckHint();
       this.refreshScoreStatus();
       this._syncRoundSpeech();
       this._refreshInspirationCount();

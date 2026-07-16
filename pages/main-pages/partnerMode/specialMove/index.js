@@ -40,7 +40,8 @@ const MASTER_HINT_LINES = [
 
 const CLOSING_HINT_LINES = [
   '选择进入收尾阶段',
-  '如果所有玩家表态通过，将强制结束游戏'
+  '若全员表态通过，将进入补全符文',
+  '若存在疑问，将回到出牌解释继续'
 ];
 
 const HELP_METHOD_OPTIONS = [
@@ -431,8 +432,15 @@ Page({
     this._returnToGamepage();
   },
 
-  handleCancelAdopt() {
-    this.setData({ viewMode: 'wheel' });
+  async handleCancelAdopt() {
+    if (!this.data.roomId) return;
+    if (this.data.currentRound == null) {
+      await this.loadRoomData();
+    }
+    // 取消采用：特殊行动仍记为已使用，回 gamepage 继续倒计时
+    this._markSpecialMoveUsedForGamepage();
+    this._stopStatePolling();
+    this._returnToGamepage();
   },
 
   async handleAdoptDeck() {
@@ -441,6 +449,13 @@ Page({
       await this.loadRoomData();
     }
     this._markSpecialMoveUsedForGamepage();
+    const app = getApp();
+    if (!app.globalData) app.globalData = {};
+    app.globalData.partnerAdoptDeckHint = {
+      roomId: this.data.roomId,
+      at: Date.now()
+    };
+    this._stopStatePolling();
     this._returnToGamepage();
   },
 
