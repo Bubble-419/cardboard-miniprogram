@@ -261,10 +261,9 @@ Page({
         }
         const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
         if (page === 'closingend') {
-          console.log('[副屏轮询] 忽略 closingEnd 跳转，保持房间页');
-          return;
-        }
-        if (result.roomState.brainstormSessionEnded === true) {
+          // 已落在 ending：允许跟随；结束态由 closingEnd 写 brainstormSessionEnded
+          console.log('[副屏轮询] closingEnd，准备跟随', { page });
+        } else if (result.roomState.brainstormSessionEnded === true) {
           const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
           if (stalePages.includes(page)) {
             console.log('[副屏轮询] 脑暴已结束，忽略滞后页面', { page });
@@ -474,12 +473,23 @@ Page({
             expanded = this._expandMembersToSlots(withAvatars);
           }
           this._triggerCountBounceIfNeeded(roomMeta.memberCount);
+          const wasHost = this.data.isHost === true;
+          const nowHost = result.isHost === true;
           this.setData({
             members: expanded,
             memberSlots: this.buildMemberSlots(expanded),
             roomState: resolvedState,
+            isHost: nowHost,
             ...roomMeta
           });
+          // 静默刷新时纠正主副屏身份，避免误开副屏轮询把房主拉进 subAwait
+          if (wasHost !== nowHost) {
+            if (nowHost) {
+              this._stopStatePolling();
+            } else if (!this._statePollTimer) {
+              this._startStatePolling();
+            }
+          }
         }
         return result;
       }
@@ -1037,35 +1047,93 @@ Page({
       wx.showToast({ title: '房间参数错误', icon: 'none' });
       return;
     }
-    if (!this.data.isHost) {
-      wx.showToast({ title: '请等待房主开始新一轮', icon: 'none' });
-      return;
-    }
-    if (!this.data.hasSelectedMode) {
-      wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
-      return;
-    }
 
     wx.showLoading({ title: '准备中…', mask: true });
     clearLocalBrainstormProgress(roomId);
     clearPartnerSpecialMoveUsedFlag(roomId);
+
     try {
-      const updateRes = await this._updateRoomState('selectPlayer', null, null, {
+      // 以云端身份为准，避免本地 isHost 过期/误判导致房主进副屏
+      const checkRes = await wx.cloud.callFunction({
+        name: 'getAddPlayerData',
+        data: { roomId }
+      });
+      const check = (checkRes && checkRes.result) || {};
+      if (check.ok !== true) {
+        wx.showToast({ title: check.errMsg || '状态获取失败', icon: 'none' });
+        return;
+      }
+      if (check.isHost !== true) {
+        this.setData({ isHost: false });
+        this._stopStatePolling();
+        this._startStatePolling();
+        wx.showToast({ title: '请等待房主开始新一轮', icon: 'none' });
+        return;
+      }
+      if (check.hasSelectedMode !== true && !this.data.hasSelectedMode) {
+        wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+        return;
+      }
+
+      this.setData({ isHost: true });
+      this._stopStatePolling();
+
+      const modeId = check.selectedModeId || this.data.selectedModeId || 'partner';
+      const app = getApp();
+      if (!app.globalData) app.globalData = {};
+      app.globalData.gameMode = modeId;
+      app.globalData.roomId = roomId;
+      if (check.selectedBG) {
+        app.globalData.selectedBG = check.selectedBG;
+      }
+      const problem = (check.roomState && check.roomState.selectedDesignProblem)
+        || check.selectedDesignProblem
+        || null;
+      if (problem) {
+        app.globalData.selectedProblem = problem;
+      }
+
+      // 同情境/同设计问题，直接重开 gamepage（不再绕 selectPlayer）
+      const members = (check.members || []).slice().sort((a, b) => {
+        return (a.playerIndex || 0) - (b.playerIndex || 0);
+      });
+      const first = members[0];
+      const idx = first && first.playerIndex != null ? first.playerIndex : 1;
+      const name = first
+        ? (first.nickName || first.playerName || `玩家${idx}`)
+        : `玩家${idx}`;
+      const startedAt = Date.now();
+
+      const updateRes = await this._updateRoomState('gamepage', idx, name, {
         brainstormSessionEnded: false,
         partnerGamePhase: 'play',
         partnerMasterMode: false,
+        partnerClosingStep: 'rune',
         resetClosingVotes: true,
         clearBrainstormProgress: true,
-        incrementRound: true
+        incrementRound: true,
+        partnerRoundStartedAt: startedAt
       });
       if (updateRes && updateRes.ok !== true) {
         wx.showToast({ title: updateRes.errMsg || '状态同步失败', icon: 'none' });
+        this._startStatePolling();
         return;
       }
-      safeOpenUrl(`/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`);
+
+      const url = buildGamepageUrl(roomId, idx, modeId === 'partner' ? 'partner' : modeId);
+      const opened = safeOpenUrl(url, { immediate: true });
+      if (!opened) {
+        wx.redirectTo({
+          url,
+          fail: () => {
+            wx.reLaunch({ url });
+          }
+        });
+      }
     } catch (e) {
       console.warn('handleAnotherRound', e);
       wx.showToast({ title: '操作失败', icon: 'none' });
+      this._startStatePolling();
     } finally {
       wx.hideLoading();
     }

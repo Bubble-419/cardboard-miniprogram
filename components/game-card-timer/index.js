@@ -60,7 +60,17 @@ Component({
   observers: {
     'startedAt, timerActive'() {
       const serverTs = Number(this.properties.startedAt);
-      if (Number.isFinite(serverTs) && serverTs > (this._localCycleStartedAt || 0)) {
+      const prev = this._lastServerStartedAt || 0;
+      if (Number.isFinite(serverTs) && serverTs > 0 && serverTs !== prev) {
+        this._lastServerStartedAt = serverTs;
+        this._localCycleStartedAt = 0;
+        this._expiringTriggered = false;
+        this._clearExpireTimer();
+        // 到期动画中收到新周期时打断，避免下一轮不刷新边框倒计时
+        if (this.data.displayMode === 'expiring') {
+          this.setData({ displayMode: 'idle' });
+        }
+      } else if (Number.isFinite(serverTs) && serverTs > 0) {
         this._localCycleStartedAt = 0;
       }
       this._syncDisplayMode();
@@ -89,10 +99,18 @@ Component({
     },
 
     _syncDisplayMode() {
-      if (this.data.displayMode === 'expiring') return;
-
       const startedAt = this._resolveStartedAt();
       const timerOn = this.properties.timerActive === true && (startedAt > 0 || this.properties.loop === true);
+
+      if (this.data.displayMode === 'expiring') {
+        // 新周期已激活则打断到期动画并进入 timer
+        if (this.properties.timerActive === true && startedAt > 0) {
+          this._clearExpireTimer();
+          this._expiringTriggered = false;
+        } else {
+          return;
+        }
+      }
 
       if (timerOn) {
         const activeStartedAt = this._resolveStartedAt();
@@ -148,14 +166,16 @@ Component({
       this.setData({ displayMode: 'expiring' });
       this._expireTimer = setTimeout(() => {
         this._expireTimer = null;
-        if (this.properties.loop === true && this.properties.timerActive === true) {
-          this._restartCountdownCycle();
-          return;
-        }
-        this._localCycleStartedAt = 0;
-        this.setData({ displayMode: 'idle' });
         this._expiringTriggered = false;
-        this.triggerEvent('timerexpire', { loop: false });
+        this._localCycleStartedAt = 0;
+        this.setData({ displayMode: 'idle' }, () => {
+          this.triggerEvent('timerexpire', {
+            startedAt: this._getRawStartedAt(),
+            loop: this.properties.loop === true
+          });
+          // 动画期间可能已写入新 startedAt，结束后立刻按最新周期恢复
+          this._syncDisplayMode();
+        });
       }, EXPIRE_ANIM_MS);
     },
 
@@ -204,12 +224,13 @@ Component({
 
     _resolveStartedAt() {
       const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
-      const candidates = [this._localCycleStartedAt, this.properties.startedAt];
-      for (let i = 0; i < candidates.length; i += 1) {
-        const ts = Number(candidates[i]);
-        if (Number.isFinite(ts) && ts > 0 && isRoundTimerActive(ts, durationSec)) {
-          return ts;
-        }
+      const serverTs = Number(this.properties.startedAt);
+      if (Number.isFinite(serverTs) && serverTs > 0 && isRoundTimerActive(serverTs, durationSec)) {
+        return serverTs;
+      }
+      const local = Number(this._localCycleStartedAt);
+      if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local, durationSec)) {
+        return local;
       }
       return 0;
     },

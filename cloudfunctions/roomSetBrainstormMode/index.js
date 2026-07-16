@@ -51,8 +51,14 @@ exports.main = async (event, context) => {
         partnerGamePhase: 'play',
         partnerMasterMode: false,
         partnerClosingStep: 'rune',
-        closingVotes: {},
-        closingQuestionPlayers: [],
+        closingVotes: db.command.set({}),
+        closingQuestionPlayers: db.command.set([]),
+        closingVoteState: db.command.set({
+          sessionId: 0,
+          seq: 0,
+          brainstormSessionSeq: 0,
+          votes: {}
+        }),
         partnerRoundSummaries: [],
         partnerCurrentRoundContent: {
           playHistory: [],
@@ -63,6 +69,7 @@ exports.main = async (event, context) => {
           aiSummary: { status: 'pending' }
         },
         partnerRoundStartedAt: Date.now(),
+        partnerTurnStartedAt: Date.now(),
         updatedAt: Date.now()
       }
     });

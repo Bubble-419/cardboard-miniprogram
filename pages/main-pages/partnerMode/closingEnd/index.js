@@ -120,27 +120,28 @@ Page({
   async _goToRoom() {
     const roomId = this.data.roomId || '';
     if (!roomId) return;
+    if (this._goingToRoom) return;
+    this._goingToRoom = true;
 
     const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
     clearLocalBrainstormProgress(roomId);
 
-    if (this.data.isHost) {
-      try {
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: {
-            roomId,
-            currentPage: 'addPlayer',
-            partnerGamePhase: 'play',
-            partnerMasterMode: false,
-            resetClosingVotes: true,
-            clearBrainstormProgress: true,
-            brainstormSessionEnded: true
-          }
-        });
-      } catch (e) {
-        console.warn('closingEnd _goToRoom updateRoomState', e);
-      }
+    // 任意端进入 closingEnd 后都应落盘 ended，避免房主卡住导致「再来一轮」永不出现
+    try {
+      await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'addPlayer',
+          partnerGamePhase: 'play',
+          partnerMasterMode: false,
+          resetClosingVotes: true,
+          clearBrainstormProgress: true,
+          brainstormSessionEnded: true
+        }
+      });
+    } catch (e) {
+      console.warn('closingEnd _goToRoom updateRoomState', e);
     }
 
     this._reLaunchRoom();

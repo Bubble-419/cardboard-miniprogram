@@ -79,6 +79,12 @@ Page({
         if (extra.partnerGamePhase != null) data.partnerGamePhase = extra.partnerGamePhase;
         if (extra.incrementRound === true) data.incrementRound = true;
         if (extra.partnerMasterMode != null) data.partnerMasterMode = extra.partnerMasterMode;
+        if (extra.partnerRoundStartedAt != null) {
+          data.partnerRoundStartedAt = extra.partnerRoundStartedAt;
+        }
+        if (extra.syncPartnerTurnTimer != null) {
+          data.syncPartnerTurnTimer = extra.syncPartnerTurnTimer === true;
+        }
       }
       const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
@@ -214,7 +220,10 @@ Page({
     const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
       partnerGamePhase,
       partnerMasterMode: false,
-      incrementRound
+      incrementRound,
+      // 换行动玩家时重置卡片/头像倒计时锚点，保证下一轮首次倒计时全员同步
+      partnerRoundStartedAt: Date.now(),
+      syncPartnerTurnTimer: true
     });
 
     this.setData({ isSubmitting: false });
