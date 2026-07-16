@@ -219,7 +219,10 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
         : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
       closingStep: state.partnerClosingStep || undefined
     }),
-    statement: buildStatementUrl(roomId, idx, playerName, { isSubScreen: true }),
+    statement: buildStatementUrl(roomId, idx, playerName, {
+      isSubScreen: true,
+      isWaiting: true
+    }),
     closingstatement: buildClosingStatementUrl(roomId, {
       closingVoteSessionId: state.closingVoteSessionId || '',
       _t: Date.now()

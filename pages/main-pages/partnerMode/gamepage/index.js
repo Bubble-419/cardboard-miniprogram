@@ -1118,7 +1118,12 @@ Page({
                 ? state.currentPlayerIndex
                 : this.data.currentPlayerIndex;
               const playerName = state.currentPlayerName || this.data.currentPlayerName;
-              safeOpenUrl(buildStatementUrl(roomId, idx, playerName), { immediate: true });
+              // 仅主屏进选择页；副屏进等待表态页
+              const isHost = pollResult.isHost === true || this.data.isHost === true;
+              safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
+                isSubScreen: !isHost,
+                isWaiting: !isHost
+              }), { immediate: true });
               return true;
             }
             return false;
