@@ -32,7 +32,8 @@
     </view>
   </view>
 
-  <view class="ai-section">
+  <!-- AI_TEMP_DISABLED: 恢复 AI 时去掉外层 wx:if="{{aiFeatureEnabled}}" 即可 -->
+  <view class="ai-section" wx:if="{{aiFeatureEnabled}}">
     <view class="ai-input-container">
       <view class="ai-input-wrapper">
         <text class="ai-placeholder" wx:if="{{!aiPrompt}}">输入提示词，AI帮你生成灵感</text>
@@ -89,7 +90,8 @@
             <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
           </view>
 
-          <view class="card-ai-tag" wx:if="{{inspiration.isAIGenerated}}">AI</view>
+          <!-- AI_TEMP_DISABLED: 恢复 AI 时改回 wx:if="{{inspiration.isAIGenerated}}" -->
+          <view class="card-ai-tag" wx:if="{{aiFeatureEnabled && inspiration.isAIGenerated}}">AI</view>
         </view>
       </view>
     </view>

@@ -1,4 +1,5 @@
 const { withSessionFields } = require('../../utils/partnerInspirationSession');
+const { isAiFeatureEnabled } = require('../../utils/aiFeature');
 
 Page({
   data: {
@@ -6,6 +7,8 @@ Page({
     workshopOnly: false,
     brainstormSessionSeq: 0,
     tabType: 'text',
+    // AI_TEMP_DISABLED: 恢复 AI 时保留下列字段供生成/引用使用
+    aiFeatureEnabled: isAiFeatureEnabled(),
     aiPrompt: '',
     referencedInspirations: [],
     inspirations: [],
@@ -53,11 +56,15 @@ Page({
     this.layoutWaterfall(displayInspirations);
   },
 
+  // AI_TEMP_DISABLED: 以下 onAIInput / toggleReference / generateAIInspiration 在开关关闭时不生效
   onAIInput(e) {
+    if (!isAiFeatureEnabled()) return;
     this.setData({ aiPrompt: e.detail.value });
   },
 
   toggleReference(e) {
+    // 引用灵感仅服务于 AI 生成，暂未接入时不响应点击，避免无效交互
+    if (!isAiFeatureEnabled()) return;
     const inspirationId = e.currentTarget.dataset.id;
     const referencedInspirations = [...this.data.referencedInspirations];
     const index = referencedInspirations.indexOf(inspirationId);
@@ -78,6 +85,10 @@ Page({
   },
 
   async generateAIInspiration() {
+    if (!isAiFeatureEnabled()) {
+      wx.showToast({ title: 'AI 功能暂未开放', icon: 'none' });
+      return;
+    }
     if (this.data.isGenerating) return;
     const aiPrompt = this.data.aiPrompt.trim();
     if (!aiPrompt) {

@@ -138,7 +138,8 @@
                       mode="aspectFill"
                     />
                   </view>
-                  <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                  <!-- AI_TEMP_DISABLED: 原「讨论正在进行，AI报告仍在撰写请稍后查看」 -->
+                  <text class="discussion-hint">讨论正在进行，请稍后查看</text>
                   <view class="discussion-report-hint">
                     <text class="discussion-report-title">玩家行动报告</text>
                     <text class="discussion-report-sub">下拉查看</text>
@@ -453,7 +454,8 @@
                   </view>
                 </view>
 
-                <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
+                <!-- AI_TEMP_DISABLED: 原「讨论正在进行，AI报告仍在撰写请稍后查看」 -->
+                <text class="discussion-hint">讨论正在进行，请稍后查看</text>
                 <view class="discussion-report-hint">
                   <text class="discussion-report-title">玩家行动报告</text>
                   <text class="discussion-report-sub">下拉查看</text>

@@ -79,7 +79,8 @@
             <text class="wheel-label-sub">模式</text>
           </view>
           <view class="wheel-label wheel-label-left {{selectedAction === 'helpLuck' ? 'wheel-label-active' : ''}}" data-id="helpLuck" bindtap="onSelectAction">
-            <text class="wheel-label-vertical">求助AI或运气</text>
+            <!-- AI_TEMP_DISABLED: 恢复 AI 后改回「求助AI或运气」 -->
+            <text class="wheel-label-vertical">{{aiFeatureEnabled ? '求助AI或运气' : '求助运气'}}</text>
             <view class="wheel-side-icon wheel-help-icon">
               <image class="wheel-help-arrows" src="/assets/partnerMode/special-wheel-help-arrows.svg" mode="aspectFit" />
               <image class="wheel-help-text" src="/assets/partnerMode/special-wheel-help-text.svg" mode="aspectFit" />
@@ -272,8 +273,8 @@
     </view>
   </view>
 
-  <!-- AI 对话浮层 -->
-  <view class="chat-mask" wx:if="{{showChat}}" catchtouchmove="true">
+  <!-- AI_TEMP_DISABLED: 恢复 AI 时去掉外层 wx:if="{{aiFeatureEnabled}}" 即可显示对话浮层 -->
+  <view class="chat-mask" wx:if="{{aiFeatureEnabled && showChat}}" catchtouchmove="true">
     <view class="chat-panel">
       <view class="chat-header">
         <view class="chat-close" bindtap="handleCloseChat">

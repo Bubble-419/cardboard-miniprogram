@@ -7,9 +7,11 @@ const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl } = require('../../../../utils/pageNavigate');
+const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
 
+// AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
-  { id: 'helpLuck', label: '求助AI或运气', zone: 'left' },
+  { id: 'helpLuck', label: isAiFeatureEnabled() ? '求助AI或运气' : '求助运气', zone: 'left' },
   { id: 'silent', label: '全场静默', zone: 'right' },
   { id: 'master', label: 'MASTER', sub: '开启模式', zone: 'top' },
   { id: 'closing', label: '收尾阶段', sub: '进入', zone: 'bottom' }
@@ -44,10 +46,14 @@ const CLOSING_HINT_LINES = [
   '若存在疑问，将回到出牌解释继续'
 ];
 
-const HELP_METHOD_OPTIONS = [
+// AI_TEMP_DISABLED: 恢复 AI 时把 outside 选项重新加入列表
+const HELP_METHOD_OPTIONS_ALL = [
   { id: 'reverse', title: '反面随机拼', desc: '将卡牌置于反面，随机拼成卡组' },
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
 ];
+const HELP_METHOD_OPTIONS = isAiFeatureEnabled()
+  ? HELP_METHOD_OPTIONS_ALL
+  : HELP_METHOD_OPTIONS_ALL.filter((item) => item.id !== 'outside');
 
 Page({
   data: {
@@ -62,7 +68,9 @@ Page({
     problemTextOverflow: false,
     viewMode: 'wheel',
     selectedAction: '',
-    helpMethod: 'outside',
+    // AI_TEMP_DISABLED: 无 AI 时默认反面随机拼；恢复后可改回 'outside'
+    helpMethod: isAiFeatureEnabled() ? 'outside' : 'reverse',
+    aiFeatureEnabled: isAiFeatureEnabled(),
     showChat: false,
     chatInput: '',
     chatMessages: [],
@@ -450,6 +458,11 @@ Page({
         this.setData({ viewMode: 'reverseRandom' });
         return;
       }
+      // AI_TEMP_DISABLED: 场外求助依赖 AI 对话，暂未接入时拦截
+      if (!isAiFeatureEnabled()) {
+        wx.showToast({ title: '场外求助暂未开放', icon: 'none' });
+        return;
+      }
       this._markSpecialMoveUsedForGamepage();
       this.setData({
         showChat: true,
@@ -595,20 +608,30 @@ Page({
   },
 
   handleCloseChat() {
+    if (!isAiFeatureEnabled()) {
+      this.setData({ showChat: false });
+      return;
+    }
     this._returnToGamepage();
   },
 
   onChatInput(e) {
+    if (!isAiFeatureEnabled()) return;
     this.setData({ chatInput: e.detail.value || '' });
   },
 
   onTapSuggestion(e) {
+    if (!isAiFeatureEnabled()) return;
     const text = e.currentTarget.dataset.text;
     if (!text) return;
     this.setData({ chatInput: text });
   },
 
   handleSendChat() {
+    if (!isAiFeatureEnabled()) {
+      wx.showToast({ title: 'AI 功能暂未开放', icon: 'none' });
+      return;
+    }
     const text = (this.data.chatInput || '').trim();
     if (!text) return;
 
