@@ -70,10 +70,6 @@
         <text class="member-count-label">当前人数：</text>
         <text class="member-count-value {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}</text>
       </view>
-      <view wx:if="{{roomId}}" class="room-id-wrap">
-        <text class="room-id-label">房间号：</text>
-        <text class="room-id-value" selectable>{{formattedRoomId || roomId}}</text>
-      </view>
     </view>
   </view>
 
