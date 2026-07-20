@@ -101,74 +101,139 @@
       </view>
     </view>
 
-    <!-- 反面随机拼：单卡预览 -->
-    <view class="main-content main-content-fill" wx:elif="{{viewMode === 'reverseRandom'}}">
-      <view class="section-head">
-        <image class="section-back" src="/assets/partnerMode/icon-special-back.svg" mode="aspectFit" bindtap="handleGoBack" />
-        <text class="section-title">反面随机拼</text>
-        <view class="section-head-spacer"></view>
-      </view>
-
-      <view class="card-area">
+    <!-- 反面随机拼 Figma #5938:8587 -->
+    <view class="main-content main-content-fill reverse-main" wx:elif="{{viewMode === 'reverseRandom'}}">
+      <view class="card-area reverse-card-area">
         <swiper
           class="card-swiper"
           current="{{0}}"
-          previous-margin="40rpx"
-          next-margin="40rpx"
+          previous-margin="56rpx"
+          next-margin="56rpx"
           easing-function="easeOutCubic"
         >
           <swiper-item class="card-swiper-item">
             <view class="game-card game-card-active">
-              <view class="action-card-body">
-                <text class="action-title">反面随机拼</text>
-                <text class="action-desc">将卡牌置于反面，随机拼成卡组</text>
-                <view class="action-divider"></view>
-                <view class="action-grid">
-                  <view class="action-cell action-cell-filled action-cell-reverse" wx:for="{{randomDeckCards}}" wx:key="*this">
-                    <view class="reverse-card-illus"></view>
-                    <text class="action-cell-label">卡牌 {{item}}</text>
+              <scroll-view class="reverse-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                <view class="reverse-card-inner">
+                  <text class="reverse-title">反面随机拼</text>
+                  <text class="reverse-desc">请根据以下操作提示，进行反面随机拼</text>
+                  <view class="action-divider reverse-divider"></view>
+                  <view class="reverse-step-grid">
+                    <view class="reverse-step-cell" wx:for="{{reverseSteps}}" wx:key="label">
+                      <view class="reverse-step-illus"></view>
+                      <text class="reverse-step-label">{{item.label}}</text>
+                    </view>
                   </view>
                 </view>
-              </view>
+              </scroll-view>
             </view>
           </swiper-item>
         </swiper>
+
+        <view class="card-pagination">
+          <view class="pagination-dots">
+            <view class="dot dot-active"></view>
+          </view>
+        </view>
+      </view>
+
+      <view class="inspiration-bar">
+        <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
+          <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
+        </view>
+        <view
+          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+          catchtap="onInspirationComposerTap"
+        >
+          <view class="inspiration-row">
+            <input
+              class="inspiration-textarea"
+              value="{{inspirationDraftText}}"
+              focus="{{inspirationInputFocused}}"
+              maxlength="200"
+              adjust-position="{{true}}"
+              placeholder="记录您的灵感..."
+              placeholder-class="inspiration-placeholder"
+              bindinput="onInspirationInput"
+              bindfocus="onInspirationFocus"
+              bindblur="onInspirationBlur"
+              confirm-type="done"
+            />
+            <view class="inspiration-action" catchtap="onInspirationActionTap">
+              <image
+                wx:if="{{inspirationHasText}}"
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-send.svg"
+                mode="aspectFit"
+              />
+              <image
+                wx:else
+                class="inspiration-action-icon"
+                src="/assets/partnerMode/icon-insp-plus.svg"
+                mode="aspectFit"
+              />
+            </view>
+          </view>
+        </view>
       </view>
     </view>
 
-    <!-- 全场静默 -->
+    <!-- 全场静默 Figma #5938:8587 -->
     <view class="main-content main-content-fill silent-main" wx:elif="{{viewMode === 'silent'}}">
       <view class="card-area silent-card-area">
-        <game-card-timer
-          startedAt="{{silentStartedAt}}"
-          timerActive="{{silentTimerActive}}"
-          durationSec="{{silentDurationSec}}"
-          loop="{{false}}"
-          bind:timerexpire="handleSilentTimerExpire"
+        <swiper
+          class="card-swiper"
+          current="{{0}}"
+          previous-margin="56rpx"
+          next-margin="56rpx"
+          easing-function="easeOutCubic"
         >
-          <view class="silent-card">
-            <view class="silent-badge">静默模式</view>
-            <view class="silent-card-body">
-              <text class="silent-main-title">保持分贝低于40dB</text>
-              <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
-              <view class="action-divider"></view>
-              <view class="action-grid">
-                <view class="action-cell action-cell-muted">
-                  <text class="action-cell-label">出 1 张卡牌</text>
+          <swiper-item class="card-swiper-item">
+            <game-card-timer
+              startedAt="{{silentStartedAt}}"
+              timerActive="{{silentTimerActive}}"
+              durationSec="{{silentDurationSec}}"
+              loop="{{false}}"
+              bind:timerexpire="handleSilentTimerExpire"
+            >
+              <scroll-view class="silent-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+                <view class="silent-card-inner">
+                  <view class="silent-header">
+                    <view class="silent-badge">静默模式</view>
+                    <text class="silent-main-title">保持分贝低于40dB</text>
+                  </view>
+                  <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+                  <view class="action-divider silent-divider"></view>
+                  <view class="silent-action-grid">
+                    <view class="silent-action-cell">
+                      <view class="silent-action-illus"></view>
+                      <text class="silent-action-label">出 1 张卡牌</text>
+                    </view>
+                    <view class="silent-action-cell">
+                      <view class="silent-action-illus"></view>
+                      <text class="silent-action-label">删 1 张卡牌</text>
+                    </view>
+                    <view class="silent-action-cell">
+                      <view class="silent-action-illus"></view>
+                      <text class="silent-action-label">调整 1 张卡牌</text>
+                    </view>
+                    <view class="silent-action-cell">
+                      <view class="silent-action-illus"></view>
+                      <text class="silent-action-label">交换 2 张卡牌</text>
+                    </view>
+                  </view>
                 </view>
-                <view class="action-cell action-cell-muted">
-                  <text class="action-cell-label">删 1 张卡牌</text>
-                </view>
-                <view class="action-cell action-cell-muted">
-                  <text class="action-cell-label">调整 1 张卡牌</text>
-                </view>
-                <view class="action-cell action-cell-muted">
-                  <text class="action-cell-label">交换 2 张卡牌</text>
-                </view>
-              </view>
-            </view>
+              </scroll-view>
+            </game-card-timer>
+          </swiper-item>
+        </swiper>
+
+        <view class="card-pagination">
+          <view class="pagination-dots">
+            <view class="dot dot-active"></view>
           </view>
-        </game-card-timer>
+          <text class="pagination-text">1/1</text>
+        </view>
       </view>
 
       <view class="inspiration-bar">
@@ -260,9 +325,13 @@
       >{{item}}</text>
     </view>
 
-    <view class="bottom-actions" wx:if="{{viewMode === 'reverseRandom'}}">
-      <button class="cancel-adopt-btn" bindtap="handleCancelAdopt">取消采用</button>
-      <button class="adopt-btn" bindtap="handleAdoptDeck">采用卡组</button>
+    <view class="bottom-actions reverse-bottom-actions" wx:if="{{viewMode === 'reverseRandom'}}">
+      <button class="cancel-adopt-btn" hover-class="none" bindtap="handleCancelAdopt">
+        <text class="cancel-adopt-line">取消</text>
+        <text class="cancel-adopt-line">采用</text>
+      </button>
+      <view class="reverse-bottom-gap"></view>
+      <button class="adopt-btn" hover-class="none" bindtap="handleAdoptDeck">采用卡组</button>
     </view>
     <view class="bottom-actions" wx:elif="{{viewMode === 'silent'}}">
       <button class="end-silent-btn" bindtap="handleEndSilent">结束静默</button>

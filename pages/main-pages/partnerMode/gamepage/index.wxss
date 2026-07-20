@@ -81,9 +81,10 @@
 }
 
 .problem-chip {
-  flex: 0 1 auto;
+  flex: none;
+  width: 432rpx;
   max-width: 432rpx;
-  min-width: 0;
+  min-width: 432rpx;
   min-height: 74rpx;
   padding: 14rpx 20rpx;
   background: #e9f5e9;

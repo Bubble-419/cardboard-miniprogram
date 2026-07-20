@@ -31,13 +31,13 @@
         <text class="page-title" wx:if="{{isHost}}">选择设计问题</text>
         <text class="page-title" wx:else>等待房主选择设计问题</text>
         <text class="page-subtitle" wx:if="{{isHost}}">房主可以对设计问题进行选择、编辑</text>
-        <text class="page-subtitle" wx:else>可修改自己提交的问题，等待房主选择</text>
+        <text class="page-subtitle" wx:else>仅可查看，等待房主选择</text>
       </view>
 
       <!-- 设计问题列表 -->
       <view class="problem-list">
         <view
-          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost && !item.isMine ? 'readonly' : ''}}"
+          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost ? 'readonly' : ''}}"
           wx:for="{{problems}}"
           wx:key="id"
           data-id="{{item.id}}"
@@ -48,7 +48,7 @@
 
           <!-- 问题文字（含编辑态） -->
           <view class="problem-body">
-            <block wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}">
+            <block wx:if="{{editingProblemId === item.id && isHost}}">
               <textarea
                 class="problem-textarea"
                 value="{{item.text}}"
@@ -61,13 +61,13 @@
                 bindblur="onProblemBlur"
               />
             </block>
-            <text wx:else class="problem-text {{item.isMine && !isHost ? 'problem-text-mine' : ''}}" id="problem-text-{{item.id}}">{{item.text}}</text>
+            <text wx:else class="problem-text" id="problem-text-{{item.id}}">{{item.text}}</text>
           </view>
 
-          <!-- 右侧图标 -->
+          <!-- 右侧图标：仅房主可编辑 -->
           <view class="problem-right">
             <view
-              wx:if="{{editingProblemId === item.id && (isHost || item.isMine)}}"
+              wx:if="{{editingProblemId === item.id && isHost}}"
               class="right-icon-btn"
               catchtap="onSaveEdit"
             >
@@ -75,14 +75,6 @@
             </view>
             <view
               wx:elif="{{isHost && item.selected}}"
-              class="right-icon-btn"
-              data-id="{{item.id}}"
-              catchtap="onEditProblem"
-            >
-              <image class="right-icon" src="/assets/icons/icon-problem-arrow.svg" mode="aspectFit" />
-            </view>
-            <view
-              wx:elif="{{!isHost && item.isMine}}"
               class="right-icon-btn"
               data-id="{{item.id}}"
               catchtap="onEditProblem"

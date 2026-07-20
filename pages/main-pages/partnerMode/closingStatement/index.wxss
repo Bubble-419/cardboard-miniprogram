@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  background: #f9fcfb;
+  background: #fafafa;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -8,7 +8,7 @@
 }
 
 .custom-navbar {
-  background: #f9fcfb;
+  background: #fafafa;
   padding-top: env(safe-area-inset-top);
   flex-shrink: 0;
 }
@@ -41,15 +41,19 @@
   width: 174rpx;
 }
 
+/* 按钮样式与开始表态 statement 页保持一致 */
 .host-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 48rpx 80rpx 0;
+  box-sizing: border-box;
 }
 
 .instruction {
-  padding: 48rpx 40rpx 24rpx;
+  width: 100%;
+  padding: 40rpx 0 36rpx;
   text-align: center;
 }
 
@@ -59,6 +63,7 @@
   font-weight: 600;
   color: #5ec159;
   line-height: 1.5;
+  text-align: center;
 }
 
 .instruction-line-sub {
@@ -75,7 +80,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24rpx 0 80rpx;
+  gap: 32rpx;
+  padding: 8rpx 0 72rpx;
+  box-sizing: border-box;
 }
 
 .result-item {
@@ -84,142 +91,147 @@
   justify-content: center;
 }
 
+.result-item:active .result-circle {
+  opacity: 0.88;
+  transform: scale(0.98);
+}
+
 .result-circle {
-  width: 248rpx;
-  height: 248rpx;
+  width: 300rpx;
+  height: 300rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(0, 0, 0, 0.08);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
 .result-circle-pass {
-  background: radial-gradient(circle at 35% 30%, #7ed67a 0%, #5ec159 55%, #4aad46 100%);
+  background: #5ec159;
 }
 
 .result-circle-question {
-  background: radial-gradient(circle at 35% 30%, #ff9a92 0%, #f0726a 55%, #d85a52 100%);
+  background: #000000;
 }
 
 .result-label {
-  font-size: 36rpx;
-  font-weight: 500;
-  color: #fff;
-  letter-spacing: 2rpx;
+  font-size: 42rpx;
+  font-weight: 400;
+  color: #ffffff;
+  letter-spacing: 0.0714em;
   text-align: center;
   line-height: 1.5;
 }
 
-.result-connector {
-  width: 4rpx;
-  height: 56rpx;
-  background: linear-gradient(180deg, #d8ead7 0%, #c5dfc4 100%);
-  border-radius: 2rpx;
+/* ===== 已表态等待：与 subAwait hero 空状态一致 Figma #5904:13756 ===== */
+.container-hero-scene {
+  background-color: #F7F9F5;
 }
 
-.waiting-content {
+.hero-wait-page {
+  position: relative;
   flex: 1;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.bg-pattern {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.hero-wait-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40rpx;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 48rpx);
+  box-sizing: border-box;
 }
 
-.character-container {
-  margin-bottom: 40rpx;
-}
-
-.character-bg {
-  width: 438rpx;
-  height: 294rpx;
-  background-color: rgba(31, 177, 213, 0.15);
-  border-radius: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.character-icon {
-  width: 128rpx;
-  height: 120rpx;
-  background-color: #4fc8e7;
-  border-radius: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.character-face {
-  position: relative;
+.hero-section {
   width: 100%;
-  height: 100%;
+  align-self: stretch;
+  padding-bottom: 48rpx;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
+  overflow: hidden;
 }
 
-.eye {
-  width: 26rpx;
-  height: 26rpx;
-  background-color: #000;
-  border-radius: 50%;
-  position: absolute;
-  top: 40%;
+.hero-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 
-.eye-left {
-  left: 25%;
-  transform: translate(-50%, -50%);
+.text-section {
+  width: 100%;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30rpx;
 }
 
-.eye-right {
-  right: 25%;
-  transform: translate(50%, -50%);
-}
-
-.mouth {
-  width: 18rpx;
-  height: 9rpx;
-  border: 2rpx solid #000;
-  border-top: none;
-  border-radius: 0 0 18rpx 18rpx;
-  position: absolute;
-  bottom: 30%;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.foot {
-  width: 34rpx;
-  height: 32rpx;
-  background-color: #000;
-  border-radius: 4rpx;
-  position: absolute;
-  bottom: 10%;
-}
-
-.foot-left {
-  left: 20%;
-}
-
-.foot-right {
-  right: 20%;
-}
-
-.main-text {
+.heading {
+  width: 100%;
   font-size: 56rpx;
-  color: #16a6ca;
-  text-align: center;
-  margin-bottom: 20rpx;
   font-weight: 500;
-  line-height: 1.5;
+  color: #2B2B2B;
+  line-height: 72rpx;
+  letter-spacing: -0.0268em;
+  text-align: center;
 }
 
-.sub-text {
-  font-size: 36rpx;
-  color: #9a9a9a;
+.desc-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.desc-line {
+  font-size: 32rpx;
+  font-weight: 400;
+  color: #909090;
+  line-height: 48rpx;
   text-align: center;
-  line-height: 1.33;
+}
+
+.status-pill {
+  margin-top: 72rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 56rpx;
+  background-color: #EDF6EC;
+  border-radius: 9999rpx;
+}
+
+.status-icon {
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #6EBA62;
+  line-height: 56rpx;
+  white-space: nowrap;
 }

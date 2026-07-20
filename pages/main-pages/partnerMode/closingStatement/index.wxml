@@ -1,5 +1,5 @@
-<view class="container">
-  <view class="custom-navbar">
+<view class="container {{hasVoted ? 'container-hero-scene' : ''}}">
+  <view class="custom-navbar" wx:if="{{!hasVoted}}">
     <view class="navbar-content">
       <view class="navbar-left">
         <image
@@ -14,22 +14,31 @@
     </view>
   </view>
 
-  <view class="waiting-content" wx:if="{{hasVoted}}">
-    <view class="character-container">
-      <view class="character-bg">
-        <view class="character-icon">
-          <view class="character-face">
-            <view class="eye eye-left"></view>
-            <view class="eye eye-right"></view>
-            <view class="mouth"></view>
-            <view class="foot foot-left"></view>
-            <view class="foot foot-right"></view>
-          </view>
+  <!-- 已表态等待：与 subAwait hero 空状态一致 Figma #5904:13756 -->
+  <view class="hero-wait-page" wx:if="{{hasVoted}}">
+    <image class="bg-pattern" src="/assets/subAwait/bg-dotted-lines.svg" mode="widthFix" />
+    <view class="hero-wait-content">
+      <view class="hero-section">
+        <image
+          class="hero-image"
+          src="/assets/subAwait/wait-hero-5a8ea5.webp"
+          mode="widthFix"
+        />
+      </view>
+
+      <view class="text-section">
+        <text class="heading">{{voteResult === 'question' ? '您选择了存在疑问' : '您选择了通过'}}</text>
+        <view class="desc-group">
+          <text class="desc-line">其他玩家正在进行收尾表态</text>
+          <text class="desc-line">请稍作等待，精彩即将开始~</text>
         </view>
       </view>
+
+      <view class="status-pill">
+        <image class="status-icon" src="/assets/subAwait/icon-waiting.png" mode="aspectFit" />
+        <text class="status-text">正在等待中...</text>
+      </view>
     </view>
-    <view class="main-text">{{voteResult === 'question' ? '您选择了存在疑问' : '您选择了通过'}}</view>
-    <view class="sub-text">等待其他玩家表态...</view>
   </view>
 
   <view class="host-content" wx:else>
@@ -44,8 +53,6 @@
           <text class="result-label">通过</text>
         </view>
       </view>
-
-      <view class="result-connector"></view>
 
       <view class="result-item" bindtap="handleVote" data-vote="question">
         <view class="result-circle result-circle-question">

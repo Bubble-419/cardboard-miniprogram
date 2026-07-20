@@ -48,6 +48,13 @@ const HELP_METHOD_OPTIONS = [
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
 ];
 
+const REVERSE_STEPS = [
+  { label: 'step1.将1号覆膜置于桌面' },
+  { label: 'Step 2. 背面朝上拼接卡牌至覆膜' },
+  { label: 'Step 3. 两张覆膜对齐粘贴' },
+  { label: 'step4.通过覆膜垂直翻面卡组' }
+];
+
 Page({
   data: {
     roomId: '',
@@ -78,7 +85,7 @@ Page({
     inspirationInputFocused: false,
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
-    randomDeckCards: [1, 2, 3, 4, 5],
+    reverseSteps: REVERSE_STEPS,
     topBarPaddingRight: 30
   },
 

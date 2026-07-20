@@ -308,11 +308,8 @@ Page({
     const problem = this.data.problems.find((p) => p.id === problemId);
     if (!problem) return;
 
-    if (!this.data.isHost) {
-      if (!problem.isMine) return;
-      this.onEditProblem({ currentTarget: { dataset: { id: problemId } } });
-      return;
-    }
+    // 非房主仅查看，不可选择/编辑
+    if (!this.data.isHost) return;
 
     const problems = this.data.problems.map((item) => ({
       ...item,
@@ -327,10 +324,10 @@ Page({
   },
 
   onEditProblem(e) {
+    if (!this.data.isHost) return;
     const problemId = e.currentTarget.dataset.id;
     const problem = this.data.problems.find((p) => p.id === problemId);
     if (!problem) return;
-    if (!this.data.isHost && !problem.isMine) return;
 
     // 进入编辑前先测量展示态文字高度，确保 textarea 与原文同高
     wx.createSelectorQuery()
@@ -350,11 +347,11 @@ Page({
   stopPropagation() {},
 
   async onSaveEdit() {
+    if (!this.data.isHost) return;
     const id = this.data.editingProblemId;
     if (!id) return;
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
-    if (!this.data.isHost && !problem.isMine) return;
     const text = ((problem && problem.text) || '').trim();
     this.setData({ editingProblemId: '' });
 
@@ -377,10 +374,10 @@ Page({
   },
 
   async onProblemBlur(e) {
+    if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
-    if (!this.data.isHost && !problem.isMine) return;
     const text = (e.detail.value || '').trim();
     this.setData({ editingProblemId: '' });
     if (!id || !text) return;
