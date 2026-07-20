@@ -23,16 +23,17 @@ Page({
     if (modeId === 'partner') {
       getApp().globalData.gameMode = 'partner';
     }
-    if (!roomId) {
-      wx.showToast({ title: '缺少房间信息', icon: 'none' });
-      return;
-    }
-    getApp().globalData.roomId = roomId;
     this.setData({
       roomId,
       isWaiting: !!isWaiting,
       selectedModeId: modeId || this.data.selectedModeId
     });
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    getApp().globalData.roomId = roomId;
+
     if (isWaiting && !forceHost) {
       this.setData({ isHost: false, isWaiting: true });
       this._startStatePolling();

@@ -1,21 +1,48 @@
 const { withSessionFields } = require('../../utils/partnerInspirationSession');
+const { isAiFeatureEnabled } = require('../../utils/aiFeature');
+const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
+const { goRoomPage } = require('../../utils/goRoomPage');
 
 Page({
   data: {
     roomId: '',
     workshopOnly: false,
     brainstormSessionSeq: 0,
-    tabType: 'text',
+    // AI_TEMP_DISABLED: 恢复 AI 时保留下列字段供生成/引用使用
+    aiFeatureEnabled: isAiFeatureEnabled(),
     aiPrompt: '',
     referencedInspirations: [],
     inspirations: [],
     displayInspirations: [],
     waterfallColumns: [{ items: [] }, { items: [] }],
-    isGenerating: false
+    isGenerating: false,
+    inspirationDraftText: '',
+    inspirationDraftPhotos: [],
+    inspirationInputFocused: false,
+    inspirationHoldKeyboard: false,
+    inspirationSaving: false,
+    inspirationHasText: false,
+    navbarPaddingTop: 44
+  },
+
+  _applyNavbarInset() {
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const statusBarHeight = (sys && sys.statusBarHeight) || 44;
+      // 与右上角胶囊对齐，保证顶部有明确留白
+      const paddingTop = (menu && menu.top > 0) ? menu.top : statusBarHeight;
+      this.setData({ navbarPaddingTop: paddingTop });
+    } catch (e) {
+      this.setData({ navbarPaddingTop: 44 });
+    }
   },
 
   onLoad(options) {
-    const roomId = (options && options.roomId) || '';
+    this._applyNavbarInset();
+    const roomId = (options && options.roomId) || (getApp().globalData && getApp().globalData.roomId) || '';
     const workshopOnly = (options && options.scope) === 'workshop';
     const brainstormSessionSeq = options && options.brainstormSessionSeq != null
       ? parseInt(options.brainstormSessionSeq, 10)
@@ -32,32 +59,33 @@ Page({
     this.loadInspirations();
   },
 
-  switchTab(e) {
-    const type = e.currentTarget.dataset.type;
-    this.setData({ tabType: type }, () => {
-      this._refreshDisplay();
-    });
+  onUnload() {
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
   },
 
-  _filterByTab(list) {
-    const { tabType } = this.data;
-    if (tabType === 'image') {
-      return (list || []).filter((item) => item.type === 'image');
-    }
-    return (list || []).filter((item) => item.type !== 'image');
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   },
 
   _refreshDisplay() {
-    const displayInspirations = this._filterByTab(this.data.inspirations);
+    // listInspirations 已按 updateTime/createTime 降序，越新越靠前；文字与图像混排展示
+    const displayInspirations = this.data.inspirations || [];
     this.setData({ displayInspirations });
     this.layoutWaterfall(displayInspirations);
   },
 
+  // AI_TEMP_DISABLED: 以下 onAIInput / toggleReference / generateAIInspiration 在开关关闭时不生效
   onAIInput(e) {
+    if (!isAiFeatureEnabled()) return;
     this.setData({ aiPrompt: e.detail.value });
   },
 
   toggleReference(e) {
+    // 引用灵感仅服务于 AI 生成，暂未接入时不响应点击，避免无效交互
+    if (!isAiFeatureEnabled()) return;
     const inspirationId = e.currentTarget.dataset.id;
     const referencedInspirations = [...this.data.referencedInspirations];
     const index = referencedInspirations.indexOf(inspirationId);
@@ -78,6 +106,10 @@ Page({
   },
 
   async generateAIInspiration() {
+    if (!isAiFeatureEnabled()) {
+      wx.showToast({ title: 'AI 功能暂未开放', icon: 'none' });
+      return;
+    }
     if (this.data.isGenerating) return;
     const aiPrompt = this.data.aiPrompt.trim();
     if (!aiPrompt) {
@@ -187,6 +219,7 @@ Page({
     const list = inspirations || this.data.inspirations || [];
     const columns = [{ items: [], height: 0 }, { items: [], height: 0 }];
 
+    // 按列表顺序（已是新→旧）依次填入较短列，保证越新越靠上
     list.forEach((item) => {
       const columnIndex = columns[0].height <= columns[1].height ? 0 : 1;
       columns[columnIndex].items.push(item);
@@ -206,7 +239,167 @@ Page({
     this.setData({ waterfallColumns: columns });
   },
 
-  goBack() {
-    wx.navigateBack();
+  onInspirationComposerTap() {
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
+  },
+
+  onInspirationFocus() {
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this.setData({ inspirationInputFocused: true });
+  },
+
+  onInspirationBlur() {
+    if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
+    this._inspirationBlurTimer = setTimeout(() => {
+      this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+    }, 180);
+  },
+
+  onInspirationDismissFocus() {
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+  },
+
+  onInspirationInput(e) {
+    const text = (e.detail && e.detail.value) || '';
+    this.setData({
+      inspirationDraftText: text,
+      inspirationHasText: !!text.trim()
+    });
+  },
+
+  onInspirationActionTap() {
+    const hasPhotos = (this.data.inspirationDraftPhotos || []).length > 0;
+    if (!this.data.inspirationHasText && !hasPhotos) {
+      this.onInspirationAddPhoto();
+      return;
+    }
+    this.onInspirationSave();
+  },
+
+  onInspirationAddPhoto() {
+    const photos = this.data.inspirationDraftPhotos || [];
+    if (photos.length >= 9) {
+      wx.showToast({ title: '最多 9 张图片', icon: 'none' });
+      return;
+    }
+    this.setData({ inspirationHoldKeyboard: true });
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: 9 - photos.length,
+          sizeType: ['compressed'],
+          sourceType,
+          success: (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) {
+              this.setData({ inspirationHoldKeyboard: false });
+              return;
+            }
+            this.setData({
+              inspirationDraftPhotos: photos.concat(paths),
+              inspirationInputFocused: true,
+              inspirationHoldKeyboard: true
+            });
+          },
+          fail: () => {
+            this.setData({ inspirationHoldKeyboard: false, inspirationInputFocused: true });
+          }
+        });
+      },
+      fail: () => {
+        this.setData({ inspirationHoldKeyboard: false });
+      }
+    });
+  },
+
+  onInspirationRemovePhoto(e) {
+    const index = e.currentTarget.dataset.index;
+    if (index == null) return;
+    const photos = (this.data.inspirationDraftPhotos || []).slice();
+    photos.splice(index, 1);
+    this.setData({ inspirationDraftPhotos: photos });
+  },
+
+  onInspirationPreviewPhoto(e) {
+    const url = e.currentTarget.dataset.url;
+    const urls = this.data.inspirationDraftPhotos || [];
+    if (!url) return;
+    wx.previewImage({ current: url, urls });
+  },
+
+  async _uploadInspirationPhotos(paths) {
+    const roomId = this.data.roomId || 'default';
+    const results = [];
+    for (let i = 0; i < paths.length; i += 1) {
+      const filePath = paths[i];
+      try {
+        const cloudPath = `inspiration/${roomId}/${Date.now()}_${i}.jpg`;
+        const uploadRes = await wx.cloud.uploadFile({ cloudPath, filePath });
+        if (uploadRes && uploadRes.fileID) {
+          results.push(uploadRes.fileID);
+          continue;
+        }
+      } catch (e) {
+        console.warn('_uploadInspirationPhotos cloud fail', e);
+      }
+      results.push(await persistTempPhoto(filePath));
+    }
+    return results;
+  },
+
+  async onInspirationSave() {
+    if (this.data.inspirationSaving) return;
+    const content = (this.data.inspirationDraftText || '').trim();
+    const draftPhotos = this.data.inspirationDraftPhotos || [];
+    if (!content && !draftPhotos.length) {
+      wx.showToast({ title: '请输入灵感内容', icon: 'none' });
+      return;
+    }
+
+    this.setData({ inspirationSaving: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const imageUrls = draftPhotos.length
+        ? await this._uploadInspirationPhotos(draftPhotos)
+        : [];
+      const saveRes = await wx.cloud.callFunction({
+        name: 'saveInspiration',
+        data: withSessionFields({
+          type: imageUrls.length ? 'image' : 'text',
+          content,
+          imageUrls,
+          isAIGenerated: false
+        }, this.data.roomId, this.data.brainstormSessionSeq)
+      });
+      const result = (saveRes && saveRes.result) || {};
+      if (result.ok !== true) {
+        throw new Error(result.errMsg || '保存失败');
+      }
+      this.setData({
+        inspirationDraftText: '',
+        inspirationDraftPhotos: [],
+        inspirationHasText: false,
+        inspirationInputFocused: false,
+        inspirationHoldKeyboard: false
+      });
+      wx.showToast({ title: '已保存', icon: 'success' });
+      await this.loadInspirations();
+    } catch (e) {
+      wx.showToast({ title: e.message || '保存失败', icon: 'none' });
+    } finally {
+      this.setData({ inspirationSaving: false });
+      wx.hideLoading();
+    }
   }
 });

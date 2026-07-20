@@ -7,9 +7,11 @@ const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl } = require('../../../../utils/pageNavigate');
+const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
 
+// AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
-  { id: 'helpLuck', label: '求助AI或运气', zone: 'left' },
+  { id: 'helpLuck', label: isAiFeatureEnabled() ? '求助AI或运气' : '求助运气', zone: 'left' },
   { id: 'silent', label: '全场静默', zone: 'right' },
   { id: 'master', label: 'MASTER', sub: '开启模式', zone: 'top' },
   { id: 'closing', label: '收尾阶段', sub: '进入', zone: 'bottom' }
@@ -40,13 +42,18 @@ const MASTER_HINT_LINES = [
 
 const CLOSING_HINT_LINES = [
   '选择进入收尾阶段',
-  '如果所有玩家表态通过，将强制结束游戏'
+  '若全员表态通过，将进入补全符文',
+  '若存在疑问，将回到出牌解释继续'
 ];
 
-const HELP_METHOD_OPTIONS = [
+// AI_TEMP_DISABLED: 恢复 AI 时把 outside 选项重新加入列表
+const HELP_METHOD_OPTIONS_ALL = [
   { id: 'reverse', title: '反面随机拼', desc: '将卡牌置于反面，随机拼成卡组' },
   { id: 'outside', title: '求助场外', desc: '限时求助场外包括AI' }
 ];
+const HELP_METHOD_OPTIONS = isAiFeatureEnabled()
+  ? HELP_METHOD_OPTIONS_ALL
+  : HELP_METHOD_OPTIONS_ALL.filter((item) => item.id !== 'outside');
 
 const REVERSE_STEPS = [
   { label: 'step1.将1号覆膜置于桌面' },
@@ -68,7 +75,9 @@ Page({
     problemTextOverflow: false,
     viewMode: 'wheel',
     selectedAction: '',
-    helpMethod: 'outside',
+    // AI_TEMP_DISABLED: 无 AI 时默认反面随机拼；恢复后可改回 'outside'
+    helpMethod: isAiFeatureEnabled() ? 'outside' : 'reverse',
+    aiFeatureEnabled: isAiFeatureEnabled(),
     showChat: false,
     chatInput: '',
     chatMessages: [],
@@ -138,7 +147,10 @@ Page({
   },
 
   _markSpecialMoveUsedForGamepage() {
-    const playerIndex = this.data.currentPlayerIndex || this.data.initiatorPlayerIndex;
+    // 标记必须挂在当前出牌轮次玩家上，避免误锁下一玩家或房主自身
+    const playerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : this.data.initiatorPlayerIndex;
     markPartnerSpecialMoveUsed(
       this.data.roomId,
       playerIndex,
@@ -156,7 +168,7 @@ Page({
       return;
     }
     const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
-    const idx = currentPlayerIndex || initiatorPlayerIndex;
+    const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
     safeOpenUrl(buildGamepageUrl(
       roomId,
       idx,
@@ -266,12 +278,20 @@ Page({
         result.roomState,
         this.data.initiatorPlayerIndex
       );
+      // 非当前出牌玩家不得停留在特殊行动页（含房主代进）
+      if (!player.isCurrentPlayer) {
+        wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+        this._returnToGamepage(false);
+        return;
+      }
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
 
       this.setData({
         members,
         avatarList: buildPartnerAvatarList(members),
+        // 以房间态当前出牌玩家为准，发起人索引与之对齐
         currentPlayerIndex: player.currentPlayerIndex,
+        initiatorPlayerIndex: player.currentPlayerIndex,
         currentRound: result.roomState && result.roomState.currentRound != null
           ? result.roomState.currentRound
           : 1,
@@ -329,6 +349,19 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+        const members = result.members || this.data.members || [];
+        const player = resolveCurrentPlayerFromRoom(
+          members,
+          result.roomState,
+          this.data.currentPlayerIndex
+        );
+        // 轮次已切走：退出特殊行动页
+        if (result.ok === true && members.length && !player.isCurrentPlayer) {
+          this._stopStatePolling();
+          wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+          this._returnToGamepage(false);
+          return;
+        }
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
             // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
@@ -456,6 +489,11 @@ Page({
         this.setData({ viewMode: 'reverseRandom' });
         return;
       }
+      // AI_TEMP_DISABLED: 场外求助依赖 AI 对话，暂未接入时拦截
+      if (!isAiFeatureEnabled()) {
+        wx.showToast({ title: '场外求助暂未开放', icon: 'none' });
+        return;
+      }
       this._markSpecialMoveUsedForGamepage();
       this.setData({
         showChat: true,
@@ -535,17 +573,21 @@ Page({
   },
 
   async activateMasterMode() {
-    const { roomId, initiatorPlayerIndex, members } = this.data;
+    const { roomId, members } = this.data;
     if (!roomId) return;
 
-    const initiator = (members || []).find((m) => m.playerIndex === initiatorPlayerIndex);
-    const initiatorName = initiator
-      ? (initiator.nickName || `玩家${initiatorPlayerIndex}`)
-      : `玩家${initiatorPlayerIndex}`;
+    // MASTER 仅归属当前出牌玩家本人
+    const turnPlayerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : this.data.initiatorPlayerIndex;
+    const turnPlayer = (members || []).find((m) => m.playerIndex === turnPlayerIndex);
+    const turnPlayerName = turnPlayer
+      ? (turnPlayer.nickName || `玩家${turnPlayerIndex}`)
+      : `玩家${turnPlayerIndex}`;
 
     this._markSpecialMoveUsedForGamepage();
 
-    const result = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
+    const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
       partnerMasterMode: true
     });
     if (!result || result.ok !== true) {
@@ -557,8 +599,15 @@ Page({
     this._returnToGamepage();
   },
 
-  handleCancelAdopt() {
-    this.setData({ viewMode: 'wheel' });
+  async handleCancelAdopt() {
+    if (!this.data.roomId) return;
+    if (this.data.currentRound == null) {
+      await this.loadRoomData();
+    }
+    // 取消采用：特殊行动仍记为已使用，回 gamepage 继续倒计时
+    this._markSpecialMoveUsedForGamepage();
+    this._stopStatePolling();
+    this._returnToGamepage();
   },
 
   async handleAdoptDeck() {
@@ -567,6 +616,13 @@ Page({
       await this.loadRoomData();
     }
     this._markSpecialMoveUsedForGamepage();
+    const app = getApp();
+    if (!app.globalData) app.globalData = {};
+    app.globalData.partnerAdoptDeckHint = {
+      roomId: this.data.roomId,
+      at: Date.now()
+    };
+    this._stopStatePolling();
     this._returnToGamepage();
   },
 
@@ -587,20 +643,30 @@ Page({
   },
 
   handleCloseChat() {
+    if (!isAiFeatureEnabled()) {
+      this.setData({ showChat: false });
+      return;
+    }
     this._returnToGamepage();
   },
 
   onChatInput(e) {
+    if (!isAiFeatureEnabled()) return;
     this.setData({ chatInput: e.detail.value || '' });
   },
 
   onTapSuggestion(e) {
+    if (!isAiFeatureEnabled()) return;
     const text = e.currentTarget.dataset.text;
     if (!text) return;
     this.setData({ chatInput: text });
   },
 
   handleSendChat() {
+    if (!isAiFeatureEnabled()) {
+      wx.showToast({ title: 'AI 功能暂未开放', icon: 'none' });
+      return;
+    }
     const text = (this.data.chatInput || '').trim();
     if (!text) return;
 

@@ -139,8 +139,9 @@
               </view>
               <view class="history-card-body">
                 <view class="ai-summary-label">
-                  <text class="ai-summary-text">AI总结</text>
-                  <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" />
+                  <!-- AI_TEMP_DISABLED: 原「AI总结」+ sparkle；恢复 AI 后改回 -->
+                  <text class="ai-summary-text">总结</text>
+                  <!-- <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" /> -->
                 </view>
                 <text class="ai-summary-content">{{item.summary}}</text>
               </view>
@@ -167,8 +168,9 @@
               </view>
               <view class="history-card-body">
                 <view class="ai-summary-label">
-                  <text class="ai-summary-text">AI总结</text>
-                  <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" />
+                  <!-- AI_TEMP_DISABLED: 原「AI总结」+ sparkle；恢复 AI 后改回 -->
+                  <text class="ai-summary-text">总结</text>
+                  <!-- <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" /> -->
                 </view>
                 <text class="ai-summary-content">{{item.summary}}</text>
               </view>

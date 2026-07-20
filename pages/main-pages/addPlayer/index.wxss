@@ -134,6 +134,82 @@
   text-align: center;
 }
 
+/* 房间名称 */
+.room-name-wrap {
+  margin-top: 16rpx;
+  width: 100%;
+  max-width: 560rpx;
+  box-sizing: border-box;
+}
+
+.room-name-display,
+.room-name-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.room-name-label {
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.room-name-value-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  padding: 8rpx 16rpx;
+}
+
+.room-name-value {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #111827;
+  max-width: 420rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-name-edit-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.room-name-input-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.room-name-input {
+  flex: 1;
+  height: 72rpx;
+  padding: 0 24rpx;
+  background: #f3f4f6;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  color: #111827;
+  text-align: center;
+}
+
+.room-name-placeholder {
+  color: #9ca3af;
+}
+
+.room-name-confirm-icon {
+  width: 48rpx;
+  height: 48rpx;
+  flex-shrink: 0;
+}
+
 /* 调试用房间号展示 */
 .room-id-wrap {
   margin-top: 8rpx;
@@ -230,14 +306,6 @@
   font-size: 32rpx;
   font-weight: 600;
   color: #111827;
-  margin-bottom: 4rpx;
-}
-
-.mode-banner-desc {
-  display: block;
-  font-size: 24rpx;
-  color: #6b7280;
-  line-height: 1.5;
 }
 
 .content-area {

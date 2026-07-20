@@ -238,7 +238,8 @@
 }
 
 .problem-text.ai-text::before {
-  content: "AI总结：";
+  /* AI_TEMP_DISABLED: 原 content: "AI总结："; 恢复 AI 总结展示时改回 */
+  content: "总结：";
   color: #16a6ca;
 }
 

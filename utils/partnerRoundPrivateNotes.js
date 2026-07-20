@@ -7,9 +7,23 @@ function storageKey(roomId, sessionSeq) {
 
 function normalizeNote(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
+  const legacyImages = Array.isArray(src.images) ? src.images.filter(Boolean) : [];
+  const playImages = Array.isArray(src.playImages) ? src.playImages.filter(Boolean) : [];
+  const discussionImages = Array.isArray(src.discussionImages)
+    ? src.discussionImages.filter(Boolean)
+    : [];
   return {
     text: typeof src.text === 'string' ? src.text : '',
     photos: Array.isArray(src.photos) ? src.photos.filter(Boolean) : [],
+    // 当前轮出牌/讨论卡插入：仅本机可见
+    playHistory: Array.isArray(src.playHistory) ? src.playHistory.filter((t) => typeof t === 'string') : [],
+    discussionNotes: Array.isArray(src.discussionNotes)
+      ? src.discussionNotes.filter((t) => typeof t === 'string')
+      : [],
+    // 兼容旧数据：未分阶段的 images 归入出牌解释
+    playImages: playImages.length ? playImages : legacyImages,
+    discussionImages,
+    images: legacyImages,
     updatedAt: src.updatedAt || 0
   };
 }

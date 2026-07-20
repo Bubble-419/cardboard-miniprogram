@@ -51,9 +51,10 @@ function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
   const server = normalizePartnerRoundContent(serverContent);
   return {
     round: currentRound,
-    playHistory: client && client.playHistory.length ? client.playHistory : server.playHistory,
-    discussionNotes: client && client.discussionNotes.length ? client.discussionNotes : server.discussionNotes,
-    images: client && client.images.length ? client.images : server.images,
+    // 卡片插入文字/图片为私有，归档时不写入共享纪要
+    playHistory: [],
+    discussionNotes: [],
+    images: [],
     voiceLines: pickPreferredList(client && client.voiceLines, server.voiceLines),
     turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
     aiSummary: server.aiSummary || { status: 'pending' }
@@ -328,10 +329,11 @@ exports.main = async (event, context) => {
       const incoming = partnerCurrentRoundContent;
       const incomingVoiceLines = Array.isArray(incoming.voiceLines) ? incoming.voiceLines : [];
       const incomingTurnRecords = Array.isArray(incoming.turnRecords) ? incoming.turnRecords : [];
+      // playHistory / discussionNotes / images 为各端私有插入，不接受客户端写入共享态
       updateData.partnerCurrentRoundContent = {
-        playHistory: incoming.playHistory || [],
-        discussionNotes: incoming.discussionNotes || [],
-        images: incoming.images || [],
+        playHistory: existing.playHistory,
+        discussionNotes: existing.discussionNotes,
+        images: existing.images,
         voiceLines: incomingVoiceLines.length ? incomingVoiceLines : existing.voiceLines,
         turnRecords: incomingTurnRecords.length ? incomingTurnRecords : existing.turnRecords,
         aiSummary: existing.aiSummary

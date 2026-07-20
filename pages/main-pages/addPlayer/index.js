@@ -47,6 +47,9 @@ Page({
     roomId: '',
     formattedRoomId: '',
     workshopName: '脑暴工作坊',
+    isEditingRoomName: false,
+    editingRoomName: '',
+    isSavingRoomName: false,
     qrcodeUrl: '',
     qrcodeStatus: 'loading',
     members: [],
@@ -542,6 +545,8 @@ Page({
         const fingerprint = [
           roomMeta.memberCount,
           roomMeta.hasSelectedMode ? 1 : 0,
+          roomMeta.workshopName || '',
+          roomMeta.selectedModeTitle || '',
           resolvedState.currentPage || '',
           expanded.map((m) => (m
             ? `${this._getMemberId(m)}:${m.nickName || ''}:${m.avatarImage || m.avatarUrl || ''}:${m.avatarIndex != null ? m.avatarIndex : ''}`
@@ -553,13 +558,18 @@ Page({
           this._triggerCountBounceIfNeeded(roomMeta.memberCount);
           const wasHost = this.data.isHost === true;
           const nowHost = result.isHost === true;
-          this.setData({
+          const patch = {
             members: expanded,
             memberSlots,
             roomState: resolvedState,
             isHost: nowHost,
             ...roomMeta
-          });
+          };
+          // 编辑房间名时不覆盖本地输入，避免轮询打断
+          if (this.data.isEditingRoomName) {
+            delete patch.workshopName;
+          }
+          this.setData(patch);
           // 静默刷新时纠正主副屏身份，避免误开副屏轮询把房主拉进 subAwait
           if (wasHost !== nowHost) {
             if (nowHost) {
@@ -1104,6 +1114,70 @@ Page({
     this._dragBaseMembers = null; // 释放快照，避免内存残留
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
+  },
+
+  startEditRoomName() {
+    if (!this.data.isHost || this.data.isSavingRoomName) return;
+    this.setData({
+      isEditingRoomName: true,
+      editingRoomName: this.data.workshopName || '脑暴工作坊'
+    });
+  },
+
+  onRoomNameInput(e) {
+    this.setData({
+      editingRoomName: (e.detail && e.detail.value) || ''
+    });
+  },
+
+  async confirmEditRoomName() {
+    if (!this.data.isHost || this.data.isSavingRoomName) return;
+
+    const roomId = this.data.roomId || getApp().globalData.roomId;
+    if (!roomId) {
+      wx.showToast({ title: '房间参数错误', icon: 'none' });
+      return;
+    }
+
+    let name = (this.data.editingRoomName || '').trim();
+    if (!name) name = '脑暴工作坊';
+    if (name.length > 20) {
+      wx.showToast({ title: '房间名称不超过20字', icon: 'none' });
+      return;
+    }
+
+    if (name === (this.data.workshopName || '')) {
+      this.setData({ isEditingRoomName: false });
+      return;
+    }
+
+    this.setData({ isSavingRoomName: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'roomUpdateWorkshopName',
+        data: { roomId, workshopName: name }
+      });
+      const result = (res && res.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '保存失败', icon: 'none' });
+        this.setData({ isSavingRoomName: false });
+        return;
+      }
+      const savedName = result.workshopName || name;
+      getApp().globalData.workshopName = savedName;
+      this.setData({
+        workshopName: savedName,
+        isEditingRoomName: false,
+        isSavingRoomName: false
+      });
+      wx.showToast({ title: '已更新', icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      this.setData({ isSavingRoomName: false });
+      wx.showToast({ title: err.errMsg || '保存失败', icon: 'none' });
+    }
   },
 
   handleGoBack() {

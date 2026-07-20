@@ -129,7 +129,6 @@ exports.main = async (event, context) => {
       currentPage = room.brainstormProgressPage;
     }
 
-    const includeFullPartnerContent = event && event.full === true;
     const pageLower = (currentPage || '').toLowerCase();
     // 仅在收尾表态页返回本会话选票；其它页一律空，避免串入上一轮残留
     const activeClosing = pageLower === 'closingstatement'
@@ -139,6 +138,7 @@ exports.main = async (event, context) => {
         seq: 0,
         sessionId: 0
       };
+    const includeFullPartnerContent = event && event.full === true;
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -178,6 +178,9 @@ exports.main = async (event, context) => {
         turnRecords: [],
         aiSummary: { status: 'pending' }
       };
+      roomState.partnerExpressMessages = Array.isArray(room.partnerExpressMessages)
+        ? room.partnerExpressMessages.slice(-40)
+        : [];
     }
 
     const membersRes = await db

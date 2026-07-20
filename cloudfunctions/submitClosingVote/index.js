@@ -14,7 +14,7 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
 /**
  * 收尾阶段表态：每位玩家投「通过」或「存在疑问」
- * 全员通过 → 结束过渡页；有人疑问 → 收尾 gamepage 补全符文
+ * 全员通过 → gamepage 补全符文；有人疑问 → gamepage 出牌解释，从顺位第一个有疑问的玩家继续
  */
 exports.main = async (event, context) => {
   const { roomId, vote } = event || {};
@@ -119,23 +119,49 @@ exports.main = async (event, context) => {
     }
 
     const votedCount = Object.keys(closingVotes).length;
+    let settledCurrentPlayerIndex = room.currentPlayerIndex != null ? room.currentPlayerIndex : 1;
     if (votedCount >= totalMembers && totalMembers > 0) {
       const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');
       // 结算后立刻清空选票，避免下次进表态页读到残留
       updateData.closingVotes = _.set({});
       updateData.closingVoteState = _.set(buildEmptyClosingVoteState(sessionSeq));
       updateData.partnerMasterMode = false;
+      updateData.currentPage = 'gamepage';
+      updateData.closingQuestionPlayers = _.set([]);
+      resolvedQuestionPlayers = [];
+
+      const now = Date.now();
+      updateData.partnerRoundStartedAt = now;
+      updateData.partnerTurnStartedAt = now;
 
       if (hasQuestion) {
-        updateData.currentPage = 'gamepage';
+        const questionIndices = Object.entries(closingVotes)
+          .filter(([, voteValue]) => voteValue === 'question')
+          .map(([key]) => parseInt(key, 10))
+          .filter((n) => Number.isFinite(n))
+          .sort((a, b) => a - b);
+        const firstQuestionIndex = questionIndices[0];
+        if (firstQuestionIndex != null) {
+          const allMembersRes = await db
+            .collection(ROOM_MEMBERS_COLLECTION)
+            .where({ roomId })
+            .get();
+          const member = (allMembersRes.data || []).find(
+            (m) => m.playerIndex === firstQuestionIndex
+          );
+          updateData.currentPlayerIndex = firstQuestionIndex;
+          updateData.currentPlayerName = member
+            ? (member.nickName || `玩家${firstQuestionIndex}`)
+            : `玩家${firstQuestionIndex}`;
+          settledCurrentPlayerIndex = firstQuestionIndex;
+        }
+        // 回到正常出牌：之后按 getNextPlayerTurn 顺位推进（如 2→3→4→1）
+        updateData.partnerGamePhase = 'play';
+        updateData.partnerClosingStep = 'rune';
+      } else {
+        // 全员通过 → 补全符文
         updateData.partnerGamePhase = 'closing';
         updateData.partnerClosingStep = 'rune';
-        updateData.closingQuestionPlayers = _.set(resolvedQuestionPlayers);
-      } else {
-        updateData.currentPage = 'closingEnd';
-        updateData.partnerGamePhase = 'closing';
-        updateData.closingQuestionPlayers = _.set([]);
-        resolvedQuestionPlayers = [];
       }
     }
 
@@ -145,6 +171,9 @@ exports.main = async (event, context) => {
       ok: true,
       vote: normalizedVote,
       currentPage: updateData.currentPage || room.currentPage,
+      currentPlayerIndex: updateData.currentPlayerIndex != null
+        ? updateData.currentPlayerIndex
+        : settledCurrentPlayerIndex,
       partnerGamePhase: updateData.partnerGamePhase || room.partnerGamePhase,
       partnerClosingStep: updateData.partnerClosingStep || room.partnerClosingStep,
       closingQuestionPlayers: resolvedQuestionPlayers,
