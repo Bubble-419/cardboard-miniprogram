@@ -15,12 +15,12 @@ const WHEEL_ACTIONS = [
   { id: 'closing', label: '收尾阶段', sub: '进入', zone: 'bottom' }
 ];
 
-// 斜向四等分：扇形中心分别朝上 / 右 / 下 / 左（与 Figma 一致）
+// 非等分扇形：上下各 68°、左右各 112°（分割线偏垂直 ±34°，与 Figma 十字一致）
 const WHEEL_PIECES = [
-  { id: 'master', rotate: -135 },
-  { id: 'silent', rotate: -45 },
-  { id: 'closing', rotate: 45 },
-  { id: 'helpLuck', rotate: 135 }
+  { id: 'master', zone: 'top' },
+  { id: 'silent', zone: 'right' },
+  { id: 'closing', zone: 'bottom' },
+  { id: 'helpLuck', zone: 'left' }
 ];
 
 const SUGGESTED_QUESTIONS = ['智能穿戴设备', '如何提升体验'];
@@ -58,6 +58,8 @@ Page({
     brainstormSessionSeq: 0,
     avatarList: [],
     selectedProblemText: '',
+    problemExpanded: false,
+    problemTextOverflow: false,
     viewMode: 'wheel',
     selectedAction: '',
     helpMethod: 'outside',
@@ -70,13 +72,34 @@ Page({
     silentHintLines: SILENT_HINT_LINES,
     masterHintLines: MASTER_HINT_LINES,
     closingHintLines: CLOSING_HINT_LINES,
-    silentRemainingSec: SILENT_DURATION_SEC,
-    silentTimerText: '05:00',
+    silentDurationSec: SILENT_DURATION_SEC,
+    silentStartedAt: 0,
+    silentTimerActive: false,
+    inspirationDraftText: '',
+    inspirationInputFocused: false,
+    inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
-    randomDeckCards: [1, 2, 3, 4, 5]
+    randomDeckCards: [1, 2, 3, 4, 5],
+    topBarPaddingRight: 30
+  },
+
+  _applyTopBarSafeInset() {
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const windowWidth = (sys && sys.windowWidth) || 375;
+      const rightPx = Math.max(12, windowWidth - (menu.left || windowWidth) + 8);
+      const rightRpx = Math.ceil((rightPx * 750) / windowWidth);
+      this.setData({ topBarPaddingRight: rightRpx });
+    } catch (e) {
+      this.setData({ topBarPaddingRight: 200 });
+    }
   },
 
   onLoad(options) {
+    this._applyTopBarSafeInset();
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const initiatorPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -118,7 +141,7 @@ Page({
     );
   },
 
-  _returnToGamepage() {
+  _returnToGamepage(markUsed = true) {
     const pages = getCurrentPages();
     const prev = pages.length > 1 ? pages[pages.length - 2] : null;
     const prevRoute = prev ? (prev.route || '') : '';
@@ -128,7 +151,12 @@ Page({
     }
     const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
     const idx = currentPlayerIndex || initiatorPlayerIndex;
-    safeOpenUrl(buildGamepageUrl(roomId, idx, 'partner', { specialMoveUsed: true }));
+    safeOpenUrl(buildGamepageUrl(
+      roomId,
+      idx,
+      'partner',
+      markUsed ? { specialMoveUsed: true } : {}
+    ));
   },
 
   formatSilentTime(sec) {
@@ -139,30 +167,81 @@ Page({
 
   startSilentTimer() {
     this.clearSilentTimer();
-    let remaining = SILENT_DURATION_SEC;
+    const startedAt = Date.now();
     this.setData({
-      silentRemainingSec: remaining,
-      silentTimerText: this.formatSilentTime(remaining)
+      silentStartedAt: startedAt,
+      silentTimerActive: true
     });
-    this._silentTimer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        this.clearSilentTimer();
-        this.handleEndSilent();
-        return;
-      }
-      this.setData({
-        silentRemainingSec: remaining,
-        silentTimerText: this.formatSilentTime(remaining)
-      });
-    }, 1000);
+    // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
+    this._silentTimer = setTimeout(() => {
+      this._silentTimer = null;
+      this.handleEndSilent();
+    }, (SILENT_DURATION_SEC + 4) * 1000);
   },
 
   clearSilentTimer() {
     if (this._silentTimer) {
-      clearInterval(this._silentTimer);
+      clearTimeout(this._silentTimer);
       this._silentTimer = null;
     }
+  },
+
+  _stopSilentTimerUi() {
+    this.clearSilentTimer();
+    if (this.data.silentTimerActive || this.data.silentStartedAt) {
+      this.setData({
+        silentTimerActive: false,
+        silentStartedAt: 0
+      });
+    }
+  },
+
+  handleSilentTimerExpire() {
+    this.handleEndSilent();
+  },
+
+  handleGoInspirationCenter() {
+    const roomId = this.data.roomId || '';
+    const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+    let url = '/pages/inspiration/index?scope=workshop';
+    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
+    if (seq) url += `&brainstormSessionSeq=${seq}`;
+    wx.navigateTo({ url });
+  },
+
+  onInspirationComposerTap() {
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
+  },
+
+  onInspirationFocus() {
+    this.setData({ inspirationInputFocused: true });
+  },
+
+  onInspirationBlur() {
+    this.setData({ inspirationInputFocused: false });
+  },
+
+  onInspirationInput(e) {
+    const text = (e.detail && e.detail.value) || '';
+    this.setData({
+      inspirationDraftText: text,
+      inspirationHasText: !!text.trim()
+    });
+  },
+
+  onInspirationActionTap() {
+    if (this.data.inspirationHasText) {
+      wx.showToast({ title: '灵感已记录（本地）', icon: 'none' });
+      this.setData({
+        inspirationDraftText: '',
+        inspirationHasText: false,
+        inspirationInputFocused: false
+      });
+      return;
+    }
+    this.handleGoInspirationCenter();
   },
 
   async loadRoomData() {
@@ -193,7 +272,11 @@ Page({
         brainstormSessionSeq: result.roomState && result.roomState.brainstormSessionSeq != null
           ? result.roomState.brainstormSessionSeq
           : 0,
-        selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : ''
+        selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
+        problemExpanded: false,
+        problemTextOverflow: false
+      }, () => {
+        this._checkProblemTextOverflow();
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
@@ -263,7 +346,7 @@ Page({
       }
     };
     poll();
-    this._statePollTimer = setInterval(poll, 1500);
+    this._statePollTimer = setInterval(poll, 2000);
   },
 
   _stopStatePolling() {
@@ -277,6 +360,43 @@ Page({
     goRoomPage(this.data.roomId);
   },
 
+  handleToggleProblemExpand() {
+    const text = this.data.selectedProblemText;
+    if (!text) return;
+    if (!this.data.problemExpanded && !this.data.problemTextOverflow) return;
+    const next = !this.data.problemExpanded;
+    this.setData({ problemExpanded: next }, () => {
+      if (!next) this._checkProblemTextOverflow();
+    });
+  },
+
+  _checkProblemTextOverflow() {
+    if (!this.data.selectedProblemText || this.data.problemExpanded) {
+      if (this.data.problemTextOverflow) {
+        this.setData({ problemTextOverflow: false });
+      }
+      return;
+    }
+    const run = () => {
+      this.createSelectorQuery()
+        .select('#problemText')
+        .boundingClientRect()
+        .select('#problemTextMeasure')
+        .boundingClientRect()
+        .exec((res) => {
+          const clamped = res && res[0];
+          const full = res && res[1];
+          if (!clamped || !full || !full.height) return;
+          const overflow = full.height > clamped.height + 1;
+          if (overflow !== this.data.problemTextOverflow) {
+            this.setData({ problemTextOverflow: overflow });
+          }
+        });
+    };
+    if (typeof wx.nextTick === 'function') wx.nextTick(run);
+    else setTimeout(run, 50);
+  },
+
   handleGoBack() {
     const { viewMode, showChat } = this.data;
     if (showChat) {
@@ -288,15 +408,14 @@ Page({
       return;
     }
     if (viewMode === 'silent') {
-      this.clearSilentTimer();
+      this._stopSilentTimerUi();
       this.setData({
-        viewMode: 'wheel',
-        silentRemainingSec: SILENT_DURATION_SEC,
-        silentTimerText: this.formatSilentTime(SILENT_DURATION_SEC)
+        viewMode: 'wheel'
       });
       return;
     }
-    wx.navigateBack();
+    // 转盘选择页：返回脑暴主流程（未确认行动，不标记已使用）
+    this._returnToGamepage(false);
   },
 
   onSelectAction(e) {
@@ -460,13 +579,19 @@ Page({
   },
 
   async handleEndSilent() {
-    this.clearSilentTimer();
-    if (!this.data.roomId) return;
-    if (this.data.currentRound == null) {
-      await this.loadRoomData();
+    if (this._endingSilent) return;
+    this._endingSilent = true;
+    this._stopSilentTimerUi();
+    try {
+      if (!this.data.roomId) return;
+      if (this.data.currentRound == null) {
+        await this.loadRoomData();
+      }
+      this._markSpecialMoveUsedForGamepage();
+      this._returnToGamepage();
+    } finally {
+      this._endingSilent = false;
     }
-    this._markSpecialMoveUsedForGamepage();
-    this._returnToGamepage();
   },
 
   handleCloseChat() {

@@ -93,6 +93,12 @@ Page({
         return text.length > 0;
       });
 
+      const fingerprint = summaryList
+        .map((item) => `${item.playerIndex || ''}:${item.ideaText || ''}`)
+        .join('|') + `#${allFilled ? 1 : 0}`;
+      if (fingerprint === this._summaryFingerprint) return;
+      this._summaryFingerprint = fingerprint;
+
       this.setData({
         summaryList,
         canRestartRound: allFilled
@@ -133,7 +139,7 @@ Page({
         console.warn('creativeSummary state poll', e);
       }
     };
-    this._statePollTimer = setInterval(poll, 1000);
+    this._statePollTimer = setInterval(poll, 2000);
     poll();
   },
 

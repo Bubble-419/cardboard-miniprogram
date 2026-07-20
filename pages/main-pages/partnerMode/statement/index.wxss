@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  background: #f9fcfb;
+  background: #fafafa;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -8,7 +8,7 @@
 }
 
 .custom-navbar {
-  background: #f9fcfb;
+  background: #fafafa;
   padding-top: env(safe-area-inset-top);
   flex-shrink: 0;
 }
@@ -41,15 +41,19 @@
   width: 174rpx;
 }
 
+/* ===== 房主表态统计 Figma #5915:52821 ===== */
 .host-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 48rpx 80rpx 0;
+  box-sizing: border-box;
 }
 
 .instruction {
-  padding: 48rpx 40rpx 24rpx;
+  width: 100%;
+  padding: 40rpx 0 36rpx;
   text-align: center;
 }
 
@@ -59,6 +63,7 @@
   font-weight: 600;
   color: #5ec159;
   line-height: 1.5;
+  text-align: center;
 }
 
 .result-stack {
@@ -67,8 +72,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24rpx 0 80rpx;
+  justify-content: flex-start;
+  gap: 32rpx;
+  padding: 8rpx 0 72rpx;
+  box-sizing: border-box;
 }
 
 .result-item {
@@ -77,44 +84,44 @@
   justify-content: center;
 }
 
+.result-item:active .result-circle {
+  opacity: 0.88;
+  transform: scale(0.98);
+}
+
+/* 约 150px → 300rpx（较稿面略缩） */
 .result-circle {
-  width: 248rpx;
-  height: 248rpx;
+  width: 300rpx;
+  height: 300rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(0, 0, 0, 0.08);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
 .result-circle-pass {
-  background: radial-gradient(circle at 35% 30%, #7ed67a 0%, #5ec159 55%, #4aad46 100%);
+  background: #5ec159;
 }
 
 .result-circle-partial {
-  background: radial-gradient(circle at 35% 30%, #ffe27a 0%, #f5c542 55%, #e0a82e 100%);
+  background: #979797;
 }
 
 .result-circle-question {
-  background: radial-gradient(circle at 35% 30%, #ff9a92 0%, #f0726a 55%, #d85a52 100%);
+  background: #000000;
 }
 
 .result-label {
-  font-size: 36rpx;
-  font-weight: 500;
-  color: #fff;
-  letter-spacing: 2rpx;
+  font-size: 42rpx;
+  font-weight: 400;
+  color: #ffffff;
+  letter-spacing: 0.0714em;
   text-align: center;
   line-height: 1.5;
 }
 
-.result-connector {
-  width: 4rpx;
-  height: 56rpx;
-  background: linear-gradient(180deg, #d8ead7 0%, #c5dfc4 100%);
-  border-radius: 2rpx;
-}
-
+/* ===== 副屏等待：与其他空状态页保持一致 Figma #5912:50988 ===== */
 .waiting-content {
   flex: 1;
   display: flex;
@@ -122,101 +129,47 @@
   align-items: center;
   justify-content: center;
   padding: 40rpx;
+  box-sizing: border-box;
 }
 
-.character-container {
-  margin-bottom: 40rpx;
-}
-
-.character-bg {
-  width: 438rpx;
-  height: 294rpx;
-  background-color: rgba(31, 177, 213, 0.15);
-  border-radius: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.character-icon {
-  width: 128rpx;
-  height: 120rpx;
-  background-color: #4fc8e7;
-  border-radius: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.character-face {
-  position: relative;
+.empty-state {
   width: 100%;
-  height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: 44rpx;
+  padding: 40rpx 20rpx;
+  box-sizing: border-box;
 }
 
-.eye {
-  width: 26rpx;
-  height: 26rpx;
-  background-color: #000;
-  border-radius: 50%;
-  position: absolute;
-  top: 40%;
+.empty-illus {
+  width: 376rpx;
+  height: 280rpx;
 }
 
-.eye-left {
-  left: 25%;
-  transform: translate(-50%, -50%);
+.empty-text-group {
+  width: 100%;
+  max-width: 520rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
 }
 
-.eye-right {
-  right: 25%;
-  transform: translate(50%, -50%);
-}
-
-.mouth {
-  width: 18rpx;
-  height: 9rpx;
-  border: 2rpx solid #000;
-  border-top: none;
-  border-radius: 0 0 18rpx 18rpx;
-  position: absolute;
-  bottom: 30%;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.foot {
-  width: 34rpx;
-  height: 32rpx;
-  background-color: #000;
-  border-radius: 4rpx;
-  position: absolute;
-  bottom: 10%;
-}
-
-.foot-left {
-  left: 20%;
-}
-
-.foot-right {
-  right: 20%;
-}
-
-.main-text {
-  font-size: 56rpx;
-  color: #16a6ca;
-  text-align: center;
-  margin-bottom: 20rpx;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.sub-text {
+.empty-text {
+  width: 100%;
   font-size: 36rpx;
-  color: #9a9a9a;
+  font-weight: 600;
+  color: #5ec159;
+  line-height: 1.5;
   text-align: center;
-  line-height: 1.33;
+}
+
+.empty-subtext {
+  width: 100%;
+  font-size: 32rpx;
+  font-weight: 400;
+  color: #909090;
+  line-height: 1.5;
+  text-align: center;
 }

@@ -86,7 +86,12 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   }
 
   if (page === 'addplayer' && result.hasSelectedMode !== true) {
-    if (getCurrentRoute() !== ADD_PLAYER_ROUTE) {
+    const current = getCurrentRoute();
+    // 正在「选择脑暴模式」页时不要强行拉回大厅（房主/成员主动进入）
+    if (current === 'pages/main-pages/brainstormMode/index') {
+      return false;
+    }
+    if (current !== ADD_PLAYER_ROUTE) {
       return redirectSubScreenToAddPlayer(id);
     }
     return false;

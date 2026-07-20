@@ -8,7 +8,7 @@ const {
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
 const BORDER_RADIUS_RPX = 28;
-const EXPIRE_ANIM_MS = 1200;
+const EXPIRE_ANIM_MS = 2000;
 
 Component({
   properties: {
@@ -157,12 +157,28 @@ Component({
       this.triggerEvent('timerexpire', { startedAt, loop: true });
     },
 
+    _vibrateExpireFeedback() {
+      const buzz = () => {
+        try {
+          if (typeof wx.vibrateShort === 'function') {
+            wx.vibrateShort({ type: 'medium' });
+          }
+        } catch (e) {
+          // 模拟器或不支持震动时忽略
+        }
+      };
+      // zeng~ zeng~：两下短震，间隔约半拍
+      buzz();
+      setTimeout(buzz, 600);
+    },
+
     _triggerExpireAnimation() {
       if (this._expiringTriggered || this.data.displayMode === 'expiring') return;
       this._expiringTriggered = true;
       this._timerWasActive = false;
       this._stopLocalTimer();
       this._hideBorder();
+      this._vibrateExpireFeedback();
       this.setData({ displayMode: 'expiring' });
       this._expireTimer = setTimeout(() => {
         this._expireTimer = null;

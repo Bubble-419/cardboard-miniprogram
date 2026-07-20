@@ -2,6 +2,7 @@
   "navigationBarTitleText": "确认情境",
   "navigationStyle": "custom",
   "usingComponents": {
+    "user-list": "/components/user-list/index",
     "page-footer": "/components/page-footer/index"
   }
 }

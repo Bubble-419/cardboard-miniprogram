@@ -2,18 +2,24 @@
   <!-- 等待视图（非房主 / 等待中） -->
   <block wx:if="{{!isHost || isWaiting}}">
     <view class="wait-page">
-      <view class="wait-header" style="padding-top: {{navbarPaddingTop}}px">
-        <view class="room-entry" bindtap="handleGoRoom">
-          <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+        <text class="workshop-name">{{workshopName}}</text>
+        <view class="topbar">
+          <view class="room-entry" bindtap="handleGoRoom">
+            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+          </view>
+          <view class="avatar-bar">
+            <user-list
+              avatarList="{{avatarList}}"
+              enableAdd="{{false}}"
+              isFold="{{true}}"
+              showName="{{false}}"
+              layout="stack"
+            />
+          </view>
         </view>
       </view>
       <view class="wait-body">
-        <view class="mode-badge-row">
-          <view class="mode-icon-wrap">
-            <image class="mode-icon" src="/assets/modeIndex/icon-mode-badge.svg" mode="aspectFit" />
-          </view>
-          <text class="mode-badge-text">{{modeTitle}}</text>
-        </view>
         <text class="wait-title">选择情境</text>
         <text class="wait-hint">等待房主选择情境…</text>
       </view>
@@ -30,16 +36,20 @@
     <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
       <!-- 页面头部 -->
       <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
-        <view class="nav-row">
+        <text class="workshop-name">{{workshopName}}</text>
+        <view class="topbar">
           <view class="room-entry" bindtap="handleGoRoom">
             <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
           </view>
-        </view>
-        <view class="mode-badge-row">
-          <view class="mode-icon-wrap">
-            <image class="mode-icon" src="/assets/modeIndex/icon-mode-badge.svg" mode="aspectFit" />
+          <view class="avatar-bar">
+            <user-list
+              avatarList="{{avatarList}}"
+              enableAdd="{{false}}"
+              isFold="{{true}}"
+              showName="{{false}}"
+              layout="stack"
+            />
           </view>
-          <text class="mode-badge-text">{{modeTitle}}</text>
         </view>
         <view class="title-block">
           <text class="page-main-title">选择情境</text>

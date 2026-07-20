@@ -66,6 +66,8 @@ Page({
     members: [],
     isCurrentPlayer: false,
     selectedProblemText: '',
+    problemExpanded: false,
+    problemTextOverflow: false,
     gamepagePhase: PHASE_PLAY,
     cardIndex: 0,
     insertedImages: [],
@@ -104,7 +106,24 @@ Page({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationSaving: false,
-    inspirationHasText: false
+    inspirationHasText: false,
+    topBarPaddingRight: 30
+  },
+
+  _applyTopBarSafeInset() {
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const windowWidth = (sys && sys.windowWidth) || 375;
+      // 避开右上角胶囊：保留「屏幕右边距到胶囊左边」的空间
+      const rightPx = Math.max(12, windowWidth - (menu.left || windowWidth) + 8);
+      const rightRpx = Math.ceil((rightPx * 750) / windowWidth);
+      this.setData({ topBarPaddingRight: rightRpx });
+    } catch (e) {
+      this.setData({ topBarPaddingRight: 200 });
+    }
   },
 
   onLoad(options) {
@@ -140,6 +159,7 @@ Page({
       specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
     });
 
+    this._applyTopBarSafeInset();
     this.loadRoomData();
     this._roundSpeech = createPartnerRoundSpeech({
       onText: () => this._syncRoomContext()
@@ -150,20 +170,30 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId) return;
 
+    const currentPlayerIndex = this.data.currentPlayerIndex;
     const app = getApp();
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
     if (flag && flag.roomId === roomId) {
-      this.setData({ specialMoveUsedThisTurn: true });
-      return;
+      // 仅当标记属于当前轮次玩家时才视为已使用（房主代操作）
+      if (flag.playerIndex === currentPlayerIndex) {
+        this.setData({ specialMoveUsedThisTurn: true });
+        return;
+      }
+      // 过期轮次标记清掉，避免误锁按钮
+      if (app.globalData) {
+        app.globalData.partnerSpecialMoveUsedTurn = null;
+      }
     }
 
     if (isSpecialMoveUsedForCurrentTurn(
       roomId,
       this.data.brainstormSessionSeq,
       this.data.currentRound,
-      this.data.currentPlayerIndex
+      currentPlayerIndex
     )) {
       this.setData({ specialMoveUsedThisTurn: true });
+    } else {
+      this.setData({ specialMoveUsedThisTurn: false });
     }
   },
 
@@ -204,7 +234,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.members && result.members.length) {
@@ -742,18 +772,12 @@ Page({
     this._startRoundTimerBurstPoll();
   },
 
-  _validateSpecialMoveFlag(flag, patch, members) {
-    const me = members.find((m) => m.isMe);
-    if (!me || me.playerIndex !== flag.playerIndex) return false;
-    if (flag.playerIndex !== patch.currentPlayerIndex) return false;
-    return true;
+  _validateSpecialMoveFlag(flag, patch) {
+    // 房主代操作：标记归属当前轮次玩家即可
+    return flag.playerIndex === patch.currentPlayerIndex;
   },
 
-  _resolveSpecialMoveUsed(patch, members) {
-    if (!patch.isCurrentPlayer) {
-      return false;
-    }
-
+  _resolveSpecialMoveUsed(patch) {
     if (patch.isMasterMode) {
       return true;
     }
@@ -762,7 +786,7 @@ Page({
     const app = getApp();
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
 
-    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch, members)) {
+    if (flag && flag.roomId === roomId && this._validateSpecialMoveFlag(flag, patch)) {
       markPartnerSpecialMoveUsed(
         roomId,
         flag.playerIndex,
@@ -946,22 +970,48 @@ Page({
       }
     }
 
-    if (becameMyTurn || leftMyTurn || roundChanged || sessionChanged) {
+    if (playerChanged || roundChanged || sessionChanged) {
       patch.specialMoveUsedThisTurn = false;
-    }
-    if (becameMyTurn || roundChanged || sessionChanged) {
       clearPartnerSpecialMoveUsedFlag(this.data.roomId);
-    }
-
-    if (leftMyTurn) {
-      patch.specialMoveUsedThisTurn = false;
-    } else if (!(becameMyTurn || roundChanged || sessionChanged)) {
-      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch, members);
+    } else {
+      patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch);
     }
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
     }
+
+    const contextFingerprint = [
+      player.currentPlayerIndex,
+      roomPhase,
+      currentRound,
+      brainstormSessionSeq,
+      closingStep,
+      partnerRoundStartedAt || 0,
+      avatarRoundStartedAt || 0,
+      members.map((m) => `${m.userId || m.playerIndex}:${m.avatarUrl || m.avatarImage || ''}:${m.nickName || ''}`).join('|'),
+      roundSummaries.length,
+      roundContent.voiceLines.length,
+      roundContent.turnRecords.length,
+      paginationState.cardIndex,
+      paginationState.cardCount,
+      !!patch.specialMoveUsedThisTurn,
+      options.resetTurnUi ? 1 : 0
+    ].join('#');
+    const forcePatch = !!(
+      options.resetTurnUi
+      || playerChanged
+      || phaseChanged
+      || roundChanged
+      || sessionChanged
+      || closingStepChanged
+      || becameMyTurn
+      || leftMyTurn
+    );
+    if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
+      return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
+    }
+    this._roomContextFingerprint = contextFingerprint;
 
     const prevStartedAt = Number(this.data.partnerRoundStartedAt) || 0;
     const nextStartedAt = Number(patch.partnerRoundStartedAt) || 0;
@@ -1005,7 +1055,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true || !result.members || !result.members.length) {
@@ -1026,7 +1076,11 @@ Page({
 
       this.setData({
         isHost: result.isHost === true,
-        selectedProblemText
+        selectedProblemText,
+        problemExpanded: false,
+        problemTextOverflow: false
+      }, () => {
+        this._checkProblemTextOverflow();
       });
 
       this._startStatePolling();
@@ -1076,7 +1130,7 @@ Page({
 
   _startScorePolling() {
     this._stopScorePolling();
-    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 1500);
+    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
   },
 
   _stopScorePolling() {
@@ -1094,7 +1148,7 @@ Page({
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
-          data: { roomId }
+          data: { roomId, full: true }
         });
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
@@ -1469,14 +1523,17 @@ Page({
     }
   },
 
-  handleSpecialMove() {
-    if (!this.data.isCurrentPlayer) {
-      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+  onTapSpecialMove() {
+    // 房主代当前轮次玩家操作：不校验 isCurrentPlayer
+    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) {
+      wx.showToast({ title: '本轮特殊行动已使用', icon: 'none' });
       return;
     }
-    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) return;
     const { roomId, members } = this.data;
-    if (!roomId) return;
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
     const me = (members || []).find((m) => m.isMe);
     const initiatorIndex = me ? me.playerIndex : this.data.currentPlayerIndex;
     // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
@@ -1487,12 +1544,24 @@ Page({
     if (!opened) {
       wx.navigateTo({
         url,
-        fail: () => {
-          this._startStatePolling();
-          wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+        fail: (err) => {
+          console.warn('navigateTo specialMove fail', err);
+          // 栈满或并发冲突时降级 redirect
+          wx.redirectTo({
+            url,
+            fail: (err2) => {
+              console.warn('redirectTo specialMove fail', err2);
+              this._startStatePolling();
+              wx.showToast({ title: '打开特殊行动失败', icon: 'none' });
+            }
+          });
         }
       });
     }
+  },
+
+  handleSpecialMove() {
+    this.onTapSpecialMove();
   },
 
   async handleStartStatement() {
@@ -1578,6 +1647,43 @@ Page({
     goRoomPage(this.data.roomId);
   },
 
+  handleToggleProblemExpand() {
+    const text = this.data.selectedProblemText;
+    if (!text) return;
+    if (!this.data.problemExpanded && !this.data.problemTextOverflow) return;
+    const next = !this.data.problemExpanded;
+    this.setData({ problemExpanded: next }, () => {
+      if (!next) this._checkProblemTextOverflow();
+    });
+  },
+
+  _checkProblemTextOverflow() {
+    if (!this.data.selectedProblemText || this.data.problemExpanded) {
+      if (this.data.problemTextOverflow) {
+        this.setData({ problemTextOverflow: false });
+      }
+      return;
+    }
+    const run = () => {
+      this.createSelectorQuery()
+        .select('#problemText')
+        .boundingClientRect()
+        .select('#problemTextMeasure')
+        .boundingClientRect()
+        .exec((res) => {
+          const clamped = res && res[0];
+          const full = res && res[1];
+          if (!clamped || !full || !full.height) return;
+          const overflow = full.height > clamped.height + 1;
+          if (overflow !== this.data.problemTextOverflow) {
+            this.setData({ problemTextOverflow: overflow });
+          }
+        });
+    };
+    if (typeof wx.nextTick === 'function') wx.nextTick(run);
+    else setTimeout(run, 50);
+  },
+
   async _refreshInspirationCount() {
     const { roomId, brainstormSessionSeq } = this.data;
     if (!roomId) return;
@@ -1629,7 +1735,9 @@ Page({
   },
 
   onInspirationActionTap() {
-    if (this._shouldShowInspirationCamera()) {
+    const hasPhotos = (this.data.inspirationDraftPhotos || []).length > 0;
+    // 加号：选图加入灵感草稿；上箭头：保存到灵感空间
+    if (!this.data.inspirationHasText && !hasPhotos) {
       this.onInspirationAddPhoto();
       return;
     }

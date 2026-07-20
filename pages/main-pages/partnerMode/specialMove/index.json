@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "user-list": "/components/user-list/index"
+    "user-list": "/components/user-list/index",
+    "game-card-timer": "/components/game-card-timer/index"
   },
   "navigationStyle": "custom"
 }

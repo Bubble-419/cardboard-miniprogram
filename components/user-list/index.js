@@ -6,7 +6,7 @@ const {
 
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
-const EXPIRE_ANIM_MS = 1200;
+const EXPIRE_ANIM_MS = 2000;
 
 Component({
   properties: {
@@ -83,7 +83,7 @@ Component({
   },
 
   data: {
-    defaultAvatar: '/assets/avatar/Frame 2085662241.png',
+    defaultAvatar: '/assets/avatar/frame_2085662311_1x.webp',
     resolvedActingUser: null,
     resolvedSelectedUser: null,
     resolvedIndicatorUser: null,

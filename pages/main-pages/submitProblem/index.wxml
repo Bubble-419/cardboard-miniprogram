@@ -8,7 +8,7 @@
     <!-- 顶部区：TopBar + 情境格 -->
     <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
 
-      <!-- TopBar：房间入口 + 成员头像 + 添加按钮 -->
+      <!-- TopBar：房间入口 + 成员头像 -->
       <view class="topbar">
         <view class="room-entry" bindtap="handleGoRoom">
           <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
@@ -19,20 +19,13 @@
             enableAdd="{{false}}"
             isFold="{{true}}"
             showName="{{false}}"
+            layout="stack"
           />
-        </view>
-        <view class="add-btn">
-          <image class="add-btn-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit" />
         </view>
       </view>
 
-      <!-- 情境格子 -->
-      <view class="context-grid" wx:if="{{categories.length}}">
-        <view class="context-item" wx:for="{{categories}}" wx:key="id">
-          <text class="context-label">{{item.label}}</text>
-          <text class="context-value">{{item.name}}</text>
-        </view>
-      </view>
+      <!-- 情境展示 -->
+      <context-display items="{{categories}}" />
     </view>
 
     <!-- 主内容区（未提交状态） -->
@@ -41,7 +34,6 @@
       <!-- 标题区 -->
       <view class="title-section">
         <text class="page-title">匿名提交您的设计问题</text>
-        <text class="page-subtitle">提交后将进入下一步，由其他成员继续共创</text>
       </view>
 
       <!-- 输入区域 -->
@@ -58,7 +50,7 @@
           <text class="example-content">如何帮助用户在驾驶过程中快速进行导航切换？</text>
         </view>
 
-        <!-- 输入框 + 字数计数 -->
+        <!-- 输入框 + 字数计数 + 提交图标 -->
         <view class="form-input-wrap" catchtouchmove="preventTouchMove">
           <view class="textarea-box">
             <textarea
@@ -74,20 +66,28 @@
               placeholder-class="input-placeholder"
             />
           </view>
-          <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
+          <view class="counter-row">
+            <text class="char-count">{{problemText.length}}/{{maxLength}}</text>
+            <image
+              class="submit-icon"
+              src="/assets/icons/icon-submit-arrow.svg"
+              mode="aspectFit"
+              bindtap="submitProblem"
+            />
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- 已提交等待状态 -->
+    <!-- 已提交等待状态（Figma #5912:50988） -->
     <view class="wait-panel" wx:if="{{hasSubmitted}}">
-      <text class="wait-title">已提交设计问题</text>
-      <text class="wait-desc">等待其他成员提交后进入选择问题</text>
-      <text class="wait-problem">{{problemText}}</text>
+      <image
+        class="wait-empty-illus"
+        src="/assets/submitProblem/empty-wait-problems.svg"
+        mode="aspectFit"
+      />
+      <text class="wait-empty-text">等待所有玩家提交设计问题...</text>
     </view>
-
-    <!-- 底部占位，防止内容被固定按钮遮挡 -->
-    <view class="footer-placeholder" wx:if="{{!hasSubmitted}}"></view>
 
   </scroll-view>
 

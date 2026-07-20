@@ -14,7 +14,17 @@ function patchWxCloudForSharedEnv(app) {
   const origGetTempFileURL = wx.cloud.getTempFileURL ? wx.cloud.getTempFileURL.bind(wx.cloud) : null;
 
   wx.cloud.callFunction = function(opts) {
-    return app.globalData.cloudReady.then(() => app.globalData.cloud.callFunction(opts));
+    const ready = app.globalData.cloudReady;
+    if (!ready) {
+      return Promise.reject(new Error('cloud not ready'));
+    }
+    return ready.then(() => {
+      const cloud = app.globalData.cloud;
+      if (!cloud || typeof cloud.callFunction !== 'function') {
+        return Promise.reject(new Error('cloud not initialized'));
+      }
+      return cloud.callFunction(opts);
+    });
   };
   wx.cloud.database = function() {
     return app.globalData.cloudReady.then(() => app.globalData.cloud.database());
@@ -45,8 +55,11 @@ App({
         resourceEnv: SHARED_ENV_CONFIG.resourceEnv,
         traceUser: SHARED_ENV_CONFIG.traceUser,
       });
-      this.globalData.cloudReady = c1.init();
       this.globalData.cloud = c1;
+      this.globalData.cloudReady = c1.init().catch((err) => {
+        console.error('共享云环境初始化失败', err);
+        throw err;
+      });
       patchWxCloudForSharedEnv(this);
     } else {
       // 使用自有环境

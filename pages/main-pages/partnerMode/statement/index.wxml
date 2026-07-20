@@ -15,21 +15,17 @@
   </view>
 
   <view class="waiting-content" wx:if="{{isWaiting}}">
-    <view class="character-container">
-      <view class="character-bg">
-        <view class="character-icon">
-          <view class="character-face">
-            <view class="eye eye-left"></view>
-            <view class="eye eye-right"></view>
-            <view class="mouth"></view>
-            <view class="foot foot-left"></view>
-            <view class="foot foot-right"></view>
-          </view>
-        </view>
+    <view class="empty-state">
+      <image
+        class="empty-illus"
+        src="/assets/partnerMode/statement-empty-illus.svg"
+        mode="aspectFit"
+      />
+      <view class="empty-text-group">
+        <text class="empty-text">请用实体表态卡进行表态</text>
+        <text class="empty-subtext">等待主屏操作...</text>
       </view>
     </view>
-    <view class="main-text">请用实体表态卡进行表态</view>
-    <view class="sub-text">等待主屏操作...</view>
   </view>
 
   <view class="host-content" wx:else>
@@ -49,8 +45,6 @@
         </view>
       </view>
 
-      <view class="result-connector"></view>
-
       <view
         class="result-item"
         bindtap="handleStatementResult"
@@ -60,8 +54,6 @@
           <text class="result-label">部分通过</text>
         </view>
       </view>
-
-      <view class="result-connector"></view>
 
       <view
         class="result-item"

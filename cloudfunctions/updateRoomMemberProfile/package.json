@@ -1,0 +1,9 @@
+{
+  "name": "updateRoomMemberProfile",
+  "version": "1.0.0",
+  "description": "更新房间成员微信头像与昵称",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

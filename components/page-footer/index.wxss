@@ -53,8 +53,7 @@
   align-items: center;
 }
 
-.page-footer__slot > button,
-.page-footer__slot > view {
+.page-footer__slot-item {
   flex: 1;
   min-width: 0;
   width: auto !important;

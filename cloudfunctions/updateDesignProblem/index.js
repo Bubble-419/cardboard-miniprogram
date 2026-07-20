@@ -21,8 +21,8 @@ exports.main = async (event, context) => {
   if (!problemText) {
     return { ok: false, errCode: 'INVALID_PARAM', errMsg: '问题内容不能为空' };
   }
-  if (problemText.length > 120) {
-    return { ok: false, errCode: 'INVALID_PARAM', errMsg: '问题不能超过120字' };
+  if (problemText.length > 50) {
+    return { ok: false, errCode: 'INVALID_PARAM', errMsg: '问题不能超过50字' };
   }
 
   const wxContext = cloud.getWXContext();

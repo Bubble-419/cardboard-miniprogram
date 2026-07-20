@@ -1,10 +1,19 @@
 <view class="container" style="padding-top: {{navbarPaddingTop}}px">
-
   <!-- 顶部标题区 -->
   <view class="header-section">
-    <view class="nav-row">
+    <view class="topbar">
       <view class="room-entry" bindtap="handleGoRoom">
         <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
+      <view class="avatar-bar">
+        <user-list
+          avatarList="{{avatarList}}"
+          currentUser="{{currentUser}}"
+          enableAdd="{{false}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+        />
       </view>
     </view>
     <view class="title-block">
@@ -15,8 +24,13 @@
     </view>
   </view>
 
-  <!-- 模式列表 -->
-  <scroll-view class="mode-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <!-- 模式列表：scroll-view 必须用 px 高度，flex+height:0 在部分基础库会整页空白 -->
+  <scroll-view
+    class="mode-scroll"
+    scroll-y
+    show-scrollbar="{{false}}"
+    style="height: {{scrollHeight}}px"
+  >
     <view class="mode-list">
       <view
         class="mode-item {{selectedModeId === item.id ? 'selected' : ''}}"
@@ -25,16 +39,11 @@
         data-id="{{item.id}}"
         bindtap="onTapMode"
       >
-        <!-- 封面图 -->
         <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFill" />
-
-        <!-- 文字信息 -->
         <view class="mode-info">
           <text class="mode-name {{selectedModeId === item.id ? 'active' : ''}}">{{item.title}}</text>
-          <text class="mode-desc" decode="{{true}}">{{item.description}}</text>
+          <text class="mode-desc">{{item.description}}</text>
         </view>
-
-        <!-- 选中状态指示器 -->
         <view class="status-wrap {{selectedModeId === item.id ? 'checked' : ''}}">
           <image
             wx:if="{{selectedModeId === item.id}}"
@@ -47,7 +56,6 @@
     </view>
   </scroll-view>
 
-  <!-- 底部确认按钮（仅房主可见） -->
   <page-footer
     wx:if="{{isHost}}"
     extClass="footer"
@@ -65,5 +73,4 @@
     showPrimary="{{false}}"
     bind:prev="handleGoBack"
   ></page-footer>
-
 </view>

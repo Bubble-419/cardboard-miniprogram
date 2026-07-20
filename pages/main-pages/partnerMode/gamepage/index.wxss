@@ -48,24 +48,27 @@
   flex-direction: column;
 }
 
+/* Figma #5848:3368 — 顶部内容避开微信胶囊 */
 .page-footer {
   flex-shrink: 0;
-  padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+  padding: 18rpx 0 calc(40rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 
 .top-bar {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 8rpx 28rpx 12rpx;
+  padding: 8rpx 30rpx 12rpx;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .room-entry {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 20rpx;
-  background: #e9f5e9;
+  width: 74rpx;
+  height: 74rpx;
+  border-radius: 9999rpx;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,41 +76,81 @@
 }
 
 .room-entry-icon {
-  width: 36rpx;
-  height: 36rpx;
+  width: 74rpx;
+  height: 74rpx;
 }
 
 .problem-chip {
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 432rpx;
   min-width: 0;
-  min-height: 80rpx;
-  padding: 12rpx 20rpx 12rpx 52rpx;
+  min-height: 74rpx;
+  padding: 14rpx 20rpx;
   background: #e9f5e9;
-  border-radius: 28rpx;
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
+  gap: 16rpx;
   position: relative;
   box-sizing: border-box;
+  z-index: 2;
+}
+
+.problem-chip-expanded {
+  align-items: flex-start;
+  z-index: 20;
+}
+
+.problem-chip-tappable {
+  cursor: pointer;
 }
 
 .problem-icon {
-  width: 28rpx;
-  height: 28rpx;
+  width: 40rpx;
+  height: 40rpx;
   flex-shrink: 0;
-  position: absolute;
-  left: 16rpx;
-  top: 50%;
-  transform: translateY(-50%);
+  margin-top: 2rpx;
+}
+
+.problem-text-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
 }
 
 .problem-text {
-  flex: 1;
+  display: -webkit-box;
+  width: 100%;
   font-size: 24rpx;
   color: #747474;
-  line-height: 1.4;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-all;
+}
+
+.problem-text-expanded {
+  display: block;
+  overflow: visible;
+  text-overflow: unset;
+  -webkit-line-clamp: unset;
+  white-space: normal;
+}
+
+.problem-text-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  font-size: 24rpx;
+  line-height: 1.2;
+  word-break: break-all;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .problem-text-empty {
@@ -115,14 +158,29 @@
 }
 
 .user-section {
-  padding: 0 20rpx 8rpx;
+  padding: 10rpx 30rpx 0;
   flex-shrink: 0;
+}
+
+/* partner-avatar 滚动行：左缘与主卡片对齐（swiper 40rpx + item 8rpx - avatar 8rpx padding） */
+.player-avatar-scroll {
+  width: 100%;
+}
+
+.player-avatar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  padding: 2rpx 0;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .divider-line {
   height: 2rpx;
-  margin: 0 28rpx 12rpx;
-  background: #ececec;
+  margin: 10rpx 30rpx 8rpx;
+  background: #f1f1f1;
   flex-shrink: 0;
 }
 
@@ -131,7 +189,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-bottom: 4rpx;
+  gap: 12rpx;
+  padding-bottom: 0;
   overflow: hidden;
 }
 
@@ -169,6 +228,11 @@
   overflow: hidden;
 }
 
+.game-card-active {
+  border-width: 4rpx;
+  border-color: #b0e0ae;
+}
+
 .game-card-muted {
   border: 4rpx solid #d4e0d4;
   background: #f7faf7;
@@ -183,7 +247,213 @@
 }
 
 .action-voice-list {
-  padding: 0 28rpx 8rpx;
+  padding: 0 0 8rpx;
+}
+
+.action-card-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.action-card-scroll {
+  flex: 1;
+  height: 0;
+  width: 100%;
+}
+
+.action-card-inner {
+  padding: 50rpx 30rpx 40rpx;
+  box-sizing: border-box;
+}
+
+.action-card-inner-spectator {
+  padding: 50rpx 30rpx 220rpx;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.action-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 8rpx;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.master-mode-badge {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 0;
+  height: 56rpx;
+  padding: 0 16rpx;
+  background: #5ec159;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: -0.06em;
+  line-height: 56rpx;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+/* Figma #5848:3395 — title + desc gap 17px */
+.action-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 34rpx;
+  width: 100%;
+  margin-bottom: 16rpx;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Figma #5933:8003 — MASTER：徽章+标题同行，与说明间距 7px */
+.action-header-master {
+  gap: 14rpx;
+  align-items: stretch;
+}
+
+.action-title {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #5ec159;
+  line-height: 1.3;
+  letter-spacing: -0.06em;
+}
+
+.action-title-master {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  font-size: 36rpx;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.action-desc {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.4);
+  line-height: 1.3;
+  letter-spacing: -0.06em;
+  box-sizing: border-box;
+}
+
+.action-header-master .action-desc {
+  font-size: 24rpx;
+}
+
+.action-divider {
+  height: 2rpx;
+  margin: 0 0 16rpx;
+  background: #f1f1f1;
+}
+
+.action-divider-gap {
+  margin-top: 24rpx;
+}
+
+/* Figma #5848:3399 — 2×2 grid, gap 8px 10px */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx 20rpx;
+  width: 100%;
+}
+
+.action-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2rpx;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.action-illus {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #e7e7e7;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
+.action-cell-label {
+  font-size: 24rpx;
+  color: rgba(0, 0, 0, 0.4);
+  text-align: center;
+  line-height: 1.3;
+  letter-spacing: -0.06em;
+  padding-top: 4rpx;
+}
+
+/* 非出牌玩家：等待插画区 Figma #5914:51097 */
+.spectator-waiting {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 36rpx;
+  padding: 24rpx 0 40rpx;
+  box-sizing: border-box;
+}
+
+.spectator-waiting-illus {
+  width: 367rpx;
+  height: 280rpx;
+}
+
+.spectator-waiting-text {
+  width: 100%;
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #5ec159;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.score-panel {
+  flex-shrink: 0;
+  margin: 8rpx 0 0;
+  padding: 6rpx 14rpx 10rpx;
+  background: #fff;
+  border: 1rpx solid #f1f5f1;
+  border-radius: 28rpx;
+  box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.12);
+}
+
+/* 浮在出牌并解释面板底部上方 */
+.score-panel-float {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 20rpx;
+  margin: 0;
+  z-index: 5;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.14);
 }
 
 game-card-timer {
@@ -304,144 +574,62 @@ game-card-timer {
   background: #e7e7e7;
 }
 
-.action-card-body {
-  flex: 1;
-  height: 0;
-  padding: 28rpx 24rpx 0;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.action-title-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 12rpx;
-}
-
-.master-mode-badge {
-  padding: 8rpx 24rpx;
-  background: #5ec159;
-  border-radius: 16rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.action-title {
-  display: block;
-  text-align: center;
-  font-size: 48rpx;
-  font-weight: 700;
-  color: #5ec159;
-  margin-bottom: 16rpx;
-}
-
-.action-desc {
-  display: block;
-  text-align: center;
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.4);
-  line-height: 1.4;
-  margin-bottom: 4rpx;
-}
-
-.action-divider {
-  height: 2rpx;
-  margin: 16rpx 0 20rpx;
-  background: #ececec;
-}
-
-.action-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.action-cell {
-  width: calc(50% - 8rpx);
-  border-radius: 8rpx;
-  min-height: 140rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  padding-bottom: 16rpx;
-  box-sizing: border-box;
-}
-
-.action-cell-filled {
-  background: #e9f8fb;
-}
-
-.action-cell-empty {
-  background: #e7e7e7;
-}
-
-.action-illus {
-  flex: 1;
-  width: 100%;
-  min-height: 80rpx;
-  margin-bottom: 8rpx;
-}
-
-.action-illus-play,
-.action-illus-delete {
-  background: linear-gradient(180deg, #f6fcfd 0%, #e9f8fb 100%);
-}
-
-.action-cell-label {
-  font-size: 24rpx;
-  color: rgba(0, 0, 0, 0.4);
-}
-
-.score-panel {
-  flex-shrink: 0;
-  margin: 8rpx 16rpx 12rpx;
-  padding: 16rpx 12rpx 12rpx;
-  background: #fff;
-  border: 1rpx solid #f1f5f1;
-  border-radius: 28rpx;
-  box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.12);
-}
-
 .score-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12rpx;
-  padding: 0 8rpx;
+  margin-bottom: 4rpx;
+  padding: 0 4rpx;
 }
 
 .score-label,
 .score-progress {
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 600;
   color: #5ec159;
+  line-height: 1.5;
 }
 
 .score-buttons {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  gap: 8rpx;
+  gap: 12rpx;
 }
 
 .score-btn {
   flex: 1;
-  min-height: 88rpx;
+  width: 0;
+  min-width: 0;
+  position: relative;
   border-radius: 21rpx;
   background: #e3fae2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #5ec159;
   box-sizing: border-box;
+  overflow: hidden;
+}
+
+.score-btn::after {
+  content: '';
+  display: block;
+  padding-bottom: 100%;
+}
+
+.score-btn-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6rpx;
+  box-sizing: border-box;
+  line-height: 1;
 }
 
 .score-btn-active {
   background: #5ec159;
-  color: #fff;
 }
 
 .score-btn-disabled {
@@ -449,14 +637,27 @@ game-card-timer {
 }
 
 .score-num {
-  font-size: 40rpx;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 76rpx;
+  font-weight: 600;
+  line-height: 0.75;
 }
 
 .score-unit {
-  font-size: 20rpx;
-  line-height: 1.2;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 0;
+  margin-bottom: 10rpx;
+}
+
+.score-btn:not(.score-btn-active) .score-num,
+.score-btn:not(.score-btn-active) .score-unit {
+  color: #5ec159;
+}
+
+.score-btn-active .score-num,
+.score-btn-active .score-unit {
+  color: #fff;
 }
 
 .card-pagination {
@@ -464,21 +665,27 @@ game-card-timer {
   align-items: center;
   justify-content: center;
   gap: 24rpx;
-  padding: 8rpx 0 4rpx;
+  min-height: 40rpx;
+  padding: 4rpx 30rpx;
   position: relative;
   flex-shrink: 0;
+  box-sizing: border-box;
+  /* 页码绝对定位不撑高；须高于字号，避免被 .card-area overflow:hidden 裁切 */
+  overflow: visible;
 }
 
 .pagination-dots {
   display: flex;
+  align-items: center;
   gap: 12rpx;
 }
 
 .dot {
-  width: 16rpx;
-  height: 16rpx;
+  width: 18rpx;
+  height: 18rpx;
   border-radius: 50%;
   background: #d9d9d9;
+  flex-shrink: 0;
 }
 
 .dot-active {
@@ -487,76 +694,221 @@ game-card-timer {
 
 .pagination-text {
   position: absolute;
-  right: 40rpx;
+  right: 30rpx;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 32rpx;
+  line-height: 1.2;
   color: #5ec159;
 }
 
+/* Figma #5926:2116 — icon 49×50 + input 302×46, gap 9px */
 .inspiration-bar {
-  margin: 4rpx 28rpx 8rpx;
+  margin: 18rpx 30rpx 0;
   display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-shrink: 0;
-}
-
-.inspiration-badge-wrap {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #e3fae2;
-  display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  gap: 18rpx;
   flex-shrink: 0;
-}
-
-.inspiration-badge {
-  font-size: 36rpx;
-}
-
-.inspiration-input-fake {
-  flex: 1;
-  height: 72rpx;
-  padding: 0 24rpx;
-  background: #fff;
-  border: 1rpx solid #d7d7d7;
-  border-radius: 28rpx;
-  display: flex;
-  align-items: center;
+  position: relative;
+  z-index: 51;
+  min-height: 100rpx;
   box-sizing: border-box;
 }
 
-.inspiration-placeholder {
-  font-size: 28rpx;
-  color: #b0b0b0;
+.insp-icon-wrap {
+  width: 98rpx;
+  height: 100rpx;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 2;
 }
 
-.inspiration-submit {
-  width: 72rpx;
-  height: 72rpx;
+.insp-icon-img {
+  width: 92rpx;
+  height: 92rpx;
+  margin-top: 8rpx;
+}
+
+.insp-dot {
+  width: 32rpx;
+  height: 32rpx;
   border-radius: 50%;
   background: #5ec159;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+/* Figma #5848:3431 — 灵感数量角标 */
+.insp-badge {
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 6rpx;
+  border-radius: 50%;
+  background: #5ec159;
+  position: absolute;
+  right: 0;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+}
+
+.insp-badge-num {
+  font-size: 20rpx;
+  font-weight: 500;
+  color: #ffffff;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-composer {
+  flex: 1;
+  min-width: 0;
+  min-height: 92rpx;
+  padding: 18rpx 30rpx;
+  background: #fff;
+  border: 1rpx solid #d7d7d7;
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.inspiration-composer-focused {
+  border-color: #d7d7d7;
+}
+
+.inspiration-photo-strip {
+  width: 100%;
+  margin-bottom: 8rpx;
+  white-space: nowrap;
+}
+
+.inspiration-photo-strip-inner {
+  display: inline-flex;
+  gap: 12rpx;
+}
+
+.inspiration-photo-thumb-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 72rpx;
   flex-shrink: 0;
 }
 
-.inspiration-arrow {
-  width: 32rpx;
-  height: 32rpx;
+.inspiration-photo-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 10rpx;
+  background: #eee;
 }
 
+.inspiration-photo-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+/* Figma #5928:13308 — 文案与右侧 icon 左右排布 */
+.inspiration-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inspiration-textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  font-size: 32rpx;
+  color: #333;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-placeholder {
+  font-size: 32rpx;
+  color: #aeaeae;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+/* Figma：常态加号 / 输入态上箭头，均在输入框内 22px → 44rpx */
+.inspiration-action {
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inspiration-action-disabled {
+  opacity: 0.55;
+}
+
+.inspiration-action-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.inspiration-focus-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+  background: transparent;
+}
+
+/* Figma #5848:3433 — 特殊行动 / 开始表态为两个独立按钮，中间硬分缝 */
 .bottom-actions {
   display: flex;
+  flex-direction: row;
   align-items: stretch;
-  gap: 16rpx;
-  padding: 0 28rpx;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 30rpx;
+}
+
+.special-btn-wrap {
+  flex: none;
+  width: 162rpx; /* Figma 81px；过窄时原生 button 会溢出盖住右侧按钮 */
+  overflow: hidden;
+}
+
+.bottom-actions-gap {
+  flex: none;
+  width: 24rpx;
+  height: 1rpx;
+}
+
+.statement-btn-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .special-btn {
-  width: 162rpx;
+  width: 100% !important;
+  min-width: 0;
   height: 112rpx;
   margin: 0;
   padding: 0;
@@ -564,14 +916,15 @@ game-card-timer {
   border-radius: 28rpx;
   background: #e9f5e9;
   color: #5ec159;
-  font-size: 36rpx;
+  font-size: 40rpx;
   font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: 2rpx;
+  line-height: 1.06em;
+  letter-spacing: 0.1em;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .special-btn-line {
@@ -583,50 +936,68 @@ game-card-timer {
   border: none;
 }
 
-.special-btn-disabled {
-  background: #e7e7e7;
-  color: #c1c1c1;
+.special-btn-disabled,
+.special-btn[disabled] {
+  background: #e7e7e7 !important;
+  color: #c1c1c1 !important;
+  opacity: 1 !important;
 }
 
+/* Figma #5933:8010 — 已使用：底色不变，文案 50% 透明 + 绿色勾选叠加 */
 .special-btn-used {
-  background: #e3ebe3;
-  border: 2rpx solid #d4e0d4;
+  position: relative;
+  background: #e9f5e9;
+  color: rgba(94, 193, 89, 0.5);
   box-sizing: border-box;
 }
 
-.special-btn-check-mark {
-  font-size: 56rpx;
-  font-weight: 700;
-  color: #2f8a2f;
-  line-height: 1;
+.special-btn-used-check {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64rpx;
+  height: 50rpx;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .statement-btn {
-  flex: 1;
+  width: 100% !important;
+  min-width: 0;
   height: 112rpx;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 28rpx;
-  background: #c1c1c1;
-  color: #fff;
-  font-size: 44rpx;
-  letter-spacing: 4rpx;
+  background: #c0c0c0;
+  color: #ffffff;
+  font-size: 60rpx;
+  font-weight: 400;
+  letter-spacing: 0.0667em;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .statement-btn::after {
   border: none;
 }
 
+.statement-btn[disabled] {
+  background: #c0c0c0 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
 .statement-btn-enabled {
-  background: #5ec159;
+  background: #5ec159 !important;
+  color: #fff !important;
+  opacity: 1 !important;
 }
 
 .statement-btn-enabled:active {
-  opacity: 0.9;
+  opacity: 0.9 !important;
 }
 
 .discussion-card-body {
@@ -663,44 +1034,22 @@ game-card-timer {
 }
 
 .discussion-photo-placeholder {
-  width: 200rpx;
-  height: 150rpx;
+  width: 280rpx;
+  height: 228rpx;
   margin: 24rpx auto;
-  border: 2rpx dashed #adadad;
-  border-radius: 12rpx;
+  border: none;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: transparent;
+  box-sizing: border-box;
+  padding: 0;
 }
 
-.discussion-photo-icon {
-  width: 48rpx;
-  height: 40rpx;
-  position: relative;
-}
-
-.discussion-photo-icon::before {
-  content: '';
-  position: absolute;
-  left: 4rpx;
-  top: 8rpx;
-  width: 40rpx;
-  height: 28rpx;
-  border: 2rpx solid #b0b0b0;
-  border-radius: 6rpx;
-}
-
-.discussion-photo-icon::after {
-  content: '';
-  position: absolute;
-  left: 16rpx;
-  top: 2rpx;
-  width: 16rpx;
-  height: 10rpx;
-  border: 2rpx solid #b0b0b0;
-  border-bottom: none;
-  border-radius: 4rpx 4rpx 0 0;
+.discussion-empty-illus {
+  width: 280rpx;
+  height: 228rpx;
 }
 
 .discussion-hint {
@@ -864,15 +1213,17 @@ game-card-timer {
 }
 
 .closing-photo-placeholder {
-  width: 200rpx;
-  height: 150rpx;
+  width: 280rpx;
+  height: 228rpx;
   margin: 24rpx auto;
-  border: 2rpx dashed #adadad;
-  border-radius: 12rpx;
+  border: none;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: transparent;
+  box-sizing: border-box;
+  padding: 0;
 }
 
 .closing-next-btn,
