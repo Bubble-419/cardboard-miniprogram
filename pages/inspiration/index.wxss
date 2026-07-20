@@ -7,8 +7,8 @@
 
 .custom-navbar {
   background-color: #f8fbfa;
-  padding-top: max(0px, calc(env(safe-area-inset-top, 0) - 18px));
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .navbar-content {
@@ -17,6 +17,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 24rpx;
+  box-sizing: border-box;
 }
 
 .navbar-left {
@@ -26,82 +27,40 @@
   align-items: center;
 }
 
-.back-icon {
-  width: 32rpx;
-  height: 32rpx;
+.room-entry {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 9999rpx;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.room-entry-icon {
+  width: 64rpx;
+  height: 64rpx;
 }
 
 .navbar-center {
   flex: 1;
   display: flex;
+  align-items: center;
   justify-content: center;
+}
+
+.navbar-title {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #1a1a1a;
+  line-height: 1.2;
 }
 
 .navbar-right {
   width: 174rpx;
   height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 20rpx;
-}
-
-.navbar-icon {
-  width: 32rpx;
-  height: 32rpx;
-  font-size: 24rpx;
-  color: #000000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tab-switch {
-  position: relative;
-  width: 468rpx;
-  height: 64rpx;
-  background-color: #f4f4f6;
-  border-radius: 74rpx;
-  display: flex;
-  align-items: center;
-  padding: 4rpx;
-}
-
-.tab-bg {
-  position: absolute;
-  width: 234rpx;
-  height: 56rpx;
-  background-color: #ffffff;
-  border-radius: 74rpx;
-  box-shadow: 0 0 4rpx rgba(66, 66, 83, 0.14);
-  transition: transform 0.3s;
-  left: 4rpx;
-  top: 4rpx;
-}
-
-.tab-item {
-  flex: 1;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  position: relative;
-  z-index: 1;
-}
-
-.tab-item.active .tab-text {
-  color: #00c876;
-}
-
-.tab-icon {
-  width: 26rpx;
-  height: 26rpx;
-}
-
-.tab-text {
-  font-size: 24rpx;
-  color: #717b7e;
+  flex-shrink: 0;
 }
 
 .ai-section {
@@ -189,7 +148,7 @@
   flex: 1;
   height: 0;
   width: 100%;
-  padding: 20rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 24rpx 24rpx 24rpx;
   box-sizing: border-box;
 }
 
@@ -310,4 +269,131 @@
   background-color: #5ec159;
   border-radius: 2rpx;
   height: 20rpx;
+}
+
+/* 灵感输入栏：复用 gamepage，无左侧灯泡 */
+.inspiration-bar {
+  margin: 0 30rpx;
+  padding-bottom: calc(18rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 51;
+  min-height: 100rpx;
+  box-sizing: border-box;
+  background-color: #f8fbfa;
+}
+
+.inspiration-composer {
+  flex: 1;
+  min-width: 0;
+  min-height: 92rpx;
+  padding: 18rpx 30rpx;
+  background: #fff;
+  border: 1rpx solid #d7d7d7;
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.inspiration-composer-focused {
+  border-color: #d7d7d7;
+}
+
+.inspiration-photo-strip {
+  width: 100%;
+  margin-bottom: 8rpx;
+  white-space: nowrap;
+}
+
+.inspiration-photo-strip-inner {
+  display: inline-flex;
+  gap: 12rpx;
+}
+
+.inspiration-photo-thumb-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 72rpx;
+  flex-shrink: 0;
+}
+
+.inspiration-photo-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 10rpx;
+  background: #eee;
+}
+
+.inspiration-photo-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+.inspiration-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inspiration-textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  font-size: 32rpx;
+  color: #333;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-placeholder {
+  font-size: 32rpx;
+  color: #aeaeae;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.inspiration-action {
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inspiration-action-disabled {
+  opacity: 0.55;
+}
+
+.inspiration-action-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.inspiration-focus-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+  background: transparent;
 }
