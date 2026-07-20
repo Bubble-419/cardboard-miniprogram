@@ -899,6 +899,13 @@ game-card-timer {
   overflow: hidden;
 }
 
+/* 非房主当前玩家：仅有特殊行动时铺满底栏 */
+.special-btn-wrap-alone {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
 .bottom-actions-gap {
   flex: none;
   width: 24rpx;

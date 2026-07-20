@@ -140,7 +140,10 @@ Page({
   },
 
   _markSpecialMoveUsedForGamepage() {
-    const playerIndex = this.data.currentPlayerIndex || this.data.initiatorPlayerIndex;
+    // 标记必须挂在当前出牌轮次玩家上，避免误锁下一玩家或房主自身
+    const playerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : this.data.initiatorPlayerIndex;
     markPartnerSpecialMoveUsed(
       this.data.roomId,
       playerIndex,
@@ -158,7 +161,7 @@ Page({
       return;
     }
     const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
-    const idx = currentPlayerIndex || initiatorPlayerIndex;
+    const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
     safeOpenUrl(buildGamepageUrl(
       roomId,
       idx,
@@ -268,12 +271,20 @@ Page({
         result.roomState,
         this.data.initiatorPlayerIndex
       );
+      // 非当前出牌玩家不得停留在特殊行动页（含房主代进）
+      if (!player.isCurrentPlayer) {
+        wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+        this._returnToGamepage(false);
+        return;
+      }
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
 
       this.setData({
         members,
         avatarList: buildPartnerAvatarList(members),
+        // 以房间态当前出牌玩家为准，发起人索引与之对齐
         currentPlayerIndex: player.currentPlayerIndex,
+        initiatorPlayerIndex: player.currentPlayerIndex,
         currentRound: result.roomState && result.roomState.currentRound != null
           ? result.roomState.currentRound
           : 1,
@@ -331,6 +342,19 @@ Page({
           data: { roomId }
         });
         const result = (res && res.result) || {};
+        const members = result.members || this.data.members || [];
+        const player = resolveCurrentPlayerFromRoom(
+          members,
+          result.roomState,
+          this.data.currentPlayerIndex
+        );
+        // 轮次已切走：退出特殊行动页
+        if (result.ok === true && members.length && !player.isCurrentPlayer) {
+          this._stopStatePolling();
+          wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+          this._returnToGamepage(false);
+          return;
+        }
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
             // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
@@ -542,17 +566,21 @@ Page({
   },
 
   async activateMasterMode() {
-    const { roomId, initiatorPlayerIndex, members } = this.data;
+    const { roomId, members } = this.data;
     if (!roomId) return;
 
-    const initiator = (members || []).find((m) => m.playerIndex === initiatorPlayerIndex);
-    const initiatorName = initiator
-      ? (initiator.nickName || `玩家${initiatorPlayerIndex}`)
-      : `玩家${initiatorPlayerIndex}`;
+    // MASTER 仅归属当前出牌玩家本人
+    const turnPlayerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : this.data.initiatorPlayerIndex;
+    const turnPlayer = (members || []).find((m) => m.playerIndex === turnPlayerIndex);
+    const turnPlayerName = turnPlayer
+      ? (turnPlayer.nickName || `玩家${turnPlayerIndex}`)
+      : `玩家${turnPlayerIndex}`;
 
     this._markSpecialMoveUsedForGamepage();
 
-    const result = await this._updateRoomState('gamepage', initiatorPlayerIndex, initiatorName, {
+    const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
       partnerMasterMode: true
     });
     if (!result || result.ok !== true) {

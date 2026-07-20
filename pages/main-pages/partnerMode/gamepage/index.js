@@ -181,11 +181,17 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId) return;
 
+    // 非当前出牌玩家不展示特殊行动，无需同步已使用态
+    if (!this.data.isCurrentPlayer) {
+      this.setData({ specialMoveUsedThisTurn: false });
+      return;
+    }
+
     const currentPlayerIndex = this.data.currentPlayerIndex;
     const app = getApp();
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
     if (flag && flag.roomId === roomId) {
-      // 仅当标记属于当前轮次玩家时才视为已使用（房主代操作）
+      // 仅当标记属于本人且为本轮出牌玩家时才视为已使用
       if (flag.playerIndex === currentPlayerIndex) {
         this.setData({ specialMoveUsedThisTurn: true });
         return;
@@ -829,11 +835,18 @@ Page({
   },
 
   _validateSpecialMoveFlag(flag, patch) {
-    // 房主代操作：标记归属当前轮次玩家即可
-    return flag.playerIndex === patch.currentPlayerIndex;
+    // 仅当前出牌玩家本人可匹配「本轮已使用」标记
+    return !!(
+      patch.isCurrentPlayer
+      && flag.playerIndex === patch.currentPlayerIndex
+    );
   },
 
   _resolveSpecialMoveUsed(patch) {
+    // 非当前出牌玩家不展示按钮，也不记已使用
+    if (!patch.isCurrentPlayer) {
+      return false;
+    }
     if (patch.isMasterMode) {
       return true;
     }
@@ -1835,22 +1848,27 @@ Page({
   },
 
   onTapSpecialMove() {
-    // 房主代当前轮次玩家操作：不校验 isCurrentPlayer
+    // 仅当前出牌轮次玩家可进入；房主不可代操作
+    if (!this.data.isCurrentPlayer) {
+      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+      return;
+    }
     if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) {
       wx.showToast({ title: '本轮特殊行动已使用', icon: 'none' });
       return;
     }
-    const { roomId, members } = this.data;
+    const roomId = this.data.roomId;
+    const currentPlayerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : 1;
     if (!roomId) {
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
-    const me = (members || []).find((m) => m.isMe);
-    const initiatorIndex = me ? me.playerIndex : this.data.currentPlayerIndex;
     // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-    const url = buildSpecialMoveUrl(roomId, initiatorIndex);
+    const url = buildSpecialMoveUrl(roomId, currentPlayerIndex);
     const opened = openPartnerPage(url);
     if (!opened) {
       wx.navigateTo({

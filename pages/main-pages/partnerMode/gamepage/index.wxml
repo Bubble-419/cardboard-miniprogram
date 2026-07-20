@@ -852,8 +852,12 @@
         结束讨论
       </button>
     </view>
-    <view class="bottom-actions" wx:elif="{{isHost}}">
-      <view class="special-btn-wrap">
+    <view class="bottom-actions" wx:elif="{{isCurrentPlayer || isHost}}">
+      <!-- 特殊行动：仅当前出牌轮次玩家可见，房主不可代操作 -->
+      <view
+        wx:if="{{isCurrentPlayer}}"
+        class="special-btn-wrap {{isHost ? '' : 'special-btn-wrap-alone'}}"
+      >
         <view
           wx:if="{{specialMoveUsedThisTurn || isMasterMode}}"
           class="special-btn special-btn-used"
@@ -876,8 +880,8 @@
           <text class="special-btn-line">行动</text>
         </button>
       </view>
-      <view class="bottom-actions-gap"></view>
-      <view class="statement-btn-wrap">
+      <view class="bottom-actions-gap" wx:if="{{isCurrentPlayer && isHost}}"></view>
+      <view class="statement-btn-wrap" wx:if="{{isHost}}">
         <button
           class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
           disabled="{{!canStartStatement}}"
