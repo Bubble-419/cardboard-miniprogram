@@ -1,0 +1,9 @@
+{
+  "name": "roomUpdateWorkshopName",
+  "version": "1.0.0",
+  "description": "房主修改房间名称",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}
