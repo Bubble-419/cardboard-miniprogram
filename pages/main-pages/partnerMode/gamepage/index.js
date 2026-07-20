@@ -45,6 +45,7 @@ const {
 const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
 const {
   attachPrivateNotesToSummaries,
+  loadAllPrivateNotes,
   loadPrivateRoundNote,
   savePrivateRoundNote,
   persistTempPhoto
@@ -81,6 +82,7 @@ Page({
     closingStep: CLOSING_STEP_RUNE,
     closingQuestionPlayers: [],
     reviewPhotos: [],
+    closingReviewRounds: [],
     canStartStatement: false,
     specialMoveUsedThisTurn: false,
     currentRound: 1,
@@ -435,6 +437,60 @@ Page({
         : currentPlayerIndex,
       indicatorPlayerIndex
     };
+  },
+
+  /** 收尾复盘：仅展示本人手动插入的文字/图片 */
+  _buildClosingReviewRounds(options) {
+    const {
+      roomId,
+      brainstormSessionSeq,
+      currentRound,
+      playHistory,
+      discussionNotes,
+      playImages,
+      discussionImages
+    } = options || {};
+
+    const sessionSeq = brainstormSessionSeq != null
+      ? brainstormSessionSeq
+      : this.data.brainstormSessionSeq;
+    const allNotes = loadAllPrivateNotes(
+      roomId || this.data.roomId,
+      sessionSeq
+    );
+
+    // 当前轮以页面最新本地插入为准（可能尚未落盘到 storage 边缘情况已由 _persist 覆盖）
+    const curRound = Number(currentRound) || 0;
+    if (curRound > 0) {
+      allNotes[String(curRound)] = {
+        playHistory: Array.isArray(playHistory) ? playHistory : [],
+        discussionNotes: Array.isArray(discussionNotes) ? discussionNotes : [],
+        playImages: Array.isArray(playImages) ? playImages : [],
+        discussionImages: Array.isArray(discussionImages) ? discussionImages : []
+      };
+    }
+
+    return Object.keys(allNotes)
+      .map((key) => Number(key))
+      .filter((round) => Number.isFinite(round) && round > 0)
+      .sort((a, b) => a - b)
+      .map((round) => {
+        const note = allNotes[String(round)] || {};
+        const privateNote = {
+          playHistory: Array.isArray(note.playHistory) ? note.playHistory : [],
+          discussionNotes: Array.isArray(note.discussionNotes) ? note.discussionNotes : [],
+          playImages: Array.isArray(note.playImages) ? note.playImages : [],
+          discussionImages: Array.isArray(note.discussionImages) ? note.discussionImages : []
+        };
+        return { round, privateNote };
+      })
+      .filter((item) => {
+        const n = item.privateNote;
+        return n.playHistory.length
+          || n.discussionNotes.length
+          || n.playImages.length
+          || n.discussionImages.length;
+      });
   },
 
   _resolveIndicatorPlayerIndex(cardIndex) {
@@ -1066,6 +1122,20 @@ Page({
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
+    }
+
+    if (isClosingPhase(roomPhase)) {
+      patch.closingReviewRounds = this._buildClosingReviewRounds({
+        roomId: this.data.roomId,
+        brainstormSessionSeq,
+        currentRound,
+        playHistory: patch.playHistory,
+        discussionNotes: patch.discussionNotes,
+        playImages: patch.playImages,
+        discussionImages: patch.discussionImages
+      });
+    } else if (phaseChanged) {
+      patch.closingReviewRounds = [];
     }
 
     const contextFingerprint = [
@@ -2217,7 +2287,16 @@ Page({
     }
     this.setData({
       closingStep: CLOSING_STEP_REVIEW,
-      cardIndex: 1
+      cardIndex: 1,
+      closingReviewRounds: this._buildClosingReviewRounds({
+        roomId: this.data.roomId,
+        brainstormSessionSeq: this.data.brainstormSessionSeq,
+        currentRound: this.data.currentRound,
+        playHistory: this.data.playHistory,
+        discussionNotes: this.data.discussionNotes,
+        playImages: this.data.playImages,
+        discussionImages: this.data.discussionImages
+      })
     });
   },
 
@@ -2260,6 +2339,22 @@ Page({
           }
         });
       }
+    });
+  },
+
+  onClosingReviewPreview(e) {
+    const url = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url;
+    if (!url) return;
+    const urls = [];
+    (this.data.closingReviewRounds || []).forEach((round) => {
+      const note = (round && round.privateNote) || {};
+      (note.playImages || []).forEach((img) => urls.push(img));
+      (note.discussionImages || []).forEach((img) => urls.push(img));
+    });
+    (this.data.reviewPhotos || []).forEach((img) => urls.push(img));
+    wx.previewImage({
+      current: url,
+      urls: urls.length ? urls : [url]
     });
   },
 
