@@ -178,6 +178,9 @@ exports.main = async (event, context) => {
         turnRecords: [],
         aiSummary: { status: 'pending' }
       };
+      roomState.partnerExpressMessages = Array.isArray(room.partnerExpressMessages)
+        ? room.partnerExpressMessages.slice(-40)
+        : [];
     }
 
     const membersRes = await db

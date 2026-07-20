@@ -376,6 +376,11 @@
 }
 
 /* Figma #5848:3399 — 2×2 grid, gap 8px 10px */
+.action-rules-block {
+  width: 100%;
+  flex-shrink: 0;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1251,3 +1256,287 @@ game-card-timer {
 .closing-btn-disabled {
   background: #c1c1c1;
 }
+
+/* ---- 卡片插入文字/图片 ---- */
+.action-title-row-with-express {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+  width: 100%;
+}
+
+.action-title-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.express-btn {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx 8rpx;
+}
+
+.express-btn-icon {
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.express-btn-label {
+  font-size: 20rpx;
+  color: #5ec159;
+  line-height: 1.2;
+}
+
+.card-media-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.card-media-thumb {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+}
+
+.card-insert-panel {
+  margin-top: 28rpx;
+  padding: 20rpx;
+  background: #f7f8f9;
+  border-radius: 20rpx;
+  box-sizing: border-box;
+}
+
+.card-insert-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.card-insert-photos {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.card-insert-photo-wrap {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+}
+
+.card-insert-photo {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 12rpx;
+  background: #e5e7eb;
+}
+
+.card-insert-photo-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: rgba(17, 24, 39, 0.7);
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.card-insert-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12rpx;
+}
+
+.card-insert-textarea {
+  flex: 1;
+  min-height: 64rpx;
+  max-height: 200rpx;
+  padding: 12rpx 16rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  color: #111827;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.card-insert-placeholder {
+  color: #9ca3af;
+}
+
+.card-insert-send {
+  width: 64rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-insert-send-disabled {
+  opacity: 0.4;
+}
+
+.card-insert-send-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+/* ---- 匿名表达弹窗 ---- */
+.express-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+  box-sizing: border-box;
+}
+
+.express-panel {
+  width: 100%;
+  max-width: 620rpx;
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 32rpx 28rpx 28rpx;
+  box-sizing: border-box;
+}
+
+.express-panel-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.express-panel-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #111827;
+}
+
+.express-panel-close {
+  font-size: 44rpx;
+  color: #9ca3af;
+  line-height: 1;
+  padding: 0 8rpx;
+}
+
+.express-panel-hint {
+  display: block;
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.4;
+  margin-bottom: 20rpx;
+}
+
+.express-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  max-height: 240rpx;
+  padding: 20rpx;
+  background: #f3f4f6;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  color: #111827;
+  box-sizing: border-box;
+}
+
+.express-placeholder {
+  color: #9ca3af;
+}
+
+.express-panel-foot {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.express-count {
+  font-size: 24rpx;
+  color: #9ca3af;
+}
+
+.express-submit {
+  min-width: 160rpx;
+  height: 72rpx;
+  padding: 0 32rpx;
+  border-radius: 36rpx;
+  background: #5ec159;
+  color: #fff;
+  font-size: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.express-submit-disabled {
+  background: #c1c1c1;
+}
+
+/* ---- 弹幕层 ---- */
+.danmaku-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 900;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.danmaku-item {
+  position: absolute;
+  left: 100%;
+  white-space: nowrap;
+  animation-name: danmaku-fly;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.danmaku-text {
+  display: inline-block;
+  padding: 10rpx 24rpx;
+  background: rgba(94, 193, 89, 0.88);
+  color: #fff;
+  font-size: 28rpx;
+  line-height: 1.3;
+  border-radius: 999rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+}
+
+@keyframes danmaku-fly {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-150vw);
+  }
+}
+

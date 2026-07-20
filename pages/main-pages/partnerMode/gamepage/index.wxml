@@ -258,7 +258,61 @@
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-              <text class="card-section-title">第{{item.round}}轮-语音纪要</text>
+              <text class="card-section-title">第{{item.round}}轮-出牌解释</text>
+              <view class="card-bullet-list">
+                <view
+                  class="card-bullet"
+                  wx:for="{{item.privateNote.playHistory}}"
+                  wx:for-item="line"
+                  wx:key="*this"
+                >· {{line}}</view>
+                <view
+                  class="card-bullet card-bullet-empty"
+                  wx:if="{{!(item.privateNote.playHistory && item.privateNote.playHistory.length)}}"
+                >· 暂无记录</view>
+              </view>
+              <view class="card-media-grid" wx:if="{{item.privateNote.playImages && item.privateNote.playImages.length}}">
+                <image
+                  class="card-media-thumb"
+                  wx:for="{{item.privateNote.playImages}}"
+                  wx:for-item="img"
+                  wx:key="*this"
+                  src="{{img}}"
+                  mode="aspectFill"
+                  data-url="{{img}}"
+                  data-round="{{item.round}}"
+                  data-scope="play"
+                  bindtap="onRoundPrivateInsertPreview"
+                />
+              </view>
+              <text class="card-section-title card-section-title-gap">第{{item.round}}轮-疑问讨论</text>
+              <view class="card-bullet-list">
+                <view
+                  class="card-bullet"
+                  wx:for="{{item.privateNote.discussionNotes}}"
+                  wx:for-item="line"
+                  wx:key="*this"
+                >· {{line}}</view>
+                <view
+                  class="card-bullet card-bullet-empty"
+                  wx:if="{{!(item.privateNote.discussionNotes && item.privateNote.discussionNotes.length)}}"
+                >· 暂无记录</view>
+              </view>
+              <view class="card-media-grid" wx:if="{{item.privateNote.discussionImages && item.privateNote.discussionImages.length}}">
+                <image
+                  class="card-media-thumb"
+                  wx:for="{{item.privateNote.discussionImages}}"
+                  wx:for-item="img"
+                  wx:key="*this"
+                  src="{{img}}"
+                  mode="aspectFill"
+                  data-url="{{img}}"
+                  data-round="{{item.round}}"
+                  data-scope="discussion"
+                  bindtap="onRoundPrivateInsertPreview"
+                />
+              </view>
+              <text class="card-section-title card-section-title-gap">第{{item.round}}轮-语音纪要</text>
               <view class="card-bullet-list">
                 <view
                   class="card-bullet"
@@ -302,10 +356,34 @@
                   <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
                   <view class="card-bullet card-bullet-empty" wx:if="{{!playHistory.length}}">· 暂无记录</view>
                 </view>
+                <view class="card-media-grid" wx:if="{{playImages.length}}">
+                  <image
+                    class="card-media-thumb"
+                    wx:for="{{playImages}}"
+                    wx:key="*this"
+                    src="{{item}}"
+                    mode="aspectFill"
+                    data-url="{{item}}"
+                    data-scope="play"
+                    bindtap="onCardImagePreview"
+                  />
+                </view>
                 <text class="card-section-title card-section-title-gap">第{{currentRound}}轮-疑问讨论</text>
                 <view class="card-bullet-list">
                   <view class="card-bullet" wx:for="{{discussionNotes}}" wx:key="*this">· {{item}}</view>
                   <view class="card-bullet card-bullet-empty" wx:if="{{!discussionNotes.length}}">· 暂无记录</view>
+                </view>
+                <view class="card-media-grid" wx:if="{{discussionImages.length}}">
+                  <image
+                    class="card-media-thumb"
+                    wx:for="{{discussionImages}}"
+                    wx:key="*this"
+                    src="{{item}}"
+                    mode="aspectFill"
+                    data-url="{{item}}"
+                    data-scope="discussion"
+                    bindtap="onCardImagePreview"
+                  />
                 </view>
                 <text class="card-section-title card-section-title-gap">第{{currentRound}}轮-语音纪要</text>
                 <view class="card-bullet-list">
@@ -323,13 +401,58 @@
                   >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
                   <view class="card-bullet card-bullet-empty" wx:if="{{!turnRecords.length}}">· 暂无记录</view>
                 </view>
-                <view class="discussion-photo-placeholder" catchtap="handleInsertImage">
-                  <image
-                    class="discussion-empty-illus"
-                    src="/assets/partnerMode/discussion-empty-icon.svg"
-                    mode="aspectFit"
-                  />
+
+                <!-- 插入文字 / 图片 -->
+                <view class="card-insert-panel">
+                  <view class="card-insert-toolbar">
+                    <view class="insert-image-btn" catchtap="handleInsertImage">
+                      <view class="insert-image-icon"></view>
+                      <text class="insert-image-text">插入图片</text>
+                    </view>
+                  </view>
+                  <view
+                    class="card-insert-photos"
+                    wx:if="{{cardDraftPhotos.length}}"
+                  >
+                    <view
+                      class="card-insert-photo-wrap"
+                      wx:for="{{cardDraftPhotos}}"
+                      wx:key="*this"
+                    >
+                      <image class="card-insert-photo" src="{{item}}" mode="aspectFill" />
+                      <view
+                        class="card-insert-photo-remove"
+                        data-index="{{index}}"
+                        catchtap="onCardDraftRemovePhoto"
+                      >×</view>
+                    </view>
+                  </view>
+                  <view class="card-insert-row">
+                    <textarea
+                      class="card-insert-textarea"
+                      value="{{cardDraftText}}"
+                      bindinput="onCardDraftInput"
+                      placeholder="记录疑问与讨论要点..."
+                      placeholder-class="card-insert-placeholder"
+                      maxlength="500"
+                      auto-height
+                      show-confirm-bar="{{false}}"
+                      adjust-position="{{true}}"
+                      cursor-spacing="24"
+                    />
+                    <view
+                      class="card-insert-send {{cardDraftSaving || (!cardDraftHasText && !cardDraftPhotos.length) ? 'card-insert-send-disabled' : ''}}"
+                      catchtap="onCardDraftSubmit"
+                    >
+                      <image
+                        class="card-insert-send-icon"
+                        src="/assets/partnerMode/icon-insp-send.svg"
+                        mode="aspectFit"
+                      />
+                    </view>
+                  </view>
                 </view>
+
                 <text class="discussion-hint">讨论正在进行，AI报告仍在撰写请稍后查看</text>
                 <view class="discussion-report-hint">
                   <text class="discussion-report-title">玩家行动报告</text>
@@ -357,36 +480,116 @@
               >
                 <view class="action-card-inner">
                   <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
-                    <view class="action-title-row" wx:if="{{isMasterMode}}">
-                      <view class="master-mode-badge">MASTER模式</view>
-                      <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                    <view class="action-title-row-with-express">
+                      <view class="action-title-main">
+                        <view class="action-title-row" wx:if="{{isMasterMode}}">
+                          <view class="master-mode-badge">MASTER模式</view>
+                          <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                        </view>
+                        <text class="action-title" wx:else>出牌并解释</text>
+                      </view>
+                      <view class="express-btn" catchtap="openExpressModal">
+                        <image
+                          class="express-btn-icon"
+                          src="/assets/partnerMode/icon-express.svg"
+                          mode="aspectFit"
+                        />
+                        <text class="express-btn-label">表达</text>
+                      </view>
                     </view>
-                    <text class="action-title" wx:else>出牌并解释</text>
                     <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : '您可以进行1—3次行动，1 次行动可以是以下任意一种'}}</text>
                   </view>
                   <view class="action-divider"></view>
-                  <view class="action-grid">
-                    <view class="action-cell">
-                      <view class="action-illus"></view>
-                      <text class="action-cell-label">出 1 张卡牌</text>
+                  <!-- 行动规则固定展示；补充文字/图片只追加在下方，不替换规则 -->
+                  <view class="action-rules-block">
+                    <view class="action-grid">
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">出 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">删 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">调整 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">交换 2 张卡牌</text>
+                      </view>
                     </view>
-                    <view class="action-cell">
-                      <view class="action-illus"></view>
-                      <text class="action-cell-label">删 1 张卡牌</text>
+                  </view>
+
+                  <text class="card-section-title card-section-title-gap">本轮解释记录</text>
+                  <view class="card-bullet-list">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                    <view class="card-bullet card-bullet-empty" wx:if="{{!playHistory.length}}">· 暂无记录，可在下方插入文字或图片</view>
+                  </view>
+                  <view class="card-media-grid" wx:if="{{playImages.length}}">
+                    <image
+                      class="card-media-thumb"
+                      wx:for="{{playImages}}"
+                      wx:key="*this"
+                      src="{{item}}"
+                      mode="aspectFill"
+                      data-url="{{item}}"
+                      data-scope="play"
+                      bindtap="onCardImagePreview"
+                    />
+                  </view>
+
+                  <view class="card-insert-panel">
+                    <view class="card-insert-toolbar">
+                      <view class="insert-image-btn" catchtap="handleInsertImage">
+                        <view class="insert-image-icon"></view>
+                        <text class="insert-image-text">插入图片</text>
+                      </view>
                     </view>
-                    <view class="action-cell">
-                      <view class="action-illus"></view>
-                      <text class="action-cell-label">调整 1 张卡牌</text>
+                    <view class="card-insert-photos" wx:if="{{cardDraftPhotos.length}}">
+                      <view
+                        class="card-insert-photo-wrap"
+                        wx:for="{{cardDraftPhotos}}"
+                        wx:key="*this"
+                      >
+                        <image class="card-insert-photo" src="{{item}}" mode="aspectFill" />
+                        <view
+                          class="card-insert-photo-remove"
+                          data-index="{{index}}"
+                          catchtap="onCardDraftRemovePhoto"
+                        >×</view>
+                      </view>
                     </view>
-                    <view class="action-cell">
-                      <view class="action-illus"></view>
-                      <text class="action-cell-label">交换 2 张卡牌</text>
+                    <view class="card-insert-row">
+                      <textarea
+                        class="card-insert-textarea"
+                        value="{{cardDraftText}}"
+                        bindinput="onCardDraftInput"
+                        placeholder="写下本次出牌解释..."
+                        placeholder-class="card-insert-placeholder"
+                        maxlength="500"
+                        auto-height
+                        show-confirm-bar="{{false}}"
+                        adjust-position="{{true}}"
+                        cursor-spacing="24"
+                      />
+                      <view
+                        class="card-insert-send {{cardDraftSaving || (!cardDraftHasText && !cardDraftPhotos.length) ? 'card-insert-send-disabled' : ''}}"
+                        catchtap="onCardDraftSubmit"
+                      >
+                        <image
+                          class="card-insert-send-icon"
+                          src="/assets/partnerMode/icon-insp-send.svg"
+                          mode="aspectFit"
+                        />
+                      </view>
                     </view>
                   </view>
                 </view>
               </scroll-view>
 
-              <!-- 非出牌玩家：玩家正在出牌 Figma #5914:51127 -->
+              <!-- 非出牌玩家：玩家正在出牌 -->
               <scroll-view
                 class="action-card-scroll"
                 scroll-y
@@ -396,17 +599,106 @@
               >
                 <view class="action-card-inner action-card-inner-spectator">
                   <view class="action-header">
-                    <text class="action-title">玩家正在出牌</text>
+                    <view class="action-title-row-with-express">
+                      <view class="action-title-main">
+                        <text class="action-title">玩家正在出牌</text>
+                      </view>
+                      <view class="express-btn" catchtap="openExpressModal">
+                        <image
+                          class="express-btn-icon"
+                          src="/assets/partnerMode/icon-express.svg"
+                          mode="aspectFit"
+                        />
+                        <text class="express-btn-label">表达</text>
+                      </view>
+                    </view>
                     <text class="action-desc">待玩家出牌完毕，您可以对它的出牌进行打分</text>
                   </view>
                   <view class="action-divider"></view>
-                  <view class="spectator-waiting">
+                  <!-- 规则始终保留；补充内容追加在下方，不再用纪要替换规则区 -->
+                  <view class="action-rules-block">
+                    <view class="action-grid">
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">出 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">删 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">调整 1 张卡牌</text>
+                      </view>
+                      <view class="action-cell">
+                        <view class="action-illus"></view>
+                        <text class="action-cell-label">交换 2 张卡牌</text>
+                      </view>
+                    </view>
+                  </view>
+
+                  <text class="card-section-title card-section-title-gap">本轮解释记录</text>
+                  <view class="card-bullet-list" wx:if="{{playHistory.length}}">
+                    <view class="card-bullet" wx:for="{{playHistory}}" wx:key="*this">· {{item}}</view>
+                  </view>
+                  <view class="card-media-grid" wx:if="{{playImages.length}}">
                     <image
-                      class="spectator-waiting-illus"
-                      src="/assets/partnerMode/spectator-waiting-illus.svg"
-                      mode="aspectFit"
+                      class="card-media-thumb"
+                      wx:for="{{playImages}}"
+                      wx:key="*this"
+                      src="{{item}}"
+                      mode="aspectFill"
+                      data-url="{{item}}"
+                      data-scope="play"
+                      bindtap="onCardImagePreview"
                     />
-                    <text class="spectator-waiting-text">脑暴纪要生成中...</text>
+                  </view>
+
+                  <view class="card-insert-panel">
+                    <view class="card-insert-toolbar">
+                      <view class="insert-image-btn" catchtap="handleInsertImage">
+                        <view class="insert-image-icon"></view>
+                        <text class="insert-image-text">插入图片</text>
+                      </view>
+                    </view>
+                    <view class="card-insert-photos" wx:if="{{cardDraftPhotos.length}}">
+                      <view
+                        class="card-insert-photo-wrap"
+                        wx:for="{{cardDraftPhotos}}"
+                        wx:key="*this"
+                      >
+                        <image class="card-insert-photo" src="{{item}}" mode="aspectFill" />
+                        <view
+                          class="card-insert-photo-remove"
+                          data-index="{{index}}"
+                          catchtap="onCardDraftRemovePhoto"
+                        >×</view>
+                      </view>
+                    </view>
+                    <view class="card-insert-row">
+                      <textarea
+                        class="card-insert-textarea"
+                        value="{{cardDraftText}}"
+                        bindinput="onCardDraftInput"
+                        placeholder="补充观察或想法..."
+                        placeholder-class="card-insert-placeholder"
+                        maxlength="500"
+                        auto-height
+                        show-confirm-bar="{{false}}"
+                        adjust-position="{{true}}"
+                        cursor-spacing="24"
+                      />
+                      <view
+                        class="card-insert-send {{cardDraftSaving || (!cardDraftHasText && !cardDraftPhotos.length) ? 'card-insert-send-disabled' : ''}}"
+                        catchtap="onCardDraftSubmit"
+                      >
+                        <image
+                          class="card-insert-send-icon"
+                          src="/assets/partnerMode/icon-insp-send.svg"
+                          mode="aspectFit"
+                        />
+                      </view>
+                    </view>
                   </view>
                 </view>
               </scroll-view>
@@ -601,4 +893,46 @@
     wx:if="{{inspirationInputFocused}}"
     catchtap="onInspirationDismissFocus"
   ></view>
+
+  <!-- 匿名表达弹窗 -->
+  <view class="express-mask" wx:if="{{expressModalVisible}}" catchtouchmove="noop">
+    <view class="express-panel" catchtap="noop">
+      <view class="express-panel-head">
+        <text class="express-panel-title">匿名表达</text>
+        <text class="express-panel-close" catchtap="closeExpressModal">×</text>
+      </view>
+      <text class="express-panel-hint">内容将以弹幕形式飘过全员屏幕，不显示身份</text>
+      <textarea
+        class="express-textarea"
+        value="{{expressDraftText}}"
+        focus="{{expressModalVisible}}"
+        bindinput="onExpressInput"
+        placeholder="说点什么…"
+        placeholder-class="express-placeholder"
+        maxlength="40"
+        auto-height
+        show-confirm-bar="{{false}}"
+        adjust-position="{{true}}"
+      />
+      <view class="express-panel-foot">
+        <text class="express-count">{{expressDraftText.length || 0}}/40</text>
+        <view
+          class="express-submit {{expressSending || !expressHasText ? 'express-submit-disabled' : ''}}"
+          catchtap="submitExpress"
+        >发送</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 弹幕层 -->
+  <view class="danmaku-layer" wx:if="{{activeDanmakus.length}}">
+    <view
+      class="danmaku-item"
+      wx:for="{{activeDanmakus}}"
+      wx:key="id"
+      style="top: {{item.top}}rpx; animation-duration: {{item.duration}}s;"
+    >
+      <text class="danmaku-text">{{item.text}}</text>
+    </view>
+  </view>
 </view>
