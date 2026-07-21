@@ -1,7 +1,7 @@
 {
   "cloudbaseCloudEnvId": "cardboard-miniprogram-6a13aab073",
-  "libVersion": "3.12.0",
-  "projectname": "cardboard-miniprogram-2",
+  "libVersion": "3.17.0",
+  "projectname": "cardboard-miniprogram",
   "setting": {
     "urlCheck": false,
     "coverView": true,

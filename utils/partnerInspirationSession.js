@@ -1,14 +1,13 @@
 /**
- * 当前脑暴对局内的灵感记录
+ * 灵感计数 / 保存字段：与灵感空间同口径（本人 + 房间）
  */
 
-async function countSessionInspirations(roomId, brainstormSessionSeq) {
+async function countSessionInspirations(roomId) {
   if (!roomId) return 0;
-  const seq = brainstormSessionSeq != null ? brainstormSessionSeq : 0;
   try {
     const res = await wx.cloud.callFunction({
       name: 'listInspirations',
-      data: { roomId, brainstormSessionSeq: seq }
+      data: { roomId, workshopOnly: true }
     });
     const result = (res && res.result) || {};
     if (result.ok !== true) return 0;

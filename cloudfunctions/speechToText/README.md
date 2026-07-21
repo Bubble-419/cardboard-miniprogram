@@ -19,7 +19,7 @@ npm install
 
 然后在微信开发者工具中右键上传并部署 `speechToText`、`finalizePartnerTurnRecord`，以及更新后的 `updateRoomState`、`getAddPlayerData`。
 
-> 云函数部署只会打包各自目录内的文件，`cloudfunctions/_shared/` 不会自动上传，因此公共逻辑已复制到各云函数目录下的 `partnerRoundContent.js`。
+> 公共参考副本放在仓库根目录 `cloud-common/`（不在 `cloudfunctions/` 下，避免被当成云函数上传）。各云函数目录内仍保留独立的 `partnerRoundContent.js` 供部署打包。
 
 ## 依赖
 

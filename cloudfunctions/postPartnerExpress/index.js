@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const crypto = require('crypto');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -8,8 +9,17 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const MAX_MESSAGES = 40;
 const MAX_TEXT_LEN = 40;
 
+/** 房间内稳定匿名键：同人同键，不暴露真实 userId */
+function buildAnonKey(roomId, userId) {
+  return crypto
+    .createHash('sha256')
+    .update(`${roomId}:${userId}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
 /**
- * 匿名表达：写入房间弹幕队列，供全员轮询展示
+ * 匿名表达：写入房间消息队列，供全员以气泡聊天展示
  * rooms 文档以字段 roomId 标识，不能用 .doc(roomId)
  */
 exports.main = async (event) => {
@@ -23,6 +33,7 @@ exports.main = async (event) => {
   }
 
   const wxContext = cloud.getWXContext();
+  // 跨账号共享时 OPENID 为资源方，调用方用户需用 FROM_OPENID（与 roomJoin / getAddPlayerData 一致）
   const userId = wxContext.FROM_OPENID || wxContext.OPENID;
   if (!userId) {
     return { ok: false, errCode: 'NO_AUTH', errMsg: '未登录' };
@@ -40,17 +51,20 @@ exports.main = async (event) => {
       .limit(1)
       .get();
     const isMember = memberRes.data && memberRes.data.length > 0;
-    const isCreator = room.creatorId === userId;
+    const isCreator = !!(room.creatorId && String(room.creatorId) === String(userId));
     if (!isMember && !isCreator) {
       return { ok: false, errCode: 'NOT_IN_ROOM', errMsg: '您不在该房间' };
     }
 
+    const anonKey = buildAnonKey(roomId, userId);
     const msg = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      // id 前缀带 anonKey，客户端可在字段缺失时仍识别同人
+      id: `${anonKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       text: content,
       at: Date.now(),
-      round: round != null ? Number(round) : 0
-      // 故意不存 userId，保持匿名
+      round: round != null ? Number(round) : 0,
+      // 不存 userId；anonKey 用于同人同色
+      anonKey
     };
 
     const existing = Array.isArray(room.partnerExpressMessages)

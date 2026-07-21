@@ -222,8 +222,9 @@ Page({
     const roomId = this.data.roomId || '';
     const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
     let url = '/pages/inspiration/index?scope=workshop';
-    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
-    if (seq) url += `&brainstormSessionSeq=${seq}`;
+    if (roomId) {
+      url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
+    }
     wx.navigateTo({ url });
   },
 
@@ -475,7 +476,7 @@ Page({
   },
 
   handleConfirm() {
-    const { viewMode, selectedAction, helpMethod } = this.data;
+    const { viewMode, selectedAction } = this.data;
 
     if (viewMode === 'reverseRandom') return;
 
@@ -485,24 +486,8 @@ Page({
     }
 
     if (selectedAction === 'helpLuck') {
-      if (helpMethod === 'reverse') {
-        this.setData({ viewMode: 'reverseRandom' });
-        return;
-      }
-      // AI_TEMP_DISABLED: 场外求助依赖 AI 对话，暂未接入时拦截
-      if (!isAiFeatureEnabled()) {
-        wx.showToast({ title: '场外求助暂未开放', icon: 'none' });
-        return;
-      }
-      this._markSpecialMoveUsedForGamepage();
-      this.setData({
-        showChat: true,
-        chatMessages: [{
-          id: 'welcome',
-          role: 'assistant',
-          text: '有什么可以帮您？您仅能提问三次（AI 功能即将上线）'
-        }]
-      });
+      // 默认进入反面随机拼（已去掉求助方式选择区）
+      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' });
       return;
     }
 

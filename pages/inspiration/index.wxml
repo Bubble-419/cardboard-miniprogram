@@ -1,13 +1,11 @@
 <view class="container">
   <view class="custom-navbar" style="padding-top: {{navbarPaddingTop}}px;">
     <view class="navbar-content">
-      <view class="navbar-left">
-        <view class="room-entry" bindtap="handleGoRoom">
-          <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
-        </view>
+      <view class="navbar-left" bindtap="goBack">
+        <text class="back-chevron">‹</text>
       </view>
       <view class="navbar-center">
-        <text class="navbar-title">灵感中心</text>
+        <text class="navbar-title">灵感空间</text>
       </view>
       <view class="navbar-right"></view>
     </view>

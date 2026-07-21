@@ -55,6 +55,8 @@ exports.main = async (event, context) => {
         partnerCurrentRoundContent: {
           playHistory: [],
           discussionNotes: [],
+          playImages: [],
+          discussionImages: [],
           images: [],
           voiceLines: [],
           turnRecords: [],

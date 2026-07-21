@@ -63,20 +63,41 @@ async function generateNumericRoomId(maxRetry = 5) {
  */
 async function generateWxacode(roomId) {
   const scene = roomId.length <= 30 ? `rid=${roomId}` : `rid=${roomId.slice(0, 30)}`;
-  const envVersion = process.env.QR_ENV_VERSION || 'release'; // release | trial | develop
-  const res = await cloud.openapi.wxacode.getUnlimited({
-    page: 'pages/main-pages/addPlayer/index',
-    scene,
-    width: 430,
-    check_path: false,
-    env_version: envVersion
-  });
-  const buffer = res.buffer || res;
-  if (!buffer || (Buffer.isBuffer(buffer) && buffer.length === 0)) {
-    const errMsg = res.errMsg || res.errmsg || (res.errcode ? `errcode: ${res.errcode}` : '');
-    throw new Error(errMsg || '生成小程序码失败');
+  const preferred = process.env.QR_ENV_VERSION || '';
+  const envVersions = [preferred, 'develop', 'trial', 'release']
+    .filter((v, i, arr) => v && arr.indexOf(v) === i);
+  let lastError = null;
+
+  for (let i = 0; i < envVersions.length; i++) {
+    const envVersion = envVersions[i];
+    try {
+      const res = await cloud.openapi.wxacode.getUnlimited({
+        page: 'pages/main-pages/addPlayer/index',
+        scene,
+        width: 430,
+        check_path: false,
+        env_version: envVersion
+      });
+      if (res && res.errCode && Number(res.errCode) !== 0) {
+        throw new Error(res.errMsg || res.errmsg || `errcode: ${res.errCode}`);
+      }
+      let buffer = (res && (res.buffer || res.fileContent)) || res;
+      if (!buffer || (Buffer.isBuffer(buffer) && buffer.length === 0)) {
+        const errMsg = (res && (res.errMsg || res.errmsg)) || '';
+        throw new Error(errMsg || `生成小程序码失败(${envVersion})`);
+      }
+      const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+      if (buf[0] === 0x7b) {
+        const json = JSON.parse(buf.toString('utf8'));
+        throw new Error(json.errmsg || json.errMsg || `生成小程序码失败(${envVersion})`);
+      }
+      return buf;
+    } catch (e) {
+      lastError = e;
+      console.warn(`generateWxacode ${envVersion} failed`, e.message || e);
+    }
   }
-  return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  throw lastError || new Error('生成小程序码失败');
 }
 
 exports.main = async (event, context) => {

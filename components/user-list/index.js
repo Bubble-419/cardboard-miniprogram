@@ -117,6 +117,13 @@ Component({
 
   pageLifetimes: {
     show() {
+      // 页面重新可见时重置上次生命周期的到期标记，防止旧锚点误触发震动/动画
+      this._expireAnimPlayed = false;
+      this._expiringTriggered = false;
+      this._clearExpireTimer();
+      if (this.data.actingFrameMode === 'timer' || this.data.actingFrameMode === 'expiring') {
+        this.setData({ actingFrameMode: 'spin' });
+      }
       this._syncActingFrameMode();
       this._startExpireWatch();
     },

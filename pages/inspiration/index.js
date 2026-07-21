@@ -43,7 +43,8 @@ Page({
   onLoad(options) {
     this._applyNavbarInset();
     const roomId = (options && options.roomId) || (getApp().globalData && getApp().globalData.roomId) || '';
-    const workshopOnly = (options && options.scope) === 'workshop';
+    // 带房间进入时一律按「本房间本人灵感」展示，与灯泡角标一致
+    const workshopOnly = (options && options.scope) === 'workshop' || !!roomId;
     const brainstormSessionSeq = options && options.brainstormSessionSeq != null
       ? parseInt(options.brainstormSessionSeq, 10)
       : 0;
@@ -64,10 +65,34 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
+    this._syncCountToOpener({ refreshCloud: true });
   },
 
-  handleGoRoom() {
+  goBack() {
+    this._syncCountToOpener({ refreshCloud: true });
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      wx.navigateBack();
+      return;
+    }
     goRoomPage(this.data.roomId);
+  },
+
+  /** 把当前列表数量写回上一页灯泡角标，避免返回后仍显示旧数字 */
+  _syncCountToOpener(options = {}) {
+    const count = (this.data.inspirations || []).length;
+    const pages = getCurrentPages();
+    const prev = pages.length >= 2 ? pages[pages.length - 2] : null;
+    if (prev && typeof prev.setData === 'function') {
+      try {
+        prev.setData({ inspirationCount: count });
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (options.refreshCloud && prev && typeof prev._refreshInspirationCount === 'function') {
+      prev._refreshInspirationCount();
+    }
   },
 
   _refreshDisplay() {
@@ -75,6 +100,7 @@ Page({
     const displayInspirations = this.data.inspirations || [];
     this.setData({ displayInspirations });
     this.layoutWaterfall(displayInspirations);
+    this._syncCountToOpener();
   },
 
   // AI_TEMP_DISABLED: 以下 onAIInput / toggleReference / generateAIInspiration 在开关关闭时不生效
@@ -182,6 +208,7 @@ Page({
     try {
       let listData = {};
       if (roomId) {
+        // 游戏内进入（workshop）按房间拉本人全部灵感；否则可按对局序号缩小
         listData = workshopOnly
           ? { roomId, workshopOnly: true }
           : { roomId, brainstormSessionSeq };
@@ -193,6 +220,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok !== true) {
         console.warn('loadInspirations', result.errMsg);
+        wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         return;
       }
 
@@ -212,6 +240,7 @@ Page({
       this._refreshDisplay();
     } catch (err) {
       console.error('加载灵感列表失败:', err);
+      wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
 

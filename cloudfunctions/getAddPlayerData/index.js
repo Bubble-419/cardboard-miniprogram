@@ -173,6 +173,8 @@ exports.main = async (event, context) => {
       roomState.partnerCurrentRoundContent = room.partnerCurrentRoundContent || {
         playHistory: [],
         discussionNotes: [],
+        playImages: [],
+        discussionImages: [],
         images: [],
         voiceLines: [],
         turnRecords: [],
@@ -215,9 +217,24 @@ exports.main = async (event, context) => {
     });
     const membersWithDisplayUrls = await resolveCloudAvatarUrls(members);
 
+    let qrcodeFileID = room.qrcodeFileID || null;
+    let qrcodeUrl = null;
+    if (qrcodeFileID) {
+      try {
+        const tempRes = await cloud.getTempFileURL({ fileList: [qrcodeFileID] });
+        const first = tempRes && tempRes.fileList && tempRes.fileList[0];
+        if (first && first.tempFileURL) {
+          qrcodeUrl = first.tempFileURL;
+        }
+      } catch (e) {
+        console.warn('getAddPlayerData qrcode getTempFileURL failed', e);
+      }
+    }
+
     return {
       ok: true,
-      qrcodeFileID: room.qrcodeFileID || null,
+      qrcodeFileID,
+      qrcodeUrl,
       members: membersWithDisplayUrls,
       memberCount: membersWithDisplayUrls.length,
       isHost,

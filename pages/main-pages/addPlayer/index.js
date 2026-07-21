@@ -10,7 +10,7 @@ const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRout
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
-const { assignAvatarImages, resolveCloudAvatarUrls } = require('../../../utils/avatars');
+const { assignAvatarImages, resolveCloudAvatarUrls, getMemberAvatarFingerprint } = require('../../../utils/avatars');
 const {
   getStoredProfile,
   applyChooseAvatarEvent,
@@ -52,6 +52,7 @@ Page({
     isSavingRoomName: false,
     qrcodeUrl: '',
     qrcodeStatus: 'loading',
+    qrcodeErrorHint: '',
     members: [],
     memberSlots: [],
     isFromScan: false,
@@ -448,8 +449,9 @@ Page({
 
   async loadRoomData(roomId, opts = {}) {
     const silent = opts && opts.silent === true;
+    const forceRegenQr = opts && opts.forceRegenQr === true;
     if (!silent) {
-      this.setData({ qrcodeStatus: 'loading' });
+      this.setData({ qrcodeStatus: 'loading', qrcodeErrorHint: '' });
       wx.showLoading({ title: '加载中…' });
     }
 
@@ -473,7 +475,10 @@ Page({
           }
         }
         if (!silent) {
-          this.setData({ qrcodeStatus: 'error' });
+          this.setData({
+            qrcodeStatus: 'load_error',
+            qrcodeErrorHint: result.errMsg || '请重新部署云函数 getAddPlayerData 后重试'
+          });
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         }
         return null;
@@ -549,7 +554,7 @@ Page({
           roomMeta.selectedModeTitle || '',
           resolvedState.currentPage || '',
           expanded.map((m) => (m
-            ? `${this._getMemberId(m)}:${m.nickName || ''}:${m.avatarImage || m.avatarUrl || ''}:${m.avatarIndex != null ? m.avatarIndex : ''}`
+            ? `${this._getMemberId(m)}:${m.nickName || ''}:${getMemberAvatarFingerprint(m)}`
             : '-'
           )).join('|')
         ].join('#');
@@ -585,49 +590,58 @@ Page({
       const members = this._expandMembersToSlots(withAvatars);
       const memberSlots = this.buildMemberSlots(members);
 
-      let qrcodeFileID = result.qrcodeFileID;
-      if (!qrcodeFileID) {
-        try {
-          const regenRes = await wx.cloud.callFunction({
-            name: 'regenerateRoomQrcode',
-            data: { roomId }
-          });
-          const regenResult = (regenRes && regenRes.result) || {};
-          if (regenResult.ok === true && regenResult.qrcodeFileID) {
-            qrcodeFileID = regenResult.qrcodeFileID;
-          }
-        } catch (e) {
-          console.warn('regenerateRoomQrcode 调用失败', e);
-        }
-      }
+      let qrcodeFileID = forceRegenQr ? null : result.qrcodeFileID;
+      let qrResolved = {
+        qrcodeUrl: (!forceRegenQr && result.qrcodeUrl) || '',
+        qrcodeStatus: (!forceRegenQr && result.qrcodeUrl) ? 'success' : 'no_qr',
+        qrcodeErrorHint: ''
+      };
 
-      let qrcodeUrl = '';
-      let qrcodeStatus = 'no_qr';
-      if (qrcodeFileID) {
-        try {
-          const tempRes = await wx.cloud.getTempFileURL({
-            fileList: [qrcodeFileID]
-          });
-          const first = tempRes && tempRes.fileList && tempRes.fileList[0];
-          if (first && first.tempFileURL) {
-            qrcodeUrl = first.tempFileURL;
-            qrcodeStatus = 'success';
-          } else if (first && first.errMsg && first.errMsg !== 'ok') {
-            console.error('getTempFileURL err', first.errMsg);
-            qrcodeStatus = 'error';
-          } else {
-            qrcodeStatus = 'error';
+      if (!qrResolved.qrcodeUrl) {
+        if (!qrcodeFileID) {
+          const regen = await this._regenerateRoomQrcode(roomId);
+          qrcodeFileID = regen.qrcodeFileID;
+          if (regen.qrcodeUrl) {
+            qrResolved = {
+              qrcodeUrl: regen.qrcodeUrl,
+              qrcodeStatus: 'success',
+              qrcodeErrorHint: ''
+            };
+          } else if (regen.errMsg) {
+            qrResolved = {
+              qrcodeUrl: '',
+              qrcodeStatus: 'error',
+              qrcodeErrorHint: regen.errMsg
+            };
           }
-        } catch (e) {
-          console.error('getTempFileURL exception', e);
-          qrcodeStatus = 'error';
+        }
+
+        if (!qrResolved.qrcodeUrl && qrcodeFileID) {
+          qrResolved = await this._resolveQrcodeUrl(roomId, qrcodeFileID);
+        }
+
+        // 已有 fileID 但临时链接失效时，强制补生成一次
+        if (qrResolved.qrcodeStatus === 'error' && !forceRegenQr) {
+          const regen = await this._regenerateRoomQrcode(roomId);
+          if (regen.qrcodeUrl) {
+            qrResolved = {
+              qrcodeUrl: regen.qrcodeUrl,
+              qrcodeStatus: 'success',
+              qrcodeErrorHint: ''
+            };
+          } else if (regen.qrcodeFileID) {
+            qrResolved = await this._resolveQrcodeUrl(roomId, regen.qrcodeFileID);
+          } else if (regen.errMsg) {
+            qrResolved.qrcodeErrorHint = regen.errMsg;
+          }
         }
       }
 
       this._triggerCountBounceIfNeeded(roomMeta.memberCount);
       this.setData({
-        qrcodeUrl,
-        qrcodeStatus,
+        qrcodeUrl: qrResolved.qrcodeUrl,
+        qrcodeStatus: qrResolved.qrcodeStatus,
+        qrcodeErrorHint: qrResolved.qrcodeErrorHint || '',
         members,
         memberSlots,
         isHost,
@@ -643,10 +657,78 @@ Page({
     } catch (err) {
       if (!silent) {
         wx.hideLoading();
-        this.setData({ qrcodeStatus: 'error' });
-        wx.showToast({ title: err.errMsg || '加载失败', icon: 'none' });
+        const errMsg = (err && (err.errMsg || err.message)) || '加载失败';
+        const hint = /SyntaxError|functions execute fail|-504002/i.test(String(errMsg))
+          ? '云函数执行失败，请重新上传部署 getAddPlayerData'
+          : errMsg;
+        this.setData({
+          qrcodeStatus: 'load_error',
+          qrcodeErrorHint: hint
+        });
+        wx.showToast({ title: '加载失败', icon: 'none' });
       }
       return null;
+    }
+  },
+
+  async _regenerateRoomQrcode(roomId) {
+    try {
+      const regenRes = await wx.cloud.callFunction({
+        name: 'regenerateRoomQrcode',
+        data: { roomId }
+      });
+      const regenResult = (regenRes && regenRes.result) || {};
+      if (regenResult.ok === true && regenResult.qrcodeFileID) {
+        return {
+          qrcodeFileID: regenResult.qrcodeFileID,
+          qrcodeUrl: regenResult.qrcodeUrl || '',
+          errMsg: ''
+        };
+      }
+      const errMsg = regenResult.errMsg || '补生成二维码失败，请部署 regenerateRoomQrcode';
+      console.warn('regenerateRoomQrcode fail', errMsg, regenResult);
+      return { qrcodeFileID: null, qrcodeUrl: '', errMsg };
+    } catch (e) {
+      const errMsg = (e && (e.errMsg || e.message)) || 'regenerateRoomQrcode 调用失败';
+      console.warn('regenerateRoomQrcode 调用失败', e);
+      return { qrcodeFileID: null, qrcodeUrl: '', errMsg };
+    }
+  },
+
+  async _resolveQrcodeUrl(roomId, qrcodeFileID) {
+    if (!qrcodeFileID) {
+      return {
+        qrcodeUrl: '',
+        qrcodeStatus: 'no_qr',
+        qrcodeErrorHint: ''
+      };
+    }
+    try {
+      const tempRes = await wx.cloud.getTempFileURL({
+        fileList: [qrcodeFileID]
+      });
+      const first = tempRes && tempRes.fileList && tempRes.fileList[0];
+      if (first && first.tempFileURL) {
+        return {
+          qrcodeUrl: first.tempFileURL,
+          qrcodeStatus: 'success',
+          qrcodeErrorHint: ''
+        };
+      }
+      const errDetail = (first && (first.errMsg || first.status)) || '临时链接为空';
+      console.error('getTempFileURL err', errDetail, roomId);
+      return {
+        qrcodeUrl: '',
+        qrcodeStatus: 'error',
+        qrcodeErrorHint: String(errDetail)
+      };
+    } catch (e) {
+      console.error('getTempFileURL exception', e);
+      return {
+        qrcodeUrl: '',
+        qrcodeStatus: 'error',
+        qrcodeErrorHint: (e && (e.errMsg || e.message)) || '读取二维码文件失败'
+      };
     }
   },
 
@@ -667,7 +749,7 @@ Page({
 
   handleRetryQrcode() {
     const roomId = this.data.roomId;
-    if (roomId) this.loadRoomData(roomId);
+    if (roomId) this.loadRoomData(roomId, { forceRegenQr: true });
   },
 
   buildMemberSlots(members) {

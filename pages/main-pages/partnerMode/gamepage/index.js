@@ -2,9 +2,9 @@
  * 脑暴大富翁（partnerMode）- 出牌页
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
-const { assignAvatarImages } = require('../../../../utils/avatars');
+const { assignAvatarImages, DEFAULT_AVATAR } = require('../../../../utils/avatars');
 const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
-const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
+const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
@@ -20,7 +20,8 @@ const {
 const {
   getNextPlayerTurn,
   buildPartnerAvatarList,
-  resolveCurrentPlayerFromRoom
+  resolveCurrentPlayerFromRoom,
+  toPlayerIndex
 } = require('../../../../utils/partnerPlayerTurn');
 const {
   clearPartnerSpecialMoveUsedFlag,
@@ -29,12 +30,15 @@ const {
 } = require('../../../../utils/partnerSpecialMove');
 const {
   getRoundTimerState,
-  buildPaginationIndexes,
+  buildPaginationDots,
   isRoundTimerActive,
   ROUND_DURATION_SEC
 } = require('../../../../utils/partnerRoundTimer');
 const {
-  normalizePartnerRoundContent
+  normalizePartnerRoundContent,
+  appendTextBlock,
+  appendImageBlocks,
+  deriveListsFromBlocks
 } = require('../../../../utils/partnerRoundContent');
 const {
   buildDisplaySummaries,
@@ -66,6 +70,8 @@ Page({
     indicatorPlayerIndex: 1,
     members: [],
     isCurrentPlayer: false,
+    /** 底部「特殊行动」：仅当前出牌玩家本人可见 */
+    showSpecialMoveBtn: false,
     selectedProblemText: '',
     problemExpanded: false,
     problemTextOverflow: false,
@@ -73,6 +79,8 @@ Page({
     cardIndex: 0,
     playImages: [],
     discussionImages: [],
+    playBlocks: [],
+    discussionBlocks: [],
     scoreOptions: [0, 1, 2, 3, 4, 5],
     selectedScore: null,
     scoredCount: 0,
@@ -98,7 +106,7 @@ Page({
     roundTimerElapsedRatio: 0,
     roundTimerRemainingSec: 30,
     cardCount: 1,
-    paginationIndexes: [0],
+    paginationDots: [{ key: 0, sizeClass: 'dot-lg', active: true }],
     playHistory: [],
     discussionNotes: [],
     voiceLines: [],
@@ -115,11 +123,22 @@ Page({
     cardDraftPhotos: [],
     cardDraftHasText: false,
     cardDraftSaving: false,
+    /** 讨论卡内联输入：play / discussion */
+    cardInlineEditTarget: '',
+    cardInlineEditText: '',
+    cardInlineEditFocus: false,
+    cardInlineEditSaving: false,
     expressModalVisible: false,
+    expressChatPanelVisible: false,
+    expressCanSend: false,
+    expressComposerOpen: false,
     expressDraftText: '',
     expressHasText: false,
     expressSending: false,
-    activeDanmakus: []
+    expressChatList: [],
+    expressChatAnchor: '',
+    expressViewRound: 0,
+    scorePanelExpanded: false
   },
 
   _applyTopBarSafeInset() {
@@ -140,6 +159,10 @@ Page({
 
   onLoad(options) {
     this._playerFilterIndex = null;
+    this._expressAnonColorMap = Object.create(null);
+    this._expressMessagesAll = [];
+    this._seenExpressIds = {};
+    this._expressReady = false;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -193,7 +216,7 @@ Page({
     const flag = app.globalData && app.globalData.partnerSpecialMoveUsedTurn;
     if (flag && flag.roomId === roomId) {
       // 仅当标记属于本人且为本轮出牌玩家时才视为已使用
-      if (flag.playerIndex === currentPlayerIndex) {
+      if (toPlayerIndex(flag.playerIndex, 0) === toPlayerIndex(currentPlayerIndex, 0)) {
         this.setData({ specialMoveUsedThisTurn: true });
         return;
       }
@@ -235,6 +258,8 @@ Page({
     if (this.data.roomId) {
       this._startStatePolling();
       this._startScorePolling();
+      // 角标独立刷新，不依赖倒计时同步链路
+      this._refreshInspirationCount();
     }
     // 进入页：同步房间倒计时（房主负责重开并广播，其他人跟随）
     this._ensureSharedRoundTimerOnEnter().then(() => {
@@ -242,6 +267,9 @@ Page({
       this._applyAdoptDeckHint();
       this.refreshScoreStatus();
       this._syncRoundSpeech();
+      this._refreshInspirationCount();
+    }).catch((e) => {
+      console.warn('gamepage onShow timer sync', e);
       this._refreshInspirationCount();
     });
   },
@@ -299,11 +327,15 @@ Page({
   },
 
   _buildClientRoundContentPatch() {
-    // 出牌/讨论卡插入的文字与图片仅本人可见，不写入房间共享态
+    // 出牌解释 / 疑问讨论：全员共享（按插入顺序的 blocks）
     return {
-      playHistory: [],
-      discussionNotes: [],
-      images: []
+      playHistory: this.data.playHistory || [],
+      discussionNotes: this.data.discussionNotes || [],
+      playImages: this.data.playImages || [],
+      discussionImages: this.data.discussionImages || [],
+      playBlocks: this.data.playBlocks || [],
+      discussionBlocks: this.data.discussionBlocks || [],
+      images: this.data.playImages || []
     };
   },
 
@@ -317,7 +349,9 @@ Page({
       playHistory: (note && note.playHistory) || [],
       discussionNotes: (note && note.discussionNotes) || [],
       playImages: (note && note.playImages) || [],
-      discussionImages: (note && note.discussionImages) || []
+      discussionImages: (note && note.discussionImages) || [],
+      playBlocks: (note && note.playBlocks) || [],
+      discussionBlocks: (note && note.discussionBlocks) || []
     };
   },
 
@@ -340,6 +374,12 @@ Page({
       discussionImages: overrides.discussionImages != null
         ? overrides.discussionImages
         : (this.data.discussionImages || []),
+      playBlocks: overrides.playBlocks != null
+        ? overrides.playBlocks
+        : (this.data.playBlocks || []),
+      discussionBlocks: overrides.discussionBlocks != null
+        ? overrides.discussionBlocks
+        : (this.data.discussionBlocks || []),
       // 不再写混合 images，避免旧逻辑误读
       images: []
     });
@@ -428,7 +468,7 @@ Page({
     return {
       displayRoundSummaries,
       cardCount,
-      paginationIndexes: buildPaginationIndexes(cardCount),
+      paginationDots: buildPaginationDots(cardIndex, cardCount),
       cardIndex,
       isPlayerFilterActive: filterActive,
       selectedPlayerIndex: filterActive
@@ -438,7 +478,7 @@ Page({
     };
   },
 
-  /** 收尾复盘：仅展示本人手动插入的文字/图片 */
+  /** 收尾复盘：优先房间共享纪要，回退本机旧私有笔记 */
   _buildClosingReviewRounds(options) {
     const {
       roomId,
@@ -447,7 +487,9 @@ Page({
       playHistory,
       discussionNotes,
       playImages,
-      discussionImages
+      discussionImages,
+      playBlocks,
+      discussionBlocks
     } = options || {};
 
     const sessionSeq = brainstormSessionSeq != null
@@ -457,15 +499,38 @@ Page({
       roomId || this.data.roomId,
       sessionSeq
     );
+    const summaries = this.data.roundSummaries || [];
+    summaries.forEach((summary) => {
+      if (!summary || summary.round == null) return;
+      const key = String(summary.round);
+      const hasShared = (summary.playHistory && summary.playHistory.length)
+        || (summary.discussionNotes && summary.discussionNotes.length)
+        || (summary.playImages && summary.playImages.length)
+        || (summary.discussionImages && summary.discussionImages.length)
+        || (summary.playBlocks && summary.playBlocks.length)
+        || (summary.discussionBlocks && summary.discussionBlocks.length);
+      if (hasShared) {
+        allNotes[key] = {
+          playHistory: summary.playHistory || [],
+          discussionNotes: summary.discussionNotes || [],
+          playImages: summary.playImages || summary.images || [],
+          discussionImages: summary.discussionImages || [],
+          playBlocks: summary.playBlocks || [],
+          discussionBlocks: summary.discussionBlocks || []
+        };
+      }
+    });
 
-    // 当前轮以页面最新本地插入为准（可能尚未落盘到 storage 边缘情况已由 _persist 覆盖）
+    // 当前轮以页面最新共享内容为准
     const curRound = Number(currentRound) || 0;
     if (curRound > 0) {
       allNotes[String(curRound)] = {
         playHistory: Array.isArray(playHistory) ? playHistory : [],
         discussionNotes: Array.isArray(discussionNotes) ? discussionNotes : [],
         playImages: Array.isArray(playImages) ? playImages : [],
-        discussionImages: Array.isArray(discussionImages) ? discussionImages : []
+        discussionImages: Array.isArray(discussionImages) ? discussionImages : [],
+        playBlocks: Array.isArray(playBlocks) ? playBlocks : [],
+        discussionBlocks: Array.isArray(discussionBlocks) ? discussionBlocks : []
       };
     }
 
@@ -479,7 +544,9 @@ Page({
           playHistory: Array.isArray(note.playHistory) ? note.playHistory : [],
           discussionNotes: Array.isArray(note.discussionNotes) ? note.discussionNotes : [],
           playImages: Array.isArray(note.playImages) ? note.playImages : [],
-          discussionImages: Array.isArray(note.discussionImages) ? note.discussionImages : []
+          discussionImages: Array.isArray(note.discussionImages) ? note.discussionImages : [],
+          playBlocks: Array.isArray(note.playBlocks) ? note.playBlocks : [],
+          discussionBlocks: Array.isArray(note.discussionBlocks) ? note.discussionBlocks : []
         };
         return { round, privateNote };
       })
@@ -488,7 +555,9 @@ Page({
         return n.playHistory.length
           || n.discussionNotes.length
           || n.playImages.length
-          || n.discussionImages.length;
+          || n.discussionImages.length
+          || n.playBlocks.length
+          || n.discussionBlocks.length;
       });
   },
 
@@ -597,26 +666,71 @@ Page({
     }
   },
 
-  async _syncRoundContentToRoom() {
+  async _syncRoundContentToRoom(overrides) {
     const roomId = this.data.roomId;
-    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
-    const patch = this._buildClientRoundContentPatch();
+    if (!roomId || !this.data.isHost || isClosingPhase(this.data.gamepagePhase)) return false;
+    // 内容所属轮次：换轮后禁止把上一轮纪要写进新一轮
+    const contentRound = overrides && overrides.contentRound != null
+      ? Number(overrides.contentRound)
+      : Number(this.data.currentRound);
+    if (!Number.isFinite(contentRound) || contentRound <= 0) return false;
+    if (Number(this.data.currentRound) !== contentRound) return false;
+
+    const patch = overrides && typeof overrides === 'object'
+      ? {
+        playHistory: overrides.playHistory != null
+          ? overrides.playHistory
+          : (this.data.playHistory || []),
+        discussionNotes: overrides.discussionNotes != null
+          ? overrides.discussionNotes
+          : (this.data.discussionNotes || []),
+        playImages: overrides.playImages != null
+          ? overrides.playImages
+          : (this.data.playImages || []),
+        discussionImages: overrides.discussionImages != null
+          ? overrides.discussionImages
+          : (this.data.discussionImages || []),
+        playBlocks: overrides.playBlocks != null
+          ? overrides.playBlocks
+          : (this.data.playBlocks || []),
+        discussionBlocks: overrides.discussionBlocks != null
+          ? overrides.discussionBlocks
+          : (this.data.discussionBlocks || []),
+        images: overrides.playImages != null
+          ? overrides.playImages
+          : (this.data.playImages || [])
+      }
+      : this._buildClientRoundContentPatch();
     // 全空时不推送，避免进房/切后台把他人已写纪要冲成空数组
     const hasContent = (patch.playHistory && patch.playHistory.length)
       || (patch.discussionNotes && patch.discussionNotes.length)
+      || (patch.playImages && patch.playImages.length)
+      || (patch.discussionImages && patch.discussionImages.length)
+      || (patch.playBlocks && patch.playBlocks.length)
+      || (patch.discussionBlocks && patch.discussionBlocks.length)
       || (patch.images && patch.images.length);
-    if (!hasContent) return;
+    if (!hasContent) return false;
+    const syncToken = ++this._roundContentSyncToken;
     try {
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data: {
           roomId,
           currentPage: 'gamepage',
+          contentRound,
           partnerCurrentRoundContent: patch
         }
       });
+      // 请求期间已换轮：丢弃结果，避免把旧轮内容认作成功
+      if (syncToken !== this._roundContentSyncToken
+        || Number(this.data.currentRound) !== contentRound) {
+        return false;
+      }
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('syncRoundContentToRoom', e);
+      return false;
     }
   },
 
@@ -728,6 +842,18 @@ Page({
         roundTimerElapsedRatio: 0
       });
       this._avatarTimerTurnKey = '';
+      this._stopRoundTimer();
+      return;
+    }
+
+    // 已过期的服务端戳只清空，绝不点亮倒计时（避免进主流程立刻震动）
+    if (!isRoundTimerActive(ts)) {
+      if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+      this.setData({
+        partnerRoundStartedAt: null,
+        roundTimerVisible: false,
+        roundTimerElapsedRatio: 0
+      });
       this._stopRoundTimer();
       return;
     }
@@ -893,7 +1019,7 @@ Page({
     // 仅当前出牌玩家本人可匹配「本轮已使用」标记
     return !!(
       patch.isCurrentPlayer
-      && flag.playerIndex === patch.currentPlayerIndex
+      && toPlayerIndex(flag.playerIndex, 0) === toPlayerIndex(patch.currentPlayerIndex, 0)
     );
   },
 
@@ -955,20 +1081,25 @@ Page({
     const roundChanged = currentRound !== this.data.currentRound;
     const sessionChanged = brainstormSessionSeq !== this.data.brainstormSessionSeq;
     const hadPriorContext = (this.data.members || []).length > 0;
-    const me = members.find((m) => m.isMe);
-    const myPlayerIndex = me ? me.playerIndex : null;
-    const turnIndexChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
+    const me = members.find((m) => m && m.isMe);
+    const myPlayerIndex = me ? toPlayerIndex(me.playerIndex, 0) : 0;
+    const prevPlayerIndex = toPlayerIndex(this.data.currentPlayerIndex, 0);
+    const turnIndexChanged = player.currentPlayerIndex !== prevPlayerIndex;
     const becameMyTurn = hadPriorContext
       && turnIndexChanged
-      && myPlayerIndex != null
+      && myPlayerIndex > 0
       && player.currentPlayerIndex === myPlayerIndex;
     const leftMyTurn = hadPriorContext
       && turnIndexChanged
-      && myPlayerIndex != null
-      && this.data.currentPlayerIndex === myPlayerIndex
+      && myPlayerIndex > 0
+      && prevPlayerIndex === myPlayerIndex
       && player.currentPlayerIndex !== myPlayerIndex;
     const closingStepChanged = isClosingPhase(roomPhase)
       && closingStep !== this.data.closingStep;
+    const expressMessages = Array.isArray(roomState.partnerExpressMessages)
+      ? roomState.partnerExpressMessages
+      : [];
+    this._expressMessagesAll = expressMessages;
     const roundSummaries = (Array.isArray(roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
       : [])
@@ -977,13 +1108,13 @@ Page({
       .map((item) => ({
         ...item,
         voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
-        turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : []
+        turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
+        expressChatList: this._mapExpressChatList(
+          this._filterExpressMessagesByRound(expressMessages, item.round, currentRound)
+        )
       }));
     const roundContent = this._applyRoundContentFromRoom(roomState);
-    const expressMessages = Array.isArray(roomState.partnerExpressMessages)
-      ? roomState.partnerExpressMessages
-      : [];
-    this._ingestExpressMessages(expressMessages);
+    this._ingestExpressMessages(expressMessages, { currentRound });
     const lastExpressId = expressMessages.length
       ? (expressMessages[expressMessages.length - 1].id || '')
       : '';
@@ -1035,8 +1166,13 @@ Page({
         : buildPartnerAvatarList(members),
       currentPlayerIndex: player.currentPlayerIndex,
       currentPlayerName: player.currentPlayerName,
-      isCurrentPlayer: player.isCurrentPlayer,
+      isCurrentPlayer: !!player.isCurrentPlayer,
+      // 出牌阶段：轮到谁，谁显示「特殊行动」（含房主本人出牌）
+      showSpecialMoveBtn: !!player.isCurrentPlayer
+        && !isDiscussionPhase(roomPhase)
+        && !isClosingPhase(roomPhase),
       gamepagePhase: roomPhase,
+      expressCanSend: this._computeExpressCanSend(player.isCurrentPlayer, roomPhase),
       isMasterMode: roomState.partnerMasterMode === true,
       closingQuestionPlayers,
       closingStep,
@@ -1050,25 +1186,29 @@ Page({
       avatarRoundStartedAt: isClosingPhase(roomPhase) ? null : avatarRoundStartedAt,
       voiceLines: roundContent.voiceLines,
       turnRecords: roundContent.turnRecords,
+      playHistory: roundContent.playHistory,
+      discussionNotes: roundContent.discussionNotes,
+      playImages: roundContent.playImages,
+      discussionImages: roundContent.discussionImages,
+      playBlocks: roundContent.playBlocks,
+      discussionBlocks: roundContent.discussionBlocks,
       ...timerPatch,
       displayRoundSummaries: paginationState.displayRoundSummaries,
       cardCount: paginationState.cardCount,
-      paginationIndexes: paginationState.paginationIndexes,
+      paginationDots: paginationState.paginationDots,
       cardIndex: paginationState.cardIndex,
       selectedPlayerIndex: paginationState.selectedPlayerIndex,
       indicatorPlayerIndex: paginationState.indicatorPlayerIndex,
       isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
 
-    // 文字/图片插入为本地私有：从本机存储读取，绝不采用房间共享态
-    const localInserts = this._loadLocalRoundInserts(currentRound, brainstormSessionSeq);
+    // 出牌解释/疑问讨论取房间共享态；换轮时清空内联输入草稿
     if (roundChanged || sessionChanged) {
-      patch.playHistory = localInserts.playHistory;
-      patch.discussionNotes = localInserts.discussionNotes;
-      patch.playImages = localInserts.playImages;
-      patch.discussionImages = localInserts.discussionImages;
-      patch.voiceLines = [];
-      patch.turnRecords = [];
+      // 作废进行中的内容同步，防止上一轮纪要写进新一轮
+      this._roundContentSyncToken = (this._roundContentSyncToken || 0) + 1;
+      patch.cardInlineEditTarget = '';
+      patch.cardInlineEditText = '';
+      patch.cardInlineEditFocus = false;
       patch.cardDraftText = '';
       patch.cardDraftPhotos = [];
       patch.cardDraftHasText = false;
@@ -1076,18 +1216,23 @@ Page({
       const serverTs = roomState.partnerRoundStartedAt != null
         ? Number(roomState.partnerRoundStartedAt)
         : 0;
-      patch.partnerRoundStartedAt = serverTs > 0 ? serverTs : null;
-    } else {
-      patch.playHistory = localInserts.playHistory;
-      patch.discussionNotes = localInserts.discussionNotes;
-      patch.playImages = localInserts.playImages;
-      patch.discussionImages = localInserts.discussionImages;
+      // 过期戳不得写入 UI，否则进页会覆盖新计时并误触发到期震动
+      patch.partnerRoundStartedAt = (serverTs > 0 && isRoundTimerActive(serverTs))
+        ? serverTs
+        : null;
     }
 
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
       patch.scoredCount = 0;
+      patch.scorePanelExpanded = false;
+      patch.expressComposerOpen = false;
+      patch.expressDraftText = '';
+      patch.expressHasText = false;
+      if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
+        patch.expressChatPanelVisible = false;
+      }
       if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
         patch.filteredPlayerIndex = null;
         patch.isPlayerFilterActive = false;
@@ -1104,7 +1249,7 @@ Page({
         });
         patch.displayRoundSummaries = resetCardState.displayRoundSummaries;
         patch.cardCount = resetCardState.cardCount;
-        patch.paginationIndexes = resetCardState.paginationIndexes;
+        patch.paginationDots = resetCardState.paginationDots;
         patch.cardIndex = resetCardState.cardIndex;
         patch.selectedPlayerIndex = resetCardState.selectedPlayerIndex;
         patch.indicatorPlayerIndex = resetCardState.indicatorPlayerIndex;
@@ -1121,6 +1266,10 @@ Page({
 
     if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
+      patch.paginationDots = buildPaginationDots(
+        patch.cardIndex,
+        patch.cardCount != null ? patch.cardCount : this.data.cardCount
+      );
     }
 
     if (isClosingPhase(roomPhase)) {
@@ -1131,7 +1280,9 @@ Page({
         playHistory: patch.playHistory,
         discussionNotes: patch.discussionNotes,
         playImages: patch.playImages,
-        discussionImages: patch.discussionImages
+        discussionImages: patch.discussionImages,
+        playBlocks: patch.playBlocks,
+        discussionBlocks: patch.discussionBlocks
       });
     } else if (phaseChanged) {
       patch.closingReviewRounds = [];
@@ -1149,10 +1300,13 @@ Page({
       roundSummaries.length,
       roundContent.voiceLines.length,
       roundContent.turnRecords.length,
-      localInserts.playHistory.length,
-      localInserts.discussionNotes.length,
-      localInserts.playImages.length,
-      localInserts.discussionImages.length,
+      // 内容指纹：避免同长度改文案时轮询不刷新
+      (roundContent.playHistory || []).join('\u0001'),
+      (roundContent.discussionNotes || []).join('\u0001'),
+      (roundContent.playImages || []).join('|'),
+      (roundContent.discussionImages || []).join('|'),
+      (roundContent.playBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
+      (roundContent.discussionBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
       lastExpressId,
       paginationState.cardIndex,
       paginationState.cardCount,
@@ -1252,6 +1406,7 @@ Page({
       await this._ensureSharedRoundTimerOnEnter();
       await this._syncRoundSpeech();
       await this._syncRoundContentToRoom();
+      await this._refreshInspirationCount();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -1421,7 +1576,14 @@ Page({
     const cardIndex = Math.min(index, maxIndex);
     this.setData({
       cardIndex,
+      paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
       indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
+    });
+    // 切到历史卡 / 当前卡时，表达列表跟随对应轮次
+    this._syncExpressChatList(this._expressMessagesAll || [], {
+      force: true,
+      scrollBottom: false,
+      cardIndex
     });
   },
 
@@ -1635,6 +1797,211 @@ Page({
     this.onRoundPrivateNotePreview(e);
   },
 
+  async _uploadRoundNotePhotos(paths) {
+    const roomId = this.data.roomId || 'room';
+    const round = this.data.currentRound || 0;
+    const list = Array.isArray(paths) ? paths : [];
+    const results = [];
+    for (let i = 0; i < list.length; i++) {
+      const filePath = list[i];
+      try {
+        const cloudPath = `partnerNotes/${roomId}/r${round}/${Date.now()}_${i}.jpg`;
+        const uploadRes = await wx.cloud.uploadFile({ cloudPath, filePath });
+        if (uploadRes && uploadRes.fileID) {
+          results.push(uploadRes.fileID);
+          continue;
+        }
+      } catch (e) {
+        console.warn('_uploadRoundNotePhotos cloud fail', e);
+      }
+      results.push(await persistTempPhoto(filePath));
+    }
+    return results;
+  },
+
+  async _appendSharedSectionContent(target, options = {}) {
+    if (!this.data.isHost) return false;
+    const scope = target === 'play' ? 'play' : 'discussion';
+    const text = typeof options.text === 'string' ? options.text.trim() : '';
+    const photos = Array.isArray(options.photos) ? options.photos : [];
+    if (!text && !photos.length) return false;
+
+    // 绑定写入时的轮次，异步上传后若已换轮则中止，避免串轮
+    const contentRound = Number(this.data.currentRound);
+    if (!Number.isFinite(contentRound) || contentRound <= 0) return false;
+
+    let uploaded = [];
+    if (photos.length) {
+      uploaded = await this._uploadRoundNotePhotos(photos);
+      if (!uploaded.length && !text) {
+        wx.showToast({ title: '图片上传失败', icon: 'none' });
+        return false;
+      }
+    }
+
+    if (Number(this.data.currentRound) !== contentRound) {
+      wx.showToast({ title: '已换轮，请重新记录', icon: 'none' });
+      return false;
+    }
+
+    const blockField = scope === 'play' ? 'playBlocks' : 'discussionBlocks';
+    let nextBlocks = (this.data[blockField] || []).slice();
+    if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
+    if (text) nextBlocks = appendTextBlock(nextBlocks, text);
+    const derived = deriveListsFromBlocks(nextBlocks);
+
+    const nextPlayBlocks = scope === 'play' ? nextBlocks : (this.data.playBlocks || []);
+    const nextDiscussionBlocks = scope === 'play'
+      ? (this.data.discussionBlocks || [])
+      : nextBlocks;
+    const nextPlayHistory = scope === 'play'
+      ? derived.texts
+      : (this.data.playHistory || []);
+    const nextDiscussionNotes = scope === 'play'
+      ? (this.data.discussionNotes || [])
+      : derived.texts;
+    const nextPlayImages = scope === 'play'
+      ? derived.images
+      : (this.data.playImages || []);
+    const nextDiscussionImages = scope === 'play'
+      ? (this.data.discussionImages || [])
+      : derived.images;
+
+    this.setData({
+      playHistory: nextPlayHistory,
+      discussionNotes: nextDiscussionNotes,
+      playImages: nextPlayImages,
+      discussionImages: nextDiscussionImages,
+      playBlocks: nextPlayBlocks,
+      discussionBlocks: nextDiscussionBlocks
+    });
+
+    const ok = await this._syncRoundContentToRoom({
+      contentRound,
+      playHistory: nextPlayHistory,
+      discussionNotes: nextDiscussionNotes,
+      playImages: nextPlayImages,
+      discussionImages: nextDiscussionImages,
+      playBlocks: nextPlayBlocks,
+      discussionBlocks: nextDiscussionBlocks
+    });
+    if (!ok) {
+      if (Number(this.data.currentRound) !== contentRound) {
+        wx.showToast({ title: '已换轮，请重新记录', icon: 'none' });
+      } else {
+        wx.showToast({ title: '同步失败', icon: 'none' });
+      }
+    }
+    return ok;
+  },
+
+  onCardSectionTitleTap(e) {
+    if (!this.data.isHost) return;
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    if (target !== 'play' && target !== 'discussion') return;
+    this.setData({
+      cardInlineEditTarget: target,
+      cardInlineEditText: '',
+      cardInlineEditFocus: false
+    }, () => {
+      this.setData({ cardInlineEditFocus: true });
+    });
+  },
+
+  onCardSectionAddImage(e) {
+    if (!this.data.isHost) return;
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    if (target !== 'play' && target !== 'discussion') return;
+    const imageField = target === 'play' ? 'playImages' : 'discussionImages';
+    const current = this.data[imageField] || [];
+    const remain = 9 - current.length;
+    if (remain <= 0) {
+      wx.showToast({ title: '最多插入 9 张图片', icon: 'none' });
+      return;
+    }
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: remain,
+          sizeType: ['compressed'],
+          sourceType,
+          success: async (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) return;
+            wx.showLoading({ title: '上传中…', mask: true });
+            try {
+              await this._appendSharedSectionContent(target, { photos: paths });
+              // 插图后继续输入：输入框落在内容流末尾（图片下方）
+              this.setData({
+                cardInlineEditTarget: target,
+                cardInlineEditText: '',
+                cardInlineEditFocus: false
+              }, () => {
+                this.setData({ cardInlineEditFocus: true });
+              });
+            } finally {
+              wx.hideLoading();
+            }
+          },
+          fail: () => {
+            wx.showToast({ title: '选择图片失败', icon: 'none' });
+          }
+        });
+      }
+    });
+  },
+
+  onCardInlineInput(e) {
+    this.setData({
+      cardInlineEditText: (e.detail && e.detail.value) || ''
+    });
+  },
+
+  async onCardInlineConfirm() {
+    await this._commitCardInlineEdit();
+  },
+
+  async onCardInlineBlur() {
+    // 失焦时若有内容则提交；空内容仅退出输入态
+    await this._commitCardInlineEdit({ allowEmptyExit: true });
+  },
+
+  async _commitCardInlineEdit(options = {}) {
+    if (this.data.cardInlineEditSaving) return;
+    const target = this.data.cardInlineEditTarget;
+    if (target !== 'play' && target !== 'discussion') return;
+    const text = (this.data.cardInlineEditText || '').trim();
+    if (!text) {
+      if (options.allowEmptyExit) {
+        this.setData({
+          cardInlineEditTarget: '',
+          cardInlineEditText: '',
+          cardInlineEditFocus: false
+        });
+      }
+      return;
+    }
+    this.setData({ cardInlineEditSaving: true });
+    try {
+      const ok = await this._appendSharedSectionContent(target, { text });
+      if (ok) {
+        this.setData({
+          cardInlineEditTarget: '',
+          cardInlineEditText: '',
+          cardInlineEditFocus: false
+        });
+      }
+    } finally {
+      this.setData({ cardInlineEditSaving: false });
+    }
+  },
+
   handleInsertImage() {
     const photos = this.data.cardDraftPhotos || [];
     const remain = 9 - photos.length;
@@ -1699,47 +2066,27 @@ Page({
   },
 
   async onCardDraftSubmit() {
-    if (this.data.cardDraftSaving) return;
+    // 兼容旧调用：改为写入共享态（讨论阶段默认疑问讨论）
+    if (!this.data.isHost || this.data.cardDraftSaving) return;
     const text = (this.data.cardDraftText || '').trim();
     const draftPhotos = this.data.cardDraftPhotos || [];
     if (!text && !draftPhotos.length) return;
 
     this.setData({ cardDraftSaving: true });
     try {
-      // 图片仅存本机，不上云、不同步房间
-      let localImages = [];
-      if (draftPhotos.length) {
-        for (let i = 0; i < draftPhotos.length; i++) {
-          localImages.push(await persistTempPhoto(draftPhotos[i]));
-        }
-        if (!localImages.length && !text) {
-          wx.showToast({ title: '图片保存失败', icon: 'none' });
-          return;
-        }
-      }
-
-      const isDiscussion = isDiscussionPhase(this.data.gamepagePhase);
-      const noteField = isDiscussion ? 'discussionNotes' : 'playHistory';
-      const imageField = isDiscussion ? 'discussionImages' : 'playImages';
-      const nextNotes = (this.data[noteField] || []).slice();
-      if (text) nextNotes.push(text);
-      const nextImages = (this.data[imageField] || []).concat(localImages);
-
-      const patch = {
-        cardDraftText: '',
-        cardDraftPhotos: [],
-        cardDraftHasText: false
-      };
-      patch[noteField] = nextNotes;
-      patch[imageField] = nextImages;
-      this._persistLocalRoundInserts({
-        playHistory: isDiscussion ? this.data.playHistory : nextNotes,
-        discussionNotes: isDiscussion ? nextNotes : this.data.discussionNotes,
-        playImages: isDiscussion ? this.data.playImages : nextImages,
-        discussionImages: isDiscussion ? nextImages : this.data.discussionImages
+      const target = isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play';
+      const ok = await this._appendSharedSectionContent(target, {
+        text,
+        photos: draftPhotos
       });
-      this.setData(patch);
-      wx.showToast({ title: '已插入', icon: 'success' });
+      if (ok) {
+        this.setData({
+          cardDraftText: '',
+          cardDraftPhotos: [],
+          cardDraftHasText: false
+        });
+        wx.showToast({ title: '已插入', icon: 'success' });
+      }
     } catch (e) {
       console.warn('onCardDraftSubmit', e);
       wx.showToast({ title: '提交失败', icon: 'none' });
@@ -1750,131 +2097,34 @@ Page({
 
   noop() {},
 
-  openExpressModal() {
-    if (isDiscussionPhase(this.data.gamepagePhase) || isClosingPhase(this.data.gamepagePhase)) {
-      wx.showToast({ title: '出牌阶段可匿名表达', icon: 'none' });
-      return;
-    }
-    this.setData({
-      expressModalVisible: true,
-      expressDraftText: '',
-      expressHasText: false
-    });
+  toggleScorePanel() {
+    this.setData({ scorePanelExpanded: !this.data.scorePanelExpanded });
   },
 
-  closeExpressModal() {
-    if (this.data.expressSending) return;
-    this.setData({
-      expressModalVisible: false,
-      expressDraftText: '',
-      expressHasText: false
-    });
+  onScoreSheetTouchStart(e) {
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    this._scoreSheetTouchY = t.clientY;
+    this._scoreSheetTouchMoved = false;
   },
 
-  onExpressInput(e) {
-    const text = (e.detail && e.detail.value) || '';
-    this.setData({
-      expressDraftText: text,
-      expressHasText: !!text.trim()
-    });
-  },
-
-  async submitExpress() {
-    if (this.data.expressSending) return;
-    const text = (this.data.expressDraftText || '').trim();
-    if (!text) return;
-    const roomId = this.data.roomId;
-    if (!roomId) return;
-
-    this.setData({ expressSending: true });
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'postPartnerExpress',
-        data: {
-          roomId,
-          text,
-          round: this.data.currentRound
-        }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '发送失败', icon: 'none' });
-        return;
-      }
-      // 发送方本地预展示；用独立入口，避免「首次同步吞历史」把刚发的也吞掉，同时按 id 去重
-      if (result.message) {
-        this._showExpressMessage(result.message);
-      }
-      this.setData({
-        expressModalVisible: false,
-        expressDraftText: '',
-        expressHasText: false
-      });
-    } catch (e) {
-      console.warn('submitExpress', e);
-      wx.showToast({ title: '发送失败', icon: 'none' });
-    } finally {
-      this.setData({ expressSending: false });
+  onScoreSheetTouchMove(e) {
+    const t = e.touches && e.touches[0];
+    if (!t || this._scoreSheetTouchY == null) return;
+    const dy = this._scoreSheetTouchY - t.clientY;
+    if (Math.abs(dy) > 8) this._scoreSheetTouchMoved = true;
+    // 上滑展开，下滑收起
+    if (dy > 28 && !this.data.scorePanelExpanded) {
+      this.setData({ scorePanelExpanded: true });
+      this._scoreSheetTouchY = t.clientY;
+    } else if (dy < -28 && this.data.scorePanelExpanded) {
+      this.setData({ scorePanelExpanded: false });
+      this._scoreSheetTouchY = t.clientY;
     }
   },
 
-  _showExpressMessage(msg) {
-    if (!msg || !msg.id || !msg.text) return;
-    if (!this._seenExpressIds) this._seenExpressIds = {};
-    if (this._seenExpressIds[msg.id]) return;
-    this._seenExpressIds[msg.id] = true;
-    // 标记已就绪，后续轮询走增量逻辑，不会再整批吞掉
-    this._expressReady = true;
-    this._spawnDanmaku(msg);
-  },
-
-  _ingestExpressMessages(messages) {
-    if (!this._seenExpressIds) this._seenExpressIds = {};
-    if (!this._danmakuLaneSeed) this._danmakuLaneSeed = 0;
-    const list = Array.isArray(messages) ? messages : [];
-
-    // 首次同步：吞掉历史，避免进页刷屏
-    if (!this._expressReady) {
-      list.forEach((msg) => {
-        if (msg && msg.id) this._seenExpressIds[msg.id] = true;
-      });
-      this._expressReady = true;
-      return;
-    }
-
-    const newcomers = [];
-    list.forEach((msg) => {
-      if (!msg || !msg.id || !msg.text) return;
-      if (this._seenExpressIds[msg.id]) return;
-      this._seenExpressIds[msg.id] = true;
-      newcomers.push(msg);
-    });
-    if (!newcomers.length) return;
-
-    newcomers.forEach((msg, idx) => {
-      setTimeout(() => this._spawnDanmaku(msg), idx * 280);
-    });
-  },
-
-  _spawnDanmaku(msg) {
-    const id = msg.id;
-    const lane = (this._danmakuLaneSeed++ % 5);
-    const top = 120 + lane * 72;
-    const duration = 7 + (msg.text.length % 4);
-    const item = {
-      id: `${id}_${Date.now()}`,
-      text: msg.text,
-      top,
-      duration
-    };
-    const list = (this.data.activeDanmakus || []).concat([item]);
-    // 限制同时展示数量
-    const trimmed = list.length > 12 ? list.slice(list.length - 12) : list;
-    this.setData({ activeDanmakus: trimmed });
-    setTimeout(() => {
-      const next = (this.data.activeDanmakus || []).filter((d) => d.id !== item.id);
-      this.setData({ activeDanmakus: next });
-    }, duration * 1000 + 200);
+  onScoreSheetTouchEnd() {
+    this._scoreSheetTouchY = null;
   },
 
   async onScoreTap(e) {
@@ -1916,9 +2166,345 @@ Page({
     }
   },
 
+  openExpressComposer() {
+    if (isDiscussionPhase(this.data.gamepagePhase) || isClosingPhase(this.data.gamepagePhase)) {
+      wx.showToast({ title: '出牌阶段可匿名表达', icon: 'none' });
+      return;
+    }
+    this.setData({
+      expressComposerOpen: true,
+      expressDraftText: '',
+      expressHasText: false
+    });
+  },
+
+  closeExpressComposer() {
+    if (this.data.expressSending) return;
+    this.setData({
+      expressComposerOpen: false,
+      expressDraftText: '',
+      expressHasText: false
+    });
+  },
+
+  onExpressComposerBlur() {
+    // 无内容时失焦收起，避免挡聊天区
+    if (this.data.expressSending) return;
+    if ((this.data.expressDraftText || '').trim()) return;
+    this.setData({ expressComposerOpen: false });
+  },
+
+  /** 出牌玩家：表态结束后（进入讨论）才可发送；旁观走卡内输入条 */
+  _computeExpressCanSend(isCurrentPlayer, phase) {
+    if (!isCurrentPlayer) return true;
+    return isDiscussionPhase(phase);
+  },
+
+  openExpressChatPanel() {
+    this.toggleExpressChatInCard();
+  },
+
+  /** 出牌玩家：点击表达仅切换卡内内容（行动规则 ↔ 匿名聊天） */
+  toggleExpressChatInCard() {
+    if (isClosingPhase(this.data.gamepagePhase)) {
+      wx.showToast({ title: '当前阶段不可查看', icon: 'none' });
+      return;
+    }
+    if (this.data.expressChatPanelVisible) {
+      this.closeExpressChatPanel();
+      return;
+    }
+    const canSend = this._computeExpressCanSend(
+      this.data.isCurrentPlayer,
+      this.data.gamepagePhase
+    );
+    this.setData({
+      expressChatPanelVisible: true,
+      expressCanSend: canSend,
+      expressDraftText: '',
+      expressHasText: false,
+      expressChatAnchor: this.data.expressChatList.length ? 'express-chat-bottom' : ''
+    });
+  },
+
+  closeExpressChatPanel() {
+    if (this.data.expressSending) return;
+    this.setData({
+      expressChatPanelVisible: false,
+      expressDraftText: '',
+      expressHasText: false
+    });
+  },
+
+  openExpressModal() {
+    // 出牌玩家进聊天面板；非出牌走卡内输入条
+    if (!this.data.isCurrentPlayer) {
+      this.openExpressComposer();
+      return;
+    }
+    this.openExpressChatPanel();
+  },
+
+  closeExpressModal() {
+    this.closeExpressChatPanel();
+  },
+
+  onExpressInput(e) {
+    const text = (e.detail && e.detail.value) || '';
+    this.setData({
+      expressDraftText: text,
+      expressHasText: !!text.trim()
+    });
+  },
+
+  async submitExpress() {
+    if (this.data.expressSending) return;
+    if (this.data.isCurrentPlayer && !this.data.expressCanSend) {
+      wx.showToast({ title: '本轮表态结束后可发送', icon: 'none' });
+      return;
+    }
+    const text = (this.data.expressDraftText || '').trim();
+    if (!text) return;
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+
+    this.setData({ expressSending: true });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'postPartnerExpress',
+        data: {
+          roomId,
+          text,
+          round: this.data.currentRound
+        }
+      });
+      const result = (res && res.result) || {};
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '发送失败', icon: 'none' });
+        return;
+      }
+      // 发送方本地预展示；用独立入口，避免「首次同步吞历史」把刚发的也吞掉，同时按 id 去重
+      if (result.message) {
+        this._showExpressMessage(result.message);
+      }
+      this.setData({
+        expressModalVisible: false,
+        expressComposerOpen: false,
+        expressDraftText: '',
+        expressHasText: false
+      });
+    } catch (e) {
+      console.warn('submitExpress', e);
+      wx.showToast({ title: '发送失败', icon: 'none' });
+    } finally {
+      this.setData({ expressSending: false });
+    }
+  },
+
+  /** 匿名表达色点：同 anonKey 固定同色（按房间内首次出现顺序分配） */
+  _expressDotColors() {
+    return [
+      '#FF6B6B',
+      '#4ECDC4',
+      '#FFB020',
+      '#6C8CFF',
+      '#C084FC',
+      '#34D399',
+      '#F97316',
+      '#F472B6'
+    ];
+  },
+
+  _expressAvatarKey(msg) {
+    if (!msg) return '';
+    if (msg.anonKey) return String(msg.anonKey);
+    // 兼容：id 形如 anonKey_timestamp_random
+    const id = String(msg.id || '');
+    const m = id.match(/^([a-f0-9]{16})_/i);
+    if (m) return m[1];
+    return '';
+  },
+
+  _seedExpressAnonColors(messages) {
+    if (!this._expressAnonColorMap) this._expressAnonColorMap = Object.create(null);
+    const colors = this._expressDotColors();
+    (messages || []).forEach((msg) => {
+      const key = this._expressAvatarKey(msg);
+      if (!key || this._expressAnonColorMap[key]) return;
+      const idx = Object.keys(this._expressAnonColorMap).length % colors.length;
+      this._expressAnonColorMap[key] = colors[idx];
+    });
+  },
+
+  _resolveExpressDotColor(msg) {
+    const key = this._expressAvatarKey(msg);
+    if (!key) return '#B0B0B0';
+    if (!this._expressAnonColorMap) this._expressAnonColorMap = Object.create(null);
+    if (!this._expressAnonColorMap[key]) {
+      this._seedExpressAnonColors([msg]);
+    }
+    return this._expressAnonColorMap[key] || '#B0B0B0';
+  },
+
+  _mapExpressChatItem(msg) {
+    if (!msg || !msg.id) return null;
+    const dotColor = this._resolveExpressDotColor(msg);
+    return {
+      id: msg.id,
+      text: msg.text || '',
+      round: msg.round != null ? Number(msg.round) : null,
+      avatar: DEFAULT_AVATAR,
+      dotColor,
+      avatarDotStyle: `background-color:${dotColor};`
+    };
+  },
+
+  /** 当前卡片对应的表达轮次：历史纪要卡用 item.round，最新卡用 currentRound */
+  _getExpressViewRound(cardIndex, currentRoundOverride) {
+    const summaries = this.data.displayRoundSummaries || [];
+    const idx = cardIndex != null ? cardIndex : this.data.cardIndex;
+    if (idx < summaries.length && summaries[idx] && summaries[idx].round != null) {
+      return Number(summaries[idx].round);
+    }
+    const cr = currentRoundOverride != null
+      ? Number(currentRoundOverride)
+      : Number(this.data.currentRound);
+    return Number.isFinite(cr) ? cr : 0;
+  },
+
+  _filterExpressMessagesByRound(messages, round, currentRoundOverride) {
+    const list = Array.isArray(messages) ? messages : [];
+    const r = Number(round);
+    if (!Number.isFinite(r)) return [];
+    const currentRound = currentRoundOverride != null
+      ? Number(currentRoundOverride)
+      : (Number(this.data.currentRound) || 0);
+    return list.filter((msg) => {
+      if (!msg || !msg.id) return false;
+      if (msg.round == null || msg.round === '') {
+        // 旧数据无 round：仅挂在当前轮，避免历史卡串台
+        return r === currentRound;
+      }
+      return Number(msg.round) === r;
+    });
+  },
+
+  _mapExpressChatList(messages) {
+    const list = Array.isArray(messages) ? messages : [];
+    // 先用全量消息播种，保证跨轮次 / 分段列表同人同色
+    this._seedExpressAnonColors(this._expressMessagesAll || []);
+    this._seedExpressAnonColors(list);
+    return list
+      .slice(-40)
+      .map((msg) => this._mapExpressChatItem(msg))
+      .filter(Boolean);
+  },
+
+  _syncExpressChatList(messages, options = {}) {
+    if (Array.isArray(messages)) {
+      this._expressMessagesAll = messages;
+    }
+    const all = this._expressMessagesAll || [];
+    const viewRound = options.viewRound != null
+      ? Number(options.viewRound)
+      : this._getExpressViewRound(options.cardIndex, options.currentRound);
+    const filtered = this._filterExpressMessagesByRound(
+      all,
+      viewRound,
+      options.currentRound
+    );
+    const next = this._mapExpressChatList(filtered);
+    const prev = this.data.expressChatList || [];
+    const prevTail = prev.length ? prev[prev.length - 1].id : '';
+    const nextTail = next.length ? next[next.length - 1].id : '';
+    const changed = prev.length !== next.length
+      || prevTail !== nextTail
+      || this.data.expressViewRound !== viewRound;
+    if (!changed && !options.force) return;
+    const patch = {
+      expressChatList: next,
+      expressViewRound: viewRound
+    };
+    if (options.scrollBottom !== false && next.length) {
+      patch.expressChatAnchor = 'express-chat-bottom';
+    }
+    this.setData(patch);
+  },
+
+  _showExpressMessage(msg) {
+    if (!msg || !msg.id || !msg.text) return;
+    if (!this._seenExpressIds) this._seenExpressIds = {};
+    if (this._seenExpressIds[msg.id]) return;
+    this._seenExpressIds[msg.id] = true;
+    this._expressReady = true;
+
+    const all = (this._expressMessagesAll || []).concat([msg]).slice(-40);
+    this._expressMessagesAll = all;
+
+    const viewRound = this._getExpressViewRound();
+    const msgRound = msg.round != null
+      ? Number(msg.round)
+      : (Number(this.data.currentRound) || 0);
+    if (msgRound === viewRound) {
+      this._syncExpressChatList(all, { force: true, viewRound });
+    }
+    this._refreshSummaryExpressLists(all);
+  },
+
+  _refreshSummaryExpressLists(messages) {
+    const all = Array.isArray(messages) ? messages : (this._expressMessagesAll || []);
+    const patchList = (list) => (list || []).map((item) => ({
+      ...item,
+      expressChatList: this._mapExpressChatList(
+        this._filterExpressMessagesByRound(all, item.round)
+      )
+    }));
+    const roundSummaries = this.data.roundSummaries || [];
+    const displayRoundSummaries = this.data.displayRoundSummaries || [];
+    if (!roundSummaries.length && !displayRoundSummaries.length) return;
+    this.setData({
+      roundSummaries: patchList(roundSummaries),
+      displayRoundSummaries: patchList(displayRoundSummaries)
+    });
+  },
+
+  _ingestExpressMessages(messages, options = {}) {
+    if (!this._seenExpressIds) this._seenExpressIds = {};
+    const list = Array.isArray(messages) ? messages : [];
+    this._expressMessagesAll = list;
+
+    if (!this._expressReady) {
+      list.forEach((msg) => {
+        if (msg && msg.id) this._seenExpressIds[msg.id] = true;
+      });
+      this._expressReady = true;
+      this._syncExpressChatList(list, {
+        force: true,
+        scrollBottom: true,
+        currentRound: options.currentRound
+      });
+      // roundSummaries 已在 _applyRoomContext 里带上 expressChatList
+      return;
+    }
+
+    list.forEach((msg) => {
+      if (msg && msg.id) this._seenExpressIds[msg.id] = true;
+    });
+    this._syncExpressChatList(list, {
+      force: options.force === true,
+      currentRound: options.currentRound
+    });
+  },
+
   onTapSpecialMove() {
     // 仅当前出牌轮次玩家可进入；房主不可代操作
-    if (!this.data.isCurrentPlayer) {
+    const canSpecial = this.data.showSpecialMoveBtn
+      || (
+        !!this.data.isCurrentPlayer
+        && !isDiscussionPhase(this.data.gamepagePhase)
+        && !isClosingPhase(this.data.gamepagePhase)
+      );
+    if (!canSpecial) {
       wx.showToast({ title: '请等待您的轮次', icon: 'none' });
       return;
     }
@@ -2015,6 +2601,12 @@ Page({
       return;
     }
 
+    const amCurrentAfterPass = !!(members.find(
+      (m) => m && m.isMe && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
+    ));
+    if (incrementRound) {
+      this._roundContentSyncToken = (this._roundContentSyncToken || 0) + 1;
+    }
     this.setData({
       currentPlayerIndex: nextIndex,
       currentPlayerName: nextName,
@@ -2024,11 +2616,14 @@ Page({
       canStartStatement: false,
       scoredCount: 0,
       specialMoveUsedThisTurn: false,
-      isCurrentPlayer: !!(members.find((m) => m.isMe && m.playerIndex === nextIndex)),
+      isCurrentPlayer: amCurrentAfterPass,
+      showSpecialMoveBtn: amCurrentAfterPass,
       playHistory: incrementRound ? [] : this.data.playHistory,
       discussionNotes: incrementRound ? [] : this.data.discussionNotes,
       playImages: incrementRound ? [] : this.data.playImages,
       discussionImages: incrementRound ? [] : this.data.discussionImages,
+      playBlocks: incrementRound ? [] : this.data.playBlocks,
+      discussionBlocks: incrementRound ? [] : this.data.discussionBlocks,
       voiceLines: incrementRound ? [] : this.data.voiceLines,
       turnRecords: incrementRound ? [] : this.data.turnRecords
     }, () => {
@@ -2084,11 +2679,15 @@ Page({
   },
 
   async _refreshInspirationCount() {
-    const { roomId, brainstormSessionSeq } = this.data;
+    const { roomId } = this.data;
     if (!roomId) return;
-    const inspirationCount = await countSessionInspirations(roomId, brainstormSessionSeq);
-    if (inspirationCount !== this.data.inspirationCount) {
-      this.setData({ inspirationCount });
+    try {
+      const inspirationCount = await countSessionInspirations(roomId);
+      if (inspirationCount !== this.data.inspirationCount) {
+        this.setData({ inspirationCount });
+      }
+    } catch (e) {
+      console.warn('_refreshInspirationCount', e);
     }
   },
 
@@ -2263,9 +2862,11 @@ Page({
 
   handleGoInspirationCenter() {
     const roomId = this.data.roomId || '';
+    const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+    // scope=workshop：列出本人在本房间的全部灵感（与灯泡角标一致）
     let url = '/pages/inspiration/index?scope=workshop';
     if (roomId) {
-      url += `&roomId=${encodeURIComponent(roomId)}`;
+      url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
     }
     wx.navigateTo({ url });
   },
@@ -2287,6 +2888,7 @@ Page({
     this.setData({
       closingStep: CLOSING_STEP_REVIEW,
       cardIndex: 1,
+      paginationDots: buildPaginationDots(1, this.data.cardCount),
       closingReviewRounds: this._buildClosingReviewRounds({
         roomId: this.data.roomId,
         brainstormSessionSeq: this.data.brainstormSessionSeq,
@@ -2294,7 +2896,9 @@ Page({
         playHistory: this.data.playHistory,
         discussionNotes: this.data.discussionNotes,
         playImages: this.data.playImages,
-        discussionImages: this.data.discussionImages
+        discussionImages: this.data.discussionImages,
+        playBlocks: this.data.playBlocks,
+        discussionBlocks: this.data.discussionBlocks
       })
     });
   },

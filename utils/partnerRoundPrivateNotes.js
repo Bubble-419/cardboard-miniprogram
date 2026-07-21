@@ -1,4 +1,8 @@
 const STORAGE_PREFIX = 'partnerPrivateNotes_';
+const {
+  normalizeContentBlocks,
+  deriveListsFromBlocks
+} = require('./partnerRoundContent');
 
 function storageKey(roomId, sessionSeq) {
   const seq = sessionSeq != null ? sessionSeq : 0;
@@ -12,17 +16,34 @@ function normalizeNote(raw) {
   const discussionImages = Array.isArray(src.discussionImages)
     ? src.discussionImages.filter(Boolean)
     : [];
+  const playHistory = Array.isArray(src.playHistory)
+    ? src.playHistory.filter((t) => typeof t === 'string')
+    : [];
+  const discussionNotes = Array.isArray(src.discussionNotes)
+    ? src.discussionNotes.filter((t) => typeof t === 'string')
+    : [];
+  const resolvedPlayImages = playImages.length ? playImages : legacyImages;
+  const playBlocks = normalizeContentBlocks(src.playBlocks, playHistory, resolvedPlayImages);
+  const discussionBlocks = normalizeContentBlocks(
+    src.discussionBlocks,
+    discussionNotes,
+    discussionImages
+  );
+  const playDerived = deriveListsFromBlocks(playBlocks);
+  const discussionDerived = deriveListsFromBlocks(discussionBlocks);
   return {
     text: typeof src.text === 'string' ? src.text : '',
     photos: Array.isArray(src.photos) ? src.photos.filter(Boolean) : [],
     // 当前轮出牌/讨论卡插入：仅本机可见
-    playHistory: Array.isArray(src.playHistory) ? src.playHistory.filter((t) => typeof t === 'string') : [],
-    discussionNotes: Array.isArray(src.discussionNotes)
-      ? src.discussionNotes.filter((t) => typeof t === 'string')
-      : [],
+    playHistory: playDerived.texts.length ? playDerived.texts : playHistory,
+    discussionNotes: discussionDerived.texts.length ? discussionDerived.texts : discussionNotes,
     // 兼容旧数据：未分阶段的 images 归入出牌解释
-    playImages: playImages.length ? playImages : legacyImages,
-    discussionImages,
+    playImages: playDerived.images.length ? playDerived.images : resolvedPlayImages,
+    discussionImages: discussionDerived.images.length
+      ? discussionDerived.images
+      : discussionImages,
+    playBlocks,
+    discussionBlocks,
     images: legacyImages,
     updatedAt: src.updatedAt || 0
   };
@@ -78,10 +99,48 @@ function attachPrivateNotesToSummaries(summaries, roomId, sessionSeq) {
   const all = loadAllPrivateNotes(roomId, sessionSeq);
   return (summaries || []).map((item) => {
     const round = item && item.round != null ? item.round : 0;
-    const note = normalizeNote(all[String(round)]);
+    const legacy = normalizeNote(all[String(round)]);
+    // 优先使用房间归档的共享纪要；无共享数据时回退本机旧私有笔记
+    const sharedPlay = Array.isArray(item.playHistory) ? item.playHistory : [];
+    const sharedDiscussion = Array.isArray(item.discussionNotes) ? item.discussionNotes : [];
+    const sharedPlayImages = Array.isArray(item.playImages)
+      ? item.playImages
+      : (Array.isArray(item.images) ? item.images : []);
+    const sharedDiscussionImages = Array.isArray(item.discussionImages)
+      ? item.discussionImages
+      : [];
+    const sharedPlayBlocks = normalizeContentBlocks(
+      item.playBlocks,
+      sharedPlay,
+      sharedPlayImages
+    );
+    const sharedDiscussionBlocks = normalizeContentBlocks(
+      item.discussionBlocks,
+      sharedDiscussion,
+      sharedDiscussionImages
+    );
+    const hasShared = sharedPlay.length
+      || sharedDiscussion.length
+      || sharedPlayImages.length
+      || sharedDiscussionImages.length
+      || sharedPlayBlocks.length
+      || sharedDiscussionBlocks.length;
     return {
       ...item,
-      privateNote: note
+      privateNote: hasShared
+        ? {
+          text: '',
+          photos: [],
+          playHistory: sharedPlay,
+          discussionNotes: sharedDiscussion,
+          playImages: sharedPlayImages,
+          discussionImages: sharedDiscussionImages,
+          playBlocks: sharedPlayBlocks,
+          discussionBlocks: sharedDiscussionBlocks,
+          images: sharedPlayImages,
+          updatedAt: 0
+        }
+        : legacy
     };
   });
 }

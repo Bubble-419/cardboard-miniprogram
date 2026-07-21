@@ -1,5 +1,3 @@
-const EMPTY_AI_SUMMARY = { status: 'pending' };
-
 function makeBlockKey(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -71,7 +69,7 @@ function emptyPartnerRoundContent() {
     images: [],
     voiceLines: [],
     turnRecords: [],
-    aiSummary: { ...EMPTY_AI_SUMMARY }
+    aiSummary: { status: 'pending' }
   };
 }
 
@@ -97,7 +95,6 @@ function normalizePartnerRoundContent(raw) {
   return {
     playHistory: playDerived.texts.length ? playDerived.texts : playHistory,
     discussionNotes: discussionDerived.texts.length ? discussionDerived.texts : discussionNotes,
-    // 兼容旧数据：未分阶段的 images 归入出牌解释
     playImages: playDerived.images.length ? playDerived.images : playImages,
     discussionImages: discussionDerived.images.length
       ? discussionDerived.images
@@ -109,28 +106,8 @@ function normalizePartnerRoundContent(raw) {
     turnRecords: Array.isArray(src.turnRecords) ? src.turnRecords.slice() : [],
     aiSummary: src.aiSummary && typeof src.aiSummary === 'object'
       ? { ...src.aiSummary }
-      : { ...EMPTY_AI_SUMMARY }
+      : { status: 'pending' }
   };
-}
-
-function appendTextBlock(blocks, text) {
-  const value = typeof text === 'string' ? text.trim() : '';
-  if (!value) return Array.isArray(blocks) ? blocks.slice() : [];
-  return (Array.isArray(blocks) ? blocks.slice() : []).concat({
-    type: 'text',
-    text: value,
-    key: makeBlockKey('t')
-  });
-}
-
-function appendImageBlocks(blocks, urls) {
-  const list = Array.isArray(blocks) ? blocks.slice() : [];
-  (Array.isArray(urls) ? urls : []).forEach((url) => {
-    if (typeof url === 'string' && url) {
-      list.push({ type: 'image', url, key: makeBlockKey('i') });
-    }
-  });
-  return list;
 }
 
 const STATEMENT_LABELS = {
@@ -148,8 +125,5 @@ module.exports = {
   normalizePartnerRoundContent,
   normalizeContentBlocks,
   deriveListsFromBlocks,
-  appendTextBlock,
-  appendImageBlocks,
-  getStatementLabel,
-  STATEMENT_LABELS
+  getStatementLabel
 };

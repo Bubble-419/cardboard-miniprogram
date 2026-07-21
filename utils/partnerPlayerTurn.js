@@ -1,14 +1,26 @@
+function toPlayerIndex(value, fallback) {
+  const n = parseInt(value, 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  const fb = parseInt(fallback, 10);
+  if (Number.isFinite(fb) && fb > 0) return fb;
+  return 1;
+}
+
 function getNextPlayerTurn(members, currentPlayerIndex) {
   const count = Array.isArray(members) ? members.length : 0;
   if (!count) {
+    const safe = toPlayerIndex(currentPlayerIndex, 1);
     return {
-      nextIndex: currentPlayerIndex != null ? currentPlayerIndex : 1,
-      nextName: `玩家${currentPlayerIndex || 1}`,
+      nextIndex: safe,
+      nextName: `玩家${safe}`,
       incrementRound: false
     };
   }
-  const nextIndex = (currentPlayerIndex % count) + 1;
-  const nextMember = members.find((m) => m.playerIndex === nextIndex);
+  const safeCurrent = toPlayerIndex(currentPlayerIndex, 1);
+  const nextIndex = (safeCurrent % count) + 1;
+  const nextMember = (members || []).find(
+    (m) => toPlayerIndex(m && m.playerIndex, 0) === nextIndex
+  );
   const nextName = nextMember
     ? (nextMember.nickName || `玩家${nextIndex}`)
     : `玩家${nextIndex}`;
@@ -22,31 +34,38 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
 
 function buildPartnerAvatarList(members, highlightIds) {
   const highlights = Array.isArray(highlightIds) ? highlightIds : [];
+  const highlightSet = new Set(
+    highlights.map((id) => toPlayerIndex(id, 0)).filter((n) => n > 0)
+  );
   return (members || []).map((m) => ({
     id: m.playerIndex,
     avatar: m.avatarImage || m.avatarUrl || '',
     nickName: m.nickName,
     isMe: m.isMe,
-    highlight: highlights.includes(m.playerIndex)
+    highlight: highlightSet.has(toPlayerIndex(m.playerIndex, 0))
   }));
 }
 
 function resolveCurrentPlayerFromRoom(members, roomState, fallbackIndex) {
-  const idx = roomState && roomState.currentPlayerIndex != null
-    ? roomState.currentPlayerIndex
-    : (fallbackIndex != null ? fallbackIndex : 1);
-  const current = (members || []).find((m) => m.playerIndex === idx);
-  const me = (members || []).find((m) => m.isMe);
+  const idx = toPlayerIndex(
+    roomState && roomState.currentPlayerIndex,
+    fallbackIndex != null ? fallbackIndex : 1
+  );
+  const list = members || [];
+  const current = list.find((m) => toPlayerIndex(m && m.playerIndex, 0) === idx);
+  const me = list.find((m) => !!m && m.isMe);
+  const meIndex = me ? toPlayerIndex(me.playerIndex, 0) : 0;
   return {
     currentPlayerIndex: idx,
     currentPlayerName: current
       ? (current.nickName || `玩家${idx}`)
       : `玩家${idx}`,
-    isCurrentPlayer: !!(me && me.playerIndex === idx)
+    isCurrentPlayer: meIndex > 0 && meIndex === idx
   };
 }
 
 module.exports = {
+  toPlayerIndex,
   getNextPlayerTurn,
   buildPartnerAvatarList,
   resolveCurrentPlayerFromRoom

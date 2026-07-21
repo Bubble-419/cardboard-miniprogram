@@ -33,6 +33,7 @@
             <text class="room-name-label">房间名称</text>
             <view class="room-name-value-row">
               <text class="room-name-value">{{workshopName || '脑暴工作坊'}}</text>
+              <text wx:if="{{isHost}}" class="room-name-hint">点击标题输入</text>
               <image
                 wx:if="{{isHost}}"
                 class="room-name-edit-icon"
@@ -135,8 +136,14 @@
                 </text>
                 <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
               </view>
+              <view wx:elif="{{qrcodeStatus === 'load_error'}}" class="qrcode-placeholder">
+                <text class="qrcode-placeholder-text">房间数据加载失败</text>
+                <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '请检查云函数 getAddPlayerData 是否已重新部署'}}</text>
+                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+              </view>
               <view wx:else class="qrcode-placeholder">
                 <text class="qrcode-placeholder-text">获取二维码失败</text>
+                <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '可点击重试重新生成'}}</text>
                 <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
               </view>
               <!-- 扫描线：仅二维码加载成功时显示 -->

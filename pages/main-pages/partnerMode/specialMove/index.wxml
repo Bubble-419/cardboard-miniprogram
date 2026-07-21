@@ -281,27 +281,6 @@
 
   <!-- 底部按钮 -->
   <view class="page-footer">
-    <view class="help-method-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'helpLuck'}}">
-      <text class="help-method-label">选择求助方式</text>
-      <view class="help-method-list">
-        <view
-          class="help-method-card {{helpMethod === item.id ? 'help-method-card-selected' : ''}}"
-          wx:for="{{helpMethodOptions}}"
-          wx:key="id"
-          data-method="{{item.id}}"
-          bindtap="onSelectHelpMethod"
-        >
-          <view class="help-method-radio">
-            <view class="radio-outer {{helpMethod === item.id ? 'selected' : ''}}">
-              <view class="radio-inner" wx:if="{{helpMethod === item.id}}"></view>
-            </view>
-          </view>
-          <text class="help-method-title">{{item.title}}</text>
-          <text class="help-method-desc">{{item.desc}}</text>
-        </view>
-      </view>
-    </view>
-
     <view class="silent-hint-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'silent'}}">
       <text
         class="silent-hint-line {{index === 0 ? 'silent-hint-title' : ''}}"

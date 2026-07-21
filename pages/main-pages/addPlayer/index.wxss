@@ -167,10 +167,17 @@
   font-size: 36rpx;
   font-weight: 600;
   color: #111827;
-  max-width: 420rpx;
+  max-width: 320rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.room-name-hint {
+  font-size: 22rpx;
+  color: #9ca3af;
+  flex-shrink: 0;
+  line-height: 1.2;
 }
 
 .room-name-edit-icon {

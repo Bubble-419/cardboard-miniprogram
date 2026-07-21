@@ -47,6 +47,13 @@ Component({
 
   pageLifetimes: {
     show() {
+      // 页面重新可见时重置上一次生命周期留下的倒计时状态，
+      // 防止旧的过期 startedAt 被 _hasNaturallyExpired 误判为需要触发震动
+      this._timerWasActive = false;
+      this._sawActiveCountdown = false;
+      this._expiringTriggered = false;
+      this._localCycleStartedAt = 0;
+      this._clearExpireTimer();
       this._syncDisplayMode();
       this._restartLocalTimer();
     },
@@ -65,6 +72,8 @@ Component({
         this._lastServerStartedAt = serverTs;
         this._localCycleStartedAt = 0;
         this._expiringTriggered = false;
+        // 换戳后必须重新经历「活跃倒计时」，避免旧过期戳直接触发震动
+        this._sawActiveCountdown = false;
         this._clearExpireTimer();
         // 到期动画中收到新周期时打断，避免下一轮不刷新边框倒计时
         if (this.data.displayMode === 'expiring') {
@@ -115,12 +124,23 @@ Component({
       if (timerOn) {
         const activeStartedAt = this._resolveStartedAt();
         if (!activeStartedAt) {
-          if (this._hasNaturallyExpired() && (this.data.displayMode === 'timer' || this._timerWasActive)) {
+          // 仅「本组件已在 timer 绘制中自然走完」才触发到期震动；
+          // 进页时直接塞入过期戳 / 被旧戳覆盖，一律静默 idle，不震动
+          if (this.data.displayMode === 'timer' && this._sawActiveCountdown) {
             this._triggerExpireAnimation();
+          } else {
+            this._timerWasActive = false;
+            this._sawActiveCountdown = false;
+            this._stopLocalTimer();
+            this._hideBorder();
+            if (this.data.displayMode !== 'idle') {
+              this.setData({ displayMode: 'idle' });
+            }
           }
           return;
         }
         this._timerWasActive = true;
+        this._sawActiveCountdown = true;
         this._expiringTriggered = false;
         this._clearExpireTimer();
         if (this.data.displayMode !== 'timer') {
@@ -132,7 +152,7 @@ Component({
       }
 
       if (
-        this._timerWasActive
+        this._sawActiveCountdown
         && this.data.displayMode === 'timer'
         && this._hasNaturallyExpired()
       ) {
@@ -141,6 +161,7 @@ Component({
       }
 
       this._timerWasActive = false;
+      this._sawActiveCountdown = false;
       this._clearExpireTimer();
       if (!this.properties.timerActive && this.data.displayMode !== 'idle') {
         this._localCycleStartedAt = 0;
@@ -174,8 +195,18 @@ Component({
 
     _triggerExpireAnimation() {
       if (this._expiringTriggered || this.data.displayMode === 'expiring') return;
+      // 没有真正跑过倒计时就到期 → 静默，不震（进页旧戳/竞态覆盖）
+      if (!this._sawActiveCountdown) {
+        this._timerWasActive = false;
+        this._hideBorder();
+        if (this.data.displayMode !== 'idle') {
+          this.setData({ displayMode: 'idle' });
+        }
+        return;
+      }
       this._expiringTriggered = true;
       this._timerWasActive = false;
+      this._sawActiveCountdown = false;
       this._stopLocalTimer();
       this._hideBorder();
       this._vibrateExpireFeedback();
@@ -358,6 +389,7 @@ Component({
           && this.properties.timerActive === true
           && this._hasNaturallyExpired()
           && this.data.displayMode === 'timer'
+          && this._sawActiveCountdown
         ) {
           this._triggerExpireAnimation();
           return;

@@ -26,12 +26,95 @@ function clearClosingVoteFields(updateData, brainstormSessionSeq) {
   return emptyState;
 }
 
+function makeBlockKey(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function blocksFromLegacy(texts, images) {
+  const blocks = [];
+  (Array.isArray(texts) ? texts : []).forEach((t) => {
+    if (typeof t === 'string' && t.trim()) {
+      blocks.push({ type: 'text', text: t, key: makeBlockKey('t') });
+    }
+  });
+  (Array.isArray(images) ? images : []).forEach((url) => {
+    if (typeof url === 'string' && url) {
+      blocks.push({ type: 'image', url, key: makeBlockKey('i') });
+    }
+  });
+  return blocks;
+}
+
+function normalizeContentBlocks(rawBlocks, legacyTexts, legacyImages) {
+  if (Array.isArray(rawBlocks) && rawBlocks.length) {
+    return rawBlocks
+      .map((b, i) => {
+        if (!b || typeof b !== 'object') return null;
+        if (b.type === 'text') {
+          const text = typeof b.text === 'string' ? b.text : (typeof b.value === 'string' ? b.value : '');
+          if (!text.trim()) return null;
+          return {
+            type: 'text',
+            text,
+            key: typeof b.key === 'string' && b.key ? b.key : `t_${i}`
+          };
+        }
+        if (b.type === 'image') {
+          const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
+          if (!url) return null;
+          return {
+            type: 'image',
+            url,
+            key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+  return blocksFromLegacy(legacyTexts, legacyImages);
+}
+
+function deriveListsFromBlocks(blocks) {
+  const texts = [];
+  const images = [];
+  (Array.isArray(blocks) ? blocks : []).forEach((b) => {
+    if (!b) return;
+    if (b.type === 'text' && typeof b.text === 'string' && b.text) texts.push(b.text);
+    if (b.type === 'image' && typeof b.url === 'string' && b.url) images.push(b.url);
+  });
+  return { texts, images };
+}
+
 function normalizePartnerRoundContent(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
+  const legacyImages = Array.isArray(src.images) ? src.images.slice() : [];
+  const playImagesRaw = Array.isArray(src.playImages) ? src.playImages.slice() : [];
+  const discussionImagesRaw = Array.isArray(src.discussionImages)
+    ? src.discussionImages.slice()
+    : [];
+  const playHistory = Array.isArray(src.playHistory) ? src.playHistory.slice() : [];
+  const discussionNotes = Array.isArray(src.discussionNotes) ? src.discussionNotes.slice() : [];
+  const playImages = playImagesRaw.length ? playImagesRaw : legacyImages;
+  const discussionImages = discussionImagesRaw;
+  const playBlocks = normalizeContentBlocks(src.playBlocks, playHistory, playImages);
+  const discussionBlocks = normalizeContentBlocks(
+    src.discussionBlocks,
+    discussionNotes,
+    discussionImages
+  );
+  const playDerived = deriveListsFromBlocks(playBlocks);
+  const discussionDerived = deriveListsFromBlocks(discussionBlocks);
   return {
-    playHistory: Array.isArray(src.playHistory) ? src.playHistory.slice() : [],
-    discussionNotes: Array.isArray(src.discussionNotes) ? src.discussionNotes.slice() : [],
-    images: Array.isArray(src.images) ? src.images.slice() : [],
+    playHistory: playDerived.texts.length ? playDerived.texts : playHistory,
+    discussionNotes: discussionDerived.texts.length ? discussionDerived.texts : discussionNotes,
+    playImages: playDerived.images.length ? playDerived.images : playImages,
+    discussionImages: discussionDerived.images.length
+      ? discussionDerived.images
+      : discussionImages,
+    playBlocks,
+    discussionBlocks,
+    images: legacyImages,
     voiceLines: Array.isArray(src.voiceLines) ? src.voiceLines.slice() : [],
     turnRecords: Array.isArray(src.turnRecords) ? src.turnRecords.slice() : [],
     aiSummary: src.aiSummary && typeof src.aiSummary === 'object'
@@ -49,12 +132,30 @@ function pickPreferredList(clientList, serverList) {
 function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
   const client = clientSummary ? normalizePartnerRoundContent(clientSummary) : null;
   const server = normalizePartnerRoundContent(serverContent);
+  const playBlocks = pickPreferredList(client && client.playBlocks, server.playBlocks);
+  const discussionBlocks = pickPreferredList(
+    client && client.discussionBlocks,
+    server.discussionBlocks
+  );
+  const playDerived = deriveListsFromBlocks(playBlocks);
+  const discussionDerived = deriveListsFromBlocks(discussionBlocks);
   return {
     round: currentRound,
-    // 卡片插入文字/图片为私有，归档时不写入共享纪要
-    playHistory: [],
-    discussionNotes: [],
-    images: [],
+    playHistory: playDerived.texts.length
+      ? playDerived.texts
+      : pickPreferredList(client && client.playHistory, server.playHistory),
+    discussionNotes: discussionDerived.texts.length
+      ? discussionDerived.texts
+      : pickPreferredList(client && client.discussionNotes, server.discussionNotes),
+    playImages: playDerived.images.length
+      ? playDerived.images
+      : pickPreferredList(client && client.playImages, server.playImages),
+    discussionImages: discussionDerived.images.length
+      ? discussionDerived.images
+      : pickPreferredList(client && client.discussionImages, server.discussionImages),
+    playBlocks,
+    discussionBlocks,
+    images: pickPreferredList(client && client.images, server.images),
     voiceLines: pickPreferredList(client && client.voiceLines, server.voiceLines),
     turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
     aiSummary: server.aiSummary || { status: 'pending' }
@@ -127,7 +228,18 @@ exports.main = async (event, context) => {
     }
 
     let currentRound = room.currentRound != null ? room.currentRound : 1;
-    const emptyRoundContent = { playHistory: [], discussionNotes: [], images: [], voiceLines: [], turnRecords: [], aiSummary: { status: 'pending' } };
+    const emptyRoundContent = {
+      playHistory: [],
+      discussionNotes: [],
+      playImages: [],
+      discussionImages: [],
+      playBlocks: [],
+      discussionBlocks: [],
+      images: [],
+      voiceLines: [],
+      turnRecords: [],
+      aiSummary: { status: 'pending' }
+    };
     const roundPatch = {};
 
     if (incrementRound === true) {
@@ -325,19 +437,77 @@ exports.main = async (event, context) => {
       updateData.closingQuestionPlayers = closingQuestionPlayers;
     }
     if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
-      const existing = normalizePartnerRoundContent(room.partnerCurrentRoundContent);
-      const incoming = partnerCurrentRoundContent;
-      const incomingVoiceLines = Array.isArray(incoming.voiceLines) ? incoming.voiceLines : [];
-      const incomingTurnRecords = Array.isArray(incoming.turnRecords) ? incoming.turnRecords : [];
-      // playHistory / discussionNotes / images 为各端私有插入，不接受客户端写入共享态
-      updateData.partnerCurrentRoundContent = {
-        playHistory: existing.playHistory,
-        discussionNotes: existing.discussionNotes,
-        images: existing.images,
-        voiceLines: incomingVoiceLines.length ? incomingVoiceLines : existing.voiceLines,
-        turnRecords: incomingTurnRecords.length ? incomingTurnRecords : existing.turnRecords,
-        aiSummary: existing.aiSummary
-      };
+      // 同请求已换轮：上一轮纪要已归档并清空，禁止再用旧内容写回新轮
+      const skippedForRoundAdvance = incrementRound === true;
+      // 客户端声明内容所属轮次；与当前房间轮次不一致则丢弃（防过期同步串轮）
+      const contentRound = event.contentRound != null ? Number(event.contentRound) : null;
+      const roomRound = Number(updateData.currentRound);
+      const roundMismatch = contentRound != null
+        && Number.isFinite(contentRound)
+        && contentRound !== roomRound;
+
+      if (!skippedForRoundAdvance && !roundMismatch) {
+        // 若本请求已清空当前轮内容，以此为准，勿读换轮前的旧快照
+        const existing = normalizePartnerRoundContent(
+          updateData.partnerCurrentRoundContent != null
+            ? updateData.partnerCurrentRoundContent
+            : room.partnerCurrentRoundContent
+        );
+        const incoming = partnerCurrentRoundContent;
+        const incomingVoiceLines = Array.isArray(incoming.voiceLines) ? incoming.voiceLines : [];
+        const incomingTurnRecords = Array.isArray(incoming.turnRecords) ? incoming.turnRecords : [];
+        const wantsSharedNotes = Array.isArray(incoming.playHistory)
+          || Array.isArray(incoming.discussionNotes)
+          || Array.isArray(incoming.playImages)
+          || Array.isArray(incoming.discussionImages)
+          || Array.isArray(incoming.playBlocks)
+          || Array.isArray(incoming.discussionBlocks)
+          || Array.isArray(incoming.images);
+        // 出牌解释 / 疑问讨论：全员可见，仅房主可写入；每一轮独立
+        if (wantsSharedNotes && !isCreator) {
+          return {
+            ok: false,
+            errCode: 'NO_PERMISSION',
+            errMsg: '仅房主可编辑出牌解释与疑问讨论'
+          };
+        }
+        const nextPlayBlocks = Array.isArray(incoming.playBlocks)
+          ? normalizeContentBlocks(incoming.playBlocks, incoming.playHistory, incoming.playImages)
+          : existing.playBlocks;
+        const nextDiscussionBlocks = Array.isArray(incoming.discussionBlocks)
+          ? normalizeContentBlocks(
+            incoming.discussionBlocks,
+            incoming.discussionNotes,
+            incoming.discussionImages
+          )
+          : existing.discussionBlocks;
+        const playDerived = deriveListsFromBlocks(nextPlayBlocks);
+        const discussionDerived = deriveListsFromBlocks(nextDiscussionBlocks);
+        updateData.partnerCurrentRoundContent = {
+          playHistory: playDerived.texts.length
+            ? playDerived.texts
+            : (Array.isArray(incoming.playHistory) ? incoming.playHistory : existing.playHistory),
+          discussionNotes: discussionDerived.texts.length
+            ? discussionDerived.texts
+            : (Array.isArray(incoming.discussionNotes)
+              ? incoming.discussionNotes
+              : existing.discussionNotes),
+          playImages: playDerived.images.length
+            ? playDerived.images
+            : (Array.isArray(incoming.playImages) ? incoming.playImages : existing.playImages),
+          discussionImages: discussionDerived.images.length
+            ? discussionDerived.images
+            : (Array.isArray(incoming.discussionImages)
+              ? incoming.discussionImages
+              : existing.discussionImages),
+          playBlocks: nextPlayBlocks,
+          discussionBlocks: nextDiscussionBlocks,
+          images: Array.isArray(incoming.images) ? incoming.images : existing.images,
+          voiceLines: incomingVoiceLines.length ? incomingVoiceLines : existing.voiceLines,
+          turnRecords: incomingTurnRecords.length ? incomingTurnRecords : existing.turnRecords,
+          aiSummary: existing.aiSummary
+        };
+      }
     }
     if (partnerRoundStartedAt != null && Number.isFinite(Number(partnerRoundStartedAt))) {
       const nextStartedAt = Number(partnerRoundStartedAt);
