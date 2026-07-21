@@ -183,6 +183,14 @@ exports.main = async (event, context) => {
       roomState.partnerExpressMessages = Array.isArray(room.partnerExpressMessages)
         ? room.partnerExpressMessages.slice(-40)
         : [];
+      const closingCreative = room.partnerClosingCreativePoints;
+      roomState.partnerClosingCreativePoints = closingCreative && typeof closingCreative === 'object'
+        ? {
+          blocks: Array.isArray(closingCreative.blocks) ? closingCreative.blocks : [],
+          texts: Array.isArray(closingCreative.texts) ? closingCreative.texts : [],
+          images: Array.isArray(closingCreative.images) ? closingCreative.images : []
+        }
+        : { blocks: [], texts: [], images: [] };
     }
 
     const membersRes = await db

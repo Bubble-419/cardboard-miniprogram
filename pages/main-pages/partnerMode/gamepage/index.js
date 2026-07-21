@@ -36,6 +36,7 @@ const {
 } = require('../../../../utils/partnerRoundTimer');
 const {
   normalizePartnerRoundContent,
+  normalizeContentBlocks,
   appendTextBlock,
   appendImageBlocks,
   deriveListsFromBlocks
@@ -90,6 +91,14 @@ Page({
     closingQuestionPlayers: [],
     reviewPhotos: [],
     closingReviewRounds: [],
+    closingCreativeBlocks: [],
+    closingCreativeEditText: '',
+    closingCreativeEditFocus: false,
+    closingCreativeSaving: false,
+    playDraftText: '',
+    playDraftFocused: false,
+    discussionDraftText: '',
+    discussionDraftFocused: false,
     canStartStatement: false,
     specialMoveUsedThisTurn: false,
     currentRound: 1,
@@ -123,7 +132,7 @@ Page({
     cardDraftPhotos: [],
     cardDraftHasText: false,
     cardDraftSaving: false,
-    /** 讨论卡内联输入：play / discussion */
+    /** 讨论卡内联输入（兼容旧字段，插图后聚焦用） */
     cardInlineEditTarget: '',
     cardInlineEditText: '',
     cardInlineEditFocus: false,
@@ -666,9 +675,25 @@ Page({
     }
   },
 
+  _canEditPlayNotes() {
+    return !!this.data.isHost || !!this.data.isCurrentPlayer;
+  },
+
+  _canEditDiscussionNotes() {
+    return !!this.data.isHost;
+  },
+
+  _canEditSharedSection(target) {
+    if (target === 'play') return this._canEditPlayNotes();
+    if (target === 'discussion') return this._canEditDiscussionNotes();
+    return false;
+  },
+
   async _syncRoundContentToRoom(overrides) {
     const roomId = this.data.roomId;
-    if (!roomId || !this.data.isHost || isClosingPhase(this.data.gamepagePhase)) return false;
+    if (!roomId || isClosingPhase(this.data.gamepagePhase)) return false;
+    // 房主可同步全部；当前出牌玩家仅同步出牌解释（服务端会忽略其讨论字段）
+    if (!this.data.isHost && !this.data.isCurrentPlayer) return false;
     // 内容所属轮次：换轮后禁止把上一轮纪要写进新一轮
     const contentRound = overrides && overrides.contentRound != null
       ? Number(overrides.contentRound)
@@ -701,14 +726,32 @@ Page({
           : (this.data.playImages || [])
       }
       : this._buildClientRoundContentPatch();
+    // 非房主出牌玩家：只推送出牌解释，避免误带讨论字段
+    const payload = this.data.isHost
+      ? patch
+      : {
+        playHistory: patch.playHistory || [],
+        playImages: patch.playImages || [],
+        playBlocks: patch.playBlocks || [],
+        images: patch.playImages || []
+      };
     // 全空时不推送，避免进房/切后台把他人已写纪要冲成空数组
-    const hasContent = (patch.playHistory && patch.playHistory.length)
-      || (patch.discussionNotes && patch.discussionNotes.length)
-      || (patch.playImages && patch.playImages.length)
-      || (patch.discussionImages && patch.discussionImages.length)
-      || (patch.playBlocks && patch.playBlocks.length)
-      || (patch.discussionBlocks && patch.discussionBlocks.length)
-      || (patch.images && patch.images.length);
+    const hasContent = this.data.isHost
+      ? (
+        (payload.playHistory && payload.playHistory.length)
+        || (payload.discussionNotes && payload.discussionNotes.length)
+        || (payload.playImages && payload.playImages.length)
+        || (payload.discussionImages && payload.discussionImages.length)
+        || (payload.playBlocks && payload.playBlocks.length)
+        || (payload.discussionBlocks && payload.discussionBlocks.length)
+        || (payload.images && payload.images.length)
+      )
+      : (
+        (payload.playHistory && payload.playHistory.length)
+        || (payload.playImages && payload.playImages.length)
+        || (payload.playBlocks && payload.playBlocks.length)
+        || (payload.images && payload.images.length)
+      );
     if (!hasContent) return false;
     const syncToken = ++this._roundContentSyncToken;
     try {
@@ -718,7 +761,7 @@ Page({
           roomId,
           currentPage: 'gamepage',
           contentRound,
-          partnerCurrentRoundContent: patch
+          partnerCurrentRoundContent: payload
         }
       });
       // 请求期间已换轮：丢弃结果，避免把旧轮内容认作成功
@@ -1209,6 +1252,10 @@ Page({
       patch.cardInlineEditTarget = '';
       patch.cardInlineEditText = '';
       patch.cardInlineEditFocus = false;
+      patch.playDraftText = '';
+      patch.playDraftFocused = false;
+      patch.discussionDraftText = '';
+      patch.discussionDraftFocused = false;
       patch.cardDraftText = '';
       patch.cardDraftPhotos = [];
       patch.cardDraftHasText = false;
@@ -1284,8 +1331,27 @@ Page({
         playBlocks: patch.playBlocks,
         discussionBlocks: patch.discussionBlocks
       });
+      const closingCreative = normalizeContentBlocks(
+        roomState.partnerClosingCreativePoints
+          && roomState.partnerClosingCreativePoints.blocks,
+        roomState.partnerClosingCreativePoints
+          && roomState.partnerClosingCreativePoints.texts,
+        roomState.partnerClosingCreativePoints
+          && roomState.partnerClosingCreativePoints.images
+      );
+      // 编辑中不打断本地输入框
+      if (!this.data.closingCreativeEditFocus && !this.data.closingCreativeSaving) {
+        patch.closingCreativeBlocks = closingCreative;
+      }
     } else if (phaseChanged) {
       patch.closingReviewRounds = [];
+      patch.closingCreativeBlocks = [];
+      patch.closingCreativeEditText = '';
+      patch.closingCreativeEditFocus = false;
+      patch.playDraftText = '';
+      patch.playDraftFocused = false;
+      patch.discussionDraftText = '';
+      patch.discussionDraftFocused = false;
     }
 
     const contextFingerprint = [
@@ -1307,6 +1373,9 @@ Page({
       (roundContent.discussionImages || []).join('|'),
       (roundContent.playBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
       (roundContent.discussionBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
+      ((roomState.partnerClosingCreativePoints
+        && roomState.partnerClosingCreativePoints.blocks) || [])
+        .map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
       lastExpressId,
       paginationState.cardIndex,
       paginationState.cardCount,
@@ -1820,7 +1889,7 @@ Page({
   },
 
   async _appendSharedSectionContent(target, options = {}) {
-    if (!this.data.isHost) return false;
+    if (!this._canEditSharedSection(target)) return false;
     const scope = target === 'play' ? 'play' : 'discussion';
     const text = typeof options.text === 'string' ? options.text.trim() : '';
     const photos = Array.isArray(options.photos) ? options.photos : [];
@@ -1843,6 +1912,7 @@ Page({
       wx.showToast({ title: '已换轮，请重新记录', icon: 'none' });
       return false;
     }
+    if (!this._canEditSharedSection(target)) return false;
 
     const blockField = scope === 'play' ? 'playBlocks' : 'discussionBlocks';
     let nextBlocks = (this.data[blockField] || []).slice();
@@ -1896,26 +1966,96 @@ Page({
   },
 
   onCardSectionTitleTap(e) {
-    if (!this.data.isHost) return;
     const target = e.currentTarget && e.currentTarget.dataset
       ? e.currentTarget.dataset.target
       : '';
-    if (target !== 'play' && target !== 'discussion') return;
-    this.setData({
-      cardInlineEditTarget: target,
-      cardInlineEditText: '',
-      cardInlineEditFocus: false
-    }, () => {
-      this.setData({ cardInlineEditFocus: true });
-    });
+    this._focusSectionDraft(target);
+  },
+
+  _focusSectionDraft(target) {
+    // 常驻 textarea 由用户点击原生聚焦；此处仅更新样式态
+    if (!this._canEditSharedSection(target)) return;
+    if (target === 'play') {
+      this.setData({ playDraftFocused: true, discussionDraftFocused: false });
+    } else if (target === 'discussion') {
+      this.setData({ discussionDraftFocused: true, playDraftFocused: false });
+    }
+  },
+
+  onSectionDraftFocus(e) {
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    if (!this._canEditSharedSection(target)) return;
+    if (target === 'play') {
+      this.setData({ playDraftFocused: true, discussionDraftFocused: false });
+    } else if (target === 'discussion') {
+      this.setData({ discussionDraftFocused: true, playDraftFocused: false });
+    }
+  },
+
+  onSectionDraftInput(e) {
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    const text = (e.detail && e.detail.value) || '';
+    if (target === 'play') {
+      this.setData({ playDraftText: text });
+    } else if (target === 'discussion') {
+      this.setData({ discussionDraftText: text });
+    }
+  },
+
+  async onSectionDraftConfirm(e) {
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    await this._commitSectionDraft(target);
+  },
+
+  async onSectionDraftBlur(e) {
+    const target = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.target
+      : '';
+    await this._commitSectionDraft(target, { allowEmptyExit: true });
+  },
+
+  async _commitSectionDraft(target, options = {}) {
+    if (this.data.cardInlineEditSaving) return;
+    if (!this._canEditSharedSection(target)) return;
+    const text = target === 'play'
+      ? (this.data.playDraftText || '').trim()
+      : (this.data.discussionDraftText || '').trim();
+    if (!text) {
+      if (options.allowEmptyExit) {
+        if (target === 'play') {
+          this.setData({ playDraftFocused: false });
+        } else if (target === 'discussion') {
+          this.setData({ discussionDraftFocused: false });
+        }
+      }
+      return;
+    }
+    this.setData({ cardInlineEditSaving: true });
+    try {
+      const ok = await this._appendSharedSectionContent(target, { text });
+      if (ok) {
+        if (target === 'play') {
+          this.setData({ playDraftText: '', playDraftFocused: false });
+        } else {
+          this.setData({ discussionDraftText: '', discussionDraftFocused: false });
+        }
+      }
+    } finally {
+      this.setData({ cardInlineEditSaving: false });
+    }
   },
 
   onCardSectionAddImage(e) {
-    if (!this.data.isHost) return;
     const target = e.currentTarget && e.currentTarget.dataset
       ? e.currentTarget.dataset.target
       : '';
-    if (target !== 'play' && target !== 'discussion') return;
+    if (!this._canEditSharedSection(target)) return;
     const imageField = target === 'play' ? 'playImages' : 'discussionImages';
     const current = this.data[imageField] || [];
     const remain = 9 - current.length;
@@ -1937,14 +2077,7 @@ Page({
             wx.showLoading({ title: '上传中…', mask: true });
             try {
               await this._appendSharedSectionContent(target, { photos: paths });
-              // 插图后继续输入：输入框落在内容流末尾（图片下方）
-              this.setData({
-                cardInlineEditTarget: target,
-                cardInlineEditText: '',
-                cardInlineEditFocus: false
-              }, () => {
-                this.setData({ cardInlineEditFocus: true });
-              });
+              this._focusSectionDraft(target);
             } finally {
               wx.hideLoading();
             }
@@ -1958,47 +2091,21 @@ Page({
   },
 
   onCardInlineInput(e) {
-    this.setData({
-      cardInlineEditText: (e.detail && e.detail.value) || ''
-    });
+    this.onSectionDraftInput(e);
   },
 
-  async onCardInlineConfirm() {
-    await this._commitCardInlineEdit();
+  async onCardInlineConfirm(e) {
+    await this.onSectionDraftConfirm(e || { currentTarget: { dataset: { target: this.data.cardInlineEditTarget } } });
   },
 
-  async onCardInlineBlur() {
-    // 失焦时若有内容则提交；空内容仅退出输入态
-    await this._commitCardInlineEdit({ allowEmptyExit: true });
+  async onCardInlineBlur(e) {
+    await this.onSectionDraftBlur(e || { currentTarget: { dataset: { target: this.data.cardInlineEditTarget } } });
   },
 
   async _commitCardInlineEdit(options = {}) {
-    if (this.data.cardInlineEditSaving) return;
     const target = this.data.cardInlineEditTarget;
-    if (target !== 'play' && target !== 'discussion') return;
-    const text = (this.data.cardInlineEditText || '').trim();
-    if (!text) {
-      if (options.allowEmptyExit) {
-        this.setData({
-          cardInlineEditTarget: '',
-          cardInlineEditText: '',
-          cardInlineEditFocus: false
-        });
-      }
-      return;
-    }
-    this.setData({ cardInlineEditSaving: true });
-    try {
-      const ok = await this._appendSharedSectionContent(target, { text });
-      if (ok) {
-        this.setData({
-          cardInlineEditTarget: '',
-          cardInlineEditText: '',
-          cardInlineEditFocus: false
-        });
-      }
-    } finally {
-      this.setData({ cardInlineEditSaving: false });
+    if (target === 'play' || target === 'discussion') {
+      await this._commitSectionDraft(target, options);
     }
   },
 
@@ -2945,16 +3052,181 @@ Page({
     });
   },
 
+  onClosingCreativeTitleTap() {
+    // 已改为常驻 textarea，点击即原生聚焦
+  },
+
+  onClosingCreativeFocus() {
+    this.setData({ closingCreativeEditFocus: true });
+  },
+
+  onClosingCreativeInput(e) {
+    this.setData({
+      closingCreativeEditText: (e.detail && e.detail.value) || ''
+    });
+  },
+
+  async onClosingCreativeConfirm() {
+    await this._commitClosingCreativeEdit();
+  },
+
+  async onClosingCreativeBlur() {
+    await this._commitClosingCreativeEdit({ allowEmptyExit: true });
+  },
+
+  async _commitClosingCreativeEdit(options = {}) {
+    if (this.data.closingCreativeSaving) return;
+    const text = (this.data.closingCreativeEditText || '').trim();
+    if (!text) {
+      if (options.allowEmptyExit) {
+        this.setData({
+          closingCreativeEditFocus: false
+        });
+      }
+      return;
+    }
+    this.setData({ closingCreativeSaving: true });
+    try {
+      const ok = await this._appendClosingCreativeContent({ text });
+      if (ok) {
+        this.setData({
+          closingCreativeEditText: '',
+          closingCreativeEditFocus: false
+        });
+      }
+    } finally {
+      this.setData({ closingCreativeSaving: false });
+    }
+  },
+
+  onClosingCreativeAddImage() {
+    if (this.data.gamepagePhase !== PHASE_CLOSING
+      || this.data.closingStep !== CLOSING_STEP_REVIEW) {
+      return;
+    }
+    const imageCount = (this.data.closingCreativeBlocks || []).filter(
+      (b) => b && b.type === 'image'
+    ).length;
+    const remain = 9 - imageCount;
+    if (remain <= 0) {
+      wx.showToast({ title: '最多插入 9 张图片', icon: 'none' });
+      return;
+    }
+    wx.showActionSheet({
+      itemList: ['拍照', '从相册选择'],
+      success: (res) => {
+        const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
+        wx.chooseImage({
+          count: remain,
+          sizeType: ['compressed'],
+          sourceType,
+          success: async (chooseRes) => {
+            const paths = chooseRes.tempFilePaths || [];
+            if (!paths.length) return;
+            wx.showLoading({ title: '上传中…', mask: true });
+            try {
+              await this._appendClosingCreativeContent({ photos: paths });
+              this.setData({ closingCreativeEditFocus: true });
+            } finally {
+              wx.hideLoading();
+            }
+          },
+          fail: () => {
+            wx.showToast({ title: '选择图片失败', icon: 'none' });
+          }
+        });
+      }
+    });
+  },
+
+  onClosingCreativePreview(e) {
+    const url = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.url
+      : '';
+    if (!url) return;
+    const urls = (this.data.closingCreativeBlocks || [])
+      .filter((b) => b && b.type === 'image' && b.url)
+      .map((b) => b.url);
+    wx.previewImage({ current: url, urls: urls.length ? urls : [url] });
+  },
+
+  async _uploadClosingCreativePhotos(paths) {
+    const roomId = this.data.roomId || 'room';
+    const list = Array.isArray(paths) ? paths : [];
+    const results = [];
+    for (let i = 0; i < list.length; i++) {
+      const filePath = list[i];
+      try {
+        const cloudPath = `partnerClosingCreative/${roomId}/${Date.now()}_${i}.jpg`;
+        const uploadRes = await wx.cloud.uploadFile({ cloudPath, filePath });
+        if (uploadRes && uploadRes.fileID) {
+          results.push(uploadRes.fileID);
+          continue;
+        }
+      } catch (e) {
+        console.warn('_uploadClosingCreativePhotos cloud fail', e);
+      }
+      results.push(await persistTempPhoto(filePath));
+    }
+    return results;
+  },
+
+  async _appendClosingCreativeContent(options = {}) {
+    const text = typeof options.text === 'string' ? options.text.trim() : '';
+    const photos = Array.isArray(options.photos) ? options.photos : [];
+    if (!text && !photos.length) return false;
+
+    let uploaded = [];
+    if (photos.length) {
+      uploaded = await this._uploadClosingCreativePhotos(photos);
+      if (!uploaded.length && !text) {
+        wx.showToast({ title: '图片上传失败', icon: 'none' });
+        return false;
+      }
+    }
+
+    let nextBlocks = (this.data.closingCreativeBlocks || []).slice();
+    if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
+    if (text) nextBlocks = appendTextBlock(nextBlocks, text);
+    this.setData({ closingCreativeBlocks: nextBlocks });
+
+    const ok = await this._syncClosingCreativeToRoom(nextBlocks);
+    if (!ok) {
+      wx.showToast({ title: '同步失败', icon: 'none' });
+    }
+    return ok;
+  },
+
+  async _syncClosingCreativeToRoom(blocks) {
+    const roomId = this.data.roomId;
+    if (!roomId) return false;
+    const nextBlocks = normalizeContentBlocks(blocks);
+    const derived = deriveListsFromBlocks(nextBlocks);
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'updateRoomState',
+        data: {
+          roomId,
+          currentPage: 'gamepage',
+          partnerClosingCreativePoints: {
+            blocks: nextBlocks,
+            texts: derived.texts,
+            images: derived.images
+          }
+        }
+      });
+      const result = (res && res.result) || {};
+      return result.ok === true;
+    } catch (e) {
+      console.warn('syncClosingCreativeToRoom', e);
+      return false;
+    }
+  },
+
   onClosingReviewPreview(e) {
     const url = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url;
     if (!url) return;
-    const urls = [];
-    (this.data.closingReviewRounds || []).forEach((round) => {
-      const note = (round && round.privateNote) || {};
-      (note.playImages || []).forEach((img) => urls.push(img));
-      (note.discussionImages || []).forEach((img) => urls.push(img));
-    });
-    (this.data.reviewPhotos || []).forEach((img) => urls.push(img));
+    const urls = (this.data.reviewPhotos || []).slice();
     wx.previewImage({
       current: url,
       urls: urls.length ? urls : [url]

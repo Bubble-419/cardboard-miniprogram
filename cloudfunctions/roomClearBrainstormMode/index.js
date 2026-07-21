@@ -64,6 +64,11 @@ exports.main = async (event, context) => {
         },
         partnerRoundStartedAt: null,
         partnerTurnStartedAt: null,
+        partnerClosingCreativePoints: {
+          blocks: [],
+          texts: [],
+          images: []
+        },
         updatedAt: Date.now()
       }
     });

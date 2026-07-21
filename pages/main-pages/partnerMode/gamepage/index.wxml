@@ -93,101 +93,51 @@
           <view class="game-card game-card-active closing-card" wx:else>
             <view class="closing-badge">收尾阶段</view>
             <view class="closing-card-body">
-              <text class="closing-card-title">创意点复盘</text>
-              <view class="closing-shoot-btn" catchtap="handleClosingPhoto">
-                <view class="closing-shoot-icon"></view>
-                <text class="closing-shoot-text">拍摄</text>
+              <view class="card-section-head closing-creative-head">
+                <text class="card-section-title closing-creative-title">创意点</text>
+                <view
+                  class="card-section-add"
+                  catchtap="onClosingCreativeAddImage"
+                >
+                  <image
+                    class="card-section-add-icon"
+                    src="/assets/partnerMode/icon-insp-plus.svg"
+                    mode="aspectFit"
+                  />
+                </view>
               </view>
-              <view class="closing-photo-hint">（提示玩家拍摄卡组）</view>
+              <!-- 输入框放在 scroll-view 外，避免 enhanced 滚动区抢焦点 -->
+              <textarea
+                class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                value="{{closingCreativeEditText}}"
+                bindfocus="onClosingCreativeFocus"
+                bindinput="onClosingCreativeInput"
+                bindblur="onClosingCreativeBlur"
+                bindconfirm="onClosingCreativeConfirm"
+                placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                maxlength="500"
+                auto-height
+                show-confirm-bar="{{false}}"
+                adjust-position="{{true}}"
+                hold-keyboard="{{true}}"
+                cursor-spacing="24"
+                confirm-type="done"
+              />
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
                 <view class="closing-scroll-inner">
-                <block wx:if="{{closingReviewRounds.length}}">
-                  <view
-                    class="closing-review-round"
-                    wx:for="{{closingReviewRounds}}"
-                    wx:key="round"
-                  >
-                    <text class="closing-review-round-title">第{{item.round}}轮</text>
-
-                    <view class="card-section-flow" wx:if="{{item.privateNote.playBlocks.length || item.privateNote.playHistory.length || item.privateNote.playImages.length}}">
-                      <block wx:if="{{item.privateNote.playBlocks.length}}">
-                        <block wx:for="{{item.privateNote.playBlocks}}" wx:for-item="block" wx:key="key">
-                          <view wx:if="{{block.type === 'text'}}" class="card-bullet">· {{block.text}}</view>
-                          <image
-                            wx:elif="{{block.type === 'image'}}"
-                            class="card-media-thumb card-media-thumb-flow"
-                            src="{{block.url}}"
-                            mode="aspectFill"
-                            data-url="{{block.url}}"
-                            bindtap="onClosingReviewPreview"
-                          />
-                        </block>
-                      </block>
-                      <block wx:else>
-                        <view class="card-bullet-list" wx:if="{{item.privateNote.playHistory.length}}">
-                          <view
-                            class="card-bullet"
-                            wx:for="{{item.privateNote.playHistory}}"
-                            wx:for-item="line"
-                            wx:key="*this"
-                          >· {{line}}</view>
-                        </view>
-                        <view class="card-media-grid" wx:if="{{item.privateNote.playImages.length}}">
-                          <image
-                            class="card-media-thumb"
-                            wx:for="{{item.privateNote.playImages}}"
-                            wx:for-item="img"
-                            wx:key="*this"
-                            src="{{img}}"
-                            mode="aspectFill"
-                            data-url="{{img}}"
-                            bindtap="onClosingReviewPreview"
-                          />
-                        </view>
-                      </block>
-                    </view>
-
-                    <view class="card-section-flow" wx:if="{{item.privateNote.discussionBlocks.length || item.privateNote.discussionNotes.length || item.privateNote.discussionImages.length}}">
-                      <block wx:if="{{item.privateNote.discussionBlocks.length}}">
-                        <block wx:for="{{item.privateNote.discussionBlocks}}" wx:for-item="block" wx:key="key">
-                          <view wx:if="{{block.type === 'text'}}" class="card-bullet">· {{block.text}}</view>
-                          <image
-                            wx:elif="{{block.type === 'image'}}"
-                            class="card-media-thumb card-media-thumb-flow"
-                            src="{{block.url}}"
-                            mode="aspectFill"
-                            data-url="{{block.url}}"
-                            bindtap="onClosingReviewPreview"
-                          />
-                        </block>
-                      </block>
-                      <block wx:else>
-                        <view class="card-bullet-list" wx:if="{{item.privateNote.discussionNotes.length}}">
-                          <view
-                            class="card-bullet"
-                            wx:for="{{item.privateNote.discussionNotes}}"
-                            wx:for-item="line"
-                            wx:key="*this"
-                          >· {{line}}</view>
-                        </view>
-                        <view class="card-media-grid" wx:if="{{item.privateNote.discussionImages.length}}">
-                          <image
-                            class="card-media-thumb"
-                            wx:for="{{item.privateNote.discussionImages}}"
-                            wx:for-item="img"
-                            wx:key="*this"
-                            src="{{img}}"
-                            mode="aspectFill"
-                            data-url="{{img}}"
-                            bindtap="onClosingReviewPreview"
-                          />
-                        </view>
-                      </block>
-                    </view>
-                  </view>
-                </block>
-                <view class="closing-review-empty" wx:else>
-                  <text class="closing-review-empty-text">暂无手动记录</text>
+                <view class="card-section-flow">
+                  <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
+                    <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
+                    <image
+                      wx:elif="{{item.type === 'image'}}"
+                      class="card-media-thumb card-media-thumb-flow"
+                      src="{{item.url}}"
+                      mode="aspectFill"
+                      data-url="{{item.url}}"
+                      catchtap="onClosingCreativePreview"
+                    />
+                  </block>
                 </view>
 
                 <view class="card-photo-wrap" wx:if="{{reviewPhotos.length}}">
@@ -468,16 +418,12 @@
                 <view class="discussion-scroll-inner">
                 <view class="card-section-block">
                   <view class="card-section-head">
-                    <text
-                      class="card-section-title {{isHost ? 'card-section-title-tap' : ''}}"
-                      data-target="play"
-                      catchtap="onCardSectionTitleTap"
-                    >出牌解释</text>
+                    <text class="card-section-title">出牌解释</text>
                     <view
                       class="card-section-add"
                       data-target="play"
                       catchtap="onCardSectionAddImage"
-                      wx:if="{{isHost}}"
+                      wx:if="{{isHost || isCurrentPlayer}}"
                     >
                       <image
                         class="card-section-add-icon"
@@ -501,22 +447,24 @@
                     </block>
                     <view
                       class="card-bullet card-bullet-empty"
-                      wx:if="{{!playBlocks.length && !(isHost && cardInlineEditTarget === 'play')}}"
+                      wx:if="{{!(isHost || isCurrentPlayer) && !playBlocks.length}}"
                     >· 暂无记录</view>
                     <textarea
-                      wx:if="{{isHost && cardInlineEditTarget === 'play'}}"
-                      class="card-inline-textarea"
-                      value="{{cardInlineEditText}}"
-                      focus="{{cardInlineEditFocus && cardInlineEditTarget === 'play'}}"
-                      bindinput="onCardInlineInput"
-                      bindblur="onCardInlineBlur"
-                      bindconfirm="onCardInlineConfirm"
-                      placeholder="写下本次出牌解释..."
-                      placeholder-class="card-insert-placeholder"
+                      wx:if="{{isHost || isCurrentPlayer}}"
+                      class="card-inline-textarea {{playDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                      value="{{playDraftText}}"
+                      data-target="play"
+                      bindfocus="onSectionDraftFocus"
+                      bindinput="onSectionDraftInput"
+                      bindblur="onSectionDraftBlur"
+                      bindconfirm="onSectionDraftConfirm"
+                      placeholder="{{playBlocks.length || playDraftText ? '' : '点击开始记录'}}"
+                      placeholder-class="{{playDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
                       maxlength="500"
                       auto-height
                       show-confirm-bar="{{false}}"
                       adjust-position="{{true}}"
+                      hold-keyboard="{{true}}"
                       cursor-spacing="24"
                       confirm-type="done"
                     />
@@ -524,11 +472,7 @@
                 </view>
                 <view class="card-section-block card-section-block-gap">
                   <view class="card-section-head">
-                    <text
-                      class="card-section-title {{isHost ? 'card-section-title-tap' : ''}}"
-                      data-target="discussion"
-                      catchtap="onCardSectionTitleTap"
-                    >疑问讨论</text>
+                    <text class="card-section-title">疑问讨论</text>
                     <view
                       class="card-section-add"
                       data-target="discussion"
@@ -557,22 +501,24 @@
                     </block>
                     <view
                       class="card-bullet card-bullet-empty"
-                      wx:if="{{!discussionBlocks.length && !(isHost && cardInlineEditTarget === 'discussion')}}"
+                      wx:if="{{!isHost && !discussionBlocks.length}}"
                     >· 暂无记录</view>
                     <textarea
-                      wx:if="{{isHost && cardInlineEditTarget === 'discussion'}}"
-                      class="card-inline-textarea"
-                      value="{{cardInlineEditText}}"
-                      focus="{{cardInlineEditFocus && cardInlineEditTarget === 'discussion'}}"
-                      bindinput="onCardInlineInput"
-                      bindblur="onCardInlineBlur"
-                      bindconfirm="onCardInlineConfirm"
-                      placeholder="记录疑问与讨论要点..."
-                      placeholder-class="card-insert-placeholder"
+                      wx:if="{{isHost}}"
+                      class="card-inline-textarea {{discussionDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                      value="{{discussionDraftText}}"
+                      data-target="discussion"
+                      bindfocus="onSectionDraftFocus"
+                      bindinput="onSectionDraftInput"
+                      bindblur="onSectionDraftBlur"
+                      bindconfirm="onSectionDraftConfirm"
+                      placeholder="{{discussionBlocks.length || discussionDraftText ? '' : '点击开始记录'}}"
+                      placeholder-class="{{discussionDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
                       maxlength="500"
                       auto-height
                       show-confirm-bar="{{false}}"
                       adjust-position="{{true}}"
+                      hold-keyboard="{{true}}"
                       cursor-spacing="24"
                       confirm-type="done"
                     />

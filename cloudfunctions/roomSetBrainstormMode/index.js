@@ -70,6 +70,11 @@ exports.main = async (event, context) => {
           turnRecords: [],
           aiSummary: { status: 'pending' }
         },
+        partnerClosingCreativePoints: {
+          blocks: [],
+          texts: [],
+          images: []
+        },
         partnerRoundStartedAt: Date.now(),
         partnerTurnStartedAt: Date.now(),
         updatedAt: Date.now()

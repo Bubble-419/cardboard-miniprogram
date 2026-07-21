@@ -186,6 +186,7 @@ exports.main = async (event, context) => {
     brainstormSessionEnded,
     roundSummary,
     partnerCurrentRoundContent,
+    partnerClosingCreativePoints,
     partnerRoundStartedAt
   } = event || {};
 
@@ -246,6 +247,11 @@ exports.main = async (event, context) => {
       if (event.clearBrainstormProgress === true) {
         roundPatch.partnerRoundSummaries = [];
         roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+        roundPatch.partnerClosingCreativePoints = {
+          blocks: [],
+          texts: [],
+          images: []
+        };
         roundPatch.brainstormSessionSeq = getBrainstormSessionSeq(room) + 1;
         roundPatch.partnerTurnStartedAt = null;
       } else {
@@ -436,6 +442,29 @@ exports.main = async (event, context) => {
     if (Array.isArray(closingQuestionPlayers)) {
       updateData.closingQuestionPlayers = closingQuestionPlayers;
     }
+    if (partnerClosingCreativePoints && typeof partnerClosingCreativePoints === 'object') {
+      // 收尾创意点：房内成员均可追加（与灵感类似的协作记录）
+      if (!isCreator && !isMember) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房间成员可编辑创意点'
+        };
+      }
+      const incoming = partnerClosingCreativePoints;
+      const blocks = normalizeContentBlocks(
+        incoming.blocks,
+        incoming.texts || incoming.playHistory,
+        incoming.images
+      );
+      const derived = deriveListsFromBlocks(blocks);
+      updateData.partnerClosingCreativePoints = {
+        blocks,
+        texts: derived.texts,
+        images: derived.images,
+        updatedAt: Date.now()
+      };
+    }
     if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
       // 同请求已换轮：上一轮纪要已归档并清空，禁止再用旧内容写回新轮
       const skippedForRoundAdvance = incrementRound === true;
@@ -456,25 +485,47 @@ exports.main = async (event, context) => {
         const incoming = partnerCurrentRoundContent;
         const incomingVoiceLines = Array.isArray(incoming.voiceLines) ? incoming.voiceLines : [];
         const incomingTurnRecords = Array.isArray(incoming.turnRecords) ? incoming.turnRecords : [];
-        const wantsSharedNotes = Array.isArray(incoming.playHistory)
-          || Array.isArray(incoming.discussionNotes)
+        const wantsPlayNotes = Array.isArray(incoming.playHistory)
           || Array.isArray(incoming.playImages)
-          || Array.isArray(incoming.discussionImages)
           || Array.isArray(incoming.playBlocks)
-          || Array.isArray(incoming.discussionBlocks)
           || Array.isArray(incoming.images);
-        // 出牌解释 / 疑问讨论：全员可见，仅房主可写入；每一轮独立
+        const wantsDiscussionNotes = Array.isArray(incoming.discussionNotes)
+          || Array.isArray(incoming.discussionImages)
+          || Array.isArray(incoming.discussionBlocks);
+        const wantsSharedNotes = wantsPlayNotes || wantsDiscussionNotes;
+
+        // 出牌解释：房主或当前出牌玩家；疑问讨论：仅房主
+        let allowPlayNotes = isCreator;
+        let allowDiscussionNotes = isCreator;
         if (wantsSharedNotes && !isCreator) {
-          return {
-            ok: false,
-            errCode: 'NO_PERMISSION',
-            errMsg: '仅房主可编辑出牌解释与疑问讨论'
-          };
+          const member = membersRes.data && membersRes.data[0];
+          const callerPlayerIndex = member && member.playerIndex != null
+            ? Number(member.playerIndex)
+            : NaN;
+          const isActingPlayer = Number.isFinite(callerPlayerIndex)
+            && Number(room.currentPlayerIndex) === callerPlayerIndex;
+          if (!isActingPlayer) {
+            return {
+              ok: false,
+              errCode: 'NO_PERMISSION',
+              errMsg: '仅房主或当前出牌玩家可编辑出牌解释'
+            };
+          }
+          if (wantsDiscussionNotes) {
+            return {
+              ok: false,
+              errCode: 'NO_PERMISSION',
+              errMsg: '仅房主可编辑疑问讨论'
+            };
+          }
+          allowPlayNotes = true;
+          allowDiscussionNotes = false;
         }
-        const nextPlayBlocks = Array.isArray(incoming.playBlocks)
+
+        const nextPlayBlocks = allowPlayNotes && Array.isArray(incoming.playBlocks)
           ? normalizeContentBlocks(incoming.playBlocks, incoming.playHistory, incoming.playImages)
           : existing.playBlocks;
-        const nextDiscussionBlocks = Array.isArray(incoming.discussionBlocks)
+        const nextDiscussionBlocks = allowDiscussionNotes && Array.isArray(incoming.discussionBlocks)
           ? normalizeContentBlocks(
             incoming.discussionBlocks,
             incoming.discussionNotes,
@@ -484,27 +535,42 @@ exports.main = async (event, context) => {
         const playDerived = deriveListsFromBlocks(nextPlayBlocks);
         const discussionDerived = deriveListsFromBlocks(nextDiscussionBlocks);
         updateData.partnerCurrentRoundContent = {
-          playHistory: playDerived.texts.length
-            ? playDerived.texts
-            : (Array.isArray(incoming.playHistory) ? incoming.playHistory : existing.playHistory),
-          discussionNotes: discussionDerived.texts.length
-            ? discussionDerived.texts
-            : (Array.isArray(incoming.discussionNotes)
-              ? incoming.discussionNotes
-              : existing.discussionNotes),
-          playImages: playDerived.images.length
-            ? playDerived.images
-            : (Array.isArray(incoming.playImages) ? incoming.playImages : existing.playImages),
-          discussionImages: discussionDerived.images.length
-            ? discussionDerived.images
-            : (Array.isArray(incoming.discussionImages)
-              ? incoming.discussionImages
-              : existing.discussionImages),
+          playHistory: allowPlayNotes
+            ? (playDerived.texts.length
+              ? playDerived.texts
+              : (Array.isArray(incoming.playHistory) ? incoming.playHistory : existing.playHistory))
+            : existing.playHistory,
+          discussionNotes: allowDiscussionNotes
+            ? (discussionDerived.texts.length
+              ? discussionDerived.texts
+              : (Array.isArray(incoming.discussionNotes)
+                ? incoming.discussionNotes
+                : existing.discussionNotes))
+            : existing.discussionNotes,
+          playImages: allowPlayNotes
+            ? (playDerived.images.length
+              ? playDerived.images
+              : (Array.isArray(incoming.playImages) ? incoming.playImages : existing.playImages))
+            : existing.playImages,
+          discussionImages: allowDiscussionNotes
+            ? (discussionDerived.images.length
+              ? discussionDerived.images
+              : (Array.isArray(incoming.discussionImages)
+                ? incoming.discussionImages
+                : existing.discussionImages))
+            : existing.discussionImages,
           playBlocks: nextPlayBlocks,
           discussionBlocks: nextDiscussionBlocks,
-          images: Array.isArray(incoming.images) ? incoming.images : existing.images,
-          voiceLines: incomingVoiceLines.length ? incomingVoiceLines : existing.voiceLines,
-          turnRecords: incomingTurnRecords.length ? incomingTurnRecords : existing.turnRecords,
+          images: allowPlayNotes && Array.isArray(incoming.images)
+            ? incoming.images
+            : existing.images,
+          // 语音/表态记录仍由房主侧云函数维护；玩家同步不覆盖
+          voiceLines: isCreator && incomingVoiceLines.length
+            ? incomingVoiceLines
+            : existing.voiceLines,
+          turnRecords: isCreator && incomingTurnRecords.length
+            ? incomingTurnRecords
+            : existing.turnRecords,
           aiSummary: existing.aiSummary
         };
       }

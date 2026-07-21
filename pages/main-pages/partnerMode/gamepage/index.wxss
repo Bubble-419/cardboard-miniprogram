@@ -247,6 +247,18 @@
   color: #b0b0b0;
 }
 
+.card-bullet-empty-tap {
+  width: 100%;
+  min-height: 56rpx;
+  padding: 8rpx 0;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.card-bullet-empty-tap-hover {
+  opacity: 0.65;
+}
+
 .action-voice-list {
   padding: 0 0 8rpx;
 }
@@ -872,16 +884,36 @@ game-card-timer {
 
 .card-inline-textarea {
   width: 100%;
-  min-height: 72rpx;
+  min-height: 48rpx;
   max-height: 240rpx;
-  margin: 8rpx 0 12rpx;
+  margin: 0 0 12rpx;
+  padding: 4rpx 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: 28rpx;
+  color: #5f5f5f;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.card-inline-textarea-hint {
+  min-height: 48rpx;
+}
+
+.card-inline-textarea-active {
+  min-height: 72rpx;
   padding: 16rpx 20rpx;
   background: #f7f8f9;
   border-radius: 16rpx;
-  font-size: 28rpx;
   color: #111827;
-  line-height: 1.4;
-  box-sizing: border-box;
+}
+
+.card-record-placeholder {
+  color: #b0b0b0;
+}
+
+.card-record-placeholder-active {
+  color: #d4d4d4;
 }
 
 .insert-image-btn {
@@ -1664,6 +1696,18 @@ game-card-timer {
   font-weight: 700;
   color: #5ec159;
   margin-bottom: 12rpx;
+}
+
+.closing-creative-head {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 8rpx 8rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.closing-creative-title {
+  margin-bottom: 0;
+  font-size: 36rpx;
 }
 
 .closing-card-desc {
