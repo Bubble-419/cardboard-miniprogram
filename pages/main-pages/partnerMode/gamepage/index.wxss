@@ -883,25 +883,37 @@ game-card-timer {
 }
 
 .card-inline-textarea {
+  display: block;
   width: 100%;
-  min-height: 48rpx;
-  max-height: 240rpx;
-  margin: 0 0 12rpx;
-  padding: 4rpx 0;
+  min-height: 88rpx;
+  max-height: 360rpx;
+  margin: 0;
+  padding: 16rpx 0;
   background: transparent;
   border-radius: 0;
   font-size: 28rpx;
   color: #5f5f5f;
-  line-height: 1.5;
+  /* 微信 textarea 用倍数行高易裁切，改用固定行高 */
+  line-height: 44rpx;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.card-inline-textarea-wrap {
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 88rpx;
+  margin: 0 0 16rpx;
   box-sizing: border-box;
 }
 
 .card-inline-textarea-hint {
-  min-height: 48rpx;
+  min-height: 88rpx;
+  padding: 16rpx 0;
 }
 
 .card-inline-textarea-active {
-  min-height: 72rpx;
+  min-height: 96rpx;
   padding: 16rpx 20rpx;
   background: #f7f8f9;
   border-radius: 16rpx;
@@ -910,10 +922,14 @@ game-card-timer {
 
 .card-record-placeholder {
   color: #b0b0b0;
+  font-size: 28rpx;
+  line-height: 44rpx;
 }
 
 .card-record-placeholder-active {
   color: #d4d4d4;
+  font-size: 28rpx;
+  line-height: 44rpx;
 }
 
 .insert-image-btn {

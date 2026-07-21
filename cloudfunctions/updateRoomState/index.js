@@ -30,12 +30,22 @@ function makeBlockKey(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function splitRecordSegments(raw) {
+  if (typeof raw !== 'string' || !raw) return [];
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 function blocksFromLegacy(texts, images) {
   const blocks = [];
   (Array.isArray(texts) ? texts : []).forEach((t) => {
-    if (typeof t === 'string' && t.trim()) {
-      blocks.push({ type: 'text', text: t, key: makeBlockKey('t') });
-    }
+    splitRecordSegments(typeof t === 'string' ? t : '').forEach((segment) => {
+      blocks.push({ type: 'text', text: segment, key: makeBlockKey('t') });
+    });
   });
   (Array.isArray(images) ? images : []).forEach((url) => {
     if (typeof url === 'string' && url) {
@@ -47,30 +57,35 @@ function blocksFromLegacy(texts, images) {
 
 function normalizeContentBlocks(rawBlocks, legacyTexts, legacyImages) {
   if (Array.isArray(rawBlocks) && rawBlocks.length) {
-    return rawBlocks
-      .map((b, i) => {
-        if (!b || typeof b !== 'object') return null;
-        if (b.type === 'text') {
-          const text = typeof b.text === 'string' ? b.text : (typeof b.value === 'string' ? b.value : '');
-          if (!text.trim()) return null;
-          return {
+    const normalized = [];
+    rawBlocks.forEach((b, i) => {
+      if (!b || typeof b !== 'object') return;
+      if (b.type === 'text') {
+        const text = typeof b.text === 'string' ? b.text : (typeof b.value === 'string' ? b.value : '');
+        const segments = splitRecordSegments(text);
+        if (!segments.length) return;
+        segments.forEach((segment, segIdx) => {
+          normalized.push({
             type: 'text',
-            text,
-            key: typeof b.key === 'string' && b.key ? b.key : `t_${i}`
-          };
-        }
-        if (b.type === 'image') {
-          const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
-          if (!url) return null;
-          return {
-            type: 'image',
-            url,
-            key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
+            text: segment,
+            key: typeof b.key === 'string' && b.key && segments.length === 1
+              ? b.key
+              : `t_${i}_${segIdx}`
+          });
+        });
+        return;
+      }
+      if (b.type === 'image') {
+        const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
+        if (!url) return;
+        normalized.push({
+          type: 'image',
+          url,
+          key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
+        });
+      }
+    });
+    if (normalized.length) return normalized;
   }
   return blocksFromLegacy(legacyTexts, legacyImages);
 }

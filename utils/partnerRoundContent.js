@@ -7,9 +7,9 @@ function makeBlockKey(prefix) {
 function blocksFromLegacy(texts, images) {
   const blocks = [];
   (Array.isArray(texts) ? texts : []).forEach((t) => {
-    if (typeof t === 'string' && t.trim()) {
-      blocks.push({ type: 'text', text: t, key: makeBlockKey('t') });
-    }
+    splitRecordSegments(typeof t === 'string' ? t : '').forEach((segment) => {
+      blocks.push({ type: 'text', text: segment, key: makeBlockKey('t') });
+    });
   });
   (Array.isArray(images) ? images : []).forEach((url) => {
     if (typeof url === 'string' && url) {
@@ -19,32 +19,48 @@ function blocksFromLegacy(texts, images) {
   return blocks;
 }
 
+/** 按换行拆成多条记录；空行忽略，首尾空白去掉 */
+function splitRecordSegments(raw) {
+  if (typeof raw !== 'string' || !raw) return [];
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 function normalizeContentBlocks(rawBlocks, legacyTexts, legacyImages) {
   if (Array.isArray(rawBlocks) && rawBlocks.length) {
-    return rawBlocks
-      .map((b, i) => {
-        if (!b || typeof b !== 'object') return null;
-        if (b.type === 'text') {
-          const text = typeof b.text === 'string' ? b.text : (typeof b.value === 'string' ? b.value : '');
-          if (!text.trim()) return null;
-          return {
+    const normalized = [];
+    rawBlocks.forEach((b, i) => {
+      if (!b || typeof b !== 'object') return;
+      if (b.type === 'text') {
+        const text = typeof b.text === 'string' ? b.text : (typeof b.value === 'string' ? b.value : '');
+        const segments = splitRecordSegments(text);
+        if (!segments.length) return;
+        segments.forEach((segment, segIdx) => {
+          normalized.push({
             type: 'text',
-            text,
-            key: typeof b.key === 'string' && b.key ? b.key : `t_${i}_${text.slice(0, 12)}`
-          };
-        }
-        if (b.type === 'image') {
-          const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
-          if (!url) return null;
-          return {
-            type: 'image',
-            url,
-            key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
+            text: segment,
+            key: typeof b.key === 'string' && b.key && segments.length === 1
+              ? b.key
+              : `t_${i}_${segIdx}_${segment.slice(0, 12)}`
+          });
+        });
+        return;
+      }
+      if (b.type === 'image') {
+        const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
+        if (!url) return;
+        normalized.push({
+          type: 'image',
+          url,
+          key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
+        });
+      }
+    });
+    if (normalized.length) return normalized;
   }
   return blocksFromLegacy(legacyTexts, legacyImages);
 }
@@ -123,6 +139,15 @@ function appendTextBlock(blocks, text) {
   });
 }
 
+/** 将多段文字依次追加为独立 text block */
+function appendTextSegments(blocks, raw) {
+  let list = Array.isArray(blocks) ? blocks.slice() : [];
+  splitRecordSegments(raw).forEach((segment) => {
+    list = appendTextBlock(list, segment);
+  });
+  return list;
+}
+
 function appendImageBlocks(blocks, urls) {
   const list = Array.isArray(blocks) ? blocks.slice() : [];
   (Array.isArray(urls) ? urls : []).forEach((url) => {
@@ -148,7 +173,9 @@ module.exports = {
   normalizePartnerRoundContent,
   normalizeContentBlocks,
   deriveListsFromBlocks,
+  splitRecordSegments,
   appendTextBlock,
+  appendTextSegments,
   appendImageBlocks,
   getStatementLabel,
   STATEMENT_LABELS

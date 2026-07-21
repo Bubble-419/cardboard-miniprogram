@@ -37,9 +37,10 @@ const {
 const {
   normalizePartnerRoundContent,
   normalizeContentBlocks,
-  appendTextBlock,
+  appendTextSegments,
   appendImageBlocks,
-  deriveListsFromBlocks
+  deriveListsFromBlocks,
+  splitRecordSegments
 } = require('../../../../utils/partnerRoundContent');
 const {
   buildDisplaySummaries,
@@ -1891,9 +1892,10 @@ Page({
   async _appendSharedSectionContent(target, options = {}) {
     if (!this._canEditSharedSection(target)) return false;
     const scope = target === 'play' ? 'play' : 'discussion';
-    const text = typeof options.text === 'string' ? options.text.trim() : '';
+    const text = typeof options.text === 'string' ? options.text : '';
     const photos = Array.isArray(options.photos) ? options.photos : [];
-    if (!text && !photos.length) return false;
+    const segments = splitRecordSegments(text);
+    if (!segments.length && !photos.length) return false;
 
     // 绑定写入时的轮次，异步上传后若已换轮则中止，避免串轮
     const contentRound = Number(this.data.currentRound);
@@ -1902,7 +1904,7 @@ Page({
     let uploaded = [];
     if (photos.length) {
       uploaded = await this._uploadRoundNotePhotos(photos);
-      if (!uploaded.length && !text) {
+      if (!uploaded.length && !segments.length) {
         wx.showToast({ title: '图片上传失败', icon: 'none' });
         return false;
       }
@@ -1917,7 +1919,7 @@ Page({
     const blockField = scope === 'play' ? 'playBlocks' : 'discussionBlocks';
     let nextBlocks = (this.data[blockField] || []).slice();
     if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
-    if (text) nextBlocks = appendTextBlock(nextBlocks, text);
+    if (segments.length) nextBlocks = appendTextSegments(nextBlocks, text);
     const derived = deriveListsFromBlocks(nextBlocks);
 
     const nextPlayBlocks = scope === 'play' ? nextBlocks : (this.data.playBlocks || []);
@@ -2023,10 +2025,10 @@ Page({
   async _commitSectionDraft(target, options = {}) {
     if (this.data.cardInlineEditSaving) return;
     if (!this._canEditSharedSection(target)) return;
-    const text = target === 'play'
-      ? (this.data.playDraftText || '').trim()
-      : (this.data.discussionDraftText || '').trim();
-    if (!text) {
+    const raw = target === 'play'
+      ? (this.data.playDraftText || '')
+      : (this.data.discussionDraftText || '');
+    if (!splitRecordSegments(raw).length) {
       if (options.allowEmptyExit) {
         if (target === 'play') {
           this.setData({ playDraftFocused: false });
@@ -2038,7 +2040,7 @@ Page({
     }
     this.setData({ cardInlineEditSaving: true });
     try {
-      const ok = await this._appendSharedSectionContent(target, { text });
+      const ok = await this._appendSharedSectionContent(target, { text: raw });
       if (ok) {
         if (target === 'play') {
           this.setData({ playDraftText: '', playDraftFocused: false });
@@ -3076,8 +3078,8 @@ Page({
 
   async _commitClosingCreativeEdit(options = {}) {
     if (this.data.closingCreativeSaving) return;
-    const text = (this.data.closingCreativeEditText || '').trim();
-    if (!text) {
+    const raw = this.data.closingCreativeEditText || '';
+    if (!splitRecordSegments(raw).length) {
       if (options.allowEmptyExit) {
         this.setData({
           closingCreativeEditFocus: false
@@ -3087,7 +3089,7 @@ Page({
     }
     this.setData({ closingCreativeSaving: true });
     try {
-      const ok = await this._appendClosingCreativeContent({ text });
+      const ok = await this._appendClosingCreativeContent({ text: raw });
       if (ok) {
         this.setData({
           closingCreativeEditText: '',
@@ -3172,14 +3174,15 @@ Page({
   },
 
   async _appendClosingCreativeContent(options = {}) {
-    const text = typeof options.text === 'string' ? options.text.trim() : '';
+    const text = typeof options.text === 'string' ? options.text : '';
     const photos = Array.isArray(options.photos) ? options.photos : [];
-    if (!text && !photos.length) return false;
+    const segments = splitRecordSegments(text);
+    if (!segments.length && !photos.length) return false;
 
     let uploaded = [];
     if (photos.length) {
       uploaded = await this._uploadClosingCreativePhotos(photos);
-      if (!uploaded.length && !text) {
+      if (!uploaded.length && !segments.length) {
         wx.showToast({ title: '图片上传失败', icon: 'none' });
         return false;
       }
@@ -3187,7 +3190,7 @@ Page({
 
     let nextBlocks = (this.data.closingCreativeBlocks || []).slice();
     if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
-    if (text) nextBlocks = appendTextBlock(nextBlocks, text);
+    if (segments.length) nextBlocks = appendTextSegments(nextBlocks, text);
     this.setData({ closingCreativeBlocks: nextBlocks });
 
     const ok = await this._syncClosingCreativeToRoom(nextBlocks);

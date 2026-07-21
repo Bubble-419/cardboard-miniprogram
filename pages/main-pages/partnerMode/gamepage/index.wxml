@@ -107,23 +107,24 @@
                 </view>
               </view>
               <!-- 输入框放在 scroll-view 外，避免 enhanced 滚动区抢焦点 -->
-              <textarea
-                class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                value="{{closingCreativeEditText}}"
-                bindfocus="onClosingCreativeFocus"
-                bindinput="onClosingCreativeInput"
-                bindblur="onClosingCreativeBlur"
-                bindconfirm="onClosingCreativeConfirm"
-                placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
-                placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                maxlength="500"
-                auto-height
-                show-confirm-bar="{{false}}"
-                adjust-position="{{true}}"
-                hold-keyboard="{{true}}"
-                cursor-spacing="24"
-                confirm-type="done"
-              />
+              <view class="card-inline-textarea-wrap">
+                <textarea
+                  class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                  value="{{closingCreativeEditText}}"
+                  bindfocus="onClosingCreativeFocus"
+                  bindinput="onClosingCreativeInput"
+                  bindblur="onClosingCreativeBlur"
+                  placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                  placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                  maxlength="500"
+                  auto-height
+                  disable-default-padding="{{true}}"
+                  show-confirm-bar="{{false}}"
+                  adjust-position="{{true}}"
+                  hold-keyboard="{{true}}"
+                  cursor-spacing="24"
+                />
+              </view>
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
                 <view class="closing-scroll-inner">
                 <view class="card-section-flow">
@@ -449,25 +450,25 @@
                       class="card-bullet card-bullet-empty"
                       wx:if="{{!(isHost || isCurrentPlayer) && !playBlocks.length}}"
                     >· 暂无记录</view>
-                    <textarea
-                      wx:if="{{isHost || isCurrentPlayer}}"
-                      class="card-inline-textarea {{playDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                      value="{{playDraftText}}"
-                      data-target="play"
-                      bindfocus="onSectionDraftFocus"
-                      bindinput="onSectionDraftInput"
-                      bindblur="onSectionDraftBlur"
-                      bindconfirm="onSectionDraftConfirm"
-                      placeholder="{{playBlocks.length || playDraftText ? '' : '点击开始记录'}}"
-                      placeholder-class="{{playDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                      maxlength="500"
-                      auto-height
-                      show-confirm-bar="{{false}}"
-                      adjust-position="{{true}}"
-                      hold-keyboard="{{true}}"
-                      cursor-spacing="24"
-                      confirm-type="done"
-                    />
+                    <view class="card-inline-textarea-wrap" wx:if="{{isHost || isCurrentPlayer}}">
+                      <textarea
+                        class="card-inline-textarea {{playDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                        value="{{playDraftText}}"
+                        data-target="play"
+                        bindfocus="onSectionDraftFocus"
+                        bindinput="onSectionDraftInput"
+                        bindblur="onSectionDraftBlur"
+                        placeholder="{{playBlocks.length || playDraftText ? '' : '点击开始记录'}}"
+                        placeholder-class="{{playDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                        maxlength="500"
+                        auto-height
+                        disable-default-padding="{{true}}"
+                        show-confirm-bar="{{false}}"
+                        adjust-position="{{true}}"
+                        hold-keyboard="{{true}}"
+                        cursor-spacing="24"
+                      />
+                    </view>
                   </view>
                 </view>
                 <view class="card-section-block card-section-block-gap">
@@ -503,25 +504,25 @@
                       class="card-bullet card-bullet-empty"
                       wx:if="{{!isHost && !discussionBlocks.length}}"
                     >· 暂无记录</view>
-                    <textarea
-                      wx:if="{{isHost}}"
-                      class="card-inline-textarea {{discussionDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                      value="{{discussionDraftText}}"
-                      data-target="discussion"
-                      bindfocus="onSectionDraftFocus"
-                      bindinput="onSectionDraftInput"
-                      bindblur="onSectionDraftBlur"
-                      bindconfirm="onSectionDraftConfirm"
-                      placeholder="{{discussionBlocks.length || discussionDraftText ? '' : '点击开始记录'}}"
-                      placeholder-class="{{discussionDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                      maxlength="500"
-                      auto-height
-                      show-confirm-bar="{{false}}"
-                      adjust-position="{{true}}"
-                      hold-keyboard="{{true}}"
-                      cursor-spacing="24"
-                      confirm-type="done"
-                    />
+                    <view class="card-inline-textarea-wrap" wx:if="{{isHost}}">
+                      <textarea
+                        class="card-inline-textarea {{discussionDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                        value="{{discussionDraftText}}"
+                        data-target="discussion"
+                        bindfocus="onSectionDraftFocus"
+                        bindinput="onSectionDraftInput"
+                        bindblur="onSectionDraftBlur"
+                        placeholder="{{discussionBlocks.length || discussionDraftText ? '' : '点击开始记录'}}"
+                        placeholder-class="{{discussionDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                        maxlength="500"
+                        auto-height
+                        disable-default-padding="{{true}}"
+                        show-confirm-bar="{{false}}"
+                        adjust-position="{{true}}"
+                        hold-keyboard="{{true}}"
+                        cursor-spacing="24"
+                      />
+                    </view>
                   </view>
                 </view>
                 <text class="card-section-title card-section-title-gap">语音纪要</text>
