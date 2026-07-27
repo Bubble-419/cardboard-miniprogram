@@ -96,6 +96,7 @@ Page({
     reviewPhotos: [],
     closingReviewRounds: [],
     closingCreativeBlocks: [],
+    closingHasDeckImage: false,
     closingCreativeEditText: '',
     closingCreativeEditFocus: false,
     closingCreativeSaving: false,
@@ -719,6 +720,13 @@ Page({
 
   _canEditDiscussionNotes() {
     return !!this.data.isHost;
+  },
+
+  _closingDeckImagePatch(blocks) {
+    const list = blocks != null ? blocks : (this.data.closingCreativeBlocks || []);
+    return {
+      closingHasDeckImage: list.some((b) => b && b.type === 'image' && b.url)
+    };
   },
 
   _canEditSharedSection(target) {
@@ -1383,10 +1391,12 @@ Page({
       // 编辑中不打断本地输入框
       if (!this.data.closingCreativeEditFocus && !this.data.closingCreativeSaving) {
         patch.closingCreativeBlocks = closingCreative;
+        Object.assign(patch, this._closingDeckImagePatch(closingCreative));
       }
     } else if (phaseChanged) {
       patch.closingReviewRounds = [];
       patch.closingCreativeBlocks = [];
+      patch.closingHasDeckImage = false;
       patch.closingCreativeEditText = '';
       patch.closingCreativeEditFocus = false;
       patch.playDraftText = '';
@@ -3281,7 +3291,10 @@ Page({
     let nextBlocks = (this.data.closingCreativeBlocks || []).slice();
     if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
     if (segments.length) nextBlocks = appendTextSegments(nextBlocks, text);
-    this.setData({ closingCreativeBlocks: nextBlocks });
+    this.setData({
+      closingCreativeBlocks: nextBlocks,
+      ...this._closingDeckImagePatch(nextBlocks)
+    });
 
     const ok = await this._syncClosingCreativeToRoom(nextBlocks);
     if (!ok) {

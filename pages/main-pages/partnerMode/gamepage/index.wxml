@@ -93,19 +93,7 @@
           <view class="game-card game-card-active closing-card" wx:else>
             <view class="closing-badge">收尾阶段</view>
             <view class="closing-card-body">
-              <view class="card-section-head closing-creative-head">
-                <text class="card-section-title closing-creative-title">创意点</text>
-                <view
-                  class="card-section-add"
-                  catchtap="onClosingCreativeAddImage"
-                >
-                  <image
-                    class="card-section-add-icon"
-                    src="/assets/partnerMode/icon-insp-plus.svg"
-                    mode="aspectFit"
-                  />
-                </view>
-              </view>
+              <text class="closing-card-title">创意点复盘</text>
               <!-- 输入框放在 scroll-view 外，避免 enhanced 滚动区抢焦点 -->
               <view class="card-inline-textarea-wrap">
                 <textarea
@@ -130,27 +118,35 @@
                 <view class="card-section-flow">
                   <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
                     <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
-                    <image
-                      wx:elif="{{item.type === 'image'}}"
-                      class="card-media-thumb card-media-thumb-flow"
-                      src="{{item.url}}"
-                      mode="aspectFill"
-                      data-url="{{item.url}}"
-                      catchtap="onClosingCreativePreview"
-                    />
                   </block>
                 </view>
 
-                <view class="card-photo-wrap" wx:if="{{reviewPhotos.length}}">
-                  <image
-                    class="card-photo"
-                    wx:for="{{reviewPhotos}}"
-                    wx:key="*this"
-                    src="{{item}}"
-                    mode="aspectFill"
-                    data-url="{{item}}"
-                    bindtap="onClosingReviewPreview"
-                  />
+                <view class="closing-deck-capture">
+                  <view
+                    class="closing-deck-capture-inner"
+                    catchtap="onClosingCreativeAddImage"
+                  >
+                    <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
+                      <image
+                        wx:if="{{item.type === 'image'}}"
+                        class="closing-deck-photo"
+                        src="{{item.url}}"
+                        mode="aspectFill"
+                        data-url="{{item.url}}"
+                        catchtap="onClosingCreativePreview"
+                      />
+                    </block>
+                    <view class="closing-deck-capture-frame" wx:if="{{!closingHasDeckImage}}">
+                      <image
+                        class="closing-deck-camera-icon"
+                        src="/assets/partnerMode/icon-closing-deck-camera.svg"
+                        mode="aspectFit"
+                      />
+                    </view>
+                  </view>
+                  <view class="closing-deck-hint">
+                    <text class="closing-deck-hint-text">（提示玩家拍摄卡组）</text>
+                  </view>
                 </view>
                 </view>
               </scroll-view>
