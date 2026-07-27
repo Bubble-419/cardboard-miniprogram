@@ -57,12 +57,15 @@ exports.main = async (event) => {
     }
 
     const anonKey = buildAnonKey(roomId, userId);
+    const phase = event.phase === 'discussion' ? 'discussion' : 'play';
     const msg = {
       // id 前缀带 anonKey，客户端可在字段缺失时仍识别同人
       id: `${anonKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       text: content,
       at: Date.now(),
       round: round != null ? Number(round) : 0,
+      // play：出牌阶段匿名表达；discussion：疑问讨论阶段
+      phase,
       // 不存 userId；anonKey 用于同人同色
       anonKey
     };

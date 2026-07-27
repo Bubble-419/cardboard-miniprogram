@@ -61,6 +61,9 @@ const {
 } = require('../../../../utils/partnerInspirationSession');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 
+/** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
+const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
+
 Page({
   data: {
     roomId: '',
@@ -146,9 +149,16 @@ Page({
     expressHasText: false,
     expressSending: false,
     expressChatList: [],
+    /** 讨论卡：出牌阶段匿名表达 */
+    playExpressChatList: [],
+    /** 讨论卡：疑问讨论阶段匿名表达 */
+    discussionExpressChatList: [],
     expressChatAnchor: '',
+    discussionExpressChatAnchor: '',
     expressViewRound: 0,
-    scorePanelExpanded: false
+    scorePanelExpanded: false,
+    /** 房主首次进入：开始表态按钮引导蒙层 */
+    showHostStatementTip: false
   },
 
   _applyTopBarSafeInset() {
@@ -261,6 +271,33 @@ Page({
       : '已采用卡组，请其他玩家打分';
     wx.showToast({ title, icon: 'none', duration: 2500 });
   },
+
+  /** 房主首次进入出牌页：蒙层提示「开始表态」需全员打分后才亮起 */
+  _maybeShowHostStatementTip() {
+    if (this.data.showHostStatementTip) return;
+    if (!this.data.isHost) return;
+    if (isDiscussionPhase(this.data.gamepagePhase) || isClosingPhase(this.data.gamepagePhase)) {
+      return;
+    }
+    try {
+      if (wx.getStorageSync(HOST_STATEMENT_TIP_KEY)) return;
+    } catch (e) {
+      // ignore storage read failure
+    }
+    this.setData({ showHostStatementTip: true });
+  },
+
+  dismissHostStatementTip() {
+    if (!this.data.showHostStatementTip) return;
+    this.setData({ showHostStatementTip: false });
+    try {
+      wx.setStorageSync(HOST_STATEMENT_TIP_KEY, '1');
+    } catch (e) {
+      // ignore storage write failure
+    }
+  },
+
+  preventMove() {},
 
   onShow() {
     this._pageVisible = true;
@@ -1149,14 +1186,17 @@ Page({
       : [])
       .slice()
       .sort((a, b) => (a.round || 0) - (b.round || 0))
-      .map((item) => ({
-        ...item,
-        voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
-        turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
-        expressChatList: this._mapExpressChatList(
-          this._filterExpressMessagesByRound(expressMessages, item.round, currentRound)
-        )
-      }));
+      .map((item) => {
+        const lists = this._buildExpressListsForRound(expressMessages, item.round, currentRound);
+        return {
+          ...item,
+          voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
+          turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
+          expressChatList: lists.expressChatList,
+          playExpressChatList: lists.playExpressChatList,
+          discussionExpressChatList: lists.discussionExpressChatList
+        };
+      });
     const roundContent = this._applyRoundContentFromRoom(roomState);
     this._ingestExpressMessages(expressMessages, { currentRound });
     const lastExpressId = expressMessages.length
@@ -1466,6 +1506,7 @@ Page({
         problemTextOverflow: false
       }, () => {
         this._checkProblemTextOverflow();
+        this._maybeShowHostStatementTip();
       });
 
       this._startStatePolling();
@@ -2079,7 +2120,6 @@ Page({
             wx.showLoading({ title: '上传中…', mask: true });
             try {
               await this._appendSharedSectionContent(target, { photos: paths });
-              this._focusSectionDraft(target);
             } finally {
               wx.hideLoading();
             }
@@ -2303,10 +2343,11 @@ Page({
     this.setData({ expressComposerOpen: false });
   },
 
-  /** 出牌玩家：表态结束后（进入讨论）才可发送；旁观走卡内输入条 */
+  /** 出牌玩家：表态结束后（进入讨论）才可发送；讨论阶段全员可发；旁观出牌阶段可发 */
   _computeExpressCanSend(isCurrentPlayer, phase) {
-    if (!isCurrentPlayer) return true;
-    return isDiscussionPhase(phase);
+    if (isClosingPhase(phase)) return false;
+    if (isDiscussionPhase(phase)) return true;
+    return !isCurrentPlayer;
   },
 
   openExpressChatPanel() {
@@ -2368,7 +2409,11 @@ Page({
 
   async submitExpress() {
     if (this.data.expressSending) return;
-    if (this.data.isCurrentPlayer && !this.data.expressCanSend) {
+    const canSend = this._computeExpressCanSend(
+      this.data.isCurrentPlayer,
+      this.data.gamepagePhase
+    );
+    if (!canSend) {
       wx.showToast({ title: '本轮表态结束后可发送', icon: 'none' });
       return;
     }
@@ -2377,6 +2422,7 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId) return;
 
+    const phase = isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play';
     this.setData({ expressSending: true });
     try {
       const res = await wx.cloud.callFunction({
@@ -2384,7 +2430,8 @@ Page({
         data: {
           roomId,
           text,
-          round: this.data.currentRound
+          round: this.data.currentRound,
+          phase
         }
       });
       const result = (res && res.result) || {};
@@ -2462,6 +2509,7 @@ Page({
       id: msg.id,
       text: msg.text || '',
       round: msg.round != null ? Number(msg.round) : null,
+      phase: msg.phase === 'discussion' ? 'discussion' : 'play',
       avatar: DEFAULT_AVATAR,
       dotColor,
       avatarDotStyle: `background-color:${dotColor};`
@@ -2481,6 +2529,11 @@ Page({
     return Number.isFinite(cr) ? cr : 0;
   },
 
+  /** 旧消息无 phase 时归入出牌阶段 */
+  _normalizeExpressPhase(msg) {
+    return msg && msg.phase === 'discussion' ? 'discussion' : 'play';
+  },
+
   _filterExpressMessagesByRound(messages, round, currentRoundOverride) {
     const list = Array.isArray(messages) ? messages : [];
     const r = Number(round);
@@ -2498,6 +2551,12 @@ Page({
     });
   },
 
+  _filterExpressMessagesByRoundAndPhase(messages, round, phase, currentRoundOverride) {
+    const want = phase === 'discussion' ? 'discussion' : 'play';
+    return this._filterExpressMessagesByRound(messages, round, currentRoundOverride)
+      .filter((msg) => this._normalizeExpressPhase(msg) === want);
+  },
+
   _mapExpressChatList(messages) {
     const list = Array.isArray(messages) ? messages : [];
     // 先用全量消息播种，保证跨轮次 / 分段列表同人同色
@@ -2509,6 +2568,21 @@ Page({
       .filter(Boolean);
   },
 
+  _buildExpressListsForRound(messages, round, currentRoundOverride) {
+    const playList = this._mapExpressChatList(
+      this._filterExpressMessagesByRoundAndPhase(messages, round, 'play', currentRoundOverride)
+    );
+    const discussionList = this._mapExpressChatList(
+      this._filterExpressMessagesByRoundAndPhase(messages, round, 'discussion', currentRoundOverride)
+    );
+    return {
+      // 出牌卡仍用 expressChatList：只看出牌阶段
+      expressChatList: playList,
+      playExpressChatList: playList,
+      discussionExpressChatList: discussionList
+    };
+  },
+
   _syncExpressChatList(messages, options = {}) {
     if (Array.isArray(messages)) {
       this._expressMessagesAll = messages;
@@ -2517,25 +2591,38 @@ Page({
     const viewRound = options.viewRound != null
       ? Number(options.viewRound)
       : this._getExpressViewRound(options.cardIndex, options.currentRound);
-    const filtered = this._filterExpressMessagesByRound(
-      all,
-      viewRound,
-      options.currentRound
-    );
-    const next = this._mapExpressChatList(filtered);
-    const prev = this.data.expressChatList || [];
-    const prevTail = prev.length ? prev[prev.length - 1].id : '';
-    const nextTail = next.length ? next[next.length - 1].id : '';
-    const changed = prev.length !== next.length
-      || prevTail !== nextTail
+    const lists = this._buildExpressListsForRound(all, viewRound, options.currentRound);
+    const prevPlay = this.data.playExpressChatList || [];
+    const prevDiscussion = this.data.discussionExpressChatList || [];
+    const playTail = lists.playExpressChatList.length
+      ? lists.playExpressChatList[lists.playExpressChatList.length - 1].id
+      : '';
+    const discussionTail = lists.discussionExpressChatList.length
+      ? lists.discussionExpressChatList[lists.discussionExpressChatList.length - 1].id
+      : '';
+    const prevPlayTail = prevPlay.length ? prevPlay[prevPlay.length - 1].id : '';
+    const prevDiscussionTail = prevDiscussion.length
+      ? prevDiscussion[prevDiscussion.length - 1].id
+      : '';
+    const changed = prevPlay.length !== lists.playExpressChatList.length
+      || prevDiscussion.length !== lists.discussionExpressChatList.length
+      || prevPlayTail !== playTail
+      || prevDiscussionTail !== discussionTail
       || this.data.expressViewRound !== viewRound;
     if (!changed && !options.force) return;
     const patch = {
-      expressChatList: next,
+      expressChatList: lists.expressChatList,
+      playExpressChatList: lists.playExpressChatList,
+      discussionExpressChatList: lists.discussionExpressChatList,
       expressViewRound: viewRound
     };
-    if (options.scrollBottom !== false && next.length) {
-      patch.expressChatAnchor = 'express-chat-bottom';
+    if (options.scrollBottom !== false) {
+      if (lists.playExpressChatList.length) {
+        patch.expressChatAnchor = 'express-chat-bottom';
+      }
+      if (lists.discussionExpressChatList.length) {
+        patch.discussionExpressChatAnchor = 'discussion-express-chat-bottom';
+      }
     }
     this.setData(patch);
   },
@@ -2562,12 +2649,15 @@ Page({
 
   _refreshSummaryExpressLists(messages) {
     const all = Array.isArray(messages) ? messages : (this._expressMessagesAll || []);
-    const patchList = (list) => (list || []).map((item) => ({
-      ...item,
-      expressChatList: this._mapExpressChatList(
-        this._filterExpressMessagesByRound(all, item.round)
-      )
-    }));
+    const patchList = (list) => (list || []).map((item) => {
+      const lists = this._buildExpressListsForRound(all, item.round);
+      return {
+        ...item,
+        expressChatList: lists.expressChatList,
+        playExpressChatList: lists.playExpressChatList,
+        discussionExpressChatList: lists.discussionExpressChatList
+      };
+    });
     const roundSummaries = this.data.roundSummaries || [];
     const displayRoundSummaries = this.data.displayRoundSummaries || [];
     if (!roundSummaries.length && !displayRoundSummaries.length) return;

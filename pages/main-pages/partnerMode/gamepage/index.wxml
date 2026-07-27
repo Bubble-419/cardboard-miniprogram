@@ -306,6 +306,22 @@
                   </view>
                 </block>
               </view>
+              <view class="summary-express-list" wx:if="{{item.playExpressChatList && item.playExpressChatList.length}}">
+                <view
+                  class="spectator-chat-row"
+                  wx:for="{{item.playExpressChatList}}"
+                  wx:for-item="express"
+                  wx:key="id"
+                >
+                  <view class="spectator-chat-avatar-wrap">
+                    <image class="spectator-chat-avatar" src="{{express.avatar}}" mode="aspectFill" />
+                    <view class="spectator-chat-avatar-dot" style="{{express.avatarDotStyle}}"></view>
+                  </view>
+                  <view class="spectator-chat-bubble">
+                    <text class="spectator-chat-text">{{express.text}}</text>
+                  </view>
+                </view>
+              </view>
               <text class="card-section-title card-section-title-gap">疑问讨论</text>
               <view class="card-section-flow">
                 <block wx:if="{{item.privateNote.discussionBlocks && item.privateNote.discussionBlocks.length}}">
@@ -352,6 +368,22 @@
                   </view>
                 </block>
               </view>
+              <view class="summary-express-list" wx:if="{{item.discussionExpressChatList && item.discussionExpressChatList.length}}">
+                <view
+                  class="spectator-chat-row"
+                  wx:for="{{item.discussionExpressChatList}}"
+                  wx:for-item="express"
+                  wx:key="id"
+                >
+                  <view class="spectator-chat-avatar-wrap">
+                    <image class="spectator-chat-avatar" src="{{express.avatar}}" mode="aspectFill" />
+                    <view class="spectator-chat-avatar-dot" style="{{express.avatarDotStyle}}"></view>
+                  </view>
+                  <view class="spectator-chat-bubble">
+                    <text class="spectator-chat-text">{{express.text}}</text>
+                  </view>
+                </view>
+              </view>
               <text class="card-section-title card-section-title-gap">语音纪要</text>
               <view class="card-bullet-list">
                 <view
@@ -372,26 +404,6 @@
                   wx:key="turnIdx"
                 >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
-              </view>
-              <text class="card-section-title card-section-title-gap">匿名表达</text>
-              <view class="summary-express-list" wx:if="{{item.expressChatList && item.expressChatList.length}}">
-                <view
-                  class="spectator-chat-row"
-                  wx:for="{{item.expressChatList}}"
-                  wx:for-item="express"
-                  wx:key="id"
-                >
-                  <view class="spectator-chat-avatar-wrap">
-                    <image class="spectator-chat-avatar" src="{{express.avatar}}" mode="aspectFill" />
-                    <view class="spectator-chat-avatar-dot" style="{{express.avatarDotStyle}}"></view>
-                  </view>
-                  <view class="spectator-chat-bubble">
-                    <text class="spectator-chat-text">{{express.text}}</text>
-                  </view>
-                </view>
-              </view>
-              <view class="card-bullet-list" wx:else>
-                <view class="card-bullet card-bullet-empty">· 暂无匿名表达</view>
               </view>
               </view>
             </scroll-view>
@@ -415,134 +427,117 @@
                 </view>
               </view>
               <view class="discussion-divider"></view>
-              <scroll-view class="discussion-scroll" scroll-y enhanced show-scrollbar="{{true}}">
+              <scroll-view
+                class="discussion-scroll"
+                scroll-y
+                enhanced
+                show-scrollbar="{{true}}"
+                scroll-into-view="{{discussionExpressChatAnchor}}"
+              >
                 <view class="discussion-scroll-inner">
-                <view class="card-section-block">
-                  <view class="card-section-head">
-                    <text class="card-section-title">出牌解释</text>
-                    <view
-                      class="card-section-add"
-                      data-target="play"
-                      catchtap="onCardSectionAddImage"
-                      wx:if="{{isHost || isCurrentPlayer}}"
-                    >
-                      <image
-                        class="card-section-add-icon"
-                        src="/assets/partnerMode/icon-insp-plus.svg"
-                        mode="aspectFit"
-                      />
+                  <!-- 出牌解释：仅出牌阶段匿名聊天 -->
+                  <view class="card-section-block">
+                    <view class="card-section-head">
+                      <text class="card-section-title">出牌解释</text>
+                    </view>
+                    <view class="discussion-express-list" wx:if="{{playExpressChatList.length}}">
+                      <view
+                        class="spectator-chat-row"
+                        wx:for="{{playExpressChatList}}"
+                        wx:key="id"
+                      >
+                        <view class="spectator-chat-avatar-wrap">
+                          <image class="spectator-chat-avatar" src="{{item.avatar}}" mode="aspectFill" />
+                          <view class="spectator-chat-avatar-dot" style="{{item.avatarDotStyle}}"></view>
+                        </view>
+                        <view class="spectator-chat-bubble">
+                          <text class="spectator-chat-text">{{item.text}}</text>
+                        </view>
+                      </view>
+                    </view>
+                    <view class="spectator-chat-empty" wx:else>
+                      <text class="spectator-chat-empty-text">暂无匿名表达</text>
                     </view>
                   </view>
-                  <view class="card-section-flow">
-                    <block wx:for="{{playBlocks}}" wx:key="key">
-                      <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
-                      <image
-                        wx:elif="{{item.type === 'image'}}"
-                        class="card-media-thumb card-media-thumb-flow"
-                        src="{{item.url}}"
-                        mode="aspectFill"
-                        data-url="{{item.url}}"
-                        data-scope="play"
-                        catchtap="onCardImagePreview"
-                      />
-                    </block>
-                    <view
-                      class="card-bullet card-bullet-empty"
-                      wx:if="{{!(isHost || isCurrentPlayer) && !playBlocks.length}}"
-                    >· 暂无记录</view>
-                    <view class="card-inline-textarea-wrap" wx:if="{{isHost || isCurrentPlayer}}">
-                      <textarea
-                        class="card-inline-textarea {{playDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                        value="{{playDraftText}}"
-                        data-target="play"
-                        bindfocus="onSectionDraftFocus"
-                        bindinput="onSectionDraftInput"
-                        bindblur="onSectionDraftBlur"
-                        placeholder="{{playBlocks.length || playDraftText ? '' : '点击开始记录'}}"
-                        placeholder-class="{{playDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                        maxlength="500"
-                        auto-height
-                        disable-default-padding="{{true}}"
-                        show-confirm-bar="{{false}}"
-                        adjust-position="{{true}}"
-                        hold-keyboard="{{true}}"
-                        cursor-spacing="24"
-                      />
-                    </view>
-                  </view>
-                </view>
-                <view class="card-section-block card-section-block-gap">
-                  <view class="card-section-head">
-                    <text class="card-section-title">疑问讨论</text>
-                    <view
-                      class="card-section-add"
-                      data-target="discussion"
-                      catchtap="onCardSectionAddImage"
-                      wx:if="{{isHost}}"
-                    >
-                      <image
-                        class="card-section-add-icon"
-                        src="/assets/partnerMode/icon-insp-plus.svg"
-                        mode="aspectFit"
-                      />
-                    </view>
-                  </view>
-                  <view class="card-section-flow">
-                    <block wx:for="{{discussionBlocks}}" wx:key="key">
-                      <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
-                      <image
-                        wx:elif="{{item.type === 'image'}}"
-                        class="card-media-thumb card-media-thumb-flow"
-                        src="{{item.url}}"
-                        mode="aspectFill"
-                        data-url="{{item.url}}"
-                        data-scope="discussion"
-                        catchtap="onCardImagePreview"
-                      />
-                    </block>
-                    <view
-                      class="card-bullet card-bullet-empty"
-                      wx:if="{{!isHost && !discussionBlocks.length}}"
-                    >· 暂无记录</view>
-                    <view class="card-inline-textarea-wrap" wx:if="{{isHost}}">
-                      <textarea
-                        class="card-inline-textarea {{discussionDraftFocused ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                        value="{{discussionDraftText}}"
+
+                  <!-- 疑问讨论：讨论阶段匿名聊天 + 可插图 -->
+                  <view class="card-section-block card-section-block-gap">
+                    <view class="card-section-head">
+                      <text class="card-section-title">疑问讨论</text>
+                      <view
+                        class="card-section-add"
                         data-target="discussion"
-                        bindfocus="onSectionDraftFocus"
-                        bindinput="onSectionDraftInput"
-                        bindblur="onSectionDraftBlur"
-                        placeholder="{{discussionBlocks.length || discussionDraftText ? '' : '点击开始记录'}}"
-                        placeholder-class="{{discussionDraftFocused ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                        maxlength="500"
-                        auto-height
-                        disable-default-padding="{{true}}"
-                        show-confirm-bar="{{false}}"
-                        adjust-position="{{true}}"
-                        hold-keyboard="{{true}}"
-                        cursor-spacing="24"
-                      />
+                        catchtap="onCardSectionAddImage"
+                        wx:if="{{isHost}}"
+                      >
+                        <image
+                          class="card-section-add-icon"
+                          src="/assets/partnerMode/icon-insp-plus.svg"
+                          mode="aspectFit"
+                        />
+                      </view>
+                    </view>
+                    <view class="card-section-flow" wx:if="{{discussionBlocks.length}}">
+                      <block wx:for="{{discussionBlocks}}" wx:key="key">
+                        <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
+                        <image
+                          wx:elif="{{item.type === 'image'}}"
+                          class="card-media-thumb card-media-thumb-flow"
+                          src="{{item.url}}"
+                          mode="aspectFill"
+                          data-url="{{item.url}}"
+                          data-scope="discussion"
+                          catchtap="onCardImagePreview"
+                        />
+                      </block>
+                    </view>
+                    <view class="discussion-express-list" wx:if="{{discussionExpressChatList.length}}">
+                      <view
+                        class="spectator-chat-row"
+                        wx:for="{{discussionExpressChatList}}"
+                        wx:key="id"
+                        id="discussion-express-{{item.id}}"
+                      >
+                        <view class="spectator-chat-avatar-wrap">
+                          <image class="spectator-chat-avatar" src="{{item.avatar}}" mode="aspectFill" />
+                          <view class="spectator-chat-avatar-dot" style="{{item.avatarDotStyle}}"></view>
+                        </view>
+                        <view class="spectator-chat-bubble">
+                          <text class="spectator-chat-text">{{item.text}}</text>
+                        </view>
+                      </view>
+                      <view id="discussion-express-chat-bottom" style="height: 1rpx;"></view>
+                    </view>
+                    <view class="spectator-chat-empty" wx:elif="{{!discussionBlocks.length}}">
+                      <text class="spectator-chat-empty-text">暂无匿名表达</text>
                     </view>
                   </view>
-                </view>
-                <text class="card-section-title card-section-title-gap">语音纪要</text>
-                <view class="card-bullet-list">
-                  <view class="card-bullet" wx:for="{{voiceLines}}" wx:key="at">· {{item.text}}</view>
-                  <view class="card-bullet card-bullet-empty" wx:if="{{!voiceLines.length}}">· 正在聆听…</view>
-                </view>
-                <text class="card-section-title card-section-title-gap">表态记录</text>
-                <view class="card-bullet-list">
-                  <view
-                    class="card-bullet"
-                    wx:for="{{turnRecords}}"
-                    wx:for-item="turn"
-                    wx:for-index="turnIdx"
-                    wx:key="turnIdx"
-                  >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
-                  <view class="card-bullet card-bullet-empty" wx:if="{{!turnRecords.length}}">· 暂无记录</view>
-                </view>
                 </view>
               </scroll-view>
+
+              <!-- 讨论阶段：全员可匿名表达 -->
+              <view class="action-express-chat-foot discussion-express-foot">
+                <input
+                  class="action-express-chat-input"
+                  value="{{expressDraftText}}"
+                  maxlength="40"
+                  confirm-type="send"
+                  placeholder="说点什么…"
+                  placeholder-class="spectator-express-placeholder"
+                  bindinput="onExpressInput"
+                  bindconfirm="submitExpress"
+                />
+                <view
+                  class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                  catchtap="submitExpress"
+                >
+                  <image
+                    class="spectator-express-send-icon"
+                    src="/assets/partnerMode/icon-express-send.png"
+                    mode="aspectFit"
+                  />
+                </view>
+              </view>
             </view>
           </game-card-timer>
 
