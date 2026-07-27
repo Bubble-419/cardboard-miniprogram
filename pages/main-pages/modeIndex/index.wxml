@@ -86,8 +86,13 @@
         <!-- 我的自定义情境 -->
         <view class="custom-section">
           <view class="section-header-row">
-            <view class="section-indicator"></view>
-            <text class="section-title">我的自定义情境</text>
+            <view class="section-header-left">
+              <view class="section-indicator"></view>
+              <text class="section-title">我的自定义情境</text>
+            </view>
+            <view class="section-add-btn" bindtap="handleAddScenario">
+              <image class="section-add-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
+            </view>
           </view>
 
           <view class="scenario-list">
@@ -111,18 +116,6 @@
                 </view>
                 <view class="arrow-wrap arrow-wrap-green">
                   <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-green.svg" mode="aspectFit" />
-                </view>
-              </view>
-            </view>
-
-            <!-- 新增情境 -->
-            <view class="scenario-item add-item" bindtap="handleAddScenario">
-              <view class="scenario-item-inner">
-                <view class="scenario-left">
-                  <text class="add-title">新增情境</text>
-                </view>
-                <view class="arrow-wrap arrow-wrap-gray">
-                  <image class="arrow-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
                 </view>
               </view>
             </view>

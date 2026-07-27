@@ -252,7 +252,15 @@
 .section-header-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16rpx;
+}
+
+.section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-width: 0;
 }
 
 .section-indicator {
@@ -267,6 +275,24 @@
   font-size: 36rpx;
   font-weight: 500;
   color: #1f2937;
+}
+
+.section-add-btn {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-add-btn:active {
+  opacity: 0.6;
+}
+
+.section-add-icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 /* ===== 情境列表 ===== */
@@ -326,18 +352,6 @@
   padding: 8rpx 16rpx;
   border-radius: 12rpx;
   line-height: 27rpx;
-}
-
-/* ===== 新增情境行 ===== */
-.add-item {
-  background-color: #ffffff;
-}
-
-.add-title {
-  font-size: 36rpx;
-  font-weight: 500;
-  color: #9c9c9c;
-  line-height: 56rpx;
 }
 
 /* ===== 底部上一页 ===== */
