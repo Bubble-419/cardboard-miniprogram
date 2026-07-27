@@ -6,7 +6,7 @@ const {
   resolveBrainstormProgress
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
-const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
+const { buildGamepageUrl, buildStatementUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
@@ -1466,6 +1466,27 @@ Page({
       nextPage: 'auth'
     };
 
+    const spyModeIndexRoute = {
+      path: buildSpyPageUrl('intro', roomId),
+      nextPage: 'spymodeindex'
+    };
+
+    if (modeId === 'spy') {
+      const spyResumeRoutes = {
+        spymodeindex: spyModeIndexRoute,
+        spyassign: { path: buildSpyPageUrl('assign', roomId), nextPage: 'spyassign' },
+        spyspeak: { path: buildSpyPageUrl('speak', roomId), nextPage: 'spyspeak' },
+        spyvote: { path: buildSpyPageUrl('vote', roomId), nextPage: 'spyvote' },
+        spyresult: { path: buildSpyPageUrl('result', roomId), nextPage: 'spyresult' },
+        spynextround: { path: buildSpyPageUrl('nextRound', roomId), nextPage: 'spynextround' },
+        spysettle: { path: buildSpyPageUrl('settle', roomId), nextPage: 'spysettle' }
+      };
+      if (page !== 'addplayer' && spyResumeRoutes[page]) {
+        return spyResumeRoutes[page];
+      }
+      return spyModeIndexRoute;
+    }
+
     if (
       modeId === 'partner'
       && partnerPageNeedsBG(page)
@@ -1608,6 +1629,20 @@ Page({
 
     if (!this.data.isHost) {
       const page = (roomState && roomState.currentPage) || 'addPlayer';
+      const modeId = selectedModeId || '';
+      if (modeId === 'spy' || String(page).toLowerCase().indexOf('spy') === 0) {
+        const { followSpyRoomState } = require('../../../utils/spyFollow');
+        followSpyRoomState(
+          {
+            ok: true,
+            isHost: false,
+            selectedModeId: modeId,
+            roomState: roomState || { currentPage: page }
+          },
+          roomId
+        );
+        return;
+      }
       navigateByRoomState(page, roomState, roomId);
       return;
     }

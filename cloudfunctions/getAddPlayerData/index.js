@@ -15,6 +15,59 @@ function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
 }
 
+/** 谁是卧底公开快照：词文案与票明细仅房主可见；结算阶段全员揭晓 */
+function buildPublicSpyGame(spyGame, isHost, assignments) {
+  if (!spyGame || typeof spyGame !== 'object') return null;
+  const voteStatus = spyGame.voteStatus || {};
+  const phase = spyGame.phase || 'intro';
+  const base = {
+    phase,
+    spyCount: spyGame.spyCount || 0,
+    round: spyGame.round || 1,
+    players: Array.isArray(spyGame.players) ? spyGame.players : [],
+    speakOrder: Array.isArray(spyGame.speakOrder) ? spyGame.speakOrder : [],
+    currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
+    speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
+    voteStartedAt: spyGame.voteStartedAt || 0,
+    speakRoundMs: spyGame.speakRoundMs || 300000,
+    voteDeadlineMs: spyGame.voteDeadlineMs || 120000,
+    voteStatus: {
+      votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes)
+        ? voteStatus.votedPlayerIndexes
+        : [],
+      abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes)
+        ? voteStatus.abstainPlayerIndexes
+        : []
+    },
+    lastResult: spyGame.lastResult || null,
+    winnerSide: spyGame.winnerSide || null
+  };
+  if (isHost) {
+    base.civilianWord = spyGame.civilianWord || '';
+    base.spyWord = spyGame.spyWord || '';
+    base.civilianBlurb = spyGame.civilianBlurb || '';
+    base.spyBlurb = spyGame.spyBlurb || '';
+    base.voteStatus.tally = voteStatus.tally || {};
+    base.voteStatus.ballots = voteStatus.ballots || {};
+  }
+  if (phase === 'settle') {
+    base.civilianWord = spyGame.civilianWord || '';
+    base.spyWord = spyGame.spyWord || '';
+    const assignMap = assignments || {};
+    base.reveal = (spyGame.players || []).map((p) => {
+      const card = assignMap[String(p.playerIndex)] || {};
+      return {
+        playerIndex: p.playerIndex,
+        name: p.name || card.name || `玩家${p.playerIndex}`,
+        role: card.role || '',
+        word: card.word || '',
+        alive: p.alive !== false
+      };
+    });
+  }
+  return base;
+}
+
 function isLocalTempAvatar(url) {
   if (typeof url !== 'string' || !url) return false;
   const lower = url.toLowerCase();
@@ -162,7 +215,8 @@ exports.main = async (event, context) => {
       closingVoteSessionId: activeClosing.sessionId || 0,
       partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
       // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
-      partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null
+      partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null,
+      spyGame: buildPublicSpyGame(room.spyGame, isHost, room.spyAssignments)
     };
 
     // 默认不返回大体积脑暴内容，避免各页轮询拖垮测试性能；gamepage 传 full:true
@@ -217,7 +271,8 @@ exports.main = async (event, context) => {
         avatarColor: m.avatarColor || '#5EC159',
         avatarUrl: m.avatarUrl || null,
         isMe: m.userId === currentUserId,
-        userId: m.userId || null
+        userId: m.userId || null,
+        role: m.role || 'PLAYER'
       };
       // 始终带回 avatarIndex，便于 avatarUrl 不可用时客户端回退随机头像
       if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;

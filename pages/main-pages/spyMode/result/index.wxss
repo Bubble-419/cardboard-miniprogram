@@ -1,0 +1,23 @@
+@import "../styles/common.wxss";
+
+.result-hero {
+  text-align: center;
+  padding: 24rpx 0;
+}
+
+.result-name {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #333333;
+  margin-bottom: 12rpx;
+}
+
+.result-role {
+  font-size: 32rpx;
+  color: #3AAE34;
+  font-weight: 600;
+}
+
+.result-role.spy {
+  color: #E07A5F;
+}

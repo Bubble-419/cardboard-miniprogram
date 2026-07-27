@@ -1,0 +1,106 @@
+@import "../styles/common.wxss";
+
+.circle-wrap {
+  position: relative;
+  width: 640rpx;
+  height: 640rpx;
+  margin: 12rpx auto 8rpx;
+}
+
+.deco-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  border: 2rpx solid rgba(94, 193, 89, 0.18);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.deco-ring-1 { width: 96%; height: 96%; }
+.deco-ring-2 { width: 72%; height: 72%; }
+.deco-ring-3 { width: 48%; height: 48%; }
+.deco-ring-inner {
+  width: 22%;
+  height: 22%;
+  background: rgba(94, 193, 89, 0.08);
+  border: none;
+}
+
+.avatar-slot {
+  position: absolute;
+  width: 120rpx;
+  margin-left: -60rpx;
+  margin-top: -70rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.avatar-slot.selected .avatar-img {
+  box-shadow: 0 0 0 6rpx #5EC159;
+}
+
+.avatar-slot.voted .avatar-badge {
+  opacity: 1;
+}
+
+.avatar-img {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #E8F8E6;
+}
+
+.avatar-name {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #545454;
+  max-width: 120rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.avatar-badge {
+  position: absolute;
+  top: -4rpx;
+  right: 4rpx;
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #5EC159;
+  color: #fff;
+  font-size: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+
+.tally-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #EEF2F0;
+  font-size: 26rpx;
+  color: #545454;
+}
+
+.tally-row:last-child {
+  border-bottom: none;
+}
+
+.vote-actions {
+  margin: 0 40rpx;
+}
+
+.voted-wait {
+  text-align: center;
+  color: #3AAE34;
+  font-size: 28rpx;
+  font-weight: 600;
+  margin: 24rpx 40rpx;
+}

@@ -1,0 +1,13 @@
+@import "../styles/common.wxss";
+
+.winner-banner {
+  text-align: center;
+  padding: 12rpx 0 8rpx;
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #3AAE34;
+}
+
+.winner-banner.spy {
+  color: #E07A5F;
+}

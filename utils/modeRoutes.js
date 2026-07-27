@@ -7,6 +7,26 @@ function getSelectedModeId(fallback) {
     || 'halliGalli';
 }
 
+function buildSpyPageUrl(pageKey, roomId, query = {}) {
+  const roomIdEnc = encodeURIComponent(roomId || '');
+  const pathMap = {
+    intro: '/pages/main-pages/spyMode/modeIndex/index',
+    modeIndex: '/pages/main-pages/spyMode/modeIndex/index',
+    assign: '/pages/main-pages/spyMode/assign/index',
+    speak: '/pages/main-pages/spyMode/speak/index',
+    vote: '/pages/main-pages/spyMode/vote/index',
+    result: '/pages/main-pages/spyMode/result/index',
+    nextRound: '/pages/main-pages/spyMode/nextRound/index',
+    settle: '/pages/main-pages/spyMode/settle/index'
+  };
+  let url = `${pathMap[pageKey] || pathMap.intro}?roomId=${roomIdEnc}`;
+  Object.keys(query || {}).forEach((key) => {
+    if (query[key] == null || query[key] === '') return;
+    url += `&${key}=${encodeURIComponent(query[key])}`;
+  });
+  return url;
+}
+
 function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId);
   const idx = currentPlayerIndex != null ? currentPlayerIndex : 1;
@@ -26,6 +46,9 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
       url += '&specialMoveUsed=1';
     }
     return url;
+  }
+  if (modeId === 'spy') {
+    return buildSpyPageUrl('speak', roomId);
   }
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
@@ -69,5 +92,6 @@ module.exports = {
   buildStatementUrl,
   buildSpecialMoveUrl,
   buildClosingStatementUrl,
-  buildClosingEndUrl
+  buildClosingEndUrl,
+  buildSpyPageUrl
 };

@@ -2,6 +2,7 @@
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { followSpyRoomState, resolveSpyTargetPage } = require('../../../utils/spyFollow');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarList } = require('../../../utils/avatars');
@@ -27,7 +28,7 @@ const BRAINSTORM_MODES = [
     title: '谁是卧底模式',
     description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
     coverImage: '/assets/brainstormMode/mode-cover-spy.jpg',
-    pagePath: MODE_INDEX_PATH
+    pagePath: '/pages/main-pages/spyMode/modeIndex/index'
   }
 ];
 
@@ -214,6 +215,14 @@ Page({
         const res = await callCloudFunction('getAddPlayerData', { roomId });
         if (!this._pageAlive) return;
         const result = (res && res.result) || {};
+        // 谁是卧底：优先走专用跟随，避免进错共用 modeIndex / 白屏
+        const modeId = result.selectedModeId
+          || (result.roomState && result.roomState.selectedModeId)
+          || '';
+        if (modeId === 'spy' || resolveSpyTargetPage(result.roomState)) {
+          followSpyRoomState(result, roomId);
+          return;
+        }
         followSubScreenRoomPoll(result, roomId);
       } catch (e) {
         console.warn('brainstormMode state poll', e);

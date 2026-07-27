@@ -24,6 +24,12 @@ const REGISTERED_ROUTES = new Set([
   'pages/main-pages/modeIndex/index',
   'pages/main-pages/brainstormMode/index',
   'pages/main-pages/spyMode/modeIndex/index',
+  'pages/main-pages/spyMode/assign/index',
+  'pages/main-pages/spyMode/speak/index',
+  'pages/main-pages/spyMode/vote/index',
+  'pages/main-pages/spyMode/result/index',
+  'pages/main-pages/spyMode/nextRound/index',
+  'pages/main-pages/spyMode/settle/index',
   'pages/main-pages/halliGalli/gamepage/index',
   'pages/main-pages/creativeInput/index',
   'pages/main-pages/creativeSummary/index',
@@ -153,6 +159,22 @@ function _runNav(url, targetRoute, options, retryCount) {
       return;
     }
     if (stage === 'redirectTo') {
+      // spy 等流程禁用 reLaunch，避免整栈重建白屏；改为短暂重试 redirectTo
+      if (options.noReLaunch) {
+        if (retryCount < 4) {
+          _nav.inFlight = false;
+          openUrl(url, {
+            ...options,
+            retryCount: retryCount + 1,
+            _fromQueue: true,
+            immediate: true
+          });
+          return;
+        }
+        console.warn('[pageNavigate] redirectTo 重试耗尽', err, url);
+        _releaseNav();
+        return;
+      }
       wx.reLaunch({
         url,
         success: onSuccess,

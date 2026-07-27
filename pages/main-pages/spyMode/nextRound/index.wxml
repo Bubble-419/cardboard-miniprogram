@@ -1,0 +1,42 @@
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+  <view class="header-section">
+    <view class="topbar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
+      <view class="avatar-bar">
+        <user-list
+          avatarList="{{avatarList}}"
+          enableAdd="{{false}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+        />
+      </view>
+    </view>
+    <view class="title-block">
+      <text class="page-title">下一轮准备</text>
+      <text class="page-subtitle">{{isHost ? '确认剩余玩家发言顺序后继续' : '等待主持人开启下一轮发言…'}}</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">剩余玩家</view>
+    <view class="player-row" wx:for="{{alivePlayers}}" wx:key="playerIndex">
+      <view class="player-name">{{item.name}}</view>
+      <view class="player-meta">仍在场</view>
+    </view>
+  </view>
+
+  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn" bindtap="onStartNext">开始下一轮发言</view>
+  </page-footer>
+
+  <page-footer
+    wx:else
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoRoom"
+    prevText="房间"
+  ></page-footer>
+</view>

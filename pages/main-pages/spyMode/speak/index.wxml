@@ -1,0 +1,101 @@
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+  <view class="header-section">
+    <view class="topbar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
+      <view class="avatar-bar">
+        <user-list
+          avatarList="{{avatarList}}"
+          enableAdd="{{false}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+        />
+      </view>
+    </view>
+    <view class="title-block">
+      <text class="page-title">发言阶段 · 第 {{round}} 轮</text>
+      <text class="page-subtitle">请按顺序口头描述，勿直接念出词名</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="countdown">{{countdownText}}</view>
+    <view class="countdown-label">本轮发言倒计时（5 分钟）</view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">发言规则</view>
+    <view class="rules-list">
+      <text class="rules-item">• 用自己的话描述交互方式的特征与使用场景</text>
+      <text class="rules-item">• 不要直接说出词语本身或明显同义替换</text>
+      <text class="rules-item">• 认真听其他人的描述，寻找差异线索</text>
+      <text class="rules-item">• 发言在线下完成，本页仅作倒计时与提示</text>
+    </view>
+  </view>
+
+  <block wx:if="{{isHost}}">
+    <view class="section">
+      <view class="section-title">交互方式卡（主持可见）</view>
+      <view class="word-card">
+        <view class="word-card-tag">平民词</view>
+        <view class="word-card-word">{{civilianWord}}</view>
+        <view class="word-card-blurb">{{civilianBlurb}}</view>
+      </view>
+      <view class="word-card">
+        <view class="word-card-tag spy">卧底词</view>
+        <view class="word-card-word">{{spyWord}}</view>
+        <view class="word-card-blurb">{{spyBlurb}}</view>
+      </view>
+    </view>
+    <view class="section">
+      <view class="section-title">卧底是谁</view>
+      <view class="player-row" wx:for="{{spyPlayers}}" wx:key="playerIndex">
+        <view class="player-name">{{item.name}}</view>
+        <view class="player-meta">{{item.word}}</view>
+      </view>
+      <view class="section-body" wx:if="{{!spyPlayers.length}}">加载中…</view>
+    </view>
+    <view class="section">
+      <view class="section-title">发言顺序</view>
+      <view class="speak-order">
+        <view
+          class="order-item {{item.current ? 'current' : ''}}"
+          wx:for="{{speakOrderView}}"
+          wx:key="playerIndex"
+        >
+          <view class="order-dot"></view>
+          <text>{{item.name}}{{item.alive ? '' : '（已出局）'}}{{item.isSpy ? ' · 卧底' : ''}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="section" bindtap="onToggleCard">
+      <view class="section-title">你的交互方式卡</view>
+      <block wx:if="{{cardRevealed && myCard}}">
+        <view class="word-card">
+          <view class="word-card-tag">你的词语</view>
+          <view class="word-card-word">{{myCard.word}}</view>
+          <view class="word-card-blurb">{{myCard.blurb}}</view>
+        </view>
+        <view class="flip-hint">点击收起卡片</view>
+      </block>
+      <block wx:else>
+        <view class="section-body">点击展开你的交互方式卡</view>
+        <view class="flip-hint">请注意遮挡屏幕，避免被他人看到</view>
+      </block>
+    </view>
+    <view class="section" wx:if="{{currentSpeakerName}}">
+      <view class="section-title">当前发言</view>
+      <view class="status-text">{{currentSpeakerName}}</view>
+    </view>
+    <view class="vote-opened-tip" wx:if="{{voteOpening}}">主持人已开启投票，正在进入…</view>
+  </block>
+
+  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn" bindtap="onStartVote">进入投票</view>
+  </page-footer>
+</view>

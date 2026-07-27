@@ -1,0 +1,77 @@
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+  <view class="header-section">
+    <view class="topbar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
+      <view class="avatar-bar">
+        <user-list
+          avatarList="{{avatarList}}"
+          enableAdd="{{false}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+        />
+      </view>
+    </view>
+    <view class="title-block">
+      <text class="page-title">{{isHost ? '投票监控' : '统一投票'}}</text>
+      <text class="page-subtitle">
+        {{isHost ? '查看进度与得票，确认本轮结果' : (hasVoted ? '已提交，等待主持人确认' : '点选你怀疑的人，或选择弃票')}}
+      </text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="countdown">{{countdownText}}</view>
+    <view class="countdown-label">投票倒计时（2 分钟）</view>
+  </view>
+
+  <block wx:if="{{!isHost}}">
+    <view class="circle-wrap">
+      <view class="deco-ring deco-ring-1"></view>
+      <view class="deco-ring deco-ring-2"></view>
+      <view class="deco-ring deco-ring-3"></view>
+      <view class="deco-ring deco-ring-inner"></view>
+      <view
+        class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}}"
+        wx:for="{{circleSlots}}"
+        wx:key="playerIndex"
+        style="left: {{item.left}}%; top: {{item.top}}%;"
+        data-index="{{item.playerIndex}}"
+        bindtap="onSelectTarget"
+      >
+        <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
+        <text class="avatar-name">{{item.name}}{{item.isMe ? '（我）' : ''}}</text>
+      </view>
+    </view>
+
+    <view class="voted-wait" wx:if="{{hasVoted}}">投票已提交</view>
+    <view class="vote-actions" wx:else>
+      <view class="primary-btn {{selectedIndex ? '' : 'dimmed'}}" bindtap="onConfirmVote">确认投票</view>
+      <view class="secondary-btn" bindtap="onAbstain">弃票</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="section">
+      <view class="section-title">投票进度</view>
+      <view class="player-row" wx:for="{{progressList}}" wx:key="playerIndex">
+        <view class="player-name">{{item.name}}</view>
+        <view class="player-meta">{{item.statusText}}</view>
+      </view>
+    </view>
+    <view class="section">
+      <view class="section-title">得票统计</view>
+      <view class="tally-row" wx:for="{{tallyList}}" wx:key="playerIndex">
+        <text>{{item.name}}</text>
+        <text>{{item.votes}} 票</text>
+      </view>
+      <view class="section-body" wx:if="{{!tallyList.length}}">暂无有效选票</view>
+    </view>
+  </block>
+
+  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn" bindtap="onConfirmResult">确认结果</view>
+  </page-footer>
+</view>

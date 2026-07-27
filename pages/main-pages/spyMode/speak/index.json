@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "谁是卧底",
+  "navigationBarTitleText": "发言阶段",
   "navigationStyle": "custom",
   "usingComponents": {
     "user-list": "/components/user-list/index",

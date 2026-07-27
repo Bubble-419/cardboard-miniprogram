@@ -1,23 +1,64 @@
-<view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+  <view class="header-section">
+    <view class="topbar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
       </view>
-      <view class="navbar-title">{{pageTitle}}</view>
-      <view class="navbar-right"></view>
+      <view class="avatar-bar">
+        <user-list
+          avatarList="{{avatarList}}"
+          enableAdd="{{false}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+        />
+      </view>
+    </view>
+    <view class="title-block">
+      <text class="page-title">谁是卧底</text>
+      <text class="page-subtitle">
+        {{isHost ? '确认规则后开始分配身份' : hostStatusText}}
+      </text>
     </view>
   </view>
 
-  <view class="content">
-    <!-- TODO: 谁是卧底模式首页内容待开发 -->
-    <text class="placeholder-title">{{pageTitle}}</text>
-    <text class="placeholder-desc">游戏页开发中，敬请期待</text>
-    <text class="placeholder-note">此页为 modeIndex 占位页，后续将替换为谁是卧底模式的完整游戏流程</text>
+  <view class="section">
+    <view class="section-title">当前{{isHost ? '房间成员' : '玩家'}}</view>
+    <view class="member-list-wrap">
+      <user-list
+        avatarList="{{playerAvatarList}}"
+        enableAdd="{{false}}"
+        isFold="{{false}}"
+        showName="{{true}}"
+        layout="scroll"
+      />
+    </view>
+    <view class="hint-text" style="margin-top: 20rpx">{{spyCountHint}}</view>
+    <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名参与者（不含主持人）才能开始</view>
   </view>
+
+  <view class="section">
+    <view class="section-title">玩法说明</view>
+    <view class="rules-list">
+      <text class="rules-item">1. 每位参与者获得一个交互方式词，多数人词相同，卧底词相近但不同。</text>
+      <text class="rules-item">2. 按顺序口头描述自己的词，不要直接念出词名。</text>
+      <text class="rules-item">3. 每轮发言后进行投票，得票最多者出局并公布身份。</text>
+      <text class="rules-item">4. 卧底全灭则平民胜；存活卧底数不少于平民则卧底胜。</text>
+      <text class="rules-item">5. 主持人只主持不参玩，负责推进流程与确认投票结果。</text>
+    </view>
+  </view>
+
+  <page-footer wx:if="{{isHost}}" extClass="footer" bind:prev="handleGoBack">
+    <view
+      class="primary-btn {{canStart ? '' : 'dimmed'}}"
+      bindtap="onStartAssign"
+    >开始分配</view>
+  </page-footer>
+
+  <page-footer
+    wx:else
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="handleGoBack"
+  ></page-footer>
 </view>

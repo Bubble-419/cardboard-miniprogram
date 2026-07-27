@@ -39,46 +39,57 @@ exports.main = async (event, context) => {
       return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可选择脑暴模式' };
     }
 
+    const updateData = {
+      selectedModeId,
+      selectedModeTitle: selectedModeTitle || '',
+      selectedModeDesc: selectedModeDesc || '',
+      brainstormSessionSeq: db.command.inc(1),
+      currentRound: 1,
+      currentPlayerIndex: 1,
+      currentPlayerName: '玩家1',
+      partnerGamePhase: 'play',
+      partnerMasterMode: false,
+      partnerClosingStep: 'rune',
+      closingVotes: db.command.set({}),
+      closingQuestionPlayers: db.command.set([]),
+      closingVoteState: db.command.set({
+        sessionId: 0,
+        seq: 0,
+        brainstormSessionSeq: 0,
+        votes: {}
+      }),
+      partnerRoundSummaries: [],
+      partnerCurrentRoundContent: {
+        playHistory: [],
+        discussionNotes: [],
+        playImages: [],
+        discussionImages: [],
+        images: [],
+        voiceLines: [],
+        turnRecords: [],
+        aiSummary: { status: 'pending' }
+      },
+      partnerClosingCreativePoints: {
+        blocks: [],
+        texts: [],
+        images: []
+      },
+      partnerRoundStartedAt: Date.now(),
+      partnerTurnStartedAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    if (selectedModeId === 'spy') {
+      updateData.currentPage = 'spymodeindex';
+      updateData.brainstormProgressPage = 'spymodeindex';
+    }
+
+    // 避免留下 null：后续整对象写入数字键会失败
+    updateData.spyGame = db.command.remove();
+    updateData.spyAssignments = db.command.remove();
+
     await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
-      data: {
-        selectedModeId,
-        selectedModeTitle: selectedModeTitle || '',
-        selectedModeDesc: selectedModeDesc || '',
-        brainstormSessionSeq: db.command.inc(1),
-        currentRound: 1,
-        currentPlayerIndex: 1,
-        currentPlayerName: '玩家1',
-        partnerGamePhase: 'play',
-        partnerMasterMode: false,
-        partnerClosingStep: 'rune',
-        closingVotes: db.command.set({}),
-        closingQuestionPlayers: db.command.set([]),
-        closingVoteState: db.command.set({
-          sessionId: 0,
-          seq: 0,
-          brainstormSessionSeq: 0,
-          votes: {}
-        }),
-        partnerRoundSummaries: [],
-        partnerCurrentRoundContent: {
-          playHistory: [],
-          discussionNotes: [],
-          playImages: [],
-          discussionImages: [],
-          images: [],
-          voiceLines: [],
-          turnRecords: [],
-          aiSummary: { status: 'pending' }
-        },
-        partnerClosingCreativePoints: {
-          blocks: [],
-          texts: [],
-          images: []
-        },
-        partnerRoundStartedAt: Date.now(),
-        partnerTurnStartedAt: Date.now(),
-        updatedAt: Date.now()
-      }
+      data: updateData
     });
 
     return { ok: true };

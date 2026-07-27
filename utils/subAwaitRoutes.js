@@ -3,6 +3,7 @@ const {
   buildStatementUrl,
   buildClosingStatementUrl,
   buildClosingEndUrl,
+  buildSpyPageUrl,
   getSelectedModeId
 } = require('./modeRoutes');
 const {
@@ -86,7 +87,14 @@ const PAGE_PROGRESS_RANK = {
   closingstatement: 105,
   discussion: 110,
   closingend: 115,
-  leaderboard: 120
+  leaderboard: 120,
+  spymodeindex: 200,
+  spyassign: 210,
+  spyspeak: 220,
+  spyvote: 230,
+  spyresult: 240,
+  spynextround: 245,
+  spysettle: 250
 };
 
 const ROUTE_TO_PAGE = {
@@ -104,7 +112,14 @@ const ROUTE_TO_PAGE = {
   'pages/main-pages/partnerMode/closingStatement/index': 'closingstatement',
   'pages/main-pages/partnerMode/closingEnd/index': 'closingend',
   'pages/main-pages/discussion/index': 'discussion',
-  'pages/leaderboard/index': 'leaderboard'
+  'pages/leaderboard/index': 'leaderboard',
+  'pages/main-pages/spyMode/modeIndex/index': 'spymodeindex',
+  'pages/main-pages/spyMode/assign/index': 'spyassign',
+  'pages/main-pages/spyMode/speak/index': 'spyspeak',
+  'pages/main-pages/spyMode/vote/index': 'spyvote',
+  'pages/main-pages/spyMode/result/index': 'spyresult',
+  'pages/main-pages/spyMode/nextRound/index': 'spynextround',
+  'pages/main-pages/spyMode/settle/index': 'spysettle'
 };
 
 function getPageKeyForCurrentRoute() {
@@ -244,7 +259,14 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
     discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
-    creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`
+    creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
+    spymodeindex: buildSpyPageUrl('intro', roomId),
+    spyassign: buildSpyPageUrl('assign', roomId),
+    spyspeak: buildSpyPageUrl('speak', roomId),
+    spyvote: buildSpyPageUrl('vote', roomId),
+    spyresult: buildSpyPageUrl('result', roomId),
+    spynextround: buildSpyPageUrl('nextRound', roomId),
+    spysettle: buildSpyPageUrl('settle', roomId)
   };
 
   if (redirectMap[p]) {
