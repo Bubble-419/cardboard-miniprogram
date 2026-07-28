@@ -79,6 +79,11 @@ Component({
     roundTimerKey: {
       type: String,
       value: ''
+    },
+    /** 引导蒙层展示时隐藏原生 canvas */
+    suppressTimerCanvas: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -98,6 +103,11 @@ Component({
     'roundStartedAt, roundTimerActive, durationSec, roundTimerKey': function syncActingFrame() {
       this._syncRoundTimerKey();
       this._syncActingFrameMode();
+    },
+    suppressTimerCanvas(hidden) {
+      if (!hidden && this.data.actingFrameMode === 'timer') {
+        setTimeout(() => this._initActingTimerCanvas(), 16);
+      }
     }
   },
 

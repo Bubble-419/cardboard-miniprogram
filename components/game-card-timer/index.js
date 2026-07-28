@@ -27,6 +27,11 @@ Component({
     loop: {
       type: Boolean,
       value: true
+    },
+    /** 引导蒙层展示时隐藏原生 canvas，避免盖不住倒计时边框 */
+    suppressCanvas: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -65,6 +70,12 @@ Component({
   },
 
   observers: {
+    suppressCanvas(hidden) {
+      if (!hidden && this.data.displayMode === 'timer') {
+        // 蒙层关闭后重建 canvas
+        setTimeout(() => this._initCanvas(), 16);
+      }
+    },
     'startedAt, timerActive'() {
       const serverTs = Number(this.properties.startedAt);
       const prev = this._lastServerStartedAt || 0;

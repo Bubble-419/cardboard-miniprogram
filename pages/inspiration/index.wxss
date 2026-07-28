@@ -1,12 +1,47 @@
 .container {
+  position: relative;
   min-height: 100vh;
-  background-color: #f8fbfa;
+  /* 青绿雾感：比主界面更沉、更湿润，带纵向层次 */
+  background:
+    radial-gradient(ellipse 90% 55% at 12% -8%, rgba(126, 224, 186, 0.55) 0%, transparent 58%),
+    radial-gradient(ellipse 70% 45% at 92% 18%, rgba(94, 193, 89, 0.28) 0%, transparent 52%),
+    radial-gradient(ellipse 80% 50% at 50% 108%, rgba(0, 140, 120, 0.18) 0%, transparent 55%),
+    linear-gradient(168deg, #d8f0e4 0%, #eaf6ef 38%, #f3faf6 72%, #e4f2ea 100%);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.container::before {
+  content: '';
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  top: 18%;
+  height: 42%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.55) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.35) 0, transparent 2rpx),
+    radial-gradient(circle at 70% 55%, rgba(94, 193, 89, 0.2) 0, transparent 1.5rpx),
+    radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.25) 0, transparent 2rpx);
+  background-size: 180rpx 180rpx, 220rpx 220rpx, 160rpx 160rpx;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .custom-navbar {
-  background-color: #f8fbfa;
+  position: relative;
+  z-index: 2;
+  background: transparent;
   flex-shrink: 0;
   box-sizing: border-box;
 }
@@ -31,7 +66,7 @@
 
 .back-chevron {
   font-size: 48rpx;
-  color: #000000;
+  color: #1a3d2e;
   line-height: 1;
   font-weight: 400;
 }
@@ -44,10 +79,11 @@
 }
 
 .navbar-title {
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #1a1a1a;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #16352a;
   line-height: 1.2;
+  letter-spacing: 0.08em;
 }
 
 .navbar-right {
@@ -57,8 +93,10 @@
 }
 
 .ai-section {
+  position: relative;
+  z-index: 2;
   padding: 20rpx 24rpx;
-  background-color: #ffffff;
+  background-color: transparent;
   flex-shrink: 0;
 }
 
@@ -72,11 +110,12 @@
 .ai-input-wrapper {
   flex: 1;
   height: 140rpx;
-  background-color: rgba(255, 255, 255, 0.2);
-  border: 2rpx solid #c7ffc4;
+  background-color: rgba(255, 255, 255, 0.45);
+  border: 2rpx solid rgba(94, 193, 89, 0.35);
   border-radius: 40rpx;
   padding: 20rpx;
   position: relative;
+  backdrop-filter: blur(8px);
 }
 
 .ai-placeholder {
@@ -85,7 +124,7 @@
   top: 50%;
   transform: translateY(-50%);
   font-size: 24rpx;
-  color: #828282;
+  color: #6b8f7c;
   pointer-events: none;
 }
 
@@ -93,7 +132,7 @@
   width: 100%;
   height: 100%;
   font-size: 24rpx;
-  color: #424242;
+  color: #2a4a3a;
 }
 
 .ai-button {
@@ -121,7 +160,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  background-color: #cdffe5;
+  background-color: rgba(205, 255, 229, 0.85);
   border-radius: 25.2rpx;
   padding: 8rpx 16rpx;
   margin-left: 24rpx;
@@ -138,6 +177,8 @@
 }
 
 .inspirations-container {
+  position: relative;
+  z-index: 2;
   flex: 1;
   height: 0;
   width: 100%;
@@ -152,7 +193,7 @@
 
 .waterfall-empty-text {
   font-size: 28rpx;
-  color: #879487;
+  color: #5f8a74;
   line-height: 1.5;
 }
 
@@ -170,16 +211,23 @@
 
 .inspiration-card {
   position: relative;
-  background-color: #ffffff;
-  border: 0.8rpx solid #d6e8eb;
-  border-radius: 40rpx;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1rpx solid rgba(126, 200, 160, 0.45);
+  border-radius: 36rpx;
   padding: 28rpx;
-  box-shadow: 0 0 8rpx rgba(94, 223, 255, 0);
+  box-shadow:
+    0 8rpx 28rpx rgba(46, 120, 90, 0.08),
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
   transition: all 0.3s;
 }
 
 .inspiration-card.referenced {
-  box-shadow: 0 0 8rpx rgba(94, 223, 255, 1);
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(94, 193, 89, 0.75);
+  box-shadow:
+    0 0 0 2rpx rgba(94, 223, 180, 0.35),
+    0 10rpx 32rpx rgba(46, 140, 100, 0.14);
 }
 
 .reference-check {
@@ -206,8 +254,8 @@
 
 .card-text {
   font-size: 24rpx;
-  color: #424242;
-  line-height: 1.5;
+  color: #2c4538;
+  line-height: 1.55;
   word-break: break-word;
 }
 
@@ -264,19 +312,19 @@
   height: 20rpx;
 }
 
-/* 灵感输入栏：复用 gamepage，无左侧灯泡 */
+/* 灵感输入栏：雾感底，与页面氛围衔接 */
 .inspiration-bar {
+  position: relative;
+  z-index: 60;
   margin: 0 30rpx;
   padding-bottom: calc(18rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
   justify-content: center;
   flex-shrink: 0;
-  position: relative;
-  z-index: 51;
   min-height: 100rpx;
   box-sizing: border-box;
-  background-color: #f8fbfa;
+  background: transparent;
   transition: padding-bottom 0.15s ease-out;
 }
 
@@ -285,17 +333,19 @@
   min-width: 0;
   min-height: 92rpx;
   padding: 18rpx 30rpx;
-  background: #fff;
-  border: 1rpx solid #d7d7d7;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1rpx solid rgba(126, 200, 160, 0.5);
   border-radius: 28rpx;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  box-shadow: 0 10rpx 36rpx rgba(40, 100, 70, 0.1);
 }
 
 .inspiration-composer-focused {
-  border-color: #d7d7d7;
+  border-color: rgba(94, 193, 89, 0.7);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .inspiration-photo-strip {
@@ -352,14 +402,14 @@
   min-height: 44rpx;
   max-height: 200rpx;
   font-size: 32rpx;
-  color: #333;
+  color: #2c4538;
   line-height: 1.3;
   letter-spacing: -0.02em;
 }
 
 .inspiration-placeholder {
   font-size: 32rpx;
-  color: #aeaeae;
+  color: #8aab98;
   line-height: 1.3;
   letter-spacing: -0.02em;
 }
@@ -387,7 +437,7 @@
   left: 0;
   right: 0;
   top: 0;
-  bottom: 0;
+  /* bottom 由内联样式动态留出输入栏 */
   z-index: 50;
   background: transparent;
 }

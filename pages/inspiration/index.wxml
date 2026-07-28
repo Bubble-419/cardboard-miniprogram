@@ -80,13 +80,11 @@
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused}}"
-    catchtouchstart="onInspirationDismissFocus"
+    style="bottom: calc(180rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
+    catchtap="onInspirationDismissFocus"
   ></view>
   <view class="inspiration-bar" style="padding-bottom: calc(18rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)">
-    <view
-      class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-      catchtap="onInspirationComposerTap"
-    >
+    <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
         class="inspiration-photo-strip"

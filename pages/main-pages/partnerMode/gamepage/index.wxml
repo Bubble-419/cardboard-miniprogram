@@ -51,6 +51,7 @@
         roundStartedAt="{{avatarRoundStartedAt}}"
         roundTimerActive="{{roundTimerVisible}}"
         roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
+        suppressTimerCanvas="{{showHostStatementTip}}"
         bindavatartap="handleAvatarTap"
       />
     </view>
@@ -162,10 +163,7 @@
             <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
           </view>
         </view>
-        <view
-          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
-        >
+        <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
           <scroll-view
             wx:if="{{inspirationDraftPhotos.length}}"
             class="inspiration-photo-strip"
@@ -413,6 +411,7 @@
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible}}"
             loop="{{true}}"
+            suppressCanvas="{{showHostStatementTip}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
@@ -512,25 +511,40 @@
                 </view>
               </scroll-view>
 
-              <!-- 讨论阶段：全员可匿名表达 -->
-              <view class="action-express-chat-foot discussion-express-foot">
-                <input
-                  class="action-express-chat-input"
-                  value="{{expressDraftText}}"
-                  maxlength="40"
-                  confirm-type="send"
-                  placeholder="说点什么…"
-                  placeholder-class="spectator-express-placeholder"
-                  bindinput="onExpressInput"
-                  bindconfirm="submitExpress"
-                />
+              <!-- 讨论阶段：表达入口统一在卡片右下角 -->
+              <view class="card-express-corner {{expressComposerOpen ? 'card-express-corner-open' : ''}}">
+                <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
+                  <input
+                    class="spectator-express-input"
+                    value="{{expressDraftText}}"
+                    focus="{{expressComposerOpen}}"
+                    maxlength="40"
+                    confirm-type="send"
+                    placeholder="说点什么…"
+                    placeholder-class="spectator-express-placeholder"
+                    bindinput="onExpressInput"
+                    bindconfirm="submitExpress"
+                    bindblur="onExpressComposerBlur"
+                  />
+                  <view
+                    class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                    catchtap="submitExpress"
+                  >
+                    <image
+                      class="spectator-express-send-icon"
+                      src="/assets/partnerMode/icon-express-send.png"
+                      mode="aspectFit"
+                    />
+                  </view>
+                </view>
                 <view
-                  class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                  catchtap="submitExpress"
+                  wx:else
+                  class="express-fab-btn"
+                  catchtap="openExpressComposer"
                 >
                   <image
-                    class="spectator-express-send-icon"
-                    src="/assets/partnerMode/icon-express-send.png"
+                    class="express-fab-bubble"
+                    src="/assets/partnerMode/icon-express-bubble.svg"
                     mode="aspectFit"
                   />
                 </view>
@@ -542,6 +556,7 @@
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible}}"
             loop="{{true}}"
+            suppressCanvas="{{showHostStatementTip}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >
@@ -554,27 +569,14 @@
                 show-scrollbar="{{true}}"
                 wx:if="{{isCurrentPlayer}}"
               >
-                <view class="action-card-inner">
+                <view class="action-card-inner {{expressChatPanelVisible ? 'action-card-inner-express' : ''}}">
                   <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
-                    <view class="action-title-row-with-express">
-                      <view class="express-fab-spacer" wx:if="{{!isMasterMode}}"></view>
-                      <view class="action-title-main {{isMasterMode ? 'action-title-main-master' : ''}}">
-                        <view class="action-title-row" wx:if="{{isMasterMode}}">
-                          <view class="master-mode-badge">MASTER模式</view>
-                          <text class="action-title action-title-master">请进行卡牌行动并解释</text>
-                        </view>
-                        <text class="action-title" wx:else>出牌并解释</text>
+                    <view class="action-title-main {{isMasterMode ? 'action-title-main-master' : ''}}">
+                      <view class="action-title-row" wx:if="{{isMasterMode}}">
+                        <view class="master-mode-badge">MASTER模式</view>
+                        <text class="action-title action-title-master">请进行卡牌行动并解释</text>
                       </view>
-                      <view
-                        class="express-fab-btn"
-                        catchtap="toggleExpressChatInCard"
-                      >
-                        <image
-                          class="express-fab-bubble"
-                          src="{{expressChatPanelVisible ? '/assets/partnerMode/icon-express-view.png' : '/assets/partnerMode/icon-express-bubble.svg'}}"
-                          mode="aspectFit"
-                        />
-                      </view>
+                      <text class="action-title" wx:else>出牌并解释</text>
                     </view>
                     <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
                   </view>
@@ -608,29 +610,7 @@
                       </view>
                       <view id="express-chat-bottom" style="height: 1rpx;"></view>
                     </scroll-view>
-                    <view class="action-express-chat-foot" wx:if="{{expressCanSend}}">
-                      <input
-                        class="action-express-chat-input"
-                        value="{{expressDraftText}}"
-                        maxlength="40"
-                        confirm-type="send"
-                        placeholder="说点什么…"
-                        placeholder-class="spectator-express-placeholder"
-                        bindinput="onExpressInput"
-                        bindconfirm="submitExpress"
-                      />
-                      <view
-                        class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                        catchtap="submitExpress"
-                      >
-                        <image
-                          class="spectator-express-send-icon"
-                          src="/assets/partnerMode/icon-express-send.png"
-                          mode="aspectFit"
-                        />
-                      </view>
-                    </view>
-                    <view class="action-express-chat-locked" wx:else>
+                    <view class="action-express-chat-locked" wx:if="{{!expressCanSend}}">
                       <text class="action-express-chat-locked-text">本轮表态结束后可发送</text>
                     </view>
                   </view>
@@ -659,6 +639,20 @@
 
                 </view>
               </scroll-view>
+
+              <!-- 出牌玩家：表达入口固定在卡片右下角 -->
+              <view class="card-express-corner" wx:if="{{isCurrentPlayer}}">
+                <view
+                  class="express-fab-btn"
+                  catchtap="toggleExpressChatInCard"
+                >
+                  <image
+                    class="express-fab-bubble"
+                    src="{{expressChatPanelVisible ? '/assets/partnerMode/icon-express-view.png' : '/assets/partnerMode/icon-express-bubble.svg'}}"
+                    mode="aspectFit"
+                  />
+                </view>
+              </view>
 
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
@@ -800,10 +794,7 @@
           <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
         </view>
       </view>
-      <view
-        class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-        catchtap="onInspirationComposerTap"
-      >
+      <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
         <scroll-view
           wx:if="{{inspirationDraftPhotos.length}}"
           class="inspiration-photo-strip"
@@ -931,7 +922,7 @@
         </button>
       </view>
       <view class="bottom-actions-gap" wx:if="{{(showSpecialMoveBtn || isCurrentPlayer) && isHost && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing'}}"></view>
-      <view class="statement-btn-wrap" wx:if="{{isHost}}">
+      <view class="statement-btn-wrap" wx:if="{{isHost}}" id="hostStatementBtn">
         <button
           class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
           disabled="{{!canStartStatement}}"
@@ -944,9 +935,39 @@
     </view>
   </view>
 
+  <!-- 房主首次进入：spotlight 引导「开始表态」需全员打分后才亮起 -->
+  <view
+    class="host-statement-tip-mask {{hostStatementTipReady ? 'host-statement-tip-mask-ready' : ''}}"
+    wx:if="{{showHostStatementTip}}"
+    catchtouchmove="preventMove"
+    catchtap="dismissHostStatementTip"
+  >
+    <view
+      class="host-statement-spotlight"
+      wx:if="{{hostStatementTipReady}}"
+      style="{{hostStatementTipSpotStyle}}"
+    >
+      <view class="host-statement-spotlight-ring"></view>
+    </view>
+    <view
+      class="host-statement-tip-bubble"
+      wx:if="{{hostStatementTipReady}}"
+      style="{{hostStatementTipTextStyle}}"
+      catchtap="dismissHostStatementTip"
+    >
+      <view class="host-statement-tip-badge-wrap">
+        <text class="host-statement-tip-badge">提示</text>
+      </view>
+      <text class="host-statement-tip-text">只有所有人完成打分后，「开始表态」按钮才会亮起</text>
+      <text class="host-statement-tip-dismiss">点击任意处继续</text>
+      <view class="host-statement-tip-arrow"></view>
+    </view>
+  </view>
+
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused}}"
+    style="bottom: calc(200rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
     catchtap="onInspirationDismissFocus"
   ></view>
 </view>

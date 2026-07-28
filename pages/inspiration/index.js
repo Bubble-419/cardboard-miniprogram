@@ -271,12 +271,18 @@ Page({
   },
 
   onInspirationComposerTap() {
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: true
-      });
-    }
+    if (this.data.inspirationInputFocused) return;
+    this._requestInspirationAutoFocus();
+  },
+
+  _requestInspirationAutoFocus() {
+    this.setData({ inspirationAutoFocus: true });
+    if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
+    this._inspirationAutoFocusTimer = setTimeout(() => {
+      if (this.data.inspirationAutoFocus) {
+        this.setData({ inspirationAutoFocus: false });
+      }
+    }, 320);
   },
 
   onInspirationFocus() {
@@ -284,19 +290,18 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
   },
 
   onInspirationBlur() {
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
+      if (this.data.inspirationHoldKeyboard) return;
       this.setData({
         inspirationInputFocused: false,
         inspirationAutoFocus: false,
-        inspirationHoldKeyboard: false,
         inspirationKeyboardHeight: 0
       });
     }, 180);
@@ -362,16 +367,16 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
-              inspirationAutoFocus: true,
               inspirationHoldKeyboard: true
             });
+            this._requestInspirationAutoFocus();
           },
           fail: () => {
             this.setData({
               inspirationHoldKeyboard: false,
-              inspirationInputFocused: true,
-              inspirationAutoFocus: true
+              inspirationInputFocused: true
             });
+            this._requestInspirationAutoFocus();
           }
         });
       },

@@ -167,7 +167,10 @@ Page({
     expressViewRound: 0,
     scorePanelExpanded: false,
     /** 房主首次进入：开始表态按钮引导蒙层 */
-    showHostStatementTip: false
+    showHostStatementTip: false,
+    hostStatementTipReady: false,
+    hostStatementTipSpotStyle: '',
+    hostStatementTipTextStyle: ''
   },
 
   _applyTopBarSafeInset() {
@@ -293,12 +296,57 @@ Page({
     } catch (e) {
       // ignore storage read failure
     }
-    this.setData({ showHostStatementTip: true });
+    this.setData({ showHostStatementTip: true, hostStatementTipReady: false }, () => {
+      this._measureHostStatementTip(0);
+    });
+  },
+
+  _measureHostStatementTip(retry) {
+    if (!this.data.showHostStatementTip) return;
+    const attempt = retry || 0;
+    wx.createSelectorQuery()
+      .select('#hostStatementBtn')
+      .boundingClientRect((rect) => {
+        if (!rect || !rect.width) {
+          if (attempt < 8) {
+            setTimeout(() => this._measureHostStatementTip(attempt + 1), 80);
+          }
+          return;
+        }
+        const pad = 6;
+        const top = Math.max(0, rect.top - pad);
+        const left = Math.max(0, rect.left - pad);
+        const width = rect.width + pad * 2;
+        const height = rect.height + pad * 2;
+        let windowHeight = 667;
+        try {
+          const sys = typeof wx.getWindowInfo === 'function'
+            ? wx.getWindowInfo()
+            : wx.getSystemInfoSync();
+          windowHeight = (sys && sys.windowHeight) || windowHeight;
+        } catch (e) {
+          // keep default
+        }
+        const tipBottomGap = 20;
+        this.setData({
+          hostStatementTipReady: true,
+          hostStatementTipSpotStyle:
+            `top:${top}px;left:${left}px;width:${width}px;height:${height}px;`,
+          hostStatementTipTextStyle:
+            `bottom:${Math.max(12, windowHeight - top + tipBottomGap)}px;`
+        });
+      })
+      .exec();
   },
 
   dismissHostStatementTip() {
     if (!this.data.showHostStatementTip) return;
-    this.setData({ showHostStatementTip: false });
+    this.setData({
+      showHostStatementTip: false,
+      hostStatementTipReady: false,
+      hostStatementTipSpotStyle: '',
+      hostStatementTipTextStyle: ''
+    });
     try {
       wx.setStorageSync(HOST_STATEMENT_TIP_KEY, '1');
     } catch (e) {
@@ -1009,7 +1057,9 @@ Page({
         const result = (res && res.result) || {};
         if (result.ok === true && result.roomState) {
           if (result.isHost === true && this.data.isHost !== true) {
-            this.setData({ isHost: true });
+            this.setData({ isHost: true }, () => {
+              this._maybeShowHostStatementTip();
+            });
           } else if (result.isHost === false && this.data.isHost === true) {
             this.setData({ isHost: false });
           }
@@ -2340,8 +2390,8 @@ Page({
   },
 
   openExpressComposer() {
-    if (isDiscussionPhase(this.data.gamepagePhase) || isClosingPhase(this.data.gamepagePhase)) {
-      wx.showToast({ title: '出牌阶段可匿名表达', icon: 'none' });
+    if (isClosingPhase(this.data.gamepagePhase)) {
+      wx.showToast({ title: '当前阶段不可表达', icon: 'none' });
       return;
     }
     this.setData({
@@ -2916,12 +2966,20 @@ Page({
   },
 
   onInspirationComposerTap() {
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: true
-      });
-    }
+    // 兼容旧调用：选图返回后可主动拉起键盘
+    if (this.data.inspirationInputFocused) return;
+    this._requestInspirationAutoFocus();
+  },
+
+  _requestInspirationAutoFocus() {
+    this.setData({ inspirationAutoFocus: true });
+    if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
+    // 拉起后释放 focus 绑定，避免后续 setData 反复抢焦
+    this._inspirationAutoFocusTimer = setTimeout(() => {
+      if (this.data.inspirationAutoFocus) {
+        this.setData({ inspirationAutoFocus: false });
+      }
+    }, 320);
   },
 
   onInspirationFocus() {
@@ -2929,20 +2987,19 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    // autoFocus 只触发一次，避免后续 setData 反复抢焦导致闪动
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    // 只标记 UI 态，不要在这里改 focus 属性，否则会把原生聚焦打掉
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
   },
 
   onInspirationBlur() {
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
+      if (this.data.inspirationHoldKeyboard) return;
       this.setData({
         inspirationInputFocused: false,
         inspirationAutoFocus: false,
-        inspirationHoldKeyboard: false,
         inspirationKeyboardHeight: 0
       });
     }, 180);
@@ -3013,16 +3070,16 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
-              inspirationAutoFocus: true,
               inspirationHoldKeyboard: true
             });
+            this._requestInspirationAutoFocus();
           },
           fail: () => {
             this.setData({
               inspirationHoldKeyboard: false,
-              inspirationInputFocused: true,
-              inspirationAutoFocus: true
+              inspirationInputFocused: true
             });
+            this._requestInspirationAutoFocus();
           }
         });
       },
