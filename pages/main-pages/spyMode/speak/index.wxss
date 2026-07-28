@@ -1,34 +1,5 @@
 @import "../styles/common.wxss";
 
-.speak-order {
-  margin-top: 8rpx;
-}
-
-.order-item {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 14rpx 0;
-  font-size: 26rpx;
-  color: #6F6F6F;
-}
-
-.order-item.current {
-  color: #3AAE34;
-  font-weight: 700;
-}
-
-.order-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  background: #D8EFD6;
-}
-
-.order-item.current .order-dot {
-  background: #5EC159;
-}
-
 .vote-opened-tip {
   margin: 0 40rpx 24rpx;
   padding: 24rpx 28rpx;

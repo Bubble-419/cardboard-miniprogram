@@ -16,17 +16,14 @@ Page({
     isHost: false,
     navbarPaddingTop: 44,
     avatarList: [],
-    round: 1,
     countdownText: '5:00',
     civilianWord: '',
     civilianBlurb: '',
     spyWord: '',
     spyBlurb: '',
-    speakOrderView: [],
     spyPlayers: [],
     myCard: null,
     cardRevealed: false,
-    currentSpeakerName: '',
     voteOpening: false,
     acting: false
   },
@@ -125,22 +122,10 @@ Page({
         return;
       }
 
-      const players = spyGame.players || [];
-      const nameMap = {};
-      players.forEach((p) => {
-        nameMap[p.playerIndex] = p.name;
-      });
-
-      let spyIndexSet = this._spyIndexSet || null;
-
       if (isHost) {
         const overview = await callSpyAction('hostOverview', { roomId });
         if (overview.ok && this._pageAlive) {
           const overviewPlayers = overview.players || [];
-          spyIndexSet = new Set(
-            overviewPlayers.filter((p) => p.role === 'spy').map((p) => p.playerIndex)
-          );
-          this._spyIndexSet = spyIndexSet;
           this.setData({
             civilianWord: overview.civilianWord || '',
             civilianBlurb: overview.civilianBlurb || '',
@@ -157,22 +142,7 @@ Page({
         }
       }
 
-      const speakOrderView = (spyGame.speakOrder || []).map((idx, i) => {
-        const p = players.find((x) => x.playerIndex === idx) || {};
-        return {
-          playerIndex: idx,
-          name: p.name || nameMap[idx] || `玩家${idx}`,
-          alive: p.alive !== false,
-          current: i === spyGame.currentSpeakIndex,
-          isSpy: !!(spyIndexSet && spyIndexSet.has(idx))
-        };
-      });
-      const current = speakOrderView.find((x) => x.current);
-
       this.setData({
-        round: spyGame.round || 1,
-        speakOrderView,
-        currentSpeakerName: current ? current.name : '',
         civilianWord: spyGame.civilianWord || this.data.civilianWord,
         civilianBlurb: spyGame.civilianBlurb || this.data.civilianBlurb,
         spyWord: spyGame.spyWord || this.data.spyWord,

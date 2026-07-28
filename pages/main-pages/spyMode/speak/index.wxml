@@ -15,8 +15,8 @@
       </view>
     </view>
     <view class="title-block">
-      <text class="page-title">发言阶段 · 第 {{round}} 轮</text>
-      <text class="page-subtitle">请按顺序口头描述，勿直接念出词名</text>
+      <text class="page-title">发言阶段</text>
+      <text class="page-subtitle">请口头描述，勿直接念出词名</text>
     </view>
   </view>
 
@@ -57,19 +57,6 @@
       </view>
       <view class="section-body" wx:if="{{!spyPlayers.length}}">加载中…</view>
     </view>
-    <view class="section">
-      <view class="section-title">发言顺序</view>
-      <view class="speak-order">
-        <view
-          class="order-item {{item.current ? 'current' : ''}}"
-          wx:for="{{speakOrderView}}"
-          wx:key="playerIndex"
-        >
-          <view class="order-dot"></view>
-          <text>{{item.name}}{{item.alive ? '' : '（已出局）'}}{{item.isSpy ? ' · 卧底' : ''}}</text>
-        </view>
-      </view>
-    </view>
   </block>
 
   <block wx:else>
@@ -87,10 +74,6 @@
         <view class="section-body">点击展开你的交互方式卡</view>
         <view class="flip-hint">请注意遮挡屏幕，避免被他人看到</view>
       </block>
-    </view>
-    <view class="section" wx:if="{{currentSpeakerName}}">
-      <view class="section-title">当前发言</view>
-      <view class="status-text">{{currentSpeakerName}}</view>
     </view>
     <view class="vote-opened-tip" wx:if="{{voteOpening}}">主持人已开启投票，正在进入…</view>
   </block>
