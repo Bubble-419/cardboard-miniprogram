@@ -155,7 +155,7 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
+      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
           <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
@@ -198,17 +198,18 @@
             <textarea
               class="inspiration-textarea"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationInputFocused}}"
+              focus="{{inspirationAutoFocus}}"
               hold-keyboard="{{inspirationHoldKeyboard}}"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
               bindinput="onInspirationInput"
+              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               maxlength="2000"
               auto-height
               show-confirm-bar="{{false}}"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               cursor-spacing="24"
             />
             <view
@@ -792,7 +793,7 @@
     </view>
 
     <!-- 灵感记录 -->
-    <view class="inspiration-bar">
+    <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
       <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
         <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
@@ -835,17 +836,18 @@
           <textarea
             class="inspiration-textarea"
             value="{{inspirationDraftText}}"
-            focus="{{inspirationInputFocused}}"
+            focus="{{inspirationAutoFocus}}"
             hold-keyboard="{{inspirationHoldKeyboard}}"
             bindfocus="onInspirationFocus"
             bindblur="onInspirationBlur"
             bindinput="onInspirationInput"
+            bindkeyboardheightchange="onInspirationKeyboardHeightChange"
             placeholder="记录您的灵感..."
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
             auto-height
             show-confirm-bar="{{false}}"
-            adjust-position="{{true}}"
+            adjust-position="{{false}}"
             cursor-spacing="24"
           />
           <view

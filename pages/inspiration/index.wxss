@@ -277,6 +277,7 @@
   min-height: 100rpx;
   box-sizing: border-box;
   background-color: #f8fbfa;
+  transition: padding-bottom 0.15s ease-out;
 }
 
 .inspiration-composer {

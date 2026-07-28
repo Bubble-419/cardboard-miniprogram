@@ -2,7 +2,13 @@
  * 脑暴大富翁（partnerMode）- 出牌页
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
-const { assignAvatarImages, DEFAULT_AVATAR } = require('../../../../utils/avatars');
+const {
+  assignAvatarImages,
+  getMemberAvatarFingerprint
+} = require('../../../../utils/avatars');
+
+/** 匿名表达统一灰色默认头像（不区分玩家） */
+const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
 const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
@@ -129,7 +135,9 @@ Page({
     inspirationDraftText: '',
     inspirationDraftPhotos: [],
     inspirationInputFocused: false,
+    inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
+    inspirationKeyboardHeight: 0,
     inspirationSaving: false,
     inspirationHasText: false,
     topBarPaddingRight: 30,
@@ -638,6 +646,8 @@ Page({
     if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) return;
 
     const tick = () => {
+      // 输入灵感时避免高频 setData 顶布局/卡死
+      if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) return;
       const startedAt = this.data.partnerRoundStartedAt;
       if (!startedAt) return;
       const timerState = getRoundTimerState(startedAt);
@@ -1413,7 +1423,7 @@ Page({
       closingStep,
       partnerRoundStartedAt || 0,
       avatarRoundStartedAt || 0,
-      members.map((m) => `${m.userId || m.playerIndex}:${m.avatarUrl || m.avatarImage || ''}:${m.nickName || ''}`).join('|'),
+      members.map((m) => `${m.userId || m.playerIndex}:${getMemberAvatarFingerprint(m)}:${m.nickName || ''}`).join('|'),
       roundSummaries.length,
       roundContent.voiceLines.length,
       roundContent.turnRecords.length,
@@ -1604,6 +1614,10 @@ Page({
               return true;
             }
             if (page === 'gamepage') {
+              // 灵感输入聚焦时跳过整页 setData，避免键盘顶起 + 轮询互相拉扯卡死
+              if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) {
+                return true;
+              }
               const prevMaster = this.data.isMasterMode;
               const prevClosingStep = this.data.closingStep;
               const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
@@ -2520,7 +2534,8 @@ Page({
       text: msg.text || '',
       round: msg.round != null ? Number(msg.round) : null,
       phase: msg.phase === 'discussion' ? 'discussion' : 'play',
-      avatar: DEFAULT_AVATAR,
+      // 统一灰色默认头，不区分玩家
+      avatar: EXPRESS_ANON_AVATAR,
       dotColor,
       avatarDotStyle: `background-color:${dotColor};`
     };
@@ -2902,7 +2917,10 @@ Page({
 
   onInspirationComposerTap() {
     if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
+      this.setData({
+        inspirationInputFocused: true,
+        inspirationAutoFocus: true
+      });
     }
   },
 
@@ -2911,13 +2929,22 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this.setData({ inspirationInputFocused: true });
+    // autoFocus 只触发一次，避免后续 setData 反复抢焦导致闪动
+    this.setData({
+      inspirationInputFocused: true,
+      inspirationAutoFocus: false
+    });
   },
 
   onInspirationBlur() {
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
-      this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+      this.setData({
+        inspirationInputFocused: false,
+        inspirationAutoFocus: false,
+        inspirationHoldKeyboard: false,
+        inspirationKeyboardHeight: 0
+      });
     }, 180);
   },
 
@@ -2926,7 +2953,18 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+    this.setData({
+      inspirationInputFocused: false,
+      inspirationAutoFocus: false,
+      inspirationHoldKeyboard: false,
+      inspirationKeyboardHeight: 0
+    });
+  },
+
+  onInspirationKeyboardHeightChange(e) {
+    const height = (e && e.detail && e.detail.height) || 0;
+    if (height === this.data.inspirationKeyboardHeight) return;
+    this.setData({ inspirationKeyboardHeight: height });
   },
 
   onInspirationInput(e) {
@@ -2975,11 +3013,16 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
+              inspirationAutoFocus: true,
               inspirationHoldKeyboard: true
             });
           },
           fail: () => {
-            this.setData({ inspirationHoldKeyboard: false, inspirationInputFocused: true });
+            this.setData({
+              inspirationHoldKeyboard: false,
+              inspirationInputFocused: true,
+              inspirationAutoFocus: true
+            });
           }
         });
       },
@@ -3057,7 +3100,9 @@ Page({
         inspirationDraftPhotos: [],
         inspirationHasText: false,
         inspirationInputFocused: false,
-        inspirationHoldKeyboard: false
+        inspirationAutoFocus: false,
+        inspirationHoldKeyboard: false,
+        inspirationKeyboardHeight: 0
       });
       wx.showToast({ title: '已保存', icon: 'success' });
       await this._refreshInspirationCount();

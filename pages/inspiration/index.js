@@ -19,7 +19,9 @@ Page({
     inspirationDraftText: '',
     inspirationDraftPhotos: [],
     inspirationInputFocused: false,
+    inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
+    inspirationKeyboardHeight: 0,
     inspirationSaving: false,
     inspirationHasText: false,
     navbarPaddingTop: 44
@@ -270,7 +272,10 @@ Page({
 
   onInspirationComposerTap() {
     if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
+      this.setData({
+        inspirationInputFocused: true,
+        inspirationAutoFocus: true
+      });
     }
   },
 
@@ -279,13 +284,21 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this.setData({ inspirationInputFocused: true });
+    this.setData({
+      inspirationInputFocused: true,
+      inspirationAutoFocus: false
+    });
   },
 
   onInspirationBlur() {
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
-      this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+      this.setData({
+        inspirationInputFocused: false,
+        inspirationAutoFocus: false,
+        inspirationHoldKeyboard: false,
+        inspirationKeyboardHeight: 0
+      });
     }, 180);
   },
 
@@ -294,7 +307,18 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this.setData({ inspirationInputFocused: false, inspirationHoldKeyboard: false });
+    this.setData({
+      inspirationInputFocused: false,
+      inspirationAutoFocus: false,
+      inspirationHoldKeyboard: false,
+      inspirationKeyboardHeight: 0
+    });
+  },
+
+  onInspirationKeyboardHeightChange(e) {
+    const height = (e && e.detail && e.detail.height) || 0;
+    if (height === this.data.inspirationKeyboardHeight) return;
+    this.setData({ inspirationKeyboardHeight: height });
   },
 
   onInspirationInput(e) {
@@ -338,11 +362,16 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
+              inspirationAutoFocus: true,
               inspirationHoldKeyboard: true
             });
           },
           fail: () => {
-            this.setData({ inspirationHoldKeyboard: false, inspirationInputFocused: true });
+            this.setData({
+              inspirationHoldKeyboard: false,
+              inspirationInputFocused: true,
+              inspirationAutoFocus: true
+            });
           }
         });
       },
@@ -420,7 +449,9 @@ Page({
         inspirationDraftPhotos: [],
         inspirationHasText: false,
         inspirationInputFocused: false,
-        inspirationHoldKeyboard: false
+        inspirationAutoFocus: false,
+        inspirationHoldKeyboard: false,
+        inspirationKeyboardHeight: 0
       });
       wx.showToast({ title: '已保存', icon: 'success' });
       await this.loadInspirations();

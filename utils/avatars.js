@@ -7,16 +7,17 @@ const {
 } = require('./wxUserAvatar');
 
 /** 本地随机头像池，按 avatarIndex 分配（房间内不重复） */
+/** PNG：真机对带 ICC+Alpha 的 VP8X WebP 常解码失败 */
 const AVATAR_IMAGES = [
-  '/assets/avatar/frame_2085662311_1x.webp',
-  '/assets/avatar/frame_2085662312_1x.webp',
-  '/assets/avatar/frame_2085662313_1x.webp',
-  '/assets/avatar/frame_2085662314_1x.webp',
-  '/assets/avatar/frame_2085662315_1x.webp',
-  '/assets/avatar/frame_2085662316_1x.webp',
-  '/assets/avatar/frame_2085662317_1x.webp',
-  '/assets/avatar/frame_2085662318_1x.webp',
-  '/assets/avatar/frame_2085662319_1x.webp'
+  '/assets/avatar/frame_2085662311_1x.png',
+  '/assets/avatar/frame_2085662312_1x.png',
+  '/assets/avatar/frame_2085662313_1x.png',
+  '/assets/avatar/frame_2085662314_1x.png',
+  '/assets/avatar/frame_2085662315_1x.png',
+  '/assets/avatar/frame_2085662316_1x.png',
+  '/assets/avatar/frame_2085662317_1x.png',
+  '/assets/avatar/frame_2085662318_1x.png',
+  '/assets/avatar/frame_2085662319_1x.png'
 ];
 
 /**
@@ -127,8 +128,14 @@ function assignAvatarImages(members) {
       isDisplayableAvatarUrl(m.avatarUrl) &&
       (m.isMe === true || isShareableAvatarUrl(m.avatarUrl) || isLocalTempAvatar(m.avatarUrl));
     if (canUseUrl) {
-      // 始终用当前可用 URL（服务端每次可能换签名）；闪烁由 fingerprint 稳定键抑制
-      if (userKey) stickyCustomAvatarByUser.set(userKey, m.avatarUrl);
+      // 临时链签名每轮变化；稳定键相同则复用旧 URL，避免 <image src> 重载闪烁
+      if (userKey) {
+        const sticky = stickyCustomAvatarByUser.get(userKey);
+        if (sticky && getAvatarStableKey(sticky) === getAvatarStableKey(m.avatarUrl)) {
+          return { ...m, avatarImage: sticky };
+        }
+        stickyCustomAvatarByUser.set(userKey, m.avatarUrl);
+      }
       return { ...m, avatarImage: m.avatarUrl };
     }
     if (userKey && stickyCustomAvatarByUser.has(userKey)) {

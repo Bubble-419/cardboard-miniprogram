@@ -92,6 +92,8 @@ Page({
     silentTimerActive: false,
     inspirationDraftText: '',
     inspirationInputFocused: false,
+    inspirationAutoFocus: false,
+    inspirationKeyboardHeight: 0,
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
     reverseSteps: REVERSE_STEPS,
@@ -230,16 +232,32 @@ Page({
 
   onInspirationComposerTap() {
     if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
+      this.setData({
+        inspirationInputFocused: true,
+        inspirationAutoFocus: true
+      });
     }
   },
 
   onInspirationFocus() {
-    this.setData({ inspirationInputFocused: true });
+    this.setData({
+      inspirationInputFocused: true,
+      inspirationAutoFocus: false
+    });
   },
 
   onInspirationBlur() {
-    this.setData({ inspirationInputFocused: false });
+    this.setData({
+      inspirationInputFocused: false,
+      inspirationAutoFocus: false,
+      inspirationKeyboardHeight: 0
+    });
+  },
+
+  onInspirationKeyboardHeightChange(e) {
+    const height = (e && e.detail && e.detail.height) || 0;
+    if (height === this.data.inspirationKeyboardHeight) return;
+    this.setData({ inspirationKeyboardHeight: height });
   },
 
   onInspirationInput(e) {
@@ -256,7 +274,9 @@ Page({
       this.setData({
         inspirationDraftText: '',
         inspirationHasText: false,
-        inspirationInputFocused: false
+        inspirationInputFocused: false,
+        inspirationAutoFocus: false,
+        inspirationKeyboardHeight: 0
       });
       return;
     }

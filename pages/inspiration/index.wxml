@@ -82,7 +82,7 @@
     wx:if="{{inspirationInputFocused}}"
     catchtouchstart="onInspirationDismissFocus"
   ></view>
-  <view class="inspiration-bar">
+  <view class="inspiration-bar" style="padding-bottom: calc(18rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)">
     <view
       class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
       catchtap="onInspirationComposerTap"
@@ -119,17 +119,18 @@
         <textarea
           class="inspiration-textarea"
           value="{{inspirationDraftText}}"
-          focus="{{inspirationInputFocused}}"
+          focus="{{inspirationAutoFocus}}"
           hold-keyboard="{{inspirationHoldKeyboard}}"
           bindfocus="onInspirationFocus"
           bindblur="onInspirationBlur"
           bindinput="onInspirationInput"
+          bindkeyboardheightchange="onInspirationKeyboardHeightChange"
           placeholder="记录您的灵感..."
           placeholder-class="inspiration-placeholder"
           maxlength="2000"
           auto-height
           show-confirm-bar="{{false}}"
-          adjust-position="{{true}}"
+          adjust-position="{{false}}"
           cursor-spacing="24"
         />
         <view

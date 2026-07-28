@@ -138,7 +138,7 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
+      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         </view>
@@ -150,14 +150,15 @@
             <input
               class="inspiration-textarea"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationInputFocused}}"
+              focus="{{inspirationAutoFocus}}"
               maxlength="200"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
+              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
@@ -237,7 +238,7 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
+      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         </view>
@@ -249,14 +250,15 @@
             <input
               class="inspiration-textarea"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationInputFocused}}"
+              focus="{{inspirationAutoFocus}}"
               maxlength="200"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
+              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
