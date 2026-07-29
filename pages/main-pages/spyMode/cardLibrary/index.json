@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "谁是卧底牌库",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "flip-word-card": "/components/flip-word-card/index",
+    "page-footer": "/components/page-footer/index"
+  }
+}

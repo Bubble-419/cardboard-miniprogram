@@ -5,14 +5,14 @@ const {
   buildAvatarList,
   buildSpyPageUrl,
   openUrl,
-  roleLabel
+  roleLabel,
+  withSpyRefreshGuard
 } = require('../../../../utils/spyMode');
 const { followSpyRoomState } = require('../../../../utils/spyFollow');
 
 Page({
   data: {
     roomId: '',
-    isHost: false,
     navbarPaddingTop: 44,
     avatarList: [],
     round: 1,
@@ -22,6 +22,7 @@ Page({
     eliminatedRoleLabel: '',
     maxVotes: 0,
     tied: false,
+    tallyList: [],
     alivePlayers: [],
     acting: false
   },
@@ -43,64 +44,100 @@ Page({
   onShow() {
     this._pageAlive = true;
     this.refresh();
-    this._pollTimer = setInterval(() => this.refresh(), this.data.isHost ? 2000 : 800);
+    this.startPolling();
   },
 
   onHide() {
-    if (this._pollTimer) clearInterval(this._pollTimer);
+    this._pageAlive = false;
+    this.stopPolling();
   },
 
   onUnload() {
     this._pageAlive = false;
-    if (this._pollTimer) clearInterval(this._pollTimer);
+    this.stopPolling();
+  },
+
+  startPolling() {
+    this.stopPolling();
+    this._pollTimer = setInterval(() => {
+      if (this._pageAlive === false) return;
+      this.refresh();
+    }, 1000);
+  },
+
+  stopPolling() {
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
   },
 
   async refresh() {
     const roomId = this.data.roomId;
-    if (!roomId || this._refreshing) return;
-    this._refreshing = true;
-    try {
-      const res = await callCloudFunction('getAddPlayerData', { roomId });
-      const result = (res && res.result) || {};
-      if (!this._pageAlive || result.ok !== true) return;
-      const isHost = result.isHost === true;
-      const spyGame = (result.roomState && result.roomState.spyGame) || {};
-      const last = spyGame.lastResult || {};
-      const eliminatedIndex = last.eliminatedIndex;
-      this.setData({
-        isHost,
-        avatarList: buildAvatarList(result.members || []),
-        round: spyGame.round || 1,
-        hasElimination: eliminatedIndex != null,
-        eliminatedName: last.eliminatedName || '',
-        eliminatedRole: last.eliminatedRole || '',
-        eliminatedRoleLabel: roleLabel(last.eliminatedRole),
-        maxVotes: last.maxVotes || 0,
-        tied: !!last.tied,
-        alivePlayers: (spyGame.players || []).filter((p) => p.alive !== false)
-      });
+    if (!roomId) return;
+    await withSpyRefreshGuard(this, async () => {
+      try {
+        const res = await callCloudFunction('getAddPlayerData', { roomId });
+        const result = (res && res.result) || {};
+        if (!this._pageAlive || result.ok !== true) return;
 
-      if (!isHost) {
-        followSpyRoomState(result, roomId, { stayOnPage: 'spyresult' });
+        followSpyRoomState(result, roomId, {
+          stayOnPage: 'spyresult',
+          allowHost: true
+        });
+
+        const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const last = spyGame.lastResult || {};
+        const eliminatedIndex = last.eliminatedIndex;
+        const players = spyGame.players || [];
+        const tallies = last.tallies || {};
+        const tallyList = Object.keys(tallies)
+          .map((key) => {
+            const idx = Number(key);
+            const p = players.find((x) => Number(x.playerIndex) === idx);
+            return {
+              playerIndex: idx,
+              name: (p && p.name) || `玩家${idx}`,
+              votes: Number(tallies[key]) || 0
+            };
+          })
+          .sort((a, b) => b.votes - a.votes);
+
+        this.setData({
+          avatarList: buildAvatarList(result.members || []),
+          round: spyGame.round || 1,
+          hasElimination: eliminatedIndex != null,
+          eliminatedName: last.eliminatedName || '',
+          eliminatedRole: last.eliminatedRole || '',
+          eliminatedRoleLabel: roleLabel(last.eliminatedRole),
+          maxVotes: last.maxVotes || 0,
+          tied: !!last.tied,
+          tallyList,
+          alivePlayers: players.filter((p) => p.alive !== false)
+        });
+      } catch (e) {
+        console.warn('spy result refresh', e);
       }
-    } catch (e) {
-      console.warn('spy result refresh', e);
-    } finally {
-      this._refreshing = false;
-    }
+    });
   },
 
-  async onNext() {
-    if (!this.data.isHost || this.data.acting) return;
+  async onContinue() {
+    if (this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('enterNextRoundPage', { roomId: this.data.roomId });
+      const result = await callSpyAction('nextRound', { roomId: this.data.roomId });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         this.setData({ acting: false });
         return;
       }
-      openUrl(buildSpyPageUrl('nextRound', this.data.roomId), { immediate: true, noReLaunch: true });
+      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
+        immediate: true,
+        noReLaunch: true
+      });
+      if (!navigated && this._pageAlive) {
+        this.setData({ acting: false });
+      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
       this.setData({ acting: false });

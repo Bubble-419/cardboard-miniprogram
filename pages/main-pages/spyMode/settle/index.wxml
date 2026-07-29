@@ -38,7 +38,7 @@
     </view>
   </view>
 
-  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
-    <view class="primary-btn" bindtap="onRestart">再来一局</view>
+  <page-footer extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onRestart">再来一局</view>
   </page-footer>
 </view>

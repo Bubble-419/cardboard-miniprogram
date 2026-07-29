@@ -1,0 +1,53 @@
+<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+  <view class="header-section">
+    <view class="topbar">
+      <view class="room-entry" bindtap="handleGoRoom">
+        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+      </view>
+    </view>
+    <view class="title-block">
+      <text class="page-title">谁是卧底牌库</text>
+      <text class="page-subtitle">共 {{groupCount}} 组词语卡 · 自由翻阅，不参与本局分词</text>
+    </view>
+  </view>
+
+  <view class="card-grid">
+    <view
+      class="card-tile"
+      wx:for="{{cards}}"
+      wx:key="word"
+      data-word="{{item.word}}"
+      bindtap="onTapCard"
+    >
+      <view class="tile-stack">
+        <image class="tile-cover" src="{{item.coverSrc}}" mode="aspectFit" />
+      </view>
+      <view class="tile-meta">
+        <text class="tile-name">{{item.word}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 翻阅面板：词语 ↔ 词语1（不展示背面） -->
+  <view class="viewer-mask" wx:if="{{viewerOpen}}" catchtouchmove="noop" bindtap="onCloseViewer">
+    <view class="viewer-sheet" catchtap="noop">
+      <view class="viewer-head">
+        <text class="viewer-title">{{selectedWord}}</text>
+        <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
+      </view>
+      <text class="viewer-hint">点击卡牌：词语 → 词语1 → 词语，可循环翻看</text>
+      <flip-word-card
+        wx:if="{{selectedCard}}"
+        word="{{selectedCard.word}}"
+        skipBack="{{true}}"
+        assignedWordSrc="{{selectedCard.assignedWordSrc}}"
+        assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
+        word1Src="{{selectedCard.word1Src}}"
+        word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
+      />
+      <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
+    </view>
+  </view>
+
+  <page-footer extClass="footer" showPrimary="{{false}}" bind:prev="handleGoBack"></page-footer>
+</view>

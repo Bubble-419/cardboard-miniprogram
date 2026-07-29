@@ -21,6 +21,7 @@
     "pages/main-pages/selectBG/index",
     "pages/main-pages/modeIndex/index",
     "pages/main-pages/spyMode/modeIndex/index",
+    "pages/main-pages/spyMode/cardLibrary/index",
     "pages/main-pages/spyMode/assign/index",
     "pages/main-pages/spyMode/speak/index",
     "pages/main-pages/spyMode/vote/index",

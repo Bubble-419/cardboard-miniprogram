@@ -1,0 +1,41 @@
+<view
+  class="flip-scene {{animating ? 'is-animating' : ''}}"
+  hover-class="is-pressed"
+  hover-start-time="0"
+  hover-stay-time="80"
+  bindtap="onTap"
+>
+  <view class="flip-card {{flipClass}}">
+    <!-- 1. 背面 -->
+    <view wx:if="{{showBackFace}}" class="flip-face">
+      <image
+        wx:if="{{backSrc && !imgError}}"
+        class="flip-img"
+        src="{{backSrc}}"
+        mode="aspectFit"
+        binderror="onImgError"
+        bindload="onImgLoad"
+      />
+      <view wx:else class="flip-back-fallback">
+        <view class="flip-back-pattern"></view>
+        <text class="flip-back-title">词语卡</text>
+        <text class="flip-back-hint">点击翻开</text>
+      </view>
+    </view>
+
+    <!-- 2. 词语 / 3. 词语1 -->
+    <view wx:else class="flip-face">
+      <image
+        wx:if="{{displaySrc && !imgError}}"
+        class="flip-img"
+        src="{{displaySrc}}"
+        mode="aspectFit"
+        binderror="onImgError"
+        bindload="onImgLoad"
+      />
+      <view wx:else class="flip-placeholder">
+        <text class="flip-placeholder-text">图片暂不可用</text>
+      </view>
+    </view>
+  </view>
+</view>

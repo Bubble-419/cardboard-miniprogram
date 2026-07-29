@@ -289,6 +289,18 @@ Page({
 
       const targetUrl = `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`;
       const openModePage = () => {
+        // 谁是卧底：统一 redirectTo，避免与后续跟页叠栈导致不同步
+        if (mode.id === 'spy') {
+          const { openUrl } = require('../../../utils/pageNavigate');
+          const navigated = openUrl(targetUrl, { immediate: true, noReLaunch: true });
+          if (this._pageAlive) {
+            this.setData({ isSelecting: false });
+          }
+          if (!navigated) {
+            wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+          }
+          return;
+        }
         wx.navigateTo({
           url: targetUrl,
           fail: (err) => {

@@ -3,6 +3,7 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "user-list": "/components/user-list/index",
-    "page-footer": "/components/page-footer/index"
+    "page-footer": "/components/page-footer/index",
+    "flip-word-card": "/components/flip-word-card/index"
   }
 }

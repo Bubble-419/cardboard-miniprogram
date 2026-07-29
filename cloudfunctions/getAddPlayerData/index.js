@@ -15,11 +15,16 @@ function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
 }
 
-/** 谁是卧底公开快照：词文案与票明细仅房主可见；结算阶段全员揭晓 */
+/** 谁是卧底公开快照：不泄露他人词语/身份；投票中不公开票数 */
 function buildPublicSpyGame(spyGame, isHost, assignments) {
   if (!spyGame || typeof spyGame !== 'object') return null;
   const voteStatus = spyGame.voteStatus || {};
   const phase = spyGame.phase || 'intro';
+  const aliveCount = (Array.isArray(spyGame.players) ? spyGame.players : [])
+    .filter((p) => p && p.alive !== false).length;
+  const votedCount = Array.isArray(voteStatus.votedPlayerIndexes)
+    ? voteStatus.votedPlayerIndexes.length
+    : 0;
   const base = {
     phase,
     spyCount: spyGame.spyCount || 0,
@@ -28,28 +33,24 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
     speakOrder: Array.isArray(spyGame.speakOrder) ? spyGame.speakOrder : [],
     currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
     speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
+    speakTurnStartedAt: spyGame.speakTurnStartedAt || 0,
     voteStartedAt: spyGame.voteStartedAt || 0,
     speakRoundMs: spyGame.speakRoundMs || 300000,
+    speakTurnMs: spyGame.speakTurnMs || 60000,
     voteDeadlineMs: spyGame.voteDeadlineMs || 120000,
+    tieBreak: spyGame.tieBreak === true,
     voteStatus: {
       votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes)
         ? voteStatus.votedPlayerIndexes
         : [],
-      abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes)
-        ? voteStatus.abstainPlayerIndexes
-        : []
+      abstainPlayerIndexes: [],
+      votedCount,
+      totalVoters: aliveCount
     },
     lastResult: spyGame.lastResult || null,
     winnerSide: spyGame.winnerSide || null
   };
-  if (isHost) {
-    base.civilianWord = spyGame.civilianWord || '';
-    base.spyWord = spyGame.spyWord || '';
-    base.civilianBlurb = spyGame.civilianBlurb || '';
-    base.spyBlurb = spyGame.spyBlurb || '';
-    base.voteStatus.tally = voteStatus.tally || {};
-    base.voteStatus.ballots = voteStatus.ballots || {};
-  }
+  // 仅结算阶段全员揭晓
   if (phase === 'settle') {
     base.civilianWord = spyGame.civilianWord || '';
     base.spyWord = spyGame.spyWord || '';

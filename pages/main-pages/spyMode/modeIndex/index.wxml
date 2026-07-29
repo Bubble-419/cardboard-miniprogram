@@ -16,14 +16,14 @@
     </view>
     <view class="title-block">
       <text class="page-title">谁是卧底</text>
-      <text class="page-subtitle">
-        {{isHost ? '确认规则后开始分配身份' : hostStatusText}}
-      </text>
+      <text class="page-subtitle">{{statusText}}</text>
+      <text class="page-intro">相近词伪装身份，口头描述找卧底。开始前可自由翻阅牌库。</text>
     </view>
   </view>
 
+  <!-- 主区：当前玩家 + 开始游戏 -->
   <view class="section">
-    <view class="section-title">当前{{isHost ? '房间成员' : '玩家'}}</view>
+    <view class="section-title">当前玩家</view>
     <view class="member-list-wrap">
       <user-list
         avatarList="{{playerAvatarList}}"
@@ -34,31 +34,65 @@
       />
     </view>
     <view class="hint-text" style="margin-top: 20rpx">{{spyCountHint}}</view>
-    <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名参与者（不含主持人）才能开始</view>
+    <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名玩家才能开始</view>
   </view>
 
-  <view class="section">
-    <view class="section-title">玩法说明</view>
-    <view class="rules-list">
-      <text class="rules-item">1. 每位参与者获得一个交互方式词，多数人词相同，卧底词相近但不同。</text>
-      <text class="rules-item">2. 按顺序口头描述自己的词，不要直接念出词名。</text>
-      <text class="rules-item">3. 每轮发言后进行投票，得票最多者出局并公布身份。</text>
-      <text class="rules-item">4. 卧底全灭则平民胜；存活卧底数不少于平民则卧底胜。</text>
-      <text class="rules-item">5. 主持人只主持不参玩，负责推进流程与确认投票结果。</text>
+  <!-- 次级功能：牌库 / 玩法说明（低于主按钮层级） -->
+  <view class="secondary-actions">
+    <view
+      wx:if="{{showLibraryEntry}}"
+      class="secondary-btn"
+      bindtap="onOpenLibrary"
+    >
+      <view class="deck-icon">
+        <view class="deck-layer deck-l3"></view>
+        <view class="deck-layer deck-l2"></view>
+        <view class="deck-layer deck-l1"></view>
+      </view>
+      <view class="secondary-btn-text">
+        <text class="secondary-btn-title">牌库 · {{libraryGroupCount}}组</text>
+        <text class="secondary-btn-sub">浏览全部词语卡</text>
+      </view>
+    </view>
+    <view
+      wx:else
+      class="secondary-btn secondary-btn-disabled"
+    >
+      <view class="deck-icon deck-icon-muted">
+        <view class="deck-layer deck-l3"></view>
+        <view class="deck-layer deck-l2"></view>
+        <view class="deck-layer deck-l1"></view>
+      </view>
+      <view class="secondary-btn-text">
+        <text class="secondary-btn-title">牌库已锁定</text>
+        <text class="secondary-btn-sub">对局分词后不可查阅</text>
+      </view>
+    </view>
+
+    <view class="secondary-btn" bindtap="onToggleRules">
+      <view class="rules-icon">?</view>
+      <view class="secondary-btn-text">
+        <text class="secondary-btn-title">玩法说明</text>
+        <text class="secondary-btn-sub">{{rulesExpanded ? '收起说明' : '查看规则'}}</text>
+      </view>
     </view>
   </view>
 
-  <page-footer wx:if="{{isHost}}" extClass="footer" bind:prev="handleGoBack">
-    <view
-      class="primary-btn {{canStart ? '' : 'dimmed'}}"
-      bindtap="onStartAssign"
-    >开始分配</view>
-  </page-footer>
+  <view class="section" wx:if="{{rulesExpanded}}">
+    <view class="section-title">玩法说明</view>
+    <view class="rules-list">
+      <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
+      <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
+      <text class="rules-item">3. 轮到你时发言，结束后点击「发言完毕」，系统自动切换下一位。</text>
+      <text class="rules-item">4. 全员发言结束后自动进入匿名投票，投出你怀疑的人。</text>
+      <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+    </view>
+  </view>
 
-  <page-footer
-    wx:else
-    extClass="footer"
-    showPrimary="{{false}}"
-    bind:prev="handleGoBack"
-  ></page-footer>
+  <page-footer extClass="footer" bind:prev="handleGoBack">
+    <view
+      class="primary-btn {{canStart && !starting ? '' : 'dimmed'}}"
+      bindtap="onStartGame"
+    >开始游戏</view>
+  </page-footer>
 </view>

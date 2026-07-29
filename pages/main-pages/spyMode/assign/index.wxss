@@ -1,8 +1,5 @@
 @import "../styles/common.wxss";
 
-.flip-hint {
-  text-align: center;
-  font-size: 24rpx;
-  color: #94A3B8;
-  margin-top: 12rpx;
+.container {
+  padding: 48rpx;
 }

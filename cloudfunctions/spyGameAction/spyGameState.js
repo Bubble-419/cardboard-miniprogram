@@ -21,6 +21,8 @@ const SPY_PAGE = {
 };
 
 const SPEAK_ROUND_MS = 5 * 60 * 1000;
+/** 每位玩家单次发言时长 */
+const SPEAK_TURN_MS = 60 * 1000;
 const VOTE_ROUND_MS = 2 * 60 * 1000;
 const MIN_PLAYERS = 3;
 
@@ -90,6 +92,7 @@ module.exports = {
   SPY_PHASE,
   SPY_PAGE,
   SPEAK_ROUND_MS,
+  SPEAK_TURN_MS,
   VOTE_ROUND_MS,
   MIN_PLAYERS,
   getDefaultSpyCount,

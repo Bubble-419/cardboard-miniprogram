@@ -271,6 +271,15 @@ Page({
       const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
       if (stalePages.includes(page)) return;
     }
+    // 谁是卧底：走专用跟随，避免 reLaunch 白屏 / 进错共用页
+    const modeId = result.selectedModeId
+      || (result.roomState && result.roomState.selectedModeId)
+      || '';
+    if (modeId === 'spy' || page.indexOf('spy') === 0) {
+      const { followSpyRoomState } = require('../../../utils/spyFollow');
+      followSpyRoomState(result, roomId);
+      return;
+    }
     followSubScreenRoomPoll(result, roomId);
   },
 

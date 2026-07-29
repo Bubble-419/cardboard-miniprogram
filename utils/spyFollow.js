@@ -78,12 +78,15 @@ function followSpyRoomState(result, roomId, options = {}) {
     return false;
   }
 
-  _lock.targetRoute = targetRoute;
-  _lock.until = now + 2800;
-
   const buildKey = PAGE_TO_BUILD_KEY[targetPage] || 'intro';
   const url = buildSpyPageUrl(buildKey, id);
-  return openUrl(url, { immediate: true, noReLaunch: true });
+  const navigated = openUrl(url, { immediate: true, noReLaunch: true });
+  // 仅导航真正发起后加锁；openUrl 拒绝/入队失败时不锁，避免卡住后续跟随
+  if (navigated) {
+    _lock.targetRoute = targetRoute;
+    _lock.until = now + 2800;
+  }
+  return navigated;
 }
 
 function clearSpyFollowLock() {

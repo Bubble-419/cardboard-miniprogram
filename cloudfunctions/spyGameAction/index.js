@@ -3,6 +3,7 @@ const { pickRandomWordPair } = require('./spyWordPairs');
 const {
   SPY_PHASE,
   SPEAK_ROUND_MS,
+  SPEAK_TURN_MS,
   VOTE_ROUND_MS,
   MIN_PLAYERS,
   getDefaultSpyCount,
@@ -42,20 +43,48 @@ async function loadMembers(roomId) {
   return res.data || [];
 }
 
-function assertHost(room, userId) {
-  return !!(room && room.creatorId && String(room.creatorId) === String(userId));
+function samePlayerIndex(a, b) {
+  if (a == null || b == null) return false;
+  return Number(a) === Number(b);
 }
 
+function indexIncludes(list, index) {
+  if (!Array.isArray(list) || index == null) return false;
+  const n = Number(index);
+  return list.some((item) => Number(item) === n);
+}
+
+function getAliveIndexSet(players) {
+  return new Set(
+    (players || [])
+      .filter((p) => p && p.alive !== false)
+      .map((p) => Number(p.playerIndex))
+  );
+}
+
+function findSpeakIndex(order, players, from = 0) {
+  const alive = getAliveIndexSet(players);
+  const list = order || [];
+  let i = Math.max(0, Number(from) || 0);
+  while (i < list.length && !alive.has(Number(list[i]))) {
+    i += 1;
+  }
+  return i;
+}
+
+/** 全员平等参玩（含原房间创建者） */
 function getPlayerMembers(members) {
-  return (members || []).filter((m) => m && m.role !== 'GOD');
+  return (members || []).filter((m) => m && m.userId);
 }
 
 function buildPlayerSnapshots(playerMembers, aliveMap) {
   return playerMembers.map((m) => {
     const idx = m.playerIndex;
-    const alive = aliveMap && Object.prototype.hasOwnProperty.call(aliveMap, idx)
-      ? !!aliveMap[idx]
-      : true;
+    const alive = aliveMap && Object.prototype.hasOwnProperty.call(aliveMap, String(idx))
+      ? !!aliveMap[String(idx)]
+      : (aliveMap && Object.prototype.hasOwnProperty.call(aliveMap, idx)
+        ? !!aliveMap[idx]
+        : true);
     return {
       playerIndex: idx,
       name: m.nickName || `玩家${idx}`,
@@ -66,42 +95,53 @@ function buildPlayerSnapshots(playerMembers, aliveMap) {
   });
 }
 
-function publicSpyGame(spyGame, isHost, assignments) {
+function emptyVoteStatus() {
+  return {
+    votedPlayerIndexes: [],
+    abstainPlayerIndexes: [],
+    tally: {},
+    ballots: {}
+  };
+}
+
+/**
+ * 公开快照：不泄露他人词语/身份；投票中不公开票数与选票明细
+ */
+function publicSpyGame(spyGame, assignments) {
   if (!spyGame || typeof spyGame !== 'object') return null;
+  const phase = spyGame.phase || SPY_PHASE.INTRO;
+  const voteStatus = spyGame.voteStatus || {};
+  const aliveCount = (spyGame.players || []).filter((p) => p && p.alive !== false).length;
+  const votedCount = (voteStatus.votedPlayerIndexes || []).length;
+
   const base = {
-    phase: spyGame.phase || SPY_PHASE.INTRO,
+    phase,
     spyCount: spyGame.spyCount || 0,
     round: spyGame.round || 1,
     players: Array.isArray(spyGame.players) ? spyGame.players : [],
     speakOrder: Array.isArray(spyGame.speakOrder) ? spyGame.speakOrder : [],
     currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
     speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
+    speakTurnStartedAt: spyGame.speakTurnStartedAt || 0,
     voteStartedAt: spyGame.voteStartedAt || 0,
     speakRoundMs: spyGame.speakRoundMs || SPEAK_ROUND_MS,
+    speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
     voteDeadlineMs: spyGame.voteDeadlineMs || VOTE_ROUND_MS,
+    tieBreak: spyGame.tieBreak === true,
     voteStatus: {
-      votedPlayerIndexes: Array.isArray(spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes)
-        ? spyGame.voteStatus.votedPlayerIndexes
+      votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes)
+        ? voteStatus.votedPlayerIndexes
         : [],
-      abstainPlayerIndexes: Array.isArray(spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes)
-        ? spyGame.voteStatus.abstainPlayerIndexes
-        : []
+      abstainPlayerIndexes: [],
+      votedCount,
+      totalVoters: aliveCount
     },
     lastResult: spyGame.lastResult || null,
     winnerSide: spyGame.winnerSide || null
   };
 
-  if (isHost) {
-    base.civilianWord = spyGame.civilianWord || '';
-    base.spyWord = spyGame.spyWord || '';
-    base.civilianBlurb = spyGame.civilianBlurb || '';
-    base.spyBlurb = spyGame.spyBlurb || '';
-    base.voteStatus.tally = (spyGame.voteStatus && spyGame.voteStatus.tally) || {};
-    base.voteStatus.ballots = (spyGame.voteStatus && spyGame.voteStatus.ballots) || {};
-  }
-
-  // 结算阶段全员揭晓
-  if (spyGame.phase === SPY_PHASE.SETTLE) {
+  // 仅结算阶段全员揭晓词与身份
+  if (phase === SPY_PHASE.SETTLE) {
     base.civilianWord = spyGame.civilianWord || '';
     base.spyWord = spyGame.spyWord || '';
     const reveal = buildRevealList(spyGame, assignments || {});
@@ -109,6 +149,15 @@ function publicSpyGame(spyGame, isHost, assignments) {
     if (base.lastResult) {
       base.lastResult = { ...base.lastResult, reveal };
     }
+  }
+
+  // 结果/结算可展示匿名得票（不含谁投给谁）
+  if (
+    (phase === SPY_PHASE.RESULT || phase === SPY_PHASE.SETTLE || phase === SPY_PHASE.SPEAK)
+    && spyGame.lastResult
+    && spyGame.lastResult.tallies
+  ) {
+    // lastResult 已含 tallies
   }
 
   return base;
@@ -129,13 +178,9 @@ function buildRevealList(spyGame, assignments) {
 
 async function saveSpyRoom(room, patch) {
   const _ = db.command;
-  const updateData = {
-    updatedAt: db.serverDate()
-  };
+  const updateData = { updatedAt: db.serverDate() };
   Object.keys(patch || {}).forEach((key) => {
     const val = patch[key];
-    // null 字段上直接写带数字键的对象会报 Cannot create field 'N'
-    // 统一用 set/remove 整字段替换
     if (val === null || val === undefined) {
       updateData[key] = _.remove();
     } else if (val && typeof val === 'object') {
@@ -147,21 +192,54 @@ async function saveSpyRoom(room, patch) {
   await db.collection(ROOMS).doc(room._id).update({ data: updateData });
 }
 
+function assertMember(members, userId) {
+  return (members || []).find((m) => m && String(m.userId) === String(userId)) || null;
+}
+
+function beginSpeakPhase(spyGame, speakOrder) {
+  const now = Date.now();
+  const order = speakOrder || spyGame.speakOrder || [];
+  const first = findSpeakIndex(order, spyGame.players, 0);
+  spyGame.phase = SPY_PHASE.SPEAK;
+  spyGame.speakOrder = order;
+  spyGame.currentSpeakIndex = first;
+  spyGame.speakRoundStartedAt = now;
+  spyGame.speakTurnStartedAt = first < order.length ? now : 0;
+  spyGame.speakTurnMs = spyGame.speakTurnMs || SPEAK_TURN_MS;
+  spyGame.voteStartedAt = 0;
+  spyGame.voteStatus = emptyVoteStatus();
+  return spyGame;
+}
+
+function beginVotePhase(spyGame) {
+  spyGame.phase = SPY_PHASE.VOTE;
+  spyGame.voteStartedAt = Date.now();
+  spyGame.voteStatus = emptyVoteStatus();
+  spyGame.speakTurnStartedAt = 0;
+  return spyGame;
+}
+
+/** 开始游戏：随机分词 + 直接进入发言（全员平等） */
 async function actionStartAssign(roomId, userId) {
   const room = await loadRoom(roomId);
   if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可开始分配' };
-  }
 
   const members = await loadMembers(roomId);
+  const me = assertMember(members, userId);
+  if (!me) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
+
   const players = getPlayerMembers(members);
   if (players.length < MIN_PLAYERS) {
     return {
       ok: false,
       errCode: 'NOT_ENOUGH_PLAYERS',
-      errMsg: `至少需要 ${MIN_PLAYERS} 名参与者`
+      errMsg: `至少需要 ${MIN_PLAYERS} 名玩家`
     };
+  }
+
+  if (room.spyGame && room.spyGame.phase && room.spyGame.phase !== SPY_PHASE.INTRO
+    && room.spyGame.phase !== SPY_PHASE.SETTLE) {
+    return { ok: false, errCode: 'GAME_IN_PROGRESS', errMsg: '本局已在进行中' };
   }
 
   const spyCount = getDefaultSpyCount(players.length);
@@ -187,8 +265,8 @@ async function actionStartAssign(roomId, userId) {
   const speakOrder = shuffle(players.map((m) => m.playerIndex));
   const playerSnaps = buildPlayerSnapshots(players, null);
 
-  const spyGame = {
-    phase: SPY_PHASE.ASSIGN,
+  let spyGame = {
+    phase: SPY_PHASE.SPEAK,
     spyCount,
     round: 1,
     wordPairId: pair.id,
@@ -200,22 +278,21 @@ async function actionStartAssign(roomId, userId) {
     speakOrder,
     currentSpeakIndex: 0,
     speakRoundStartedAt: 0,
+    speakTurnStartedAt: 0,
     voteStartedAt: 0,
     speakRoundMs: SPEAK_ROUND_MS,
+    speakTurnMs: SPEAK_TURN_MS,
     voteDeadlineMs: VOTE_ROUND_MS,
-    voteStatus: {
-      votedPlayerIndexes: [],
-      abstainPlayerIndexes: [],
-      tally: {},
-      ballots: {}
-    },
+    voteStatus: emptyVoteStatus(),
     lastResult: null,
-    winnerSide: null
+    winnerSide: null,
+    tieBreak: false
   };
+  spyGame = beginSpeakPhase(spyGame, speakOrder);
 
   await saveSpyRoom(room, {
-    currentPage: pageForPhase(SPY_PHASE.ASSIGN),
-    brainstormProgressPage: pageForPhase(SPY_PHASE.ASSIGN),
+    currentPage: pageForPhase(SPY_PHASE.SPEAK),
+    brainstormProgressPage: pageForPhase(SPY_PHASE.SPEAK),
     spyGame,
     spyAssignments: assignments,
     selectedModeId: 'spy'
@@ -223,8 +300,8 @@ async function actionStartAssign(roomId, userId) {
 
   return {
     ok: true,
-    spyGame: publicSpyGame(spyGame, true),
-    currentPage: pageForPhase(SPY_PHASE.ASSIGN)
+    spyGame: publicSpyGame(spyGame, assignments),
+    currentPage: pageForPhase(SPY_PHASE.SPEAK)
   };
 }
 
@@ -232,11 +309,8 @@ async function actionGetMyCard(roomId, userId) {
   const room = await loadRoom(roomId);
   if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
   const members = await loadMembers(roomId);
-  const me = members.find((m) => m.userId === userId);
+  const me = assertMember(members, userId);
   if (!me) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
-  if (me.role === 'GOD' || assertHost(room, userId)) {
-    return { ok: false, errCode: 'HOST_NO_CARD', errMsg: '主持人不参与发牌' };
-  }
 
   const assignments = room.spyAssignments || {};
   const card = assignments[String(me.playerIndex)];
@@ -245,12 +319,13 @@ async function actionGetMyCard(roomId, userId) {
   }
 
   const speakOrder = (room.spyGame && room.spyGame.speakOrder) || [];
-  const speakOrderRank = speakOrder.indexOf(me.playerIndex) + 1;
+  const speakOrderRank = speakOrder.findIndex((idx) => samePlayerIndex(idx, me.playerIndex)) + 1;
 
   return {
     ok: true,
     card: {
       playerIndex: me.playerIndex,
+      // 仅本人可见：下发 role 供自己确认，但客户端不得展示给他人
       role: card.role,
       word: card.word,
       blurb: card.blurb,
@@ -260,198 +335,62 @@ async function actionGetMyCard(roomId, userId) {
   };
 }
 
-async function actionHostOverview(roomId, userId) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可查看' };
-  }
-
-  const assignments = room.spyAssignments || {};
-  const spyGame = room.spyGame || {};
-  const speakOrder = spyGame.speakOrder || [];
-  const list = Object.keys(assignments)
-    .map((key) => {
-      const item = assignments[key];
-      const rank = speakOrder.indexOf(item.playerIndex) + 1;
-      return {
-        playerIndex: item.playerIndex,
-        name: item.name,
-        role: item.role,
-        word: item.word,
-        blurb: item.blurb,
-        alive: (() => {
-          const p = (spyGame.players || []).find((x) => x.playerIndex === item.playerIndex);
-          return p ? p.alive !== false : true;
-        })(),
-        speakOrderRank: rank > 0 ? rank : null
-      };
-    })
-    .sort((a, b) => (a.speakOrderRank || 99) - (b.speakOrderRank || 99));
-
-  return {
-    ok: true,
-    civilianWord: spyGame.civilianWord || '',
-    spyWord: spyGame.spyWord || '',
-    civilianBlurb: spyGame.civilianBlurb || '',
-    spyBlurb: spyGame.spyBlurb || '',
-    players: list,
-    speakOrder,
-    spyGame: publicSpyGame(spyGame, true)
-  };
-}
-
-async function actionStartSpeak(roomId, userId) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可操作' };
-  }
-  const spyGame = { ...(room.spyGame || {}) };
-  spyGame.phase = SPY_PHASE.SPEAK;
-  spyGame.speakRoundStartedAt = Date.now();
-  spyGame.currentSpeakIndex = 0;
-  spyGame.voteStartedAt = 0;
-  spyGame.voteStatus = {
-    votedPlayerIndexes: [],
-    abstainPlayerIndexes: [],
-    tally: {},
-    ballots: {}
-  };
-
-  await saveSpyRoom(room, {
-    currentPage: pageForPhase(SPY_PHASE.SPEAK),
-    brainstormProgressPage: pageForPhase(SPY_PHASE.SPEAK),
-    spyGame
-  });
-
-  return { ok: true, spyGame: publicSpyGame(spyGame, true) };
-}
-
+/** 仅当前发言者可结束自己的发言；全员结束后自动进入投票 */
 async function actionAdvanceSpeak(roomId, userId) {
   const room = await loadRoom(roomId);
   if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可操作' };
+
+  let spyGame = { ...(room.spyGame || {}) };
+  if (spyGame.phase !== SPY_PHASE.SPEAK) {
+    return { ok: false, errCode: 'NOT_IN_SPEAK', errMsg: '当前不在发言阶段' };
   }
-  const spyGame = { ...(room.spyGame || {}) };
+
   const order = spyGame.speakOrder || [];
-  const aliveSet = new Set(
-    (spyGame.players || []).filter((p) => p.alive !== false).map((p) => p.playerIndex)
-  );
-  let next = (spyGame.currentSpeakIndex || 0) + 1;
-  while (next < order.length && !aliveSet.has(order[next])) {
-    next += 1;
-  }
-  if (next >= order.length) {
-    return { ok: true, finished: true, spyGame: publicSpyGame(spyGame, true) };
-  }
-  spyGame.currentSpeakIndex = next;
-  await saveSpyRoom(room, { spyGame });
-  return { ok: true, finished: false, spyGame: publicSpyGame(spyGame, true) };
-}
-
-async function actionStartVote(roomId, userId) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可开启投票' };
-  }
-  const spyGame = { ...(room.spyGame || {}) };
-  spyGame.phase = SPY_PHASE.VOTE;
-  spyGame.voteStartedAt = Date.now();
-  spyGame.voteStatus = {
-    votedPlayerIndexes: [],
-    abstainPlayerIndexes: [],
-    tally: {},
-    ballots: {}
-  };
-
-  await saveSpyRoom(room, {
-    currentPage: pageForPhase(SPY_PHASE.VOTE),
-    brainstormProgressPage: pageForPhase(SPY_PHASE.VOTE),
-    spyGame
-  });
-
-  return { ok: true, spyGame: publicSpyGame(spyGame, true) };
-}
-
-async function actionSubmitVote(roomId, userId, event) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (assertHost(room, userId)) {
-    return { ok: false, errCode: 'HOST_NO_VOTE', errMsg: '主持人不参与投票' };
-  }
-
-  const spyGame = { ...(room.spyGame || {}) };
-  if (spyGame.phase !== SPY_PHASE.VOTE) {
-    return { ok: false, errCode: 'NOT_IN_VOTE', errMsg: '当前不在投票阶段' };
-  }
+  const curIdx = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
+  const currentPlayerIndex = curIdx < order.length ? order[curIdx] : null;
 
   const members = await loadMembers(roomId);
-  const me = members.find((m) => m.userId === userId);
-  if (!me || me.role === 'GOD') {
-    return { ok: false, errCode: 'NOT_PLAYER', errMsg: '非参与者' };
+  const me = assertMember(members, userId);
+  if (!me) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
+
+  const isCurrentSpeaker = currentPlayerIndex != null
+    && samePlayerIndex(me.playerIndex, currentPlayerIndex);
+  if (!isCurrentSpeaker) {
+    return { ok: false, errCode: 'NOT_ALLOWED', errMsg: '仅当前发言者可结束发言' };
   }
 
-  const mySnap = (spyGame.players || []).find((p) => p.playerIndex === me.playerIndex);
-  if (!mySnap || mySnap.alive === false) {
-    return { ok: false, errCode: 'ELIMINATED', errMsg: '已出局无法投票' };
-  }
-
-  const voteStatus = {
-    votedPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes) || [])],
-    abstainPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes) || [])],
-    tally: { ...((spyGame.voteStatus && spyGame.voteStatus.tally) || {}) },
-    ballots: { ...((spyGame.voteStatus && spyGame.voteStatus.ballots) || {}) }
-  };
-
-  if (voteStatus.votedPlayerIndexes.includes(me.playerIndex)) {
-    return { ok: false, errCode: 'ALREADY_VOTED', errMsg: '已投票' };
-  }
-
-  const abstain = event.abstain === true;
-  let targetPlayerIndex = event.targetPlayerIndex;
-
-  if (abstain) {
-    voteStatus.abstainPlayerIndexes.push(me.playerIndex);
-    voteStatus.ballots[String(me.playerIndex)] = { abstain: true };
-  } else {
-    targetPlayerIndex = Number(targetPlayerIndex);
-    if (!targetPlayerIndex || targetPlayerIndex === me.playerIndex) {
-      return { ok: false, errCode: 'INVALID_TARGET', errMsg: '请选择有效投票目标' };
-    }
-    const target = (spyGame.players || []).find((p) => p.playerIndex === targetPlayerIndex);
-    if (!target || target.alive === false) {
-      return { ok: false, errCode: 'INVALID_TARGET', errMsg: '目标不可投票' };
-    }
-    const key = String(targetPlayerIndex);
-    voteStatus.tally[key] = (voteStatus.tally[key] || 0) + 1;
-    voteStatus.ballots[String(me.playerIndex)] = {
-      abstain: false,
-      targetPlayerIndex
+  const next = findSpeakIndex(order, spyGame.players, curIdx + 1);
+  if (next >= order.length) {
+    // 全员发言结束 → 自动进入匿名投票
+    spyGame.currentSpeakIndex = order.length;
+    spyGame = beginVotePhase(spyGame);
+    spyGame.tieBreak = false;
+    await saveSpyRoom(room, {
+      currentPage: pageForPhase(SPY_PHASE.VOTE),
+      brainstormProgressPage: pageForPhase(SPY_PHASE.VOTE),
+      spyGame
+    });
+    return {
+      ok: true,
+      finished: true,
+      autoVote: true,
+      spyGame: publicSpyGame(spyGame, room.spyAssignments),
+      currentPage: pageForPhase(SPY_PHASE.VOTE)
     };
   }
 
-  voteStatus.votedPlayerIndexes.push(me.playerIndex);
-  spyGame.voteStatus = voteStatus;
-
+  spyGame.currentSpeakIndex = next;
+  spyGame.speakTurnStartedAt = Date.now();
+  spyGame.speakTurnMs = spyGame.speakTurnMs || SPEAK_TURN_MS;
   await saveSpyRoom(room, { spyGame });
-  return { ok: true, spyGame: publicSpyGame(spyGame, false) };
+  return {
+    ok: true,
+    finished: false,
+    spyGame: publicSpyGame(spyGame, room.spyAssignments)
+  };
 }
 
-async function actionConfirmResult(roomId, userId) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可确认结果' };
-  }
-
-  const spyGame = { ...(room.spyGame || {}) };
-  if (spyGame.phase !== SPY_PHASE.VOTE && spyGame.phase !== SPY_PHASE.RESULT) {
-    return { ok: false, errCode: 'NOT_IN_VOTE', errMsg: '当前无法确认结果' };
-  }
-
+async function resolveAndSaveVote(room, spyGame) {
   const assignments = room.spyAssignments || {};
   const tally = (spyGame.voteStatus && spyGame.voteStatus.tally) || {};
   let maxVotes = 0;
@@ -467,6 +406,38 @@ async function actionConfirmResult(roomId, userId) {
     }
   });
 
+  const publicTallies = { ...tally };
+
+  // 平票：并列玩家重新陈述后再次匿名投票
+  if (maxVotes > 0 && topIndexes.length > 1) {
+    const tiedOrder = shuffle(topIndexes.slice());
+    spyGame.lastResult = {
+      eliminatedIndex: null,
+      eliminatedRole: null,
+      eliminatedName: '',
+      maxVotes,
+      tied: true,
+      tiedIndexes: topIndexes,
+      tallies: publicTallies,
+      winnerSide: null
+    };
+    spyGame.tieBreak = true;
+    spyGame.winnerSide = null;
+    spyGame = beginSpeakPhase(spyGame, tiedOrder);
+    await saveSpyRoom(room, {
+      currentPage: pageForPhase(SPY_PHASE.SPEAK),
+      brainstormProgressPage: pageForPhase(SPY_PHASE.SPEAK),
+      spyGame
+    });
+    return {
+      ok: true,
+      tied: true,
+      settled: false,
+      spyGame: publicSpyGame(spyGame, assignments),
+      currentPage: pageForPhase(SPY_PHASE.SPEAK)
+    };
+  }
+
   let eliminatedIndex = null;
   let eliminatedRole = null;
   let eliminatedName = '';
@@ -474,10 +445,10 @@ async function actionConfirmResult(roomId, userId) {
     eliminatedIndex = topIndexes[0];
     const card = assignments[String(eliminatedIndex)];
     eliminatedRole = card ? card.role : null;
-    const snap = (spyGame.players || []).find((p) => p.playerIndex === eliminatedIndex);
+    const snap = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, eliminatedIndex));
     eliminatedName = (snap && snap.name) || (card && card.name) || `玩家${eliminatedIndex}`;
     spyGame.players = (spyGame.players || []).map((p) => {
-      if (p.playerIndex === eliminatedIndex) {
+      if (samePlayerIndex(p.playerIndex, eliminatedIndex)) {
         return { ...p, alive: false };
       }
       return p;
@@ -495,11 +466,12 @@ async function actionConfirmResult(roomId, userId) {
     eliminatedRole,
     eliminatedName,
     maxVotes,
-    tied: maxVotes > 0 && topIndexes.length > 1,
-    tallies: tally,
+    tied: false,
+    tallies: publicTallies,
     winnerSide
   };
   spyGame.winnerSide = winnerSide;
+  spyGame.tieBreak = false;
 
   if (winnerSide) {
     spyGame.phase = SPY_PHASE.SETTLE;
@@ -513,7 +485,7 @@ async function actionConfirmResult(roomId, userId) {
     return {
       ok: true,
       settled: true,
-      spyGame: publicSpyGame(spyGame, true, assignments),
+      spyGame: publicSpyGame(spyGame, assignments),
       currentPage: pageForPhase(SPY_PHASE.SETTLE)
     };
   }
@@ -524,24 +496,93 @@ async function actionConfirmResult(roomId, userId) {
     brainstormProgressPage: pageForPhase(SPY_PHASE.RESULT),
     spyGame
   });
-
   return {
     ok: true,
     settled: false,
-    spyGame: publicSpyGame(spyGame, true, assignments),
+    spyGame: publicSpyGame(spyGame, assignments),
     currentPage: pageForPhase(SPY_PHASE.RESULT)
   };
 }
 
+async function actionSubmitVote(roomId, userId, event) {
+  const room = await loadRoom(roomId);
+  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+
+  const spyGame = { ...(room.spyGame || {}) };
+  if (spyGame.phase !== SPY_PHASE.VOTE) {
+    return { ok: false, errCode: 'NOT_IN_VOTE', errMsg: '当前不在投票阶段' };
+  }
+
+  const members = await loadMembers(roomId);
+  const me = assertMember(members, userId);
+  if (!me) return { ok: false, errCode: 'NOT_PLAYER', errMsg: '非参与者' };
+
+  const mySnap = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, me.playerIndex));
+  if (!mySnap || mySnap.alive === false) {
+    return { ok: false, errCode: 'ELIMINATED', errMsg: '已出局无法投票' };
+  }
+
+  const voteStatus = {
+    votedPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes) || [])],
+    abstainPlayerIndexes: [],
+    tally: { ...((spyGame.voteStatus && spyGame.voteStatus.tally) || {}) },
+    ballots: { ...((spyGame.voteStatus && spyGame.voteStatus.ballots) || {}) }
+  };
+
+  if (indexIncludes(voteStatus.votedPlayerIndexes, me.playerIndex)) {
+    return { ok: false, errCode: 'ALREADY_VOTED', errMsg: '已投票，不可修改' };
+  }
+
+  const targetPlayerIndex = Number(event && event.targetPlayerIndex);
+  if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, me.playerIndex)) {
+    return { ok: false, errCode: 'INVALID_TARGET', errMsg: '请选择一名其他玩家' };
+  }
+  const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
+  if (!target || target.alive === false) {
+    return { ok: false, errCode: 'INVALID_TARGET', errMsg: '目标不可投票' };
+  }
+
+  const key = String(targetPlayerIndex);
+  voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
+  voteStatus.ballots[String(me.playerIndex)] = {
+    abstain: false,
+    targetPlayerIndex
+  };
+  voteStatus.votedPlayerIndexes.push(me.playerIndex);
+  spyGame.voteStatus = voteStatus;
+
+  const aliveVoters = (spyGame.players || []).filter((p) => p && p.alive !== false);
+  const allVoted = aliveVoters.every((p) => indexIncludes(voteStatus.votedPlayerIndexes, p.playerIndex));
+
+  if (allVoted) {
+    return resolveAndSaveVote(room, spyGame);
+  }
+
+  await saveSpyRoom(room, { spyGame });
+  return { ok: true, spyGame: publicSpyGame(spyGame, room.spyAssignments) };
+}
+
+/** 任意玩家可推进到下一轮发言（幂等） */
 async function actionNextRound(roomId, userId) {
   const room = await loadRoom(roomId);
   if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可操作' };
+
+  const members = await loadMembers(roomId);
+  if (!assertMember(members, userId)) {
+    return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
   }
 
-  const spyGame = { ...(room.spyGame || {}) };
-  const alive = (spyGame.players || []).filter((p) => p.alive !== false).map((p) => p.playerIndex);
+  let spyGame = { ...(room.spyGame || {}) };
+  if (spyGame.phase === SPY_PHASE.SPEAK && !spyGame.tieBreak) {
+    return { ok: true, spyGame: publicSpyGame(spyGame, room.spyAssignments), already: true };
+  }
+  if (spyGame.phase !== SPY_PHASE.RESULT && spyGame.phase !== SPY_PHASE.NEXT_ROUND) {
+    return { ok: false, errCode: 'NOT_READY', errMsg: '当前无法进入下一轮' };
+  }
+
+  const alive = (spyGame.players || [])
+    .filter((p) => p.alive !== false)
+    .map((p) => Number(p.playerIndex));
   if (alive.length < 2) {
     return { ok: false, errCode: 'NOT_ENOUGH_ALIVE', errMsg: '存活人数不足' };
   }
@@ -550,29 +591,22 @@ async function actionNextRound(roomId, userId) {
   const eliminated = spyGame.lastResult && spyGame.lastResult.eliminatedIndex;
   if (eliminated != null) {
     const oldOrder = spyGame.speakOrder || [];
-    const elimPos = oldOrder.indexOf(eliminated);
+    const elimPos = oldOrder.findIndex((idx) => samePlayerIndex(idx, eliminated));
     if (elimPos >= 0) {
+      const aliveSet = new Set(alive);
       const rotated = [];
       for (let i = 1; i <= oldOrder.length; i += 1) {
-        const idx = oldOrder[(elimPos + i) % oldOrder.length];
-        if (alive.includes(idx)) rotated.push(idx);
+        const idx = Number(oldOrder[(elimPos + i) % oldOrder.length]);
+        if (aliveSet.has(idx)) rotated.push(idx);
       }
       if (rotated.length) speakOrder = rotated;
     }
   }
 
-  spyGame.speakOrder = speakOrder;
-  spyGame.currentSpeakIndex = 0;
   spyGame.round = (spyGame.round || 1) + 1;
-  spyGame.phase = SPY_PHASE.SPEAK;
-  spyGame.speakRoundStartedAt = Date.now();
-  spyGame.voteStartedAt = 0;
-  spyGame.voteStatus = {
-    votedPlayerIndexes: [],
-    abstainPlayerIndexes: [],
-    tally: {},
-    ballots: {}
-  };
+  spyGame.tieBreak = false;
+  spyGame.winnerSide = null;
+  spyGame = beginSpeakPhase(spyGame, speakOrder);
 
   await saveSpyRoom(room, {
     currentPage: pageForPhase(SPY_PHASE.SPEAK),
@@ -580,14 +614,19 @@ async function actionNextRound(roomId, userId) {
     spyGame
   });
 
-  return { ok: true, spyGame: publicSpyGame(spyGame, true) };
+  return {
+    ok: true,
+    spyGame: publicSpyGame(spyGame, room.spyAssignments),
+    currentPage: pageForPhase(SPY_PHASE.SPEAK)
+  };
 }
 
 async function actionRestart(roomId, userId) {
   const room = await loadRoom(roomId);
   if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可操作' };
+  const members = await loadMembers(roomId);
+  if (!assertMember(members, userId)) {
+    return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
   }
 
   await saveSpyRoom(room, {
@@ -598,22 +637,6 @@ async function actionRestart(roomId, userId) {
   });
 
   return { ok: true, currentPage: pageForPhase(SPY_PHASE.INTRO) };
-}
-
-async function actionEnterNextRoundPage(roomId, userId) {
-  const room = await loadRoom(roomId);
-  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-  if (!assertHost(room, userId)) {
-    return { ok: false, errCode: 'NOT_HOST', errMsg: '仅主持人可操作' };
-  }
-  const spyGame = { ...(room.spyGame || {}) };
-  spyGame.phase = SPY_PHASE.NEXT_ROUND;
-  await saveSpyRoom(room, {
-    currentPage: pageForPhase(SPY_PHASE.NEXT_ROUND),
-    brainstormProgressPage: pageForPhase(SPY_PHASE.NEXT_ROUND),
-    spyGame
-  });
-  return { ok: true, spyGame: publicSpyGame(spyGame, true) };
 }
 
 exports.main = async (event) => {
@@ -631,27 +654,28 @@ exports.main = async (event) => {
   try {
     switch (action) {
       case 'startAssign':
+      case 'startGame':
         return await actionStartAssign(roomId, userId);
       case 'getMyCard':
         return await actionGetMyCard(roomId, userId);
-      case 'hostOverview':
-        return await actionHostOverview(roomId, userId);
-      case 'startSpeak':
-        return await actionStartSpeak(roomId, userId);
       case 'advanceSpeak':
+      case 'finishSpeak':
         return await actionAdvanceSpeak(roomId, userId);
-      case 'startVote':
-        return await actionStartVote(roomId, userId);
       case 'submitVote':
         return await actionSubmitVote(roomId, userId, event);
-      case 'confirmResult':
-        return await actionConfirmResult(roomId, userId);
-      case 'enterNextRoundPage':
-        return await actionEnterNextRoundPage(roomId, userId);
       case 'nextRound':
+      case 'continueRound':
         return await actionNextRound(roomId, userId);
       case 'restart':
         return await actionRestart(roomId, userId);
+      // 兼容旧客户端：已废弃的主持人动作
+      case 'hostOverview':
+        return { ok: false, errCode: 'DEPRECATED', errMsg: '已取消主持人视角' };
+      case 'startSpeak':
+      case 'startVote':
+      case 'confirmResult':
+      case 'enterNextRoundPage':
+        return { ok: false, errCode: 'DEPRECATED', errMsg: '流程已改为全员自动推进' };
       default:
         return { ok: false, errCode: 'UNKNOWN_ACTION', errMsg: `未知 action: ${action}` };
     }

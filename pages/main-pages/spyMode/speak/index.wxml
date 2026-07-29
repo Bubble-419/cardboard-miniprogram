@@ -16,69 +16,89 @@
     </view>
     <view class="title-block">
       <text class="page-title">发言阶段</text>
-      <text class="page-subtitle">请口头描述，勿直接念出词名</text>
+      <text class="page-subtitle">
+        {{tieBreak ? '平票加时：并列玩家重新陈述' : (isMyTurn ? '现在轮到你发言' : '请按顺序发言，勿直接念出词名')}}
+      </text>
     </view>
   </view>
 
-  <view class="section">
-    <view class="countdown">{{countdownText}}</view>
-    <view class="countdown-label">本轮发言倒计时（5 分钟）</view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">发言规则</view>
-    <view class="rules-list">
-      <text class="rules-item">• 用自己的话描述交互方式的特征与使用场景</text>
-      <text class="rules-item">• 不要直接说出词语本身或明显同义替换</text>
-      <text class="rules-item">• 认真听其他人的描述，寻找差异线索</text>
-      <text class="rules-item">• 发言在线下完成，本页仅作倒计时与提示</text>
+  <!-- 仅本人可见：翻牌查看分配词 / 词语1，不展示他人词语 -->
+  <view class="my-word-card-wrap">
+    <view class="my-word-label">我的词语卡</view>
+    <flip-word-card
+      wx:if="{{cardReady}}"
+      word="{{myWord}}"
+      backSrc="{{cardBackSrc}}"
+      assignedWordSrc="{{assignedWordSrc}}"
+      assignedWordFallbackSrc="{{assignedWordFallbackSrc}}"
+      word1Src="{{word1Src}}"
+      word1FallbackSrc="{{word1FallbackSrc}}"
+    />
+    <view class="my-word-card-loading" wx:else>词语加载中…</view>
+    <view class="my-word-hint">背面 → 词语 → 词语1 → 再点回背面，可循环翻看。请勿直接念出词名。</view>
+    <view class="library-entry" bindtap="onOpenLibrary">
+      <view class="deck-icon">
+        <view class="deck-layer deck-l3"></view>
+        <view class="deck-layer deck-l2"></view>
+        <view class="deck-layer deck-l1"></view>
+      </view>
+      <view class="library-entry-text">
+        <text class="library-entry-title">牌库 · {{libraryGroupCount}}组</text>
+        <text class="library-entry-sub">浏览全部词语卡</text>
+      </view>
+      <text class="library-entry-arrow">›</text>
     </view>
   </view>
 
-  <block wx:if="{{isHost}}">
-    <view class="section">
-      <view class="section-title">交互方式卡（主持可见）</view>
-      <view class="word-card">
-        <view class="word-card-tag">平民词</view>
-        <view class="word-card-word">{{civilianWord}}</view>
-        <view class="word-card-blurb">{{civilianBlurb}}</view>
-      </view>
-      <view class="word-card">
-        <view class="word-card-tag spy">卧底词</view>
-        <view class="word-card-word">{{spyWord}}</view>
-        <view class="word-card-blurb">{{spyBlurb}}</view>
-      </view>
+  <!-- 发言进度 -->
+  <view class="section status-card">
+    <view class="section-title-row">
+      <text class="section-title">发言进度</text>
+      <text class="section-count" wx:if="{{isMyTurn}}">{{turnCountdownText}}</text>
     </view>
-    <view class="section">
-      <view class="section-title">卧底是谁</view>
-      <view class="player-row" wx:for="{{spyPlayers}}" wx:key="playerIndex">
-        <view class="player-name">{{item.name}}</view>
-        <view class="player-meta">{{item.word}}</view>
-      </view>
-      <view class="section-body" wx:if="{{!spyPlayers.length}}">加载中…</view>
-    </view>
-  </block>
 
-  <block wx:else>
-    <view class="section" bindtap="onToggleCard">
-      <view class="section-title">你的交互方式卡</view>
-      <block wx:if="{{cardRevealed && myCard}}">
-        <view class="word-card">
-          <view class="word-card-tag">你的词语</view>
-          <view class="word-card-word">{{myCard.word}}</view>
-          <view class="word-card-blurb">{{myCard.blurb}}</view>
+    <view class="status-empty" wx:if="{{!progressList.length}}">加载中…</view>
+
+    <block wx:for="{{progressList}}" wx:key="playerIndex">
+      <view class="status-row status-row-current" wx:if="{{item.isCurrent}}">
+        <view class="status-row-main">
+          <view class="rank-badge rank-badge-active">{{item.rank}}</view>
+          <view class="avatar-wrap avatar-wrap-lg">
+            <view class="avatar-ring"></view>
+            <image class="player-avatar player-avatar-lg" src="{{item.avatarImage}}" mode="aspectFill" />
+          </view>
+          <view class="player-info">
+            <view class="name-line">
+              <text class="player-name">{{item.name}}</text>
+              <text class="me-tag" wx:if="{{item.isMe}}">我</text>
+            </view>
+            <view class="speaking-inline">
+              <text class="speaking-tag">发言中</text>
+              <text class="speaking-timer">{{turnCountdownText}}</text>
+            </view>
+          </view>
         </view>
-        <view class="flip-hint">点击收起卡片</view>
-      </block>
-      <block wx:else>
-        <view class="section-body">点击展开你的交互方式卡</view>
-        <view class="flip-hint">请注意遮挡屏幕，避免被他人看到</view>
-      </block>
-    </view>
-    <view class="vote-opened-tip" wx:if="{{voteOpening}}">主持人已开启投票，正在进入…</view>
-  </block>
+      </view>
 
-  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
-    <view class="primary-btn" bindtap="onStartVote">进入投票</view>
+      <view class="status-row status-row-{{item.statusKey}}" wx:else>
+        <view class="rank-badge">{{item.rank}}</view>
+        <image class="player-avatar" src="{{item.avatarImage}}" mode="aspectFill" />
+        <view class="player-info">
+          <view class="name-line">
+            <text class="player-name">{{item.name}}</text>
+            <text class="me-tag" wx:if="{{item.isMe}}">我</text>
+          </view>
+        </view>
+        <view class="status-chip status-chip-{{item.statusKey}}">
+          <text class="status-check" wx:if="{{item.statusKey === 'done'}}">✓</text>
+          <text>{{item.statusText}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <!-- 当前发言玩家：底部固定「发言完毕」 -->
+  <page-footer wx:if="{{isMyTurn}}" extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onFinishSpeak">发言完毕</view>
   </page-footer>
 </view>

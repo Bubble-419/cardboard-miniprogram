@@ -5,7 +5,10 @@ const {
   buildSpyPageUrl,
   openUrl,
   VOTE_ROUND_MS,
-  startSpyCountdownTicker
+  startSpyCountdownTicker,
+  withSpyRefreshGuard,
+  samePlayerIndex,
+  playerIndexIncludes
 } = require('../../../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../../utils/avatars');
 const { followSpyRoomState } = require('../../../../utils/spyFollow');
@@ -18,9 +21,9 @@ function buildCircleSlots(players, memberByIndex) {
     const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
     const left = 50 + radius * Math.cos(angle);
     const top = 50 + radius * Math.sin(angle);
-    const member = memberByIndex[p.playerIndex] || {};
+    const member = memberByIndex[p.playerIndex] || memberByIndex[Number(p.playerIndex)] || {};
     return {
-      playerIndex: p.playerIndex,
+      playerIndex: Number(p.playerIndex),
       name: p.name,
       isMe: !!p.isMe,
       avatarImage: member.avatarImage || '/assets/avatar/frame_2085662311_1x.webp',
@@ -33,16 +36,16 @@ function buildCircleSlots(players, memberByIndex) {
 Page({
   data: {
     roomId: '',
-    isHost: false,
     navbarPaddingTop: 44,
     avatarList: [],
     countdownText: '2:00',
     circleSlots: [],
     selectedIndex: null,
     hasVoted: false,
-    progressList: [],
-    tallyList: [],
-    acting: false
+    votedCount: 0,
+    totalVoters: 0,
+    acting: false,
+    eliminated: false
   },
 
   onLoad(options) {
@@ -66,6 +69,7 @@ Page({
   },
 
   onHide() {
+    this._pageAlive = false;
     this.stopPolling();
     this.stopTicker();
   },
@@ -78,7 +82,10 @@ Page({
 
   startPolling() {
     this.stopPolling();
-    this._pollTimer = setInterval(() => this.refresh(), 2000);
+    this._pollTimer = setInterval(() => {
+      if (this._pageAlive === false) return;
+      this.refresh();
+    }, 800);
   },
 
   stopPolling() {
@@ -109,77 +116,66 @@ Page({
   async refresh() {
     const roomId = this.data.roomId;
     if (!roomId) return;
-    try {
-      const res = await callCloudFunction('getAddPlayerData', { roomId });
-      const result = (res && res.result) || {};
-      if (!this._pageAlive || result.ok !== true) return;
+    await withSpyRefreshGuard(this, async () => {
+      try {
+        const res = await callCloudFunction('getAddPlayerData', { roomId });
+        const result = (res && res.result) || {};
+        if (!this._pageAlive || result.ok !== true) return;
 
-      const isHost = result.isHost === true;
-      const members = result.members || [];
-      const spyGame = (result.roomState && result.roomState.spyGame) || {};
-      const membersWithAvatar = assignAvatarImages(members);
-      const memberByIndex = {};
-      membersWithAvatar.forEach((m) => {
-        if (m && m.playerIndex != null) memberByIndex[m.playerIndex] = m;
-      });
-
-      const myMember = members.find((m) => m.isMe);
-      const players = (spyGame.players || []).map((p) => ({
-        ...p,
-        isMe: !!(myMember && myMember.playerIndex === p.playerIndex)
-      }));
-
-      const voteStatus = spyGame.voteStatus || {};
-      const voted = voteStatus.votedPlayerIndexes || [];
-      const abstain = voteStatus.abstainPlayerIndexes || [];
-      const myIndex = myMember && myMember.playerIndex;
-      const hasVoted = myIndex != null && voted.includes(myIndex);
-
-      const progressList = players
-        .filter((p) => p.alive !== false)
-        .map((p) => {
-          let statusText = '未投票';
-          if (abstain.includes(p.playerIndex)) statusText = '已弃票';
-          else if (voted.includes(p.playerIndex)) statusText = '已投票';
-          return { playerIndex: p.playerIndex, name: p.name, statusText };
+        followSpyRoomState(result, roomId, {
+          stayOnPage: 'spyvote',
+          allowHost: true
         });
 
-      const tally = voteStatus.tally || {};
-      const tallyList = Object.keys(tally)
-        .map((key) => {
-          const idx = Number(key);
-          const p = players.find((x) => x.playerIndex === idx);
-          return {
-            playerIndex: idx,
-            name: (p && p.name) || `玩家${idx}`,
-            votes: Number(tally[key]) || 0
-          };
-        })
-        .sort((a, b) => b.votes - a.votes);
+        const members = result.members || [];
+        const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const membersWithAvatar = assignAvatarImages(members);
+        const memberByIndex = {};
+        membersWithAvatar.forEach((m) => {
+          if (m && m.playerIndex != null) {
+            memberByIndex[m.playerIndex] = m;
+            memberByIndex[Number(m.playerIndex)] = m;
+          }
+        });
 
-      this.setData({
-        isHost,
-        avatarList: buildAvatarList(members),
-        hasVoted,
-        circleSlots: buildCircleSlots(players, memberByIndex),
-        progressList,
-        tallyList
-      });
+        const myMember = members.find((m) => m.isMe);
+        const myIndex = myMember && myMember.playerIndex;
+        const mySnap = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, myIndex));
+        const eliminated = !!(mySnap && mySnap.alive === false);
 
-      this.ensureTicker(spyGame.voteStartedAt, spyGame.voteDeadlineMs || VOTE_ROUND_MS);
+        const players = (spyGame.players || []).map((p) => ({
+          ...p,
+          playerIndex: Number(p.playerIndex),
+          isMe: samePlayerIndex(myIndex, p.playerIndex)
+        }));
 
-      if (!isHost) {
-        followSpyRoomState(result, roomId, { stayOnPage: 'spyvote' });
+        const voteStatus = spyGame.voteStatus || {};
+        const voted = voteStatus.votedPlayerIndexes || [];
+        const serverHasVoted = playerIndexIncludes(voted, myIndex);
+        const hasVoted = this.data.hasVoted || serverHasVoted;
+
+        this.setData({
+          avatarList: buildAvatarList(members),
+          hasVoted,
+          eliminated,
+          circleSlots: buildCircleSlots(players, memberByIndex),
+          votedCount: voteStatus.votedCount != null ? voteStatus.votedCount : voted.length,
+          totalVoters: voteStatus.totalVoters != null
+            ? voteStatus.totalVoters
+            : players.filter((p) => p.alive !== false).length
+        });
+
+        this.ensureTicker(spyGame.voteStartedAt, spyGame.voteDeadlineMs || VOTE_ROUND_MS);
+      } catch (e) {
+        console.warn('spy vote refresh', e);
       }
-    } catch (e) {
-      console.warn('spy vote refresh', e);
-    }
+    });
   },
 
   onSelectTarget(e) {
-    if (this.data.isHost || this.data.hasVoted) return;
+    if (this.data.hasVoted || this.data.eliminated) return;
     const index = Number(e.currentTarget.dataset.index);
-    const slot = (this.data.circleSlots || []).find((s) => s.playerIndex === index);
+    const slot = (this.data.circleSlots || []).find((s) => samePlayerIndex(s.playerIndex, index));
     if (!slot || slot.isMe) {
       wx.showToast({ title: '不能投自己', icon: 'none' });
       return;
@@ -188,9 +184,9 @@ Page({
   },
 
   async onConfirmVote() {
-    if (this.data.isHost || this.data.hasVoted || this.data.acting) return;
+    if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
     if (!this.data.selectedIndex) {
-      wx.showToast({ title: '请先选择目标', icon: 'none' });
+      wx.showToast({ title: '请先选择怀疑对象', icon: 'none' });
       return;
     }
     this.setData({ acting: true });
@@ -201,61 +197,37 @@ Page({
       });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '投票失败', icon: 'none' });
-      } else {
-        this.setData({ hasVoted: true });
-        wx.showToast({ title: '投票成功', icon: 'success' });
+        return;
       }
+      this.setData({ hasVoted: true });
+      if (result.settled) {
+        openUrl(buildSpyPageUrl('settle', this.data.roomId), {
+          immediate: true,
+          noReLaunch: true
+        });
+        return;
+      }
+      if (result.tied) {
+        wx.showToast({ title: '平票，进入加时陈述', icon: 'none' });
+        openUrl(buildSpyPageUrl('speak', this.data.roomId), {
+          immediate: true,
+          noReLaunch: true
+        });
+        return;
+      }
+      if (result.currentPage === 'spyresult' || (result.spyGame && result.spyGame.phase === 'result')) {
+        openUrl(buildSpyPageUrl('result', this.data.roomId), {
+          immediate: true,
+          noReLaunch: true
+        });
+        return;
+      }
+      wx.showToast({ title: '已提交，等待其他人', icon: 'success' });
+      await this.refresh();
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '投票失败', icon: 'none' });
     } finally {
-      this.setData({ acting: false });
-      this.refresh();
-    }
-  },
-
-  async onAbstain() {
-    if (this.data.isHost || this.data.hasVoted || this.data.acting) return;
-    this.setData({ acting: true });
-    try {
-      const result = await callSpyAction('submitVote', {
-        roomId: this.data.roomId,
-        abstain: true
-      });
-      if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '弃票失败', icon: 'none' });
-      } else {
-        this.setData({ hasVoted: true });
-        wx.showToast({ title: '已弃票', icon: 'success' });
-      }
-    } catch (e) {
-      wx.showToast({ title: (e && e.errMsg) || '弃票失败', icon: 'none' });
-    } finally {
-      this.setData({ acting: false });
-      this.refresh();
-    }
-  },
-
-  async onConfirmResult() {
-    if (!this.data.isHost || this.data.acting) return;
-    this.setData({ acting: true });
-    wx.showLoading({ title: '结算中…' });
-    try {
-      const result = await callSpyAction('confirmResult', { roomId: this.data.roomId });
-      wx.hideLoading();
-      if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '确认失败', icon: 'none' });
-        this.setData({ acting: false });
-        return;
-      }
-      if (result.settled) {
-        openUrl(buildSpyPageUrl('settle', this.data.roomId), { immediate: true, noReLaunch: true });
-      } else {
-        openUrl(buildSpyPageUrl('result', this.data.roomId), { immediate: true, noReLaunch: true });
-      }
-    } catch (e) {
-      wx.hideLoading();
-      wx.showToast({ title: (e && e.errMsg) || '确认失败', icon: 'none' });
-      this.setData({ acting: false });
+      if (this._pageAlive) this.setData({ acting: false });
     }
   },
 
