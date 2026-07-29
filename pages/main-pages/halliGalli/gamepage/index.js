@@ -7,7 +7,6 @@ const { goRoomPage } = require('../../../../utils/goRoomPage');
 
 Page({
   data: {
-    navbarPaddingTop: 0,
     roomId: '',
     members: [],
     avatarList: [],
@@ -28,23 +27,9 @@ Page({
       return;
     }
 
-    let navbarPaddingTop = 0;
-    try {
-      const sys = wx.getSystemInfoSync();
-      const h = sys.statusBarHeight || 0;
-      if (sys.platform === 'ios') {
-        navbarPaddingTop = Math.max(6, h - 36);
-      } else {
-        navbarPaddingTop = h;
-      }
-    } catch (e) {
-      console.warn('getSystemInfo for navbar', e);
-    }
-
     this.setData({
       roomId,
       currentPlayerIndex,
-      navbarPaddingTop,
       selectedBG: getApp().globalData.selectedBG || null
     });
 

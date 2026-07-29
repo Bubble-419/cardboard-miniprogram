@@ -1,4 +1,4 @@
-  <view
+<view
   class="container {{isDragging ? 'container-dragging' : ''}} {{navFreeze ? 'container-nav-freeze' : ''}}"
   catchtouchmove="onContentTouchMove"
   catchtouchend="onContentTouchEnd"
@@ -11,80 +11,65 @@
           class="back-icon"
           src="/assets/icons/miniprogram-btn.png"
           mode="aspectFit"
-          bindtap="handleGoBack"
+          catchtap="handleGoBack"
         ></image>
       </view>
       <view class="navbar-title"></view>
-      <view class="navbar-right">
-        <view class="navbar-icon">⋯</view>
-        <view class="navbar-icon">○</view>
-      </view>
+      <view class="navbar-right"></view>
     </view>
   </view>
 
-  <view class="instruction-section">
-    <view class="instruction-lines">
-      <text class="instruction-title">请各成员扫码进入游戏</text>
-      <text class="instruction-subtitle" wx:if="{{isHost}}">长按后拖动可调整成员顺序；长按其他成员头像可踢出</text>
-      <text class="instruction-subtitle" wx:else>等待房主选择脑暴模式</text>
-      <view class="room-name-wrap">
-        <block wx:if="{{!isEditingRoomName}}">
-          <view class="room-name-display" bindtap="startEditRoomName">
-            <text class="room-name-label">房间名称</text>
-            <view class="room-name-value-row">
-              <text class="room-name-value">{{workshopName || '脑暴工作坊'}}</text>
-              <text wx:if="{{isHost}}" class="room-name-hint">点击标题输入</text>
-              <image
-                wx:if="{{isHost}}"
-                class="room-name-edit-icon"
-                src="/assets/icons/editname.png"
-                mode="aspectFit"
-              />
-            </view>
-          </view>
-        </block>
-        <block wx:else>
-          <view class="room-name-edit">
-            <text class="room-name-label">房间名称</text>
-            <view class="room-name-input-row">
-              <input
-                class="room-name-input"
-                value="{{editingRoomName}}"
-                focus="{{isEditingRoomName}}"
-                maxlength="20"
-                placeholder="设置房间名称"
-                placeholder-class="room-name-placeholder"
-                bindinput="onRoomNameInput"
-                bindconfirm="confirmEditRoomName"
-              />
-              <image
-                class="room-name-confirm-icon"
-                src="/assets/icons/comfirm.svg"
-                mode="aspectFit"
-                bindtap="confirmEditRoomName"
-              />
-            </view>
-          </view>
-        </block>
+  <!-- 紧凑信息区：工作坊名 + 人数 · 模式 -->
+  <view class="info-section">
+    <block wx:if="{{!isEditingRoomName}}">
+      <view class="info-title-row" catchtap="startEditRoomName">
+        <text class="info-title">{{workshopName || '脑暴工作坊'}}</text>
+        <image
+          wx:if="{{isHost}}"
+          class="room-name-edit-icon"
+          src="/assets/icons/editname.png"
+          mode="aspectFit"
+        />
       </view>
-      <view class="member-count-wrap">
-        <text class="member-count-label">当前人数：</text>
-        <text class="member-count-value {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}</text>
+    </block>
+    <block wx:else>
+      <view class="room-name-input-row" catchtap="noop">
+        <input
+          class="room-name-input"
+          value="{{editingRoomName}}"
+          focus="{{isEditingRoomName}}"
+          maxlength="20"
+          placeholder="设置房间名称"
+          placeholder-class="room-name-placeholder"
+          bindinput="onRoomNameInput"
+          bindconfirm="confirmEditRoomName"
+        />
+        <image
+          class="room-name-confirm-icon"
+          src="/assets/icons/comfirm.svg"
+          mode="aspectFit"
+          catchtap="confirmEditRoomName"
+        />
       </view>
+    </block>
+    <view class="info-meta-row">
+      <text class="info-meta-text {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}/{{maxMembers}}人</text>
+      <text class="info-meta-dot" wx:if="{{hasSelectedMode && selectedModeTitle}}"> · </text>
+      <view class="mode-pill" wx:if="{{hasSelectedMode && selectedModeTitle}}">
+        <text class="mode-pill-text">{{selectedModeTitle}}</text>
+      </view>
+      <text class="info-meta-text muted" wx:elif="{{!hasSelectedMode}}"> · 待选模式</text>
     </view>
+    <text class="info-hint" wx:if="{{isHost}}">长按拖动可调序；长按头像可踢出</text>
+    <text class="info-hint" wx:else>等待房主选择脑暴模式</text>
   </view>
 
-  <!-- DEV_TEST_START: 显示房间号（测试用，删除 utils/devJoinRoomById.js 及 DEV_TEST 段落） -->
-  <view class="dev-room-id-banner" wx:if="{{devShowRoomId}}" bindtap="handleDevCopyRoomId">
+  <!-- DEV_TEST_START: 显示房间号（测试用，不参与布局占位依赖） -->
+  <view class="dev-room-id-banner" wx:if="{{devShowRoomId}}" catchtap="handleDevCopyRoomId">
     <text class="dev-room-id-label">测试：房间号（点击复制）</text>
     <text class="dev-room-id-value">{{devRoomIdDisplay}}</text>
   </view>
   <!-- DEV_TEST_END -->
-
-  <view class="mode-banner" wx:if="{{hasSelectedMode}}">
-    <text class="mode-banner-label">当前脑暴模式</text>
-    <text class="mode-banner-title">{{selectedModeTitle}}</text>
-  </view>
 
   <view
     class="content-area {{isDragging ? 'content-area-dragging' : ''}}"
@@ -112,7 +97,6 @@
         <view class="deco-particle deco-particle-5"></view>
         <view class="deco-particle deco-particle-6"></view>
 
-        <!-- 轨道光点 -->
         <view class="orbit-wrap">
           <view class="orbit-dot"></view>
         </view>
@@ -134,19 +118,18 @@
                 <text class="qrcode-placeholder-hint">
                   若为体验版或开发版，请确保 addPlayer 页面已发布；或点击重试
                 </text>
-                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+                <button class="qrcode-retry-btn" catchtap="handleRetryQrcode">重试</button>
               </view>
               <view wx:elif="{{qrcodeStatus === 'load_error'}}" class="qrcode-placeholder">
                 <text class="qrcode-placeholder-text">房间数据加载失败</text>
                 <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '请检查云函数 getAddPlayerData 是否已重新部署'}}</text>
-                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+                <button class="qrcode-retry-btn" catchtap="handleRetryQrcode">重试</button>
               </view>
               <view wx:else class="qrcode-placeholder">
                 <text class="qrcode-placeholder-text">获取二维码失败</text>
                 <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '可点击重试重新生成'}}</text>
-                <button class="qrcode-retry-btn" bindtap="handleRetryQrcode">重试</button>
+                <button class="qrcode-retry-btn" catchtap="handleRetryQrcode">重试</button>
               </view>
-              <!-- 扫描线：仅二维码加载成功时显示 -->
               <view class="scan-line" wx:if="{{qrcodeStatus === 'success' && qrcodeUrl}}"></view>
             </view>
           </view>
@@ -154,11 +137,11 @@
 
         <block wx:for="{{memberSlots}}" wx:key="index">
           <view
-            class="avatar-slot {{isDragging && dropTargetIndex === item.index ? 'avatar-slot-dragging' : ''}} {{item.member && item.member.isMe ? 'avatar-slot-me' : ''}}"
+            class="avatar-slot {{item.member ? 'avatar-slot-filled' : 'avatar-slot-empty'}} {{isDragging && dropTargetIndex === item.index ? 'avatar-slot-dragging' : ''}} {{item.member && item.member.isMe ? 'avatar-slot-me' : ''}}"
             style="left: {{item.left}}rpx; top: {{item.top}}rpx;"
             data-index="{{item.index}}"
-            bindtap="onSlotTap"
-            bindtouchstart="onSlotTouchStart"
+            catchtap="onSlotTap"
+            catchtouchstart="onSlotTouchStart"
             catchtouchmove="onSlotTouchMove"
             catchtouchend="onSlotTouchEnd"
             catchtouchcancel="onSlotTouchEnd"
@@ -169,7 +152,6 @@
               src="{{item.member.avatarImage}}"
               mode="aspectFill"
               data-index="{{item.index}}"
-              
             />
             <view
               wx:if="{{isDragging && item.index === dropTargetIndex}}"
@@ -184,14 +166,15 @@
               wx:if="{{item.member}}"
               class="avatar-name-wrap {{isDragging && (item.index === draggingSlotIndex || item.index === dropTargetIndex) ? 'avatar-origin-hidden' : ''}}"
             >
-              <text class="avatar-name">{{item.member.nickName}}</text>
-              <text class="avatar-name avatar-me" wx:if="{{item.member.isMe}}">（我）</text>
+              <text class="avatar-name {{item.member.isMe ? 'avatar-name-me' : ''}}">
+                {{item.member.isMe ? '我' : (item.member.nickName || '玩家')}}
+              </text>
             </view>
             <text
               wx:elif="{{!item.member && !(isDragging && item.index === dropTargetIndex)}}"
               class="avatar-name placeholder-name"
             >
-              空位
+              等待加入
             </text>
           </view>
         </block>
@@ -223,45 +206,19 @@
     ></view>
   </view>
 
+  <!-- 底部：绿色主按钮 + 小号文字（房主解散 / 成员退出） -->
   <view class="footer-wrap">
     <view class="footer">
-      <!-- 房主：未选模式 -->
-      <block wx:if="{{isHost && !hasSelectedMode}}">
-        <button class="primary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
-        <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
-      </block>
-      <!-- 房主：脑暴已结束 -->
-      <block wx:elif="{{isHost && hasSelectedMode && brainstormSessionEnded}}">
-        <button class="primary-btn" bindtap="handleAnotherRound">再来一轮</button>
-        <view class="footer-btn-row">
-          <button class="secondary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
-          <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
-        </view>
-      </block>
-      <!-- 房主：已选模式（进行中） -->
-      <block wx:elif="{{isHost && hasSelectedMode}}">
-        <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
-        <view class="footer-btn-row">
-          <button class="secondary-btn" bindtap="handleExitBrainstorm">退出脑暴</button>
-          <button class="secondary-btn danger-btn" bindtap="handleDissolveRoom">解散房间</button>
-        </view>
-      </block>
-      <!-- 成员：未选模式 -->
-      <block wx:elif="{{!isHost && !hasSelectedMode}}">
-        <button class="primary-btn" bindtap="handleGoBrainstormMode">查看脑暴模式</button>
-        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
-      </block>
-      <!-- 成员：脑暴已结束 -->
-      <block wx:elif="{{!isHost && hasSelectedMode && brainstormSessionEnded}}">
-        <button class="primary-btn" bindtap="handleAnotherRound">再来一轮</button>
-        <button class="secondary-btn" bindtap="handleGoBrainstormMode">选择脑暴模式</button>
-        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
-      </block>
-      <!-- 成员：已选模式（进行中） -->
-      <block wx:else>
-        <button class="primary-btn" bindtap="handleContinueBrainstorm">继续脑暴</button>
-        <button class="secondary-btn danger-btn" bindtap="handleLeaveRoom">退出房间</button>
-      </block>
+      <button
+        class="primary-btn {{primaryBtnDisabled ? 'primary-btn-disabled' : ''}}"
+        disabled="{{primaryBtnDisabled}}"
+        catchtap="onTapPrimaryAction"
+      >{{primaryBtnText}}</button>
+      <text
+        wx:if="{{showExitText}}"
+        class="exit-text-btn {{exitTextDanger ? 'exit-text-btn-danger' : ''}}"
+        catchtap="onTapExitText"
+      >{{exitTextLabel}}</text>
     </view>
   </view>
 </view>

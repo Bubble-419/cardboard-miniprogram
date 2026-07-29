@@ -1,5 +1,5 @@
 const {
-  callCloudFunction,
+  fetchRoomDataOrExit,
   callSpyAction,
   goRoomPage,
   buildSpyPageUrl,
@@ -12,21 +12,13 @@ const { followSpyRoomState } = require('../../../../utils/spyFollow');
 Page({
   data: {
     roomId: '',
-    navbarPaddingTop: 44,
     acting: false
   },
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      navbarPaddingTop = (wx.getSystemInfoSync().statusBarHeight || 0) + 16;
-    } catch (e) {
-      // ignore
-    }
     this.setData({
-      roomId: (options && options.roomId) || getApp().globalData.roomId || '',
-      navbarPaddingTop
+      roomId: (options && options.roomId) || getApp().globalData.roomId || ''
     });
   },
 
@@ -51,9 +43,8 @@ Page({
     if (!roomId) return;
     await withSpyRefreshGuard(this, async () => {
       try {
-        const res = await callCloudFunction('getAddPlayerData', { roomId });
-        const result = (res && res.result) || {};
-        if (!this._pageAlive || result.ok !== true) return;
+        const result = await fetchRoomDataOrExit(roomId);
+        if (!this._pageAlive || !result || result.ok !== true) return;
         followSpyRoomState(result, roomId, { allowHost: true });
       } catch (e) {
         console.warn('spy nextRound refresh', e);
@@ -81,6 +72,8 @@ Page({
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
+    if (typeof this.stopPolling === 'function') this.stopPolling();
     goRoomPage(this.data.roomId);
   }
 });

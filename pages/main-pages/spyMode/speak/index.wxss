@@ -1,319 +1,399 @@
-@import "../styles/common.wxss";
+/* 发言阶段：三段式自适应布局 */
 
+.page {
+  height: 100vh;
+  background-color: #F3FAF9;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fixed-header {
+  flex-shrink: 0;
+  background: #F3FAF9;
+  z-index: 20;
+}
+
+.content-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-section-inner {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.page-shell {
+  width: calc(100vw - 80rpx);
+  max-width: 750rpx;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ===== 标题区（顶栏由 player-top-bar 组件负责） ===== */
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 18rpx;
+  min-width: 0;
+}
+
+.page-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #333333;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 24rpx;
+  font-weight: 400;
+  color: #6F6F6F;
+  line-height: 1.4;
+}
+
+/* ===== 我的词语卡（略缩小高度，保持宽高比） ===== */
 .my-word-card-wrap {
-  margin: 0 40rpx 24rpx;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 14rpx 0 0;
   box-sizing: border-box;
 }
 
 .my-word-label {
+  width: 78%;
+  max-width: 100%;
   font-size: 22rpx;
   font-weight: 600;
   color: #3AAE34;
-  margin-bottom: 12rpx;
+  margin-bottom: 10rpx;
+}
+
+.my-word-card-frame {
+  width: 78%;
+  max-width: 100%;
+  aspect-ratio: 16 / 10;
+  position: relative;
+  box-sizing: border-box;
+  background: #eef2f6;
+  border-radius: 18rpx;
+  overflow: hidden;
+}
+
+.my-word-card-frame flip-word-card,
+.my-word-card-frame .my-word-card-loading {
+  width: 100%;
+  height: 100%;
 }
 
 .my-word-card-loading {
-  padding: 64rpx 24rpx;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 26rpx;
   color: #94A3B8;
-  border-radius: 24rpx;
-  background: #f4f5f7;
-}
-
-.my-word-hint {
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  color: #94A3B8;
-  line-height: 1.4;
-}
-
-.library-entry {
-  margin-top: 20rpx;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16rpx;
-  padding: 20rpx 22rpx;
-  border-radius: 20rpx;
-  background: rgba(255, 255, 255, 0.92);
-  border: 2rpx solid rgba(148, 163, 184, 0.28);
   box-sizing: border-box;
 }
 
-.library-entry:active {
+/* ===== 双标签：高度 64–72rpx ===== */
+.content-tabs {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 68rpx;
+  margin-top: 18rpx;
+  border-bottom: 2rpx solid rgba(148, 163, 184, 0.18);
+  background: #F3FAF9;
+  box-sizing: border-box;
+}
+
+.content-tab {
+  position: relative;
+  flex: 1;
+  width: 50%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.content-tab-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #94A3B8;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.content-tab-active .content-tab-text {
+  color: #5EC159;
+  font-weight: 700;
+}
+
+.content-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 44rpx;
+  height: 6rpx;
+  margin-left: -22rpx;
+  border-radius: 6rpx;
+  background: #5EC159;
+}
+
+/* ===== 滚动面板 ===== */
+.panel {
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: 16rpx;
+  padding-bottom: 20rpx;
+}
+
+.panel-visible {
+  animation: panel-fade-in 240ms ease;
+}
+
+@keyframes panel-fade-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ===== 牌库两列网格 ===== */
+.card-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0 -12rpx;
+  box-sizing: border-box;
+}
+
+.card-tile {
+  width: 50%;
+  padding: 0 12rpx;
+  margin-bottom: 22rpx;
+  box-sizing: border-box;
+}
+
+.card-tile:active {
+  opacity: 0.88;
+}
+
+.tile-stack {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  position: relative;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #e8edf2;
+}
+
+.tile-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== 玩法说明 ===== */
+.rules-panel {
+  background: #FFFFFF;
+  border-radius: 28rpx;
+  padding: 28rpx;
+  box-shadow: 0 12rpx 36rpx 0 rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.rules-item {
+  font-size: 26rpx;
+  color: #6F6F6F;
+  line-height: 1.65;
+}
+
+/* ===== 底部操作区：安全区 + 12rpx ===== */
+.bottom-action {
+  flex-shrink: 0;
+  padding: 22rpx 0 calc(env(safe-area-inset-bottom) + 12rpx);
+  background: #F3FAF9;
+  box-sizing: border-box;
+}
+
+.primary-btn {
+  width: 100%;
+  height: 90rpx;
+  background-color: #5EC159;
+  color: #FFFFFF;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  font-weight: 500;
+  letter-spacing: 4rpx;
+  box-sizing: border-box;
+}
+
+.primary-btn.dimmed {
+  opacity: 0.45;
+}
+
+.primary-btn:active {
   opacity: 0.85;
 }
 
-.library-entry-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.library-entry-title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #334155;
-}
-
-.library-entry-sub {
-  font-size: 20rpx;
-  color: #94a3b8;
-}
-
-.library-entry-arrow {
-  font-size: 36rpx;
-  color: #94a3b8;
-  line-height: 1;
-  padding-right: 4rpx;
-}
-
-.deck-icon {
-  position: relative;
-  width: 56rpx;
-  height: 56rpx;
-  flex-shrink: 0;
-}
-
-.deck-layer {
-  position: absolute;
-  width: 40rpx;
-  height: 52rpx;
-  border-radius: 8rpx;
-  background: #3aae34;
-  border: 2rpx solid #ffffff;
-  box-sizing: border-box;
-}
-
-.deck-l3 {
-  left: 12rpx;
-  top: 0;
-  opacity: 0.35;
-  transform: rotate(12deg);
-  background: #94a3b8;
-}
-
-.deck-l2 {
-  left: 6rpx;
-  top: 2rpx;
-  opacity: 0.55;
-  transform: rotate(6deg);
-  background: #64748b;
-}
-
-.deck-l1 {
+/* ===== 翻阅弹层 ===== */
+.viewer-mask {
+  position: fixed;
   left: 0;
-  top: 4rpx;
-  background: linear-gradient(160deg, #4ec948 0%, #2f9a2a 100%);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 20, 30, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.section-title-row {
+.viewer-sheet {
+  width: 100%;
+  max-width: 750rpx;
+  max-height: 88vh;
+  background: #f7f9fb;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 28rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.viewer-head {
   display: flex;
   flex-direction: row;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 8rpx;
 }
 
-.section-title-row .section-title {
-  margin-bottom: 0;
-}
-
-.section-count {
-  font-size: 28rpx;
+.viewer-title {
+  font-size: 36rpx;
   font-weight: 700;
-  color: #3AAE34;
-  font-variant-numeric: tabular-nums;
-}
-
-.status-card {
-  padding: 28rpx 24rpx 20rpx;
-}
-
-.status-empty {
-  padding: 24rpx 8rpx;
-  text-align: center;
-  font-size: 26rpx;
-  color: #94A3B8;
-}
-
-.status-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16rpx;
-  padding: 16rpx 12rpx;
-  border-radius: 20rpx;
-  box-sizing: border-box;
-}
-
-.status-row + .status-row {
-  margin-top: 4rpx;
-}
-
-.rank-badge {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  background: #EEF3F2;
-  color: #6F6F6F;
-  font-size: 20rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.rank-badge-active {
-  background: #3AAE34;
-  color: #FFFFFF;
-}
-
-.player-avatar {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 50%;
-  background: #E8F0EE;
-  flex-shrink: 0;
-}
-
-.player-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-}
-
-.name-line {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.player-name {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #333333;
+  color: #222;
+  max-width: 70%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 320rpx;
 }
 
-.me-tag {
-  font-size: 18rpx;
-  font-weight: 700;
-  color: #3AAE34;
-  background: #E8F8E6;
-  padding: 2rpx 10rpx;
-  border-radius: 999rpx;
-  flex-shrink: 0;
+.viewer-close {
+  font-size: 26rpx;
+  color: #3aae34;
+  padding: 8rpx 12rpx;
 }
 
-.status-chip {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4rpx;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
+.viewer-hint {
+  display: block;
+  font-size: 22rpx;
+  color: #94a3b8;
+  margin-bottom: 20rpx;
+}
+
+.viewer-card-frame {
+  width: 78%;
+  max-width: 100%;
+  margin: 0 auto;
+  aspect-ratio: 16 / 10;
+  background: #eef2f6;
+  border-radius: 18rpx;
+  overflow: hidden;
+}
+
+.viewer-blurb {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  color: #6f6f6f;
+  line-height: 1.55;
+}
+
+/* ===== 窄屏 ===== */
+.is-compact .page-shell {
+  width: calc(100vw - 48rpx);
+}
+
+.is-compact .page-title {
+  font-size: 40rpx;
+}
+
+.is-compact .rules-item {
+  font-size: 22rpx;
+}
+
+.is-compact .content-tab-text {
+  font-size: 26rpx;
+}
+
+.is-compact .my-word-label {
   font-size: 20rpx;
-  font-weight: 600;
-  flex-shrink: 0;
-  background: #F3F5F4;
-  color: #8A9499;
 }
 
-.status-chip-done {
-  background: #E8F8E6;
-  color: #3AAE34;
+.is-compact .card-grid {
+  margin: 0 -10rpx;
 }
 
-.status-chip-out {
-  background: #F1F1F1;
-  color: #A0A0A0;
+.is-compact .card-tile {
+  padding: 0 10rpx;
+  margin-bottom: 20rpx;
 }
 
-.status-check {
-  font-size: 20rpx;
-  font-weight: 700;
+.is-compact .my-word-card-frame,
+.is-compact .my-word-label,
+.is-compact .viewer-card-frame {
+  width: 82%;
 }
 
-.status-row-current {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 16rpx;
-  margin: 8rpx 0;
-  padding: 20rpx 16rpx 18rpx;
-  background: linear-gradient(160deg, #E8F8E6 0%, #FFFFFF 70%);
-  border: 2rpx solid #3AAE34;
-  border-radius: 24rpx;
-  box-shadow: 0 8rpx 24rpx 0 rgba(58, 174, 52, 0.08);
-}
-
-.status-row-main {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.avatar-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.avatar-wrap-lg {
-  width: 88rpx;
+.is-compact .primary-btn {
   height: 88rpx;
+  font-size: 32rpx;
 }
 
-.avatar-ring {
-  position: absolute;
-  left: -6rpx;
-  top: -6rpx;
-  right: -6rpx;
-  bottom: -6rpx;
-  border-radius: 50%;
-  border: 4rpx solid #3AAE34;
-  box-sizing: border-box;
-  opacity: 0.85;
+.is-single-col .card-tile {
+  width: 100%;
+  padding: 0;
 }
 
-.player-avatar-lg {
-  width: 88rpx;
-  height: 88rpx;
-  position: relative;
-  z-index: 1;
+.is-single-col .card-grid {
+  margin: 0;
 }
-
-.speaking-inline {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.speaking-tag {
-  padding: 4rpx 14rpx;
-  border-radius: 999rpx;
-  background: #3AAE34;
-  color: #FFFFFF;
-  font-size: 20rpx;
-  font-weight: 700;
-}
-
-.speaking-timer {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #2F9B2A;
-  font-variant-numeric: tabular-nums;
-}
-

@@ -1,13 +1,19 @@
 /* ===== 全局容器 ===== */
 .container {
-  min-height: 100vh;
+  height: 100vh;
   background-color: #fafafa;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
-/* scroll-view 透明，让容器背景穿透 */
-.main-scroll {
-  min-height: 100vh;
-  background: transparent;
+/* 房主页：头/线下卡固定，仅脑暴列表滚动 */
+.host-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
 
 /* ===== 等待视图 ===== */
@@ -45,6 +51,7 @@
   display: flex;
   flex-direction: column;
   gap: 20rpx;
+  flex-shrink: 0;
 }
 
 /* 工作坊名称: Figma 18px Medium #45AD59 → 36rpx */
@@ -117,14 +124,18 @@
 /* ===== 主内容区 ===== */
 /* Figma Main: padding 0 20px, gap 32px → 0 40rpx, gap 64rpx */
 .main-content {
-  padding: 0 40rpx 80rpx;
+  flex: 1;
+  min-height: 0;
+  padding: 0 40rpx;
   display: flex;
   flex-direction: column;
   gap: 64rpx;
+  box-sizing: border-box;
 }
 
 /* ===== 线下情境卡片 ===== */
 .offline-card {
+  flex-shrink: 0;
   background-color: #f9fafd;
   border: 2rpx solid #0598de;
   border-radius: 48rpx;
@@ -244,6 +255,8 @@
 
 /* ===== 自定义情境区 ===== */
 .custom-section {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 32rpx;
@@ -254,6 +267,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16rpx;
+  flex-shrink: 0;
 }
 
 .section-header-left {
@@ -295,11 +309,20 @@
   height: 40rpx;
 }
 
-/* ===== 情境列表 ===== */
+/* ===== 情境列表（唯一可滚动区域） ===== */
 .scenario-list {
-  display: flex;
-  flex-direction: column;
-  gap: 32rpx;
+  flex: 1;
+  height: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.scenario-list .scenario-item {
+  margin-bottom: 32rpx;
+}
+
+.scenario-list .scenario-item:last-child {
+  margin-bottom: 24rpx;
 }
 
 .scenario-item {
@@ -363,10 +386,6 @@
     rgba(255, 255, 255, 0.95) 60%,
     rgba(255, 255, 255, 0) 100%
   );
-}
-
-.main-scroll {
-  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
 
 .wait-page {

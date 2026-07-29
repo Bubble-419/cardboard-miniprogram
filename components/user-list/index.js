@@ -79,6 +79,11 @@ Component({
     roundTimerKey: {
       type: String,
       value: ''
+    },
+    /** 顶部叠放最多直接展示数；超出以 +N 显示。0 表示不截断 */
+    maxVisible: {
+      type: Number,
+      value: 0
     }
   },
 
@@ -87,10 +92,27 @@ Component({
     resolvedActingUser: null,
     resolvedSelectedUser: null,
     resolvedIndicatorUser: null,
-    actingFrameMode: 'spin'
+    actingFrameMode: 'spin',
+    displayList: [],
+    overflowCount: 0
   },
 
   observers: {
+    'avatarList, maxVisible': function syncDisplayList(avatarList, maxVisible) {
+      const list = Array.isArray(avatarList) ? avatarList : [];
+      const max = Number(maxVisible) || 0;
+      if (max > 0 && list.length > max) {
+        this.setData({
+          displayList: list.slice(0, max),
+          overflowCount: list.length - max
+        });
+      } else {
+        this.setData({
+          displayList: list,
+          overflowCount: 0
+        });
+      }
+    },
     'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame': function syncFrameUsers() {
       this._syncFrameUsers();
       this._syncActingFrameMode();
@@ -103,6 +125,16 @@ Component({
 
   lifetimes: {
     attached() {
+      const list = Array.isArray(this.properties.avatarList) ? this.properties.avatarList : [];
+      const max = Number(this.properties.maxVisible) || 0;
+      if (max > 0 && list.length > max) {
+        this.setData({
+          displayList: list.slice(0, max),
+          overflowCount: list.length - max
+        });
+      } else {
+        this.setData({ displayList: list, overflowCount: 0 });
+      }
       this._syncFrameUsers();
       this._syncRoundTimerKey();
       this._syncActingFrameMode();

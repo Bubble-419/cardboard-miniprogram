@@ -24,32 +24,25 @@ Page({
     countdown: 5,
     editingProblemId: '',
     textareaHeights: {},
-    navbarPaddingTop: 0,
-    scrollHeight: 0,
-    contentPaddingTop: 0
+    scrollHeight: 0
   },
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
     let screenHeight = 750;
     try {
       const sys = wx.getSystemInfoSync();
-      navbarPaddingTop = (sys.statusBarHeight || 0) + 8;
       screenHeight = sys.windowHeight || 750;
-      // 记录设备宽度用于 rpx→px 换算（textarea 高度计算）
       this._windowWidth = sys.windowWidth || 375;
     } catch (e) {
       console.warn('getSystemInfo', e);
     }
-    const scrollHeight = screenHeight - navbarPaddingTop;
-    const contentPaddingTop = navbarPaddingTop + 30;
 
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (roomId) {
       getApp().globalData.roomId = roomId;
     }
-    this.setData({ roomId, navbarPaddingTop, scrollHeight, contentPaddingTop });
+    this.setData({ roomId, scrollHeight: screenHeight });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
       if (!this._pageAlive) return;

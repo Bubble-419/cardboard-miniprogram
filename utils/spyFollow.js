@@ -4,6 +4,8 @@
 const { getCurrentRoute, openUrl } = require('./pageNavigate');
 const { buildSpyPageUrl } = require('./modeRoutes');
 
+const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
+
 const SPY_ROUTE_BY_PAGE = {
   spymodeindex: 'pages/main-pages/spyMode/modeIndex/index',
   spyassign: 'pages/main-pages/spyMode/assign/index',
@@ -39,6 +41,57 @@ const _lock = {
   until: 0
 };
 
+/** 主动回大厅时全局抑制跟随（覆盖游戏页在途轮询竞态） */
+const _lobbyStay = {
+  roomId: '',
+  active: false
+};
+
+function setSpyLobbyStay(roomId) {
+  const id = roomId || '';
+  _lobbyStay.roomId = String(id);
+  _lobbyStay.active = !!id;
+  try {
+    const app = getApp();
+    if (app && app.globalData) {
+      app.globalData.spyStayOnLobbyRoomId = id || null;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+function clearSpyLobbyStay() {
+  _lobbyStay.roomId = '';
+  _lobbyStay.active = false;
+  try {
+    const app = getApp();
+    if (app && app.globalData) {
+      app.globalData.spyStayOnLobbyRoomId = null;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+function isSpyLobbyStayActive(roomId) {
+  if (!_lobbyStay.active) {
+    try {
+      const app = getApp();
+      const gid = app && app.globalData && app.globalData.spyStayOnLobbyRoomId;
+      if (gid) {
+        _lobbyStay.roomId = String(gid);
+        _lobbyStay.active = true;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (!_lobbyStay.active) return false;
+  if (!roomId) return true;
+  return String(_lobbyStay.roomId) === String(roomId);
+}
+
 function resolveSpyTargetPage(roomState) {
   const state = roomState || {};
   const page = String(state.currentPage || '').toLowerCase();
@@ -61,6 +114,11 @@ function followSpyRoomState(result, roomId, options = {}) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) return false;
 
+  // 主动停留大厅：禁止任何跟随拉回游戏（除非 force，如点「继续游戏」）
+  if (options.force !== true && isSpyLobbyStayActive(id)) {
+    return false;
+  }
+
   const targetPage = resolveSpyTargetPage(result.roomState);
   if (!targetPage) return false;
 
@@ -70,6 +128,11 @@ function followSpyRoomState(result, roomId, options = {}) {
 
   // 仅停留在「本页」时由调用方自行处理；这里负责跨页跟随
   if (options.stayOnPage && options.stayOnPage === targetPage) {
+    return false;
+  }
+
+  // 未 force 时，已在大厅则不拉走（防御二次保险）
+  if (options.force !== true && currentRoute === ADD_PLAYER_ROUTE && isSpyLobbyStayActive(id)) {
     return false;
   }
 
@@ -98,5 +161,8 @@ module.exports = {
   SPY_ROUTE_BY_PAGE,
   resolveSpyTargetPage,
   followSpyRoomState,
-  clearSpyFollowLock
+  clearSpyFollowLock,
+  setSpyLobbyStay,
+  clearSpyLobbyStay,
+  isSpyLobbyStayActive
 };

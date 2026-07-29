@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { syncRoomAfterMemberRemoved } = require('./memberSync');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -22,7 +23,7 @@ exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext();
   const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
 
-  if (targetUserId === currentUserId) {
+  if (String(targetUserId) === String(currentUserId)) {
     return {
       ok: false,
       errCode: 'CANNOT_KICK_SELF',
@@ -37,7 +38,7 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
-    if (!room.creatorId || room.creatorId !== currentUserId) {
+    if (!room.creatorId || String(room.creatorId) !== String(currentUserId)) {
       return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可踢出成员' };
     }
 
@@ -51,9 +52,29 @@ exports.main = async (event, context) => {
       return { ok: false, errCode: 'MEMBER_NOT_FOUND', errMsg: '成员不在房间中' };
     }
 
-    await db.collection(ROOM_MEMBERS_COLLECTION).doc(targetRes.data[0]._id).remove();
+    const removed = targetRes.data[0];
+    await db.collection(ROOM_MEMBERS_COLLECTION).doc(removed._id).remove();
 
-    return { ok: true };
+    const remainRes = await db
+      .collection(ROOM_MEMBERS_COLLECTION)
+      .where({ roomId })
+      .orderBy('playerIndex', 'asc')
+      .get();
+    const remaining = remainRes.data || [];
+
+    const sync = await syncRoomAfterMemberRemoved(
+      db,
+      room,
+      roomId,
+      { userId: removed.userId, playerIndex: removed.playerIndex },
+      remaining
+    );
+
+    return {
+      ok: true,
+      memberCount: sync.memberCount,
+      event: sync.event
+    };
   } catch (e) {
     console.error('roomKickMember error', e);
     return {

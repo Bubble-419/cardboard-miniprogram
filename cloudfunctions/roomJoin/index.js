@@ -135,6 +135,7 @@ exports.main = async (event, context) => {
         avatarColor,
         avatarIndex,
         joinedAt: now,
+        lastSeenAt: now,
         playerIndex: nextIndex
       }
     });

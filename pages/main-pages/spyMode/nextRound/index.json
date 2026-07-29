@@ -2,7 +2,7 @@
   "navigationBarTitleText": "下一轮准备",
   "navigationStyle": "custom",
   "usingComponents": {
-    "user-list": "/components/user-list/index",
+    "player-top-bar": "/components/player-top-bar/index",
     "page-footer": "/components/page-footer/index"
   }
 }

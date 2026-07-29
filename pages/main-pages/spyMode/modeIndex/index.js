@@ -1,5 +1,5 @@
 const {
-  callCloudFunction,
+  fetchRoomDataOrExit,
   callSpyAction,
   goRoomPage,
   buildAvatarList,
@@ -30,7 +30,6 @@ function shouldShowLibrary(spyGame) {
 Page({
   data: {
     roomId: '',
-    navbarPaddingTop: 44,
     avatarList: [],
     playerAvatarList: [],
     playerCount: 0,
@@ -46,13 +45,6 @@ Page({
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      const sys = wx.getSystemInfoSync();
-      navbarPaddingTop = (sys.statusBarHeight || 0) + 16;
-    } catch (e) {
-      // ignore
-    }
 
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
@@ -64,7 +56,6 @@ Page({
     getApp().globalData.gameMode = 'spy';
     this.setData({
       roomId,
-      navbarPaddingTop,
       minPlayers: MIN_PLAYERS,
       libraryGroupCount: getLibraryGroupCount()
     });
@@ -93,9 +84,8 @@ Page({
     await withSpyRefreshGuard(this, async () => {
       try {
         if (this._pageAlive === false) return;
-        const res = await callCloudFunction('getAddPlayerData', { roomId });
-        const result = (res && res.result) || {};
-        if (this._pageAlive === false || result.ok !== true) return;
+        const result = await fetchRoomDataOrExit(roomId);
+        if (this._pageAlive === false || !result || result.ok !== true) return;
 
         followSpyRoomState(result, roomId, {
           stayOnPage: 'spymodeindex',
@@ -194,6 +184,8 @@ Page({
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
+    if (typeof this.stopPolling === 'function') this.stopPolling();
     goRoomPage(this.data.roomId);
   }
 });

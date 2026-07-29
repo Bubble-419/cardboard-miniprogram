@@ -1,0 +1,46 @@
+<view
+  class="player-top-bar-wrap"
+  style="padding-top: {{padTop}}px; padding-right: {{padRightPx}}px;"
+>
+  <view
+    class="top-bar"
+    style="height: {{barHeight}}px;"
+  >
+    <view class="top-bar-left">
+      <view
+        wx:if="{{showRoomEntry}}"
+        class="room-entry"
+        style="width: {{iconSize}}px; height: {{iconSize}}px;"
+        catchtap="onGoRoom"
+      >
+        <image class="room-entry-icon" src="{{roomIcon}}" mode="aspectFit" />
+      </view>
+      <view class="avatar-group">
+        <user-list
+          avatarList="{{avatarList}}"
+          maxVisible="{{maxVisible}}"
+          currentUser="{{currentUser}}"
+          actingUser="{{actingUser}}"
+          selectedUser="{{selectedUser}}"
+          indicatorUser="{{indicatorUser}}"
+          enableAdd="{{enableAdd}}"
+          isFold="{{true}}"
+          showName="{{false}}"
+          layout="stack"
+          showActingFrame="{{showActingFrame}}"
+          enableSelectedFrame="{{enableSelectedFrame}}"
+          enableAvatarTap="{{enableAvatarTap}}"
+          roundStartedAt="{{roundStartedAt}}"
+          roundTimerActive="{{roundTimerActive}}"
+          roundTimerKey="{{roundTimerKey}}"
+          bind:addtap="onAddTap"
+          bind:avatartap="onAvatarTap"
+        />
+      </view>
+    </view>
+    <view
+      class="top-bar-right-spacer"
+      style="width: {{capsuleWidth}}px; height: {{barHeight}}px;"
+    ></view>
+  </view>
+</view>

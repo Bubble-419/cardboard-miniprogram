@@ -57,7 +57,7 @@ function indexIncludes(list, index) {
 function getAliveIndexSet(players) {
   return new Set(
     (players || [])
-      .filter((p) => p && p.alive !== false)
+      .filter((p) => p && p.alive !== false && p.leftRoom !== true)
       .map((p) => Number(p.playerIndex))
   );
 }
@@ -111,14 +111,16 @@ function publicSpyGame(spyGame, assignments) {
   if (!spyGame || typeof spyGame !== 'object') return null;
   const phase = spyGame.phase || SPY_PHASE.INTRO;
   const voteStatus = spyGame.voteStatus || {};
-  const aliveCount = (spyGame.players || []).filter((p) => p && p.alive !== false).length;
+  const aliveCount = (spyGame.players || [])
+    .filter((p) => p && p.alive !== false && p.leftRoom !== true).length;
   const votedCount = (voteStatus.votedPlayerIndexes || []).length;
 
   const base = {
     phase,
     spyCount: spyGame.spyCount || 0,
     round: spyGame.round || 1,
-    players: Array.isArray(spyGame.players) ? spyGame.players : [],
+    players: (Array.isArray(spyGame.players) ? spyGame.players : [])
+      .filter((p) => p && p.leftRoom !== true),
     speakOrder: Array.isArray(spyGame.speakOrder) ? spyGame.speakOrder : [],
     currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
     speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
@@ -164,7 +166,9 @@ function publicSpyGame(spyGame, assignments) {
 }
 
 function buildRevealList(spyGame, assignments) {
-  return (spyGame.players || []).map((p) => {
+  return (spyGame.players || [])
+    .filter((p) => p && p.leftRoom !== true)
+    .map((p) => {
     const card = assignments[String(p.playerIndex)] || {};
     return {
       playerIndex: p.playerIndex,
@@ -217,6 +221,44 @@ function beginVotePhase(spyGame) {
   spyGame.voteStatus = emptyVoteStatus();
   spyGame.speakTurnStartedAt = 0;
   return spyGame;
+}
+
+/** 房主可在发言阶段随时开始匿名投票 */
+async function actionStartVote(roomId, userId) {
+  const room = await loadRoom(roomId);
+  if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+
+  if (!room.creatorId || String(room.creatorId) !== String(userId)) {
+    return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可开始投票' };
+  }
+
+  let spyGame = { ...(room.spyGame || {}) };
+  if (spyGame.phase !== SPY_PHASE.SPEAK) {
+    return { ok: false, errCode: 'NOT_IN_SPEAK', errMsg: '当前不在发言阶段' };
+  }
+
+  const members = await loadMembers(roomId);
+  const me = assertMember(members, userId);
+  if (!me) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
+
+  const order = spyGame.speakOrder || [];
+  spyGame.currentSpeakIndex = order.length;
+  spyGame = beginVotePhase(spyGame);
+  spyGame.tieBreak = false;
+
+  await saveSpyRoom(room, {
+    currentPage: pageForPhase(SPY_PHASE.VOTE),
+    brainstormProgressPage: pageForPhase(SPY_PHASE.VOTE),
+    spyGame
+  });
+
+  return {
+    ok: true,
+    finished: true,
+    autoVote: true,
+    spyGame: publicSpyGame(spyGame, room.spyAssignments),
+    currentPage: pageForPhase(SPY_PHASE.VOTE)
+  };
 }
 
 /** 开始游戏：随机分词 + 直接进入发言（全员平等） */
@@ -551,7 +593,8 @@ async function actionSubmitVote(roomId, userId, event) {
   voteStatus.votedPlayerIndexes.push(me.playerIndex);
   spyGame.voteStatus = voteStatus;
 
-  const aliveVoters = (spyGame.players || []).filter((p) => p && p.alive !== false);
+  const aliveVoters = (spyGame.players || [])
+    .filter((p) => p && p.alive !== false && p.leftRoom !== true);
   const allVoted = aliveVoters.every((p) => indexIncludes(voteStatus.votedPlayerIndexes, p.playerIndex));
 
   if (allVoted) {
@@ -581,7 +624,7 @@ async function actionNextRound(roomId, userId) {
   }
 
   const alive = (spyGame.players || [])
-    .filter((p) => p.alive !== false)
+    .filter((p) => p.alive !== false && p.leftRoom !== true)
     .map((p) => Number(p.playerIndex));
   if (alive.length < 2) {
     return { ok: false, errCode: 'NOT_ENOUGH_ALIVE', errMsg: '存活人数不足' };
@@ -668,11 +711,12 @@ exports.main = async (event) => {
         return await actionNextRound(roomId, userId);
       case 'restart':
         return await actionRestart(roomId, userId);
+      case 'startVote':
+        return await actionStartVote(roomId, userId);
       // 兼容旧客户端：已废弃的主持人动作
       case 'hostOverview':
         return { ok: false, errCode: 'DEPRECATED', errMsg: '已取消主持人视角' };
       case 'startSpeak':
-      case 'startVote':
       case 'confirmResult':
       case 'enterNextRoundPage':
         return { ok: false, errCode: 'DEPRECATED', errMsg: '流程已改为全员自动推进' };

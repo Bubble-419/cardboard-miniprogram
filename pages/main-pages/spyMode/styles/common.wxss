@@ -10,6 +10,7 @@
   padding: 0 48rpx 24rpx;
 }
 
+/* 顶栏已迁移至 player-top-bar；保留样式以免未迁移页引用断裂 */
 .topbar {
   display: flex;
   flex-direction: row;

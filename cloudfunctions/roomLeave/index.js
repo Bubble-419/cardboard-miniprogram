@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { syncRoomAfterMemberRemoved } = require('./memberSync');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -25,7 +26,7 @@ exports.main = async (event, context) => {
     }
 
     const room = roomRes.data[0];
-    if (room.creatorId === currentUserId) {
+    if (String(room.creatorId) === String(currentUserId)) {
       return {
         ok: false,
         errCode: 'HOST_CANNOT_LEAVE',
@@ -40,11 +41,32 @@ exports.main = async (event, context) => {
       .get();
 
     if (!memberRes.data || memberRes.data.length === 0) {
-      return { ok: true, alreadyLeft: true };
+      return { ok: true, alreadyLeft: true, event: null };
     }
 
-    await db.collection(ROOM_MEMBERS_COLLECTION).doc(memberRes.data[0]._id).remove();
-    return { ok: true };
+    const removed = memberRes.data[0];
+    await db.collection(ROOM_MEMBERS_COLLECTION).doc(removed._id).remove();
+
+    const remainRes = await db
+      .collection(ROOM_MEMBERS_COLLECTION)
+      .where({ roomId })
+      .orderBy('playerIndex', 'asc')
+      .get();
+    const remaining = remainRes.data || [];
+
+    const sync = await syncRoomAfterMemberRemoved(
+      db,
+      room,
+      roomId,
+      { userId: removed.userId, playerIndex: removed.playerIndex },
+      remaining
+    );
+
+    return {
+      ok: true,
+      memberCount: sync.memberCount,
+      event: sync.event
+    };
   } catch (e) {
     console.error('roomLeave error', e);
     return {

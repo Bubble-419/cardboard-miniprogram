@@ -1,66 +1,45 @@
 const {
-  callCloudFunction,
+  fetchRoomDataOrExit,
   callSpyAction,
   goRoomPage,
   buildAvatarList,
   buildSpyPageUrl,
   openUrl,
-  SPEAK_TURN_MS,
-  startSpyCountdownTicker,
-  withSpyRefreshGuard,
-  samePlayerIndex
+  withSpyRefreshGuard
 } = require('../../../../utils/spyMode');
-const { assignAvatarImages } = require('../../../../utils/avatars');
 const { followSpyRoomState } = require('../../../../utils/spyFollow');
-const { getWordCardAssets, getLibraryGroupCount } = require('../../../../utils/spyWordCardAssets');
+const {
+  getWordCardAssets,
+  getLibraryGroupCount,
+  listLibraryCards
+} = require('../../../../utils/spyWordCardAssets');
 
-const DEFAULT_AVATAR = '/assets/avatar/frame_2085662311_1x.webp';
+const SWIPE_THRESHOLD_PX = 48;
 
-function buildProgressList(spyGame, myPlayerIndex, memberByIndex) {
-  const order = spyGame.speakOrder || [];
-  const players = spyGame.players || [];
-  const cur = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
-  const speakAllDone = order.length > 0 && cur >= order.length;
-
-  return order.map((idx, i) => {
-    const p = players.find((x) => samePlayerIndex(x.playerIndex, idx));
-    const member = (memberByIndex && (memberByIndex[Number(idx)] || memberByIndex[idx])) || {};
-    const alive = !p || p.alive !== false;
-    const isMe = samePlayerIndex(idx, myPlayerIndex);
-    const isCurrent = !speakAllDone && i === cur && alive;
-
-    let statusKey = 'waiting';
-    let statusText = '等待中';
-    if (!alive) {
-      statusKey = 'out';
-      statusText = '已出局';
-    } else if (speakAllDone || i < cur) {
-      statusKey = 'done';
-      statusText = '已发言';
-    } else if (isCurrent) {
-      statusKey = 'speaking';
-      statusText = '发言中';
-    }
-
+function getWindowMetrics() {
+  try {
+    const sys = typeof wx.getWindowInfo === 'function'
+      ? wx.getWindowInfo()
+      : wx.getSystemInfoSync();
     return {
-      playerIndex: Number(idx),
-      name: (p && p.name) || member.nickName || `玩家${idx}`,
-      avatarImage: member.avatarImage || DEFAULT_AVATAR,
-      rank: i + 1,
-      isCurrent,
-      isMe,
-      statusKey,
-      statusText
+      windowWidth: (sys && sys.windowWidth) || 375,
+      statusBarHeight: (sys && sys.statusBarHeight) || 20,
+      safeBottom: (sys && sys.safeAreaInsets && sys.safeAreaInsets.bottom)
+        || (sys && sys.screenHeight && sys.safeArea
+          ? Math.max(0, sys.screenHeight - sys.safeArea.bottom)
+          : 0)
     };
-  });
+  } catch (e) {
+    return { windowWidth: 375, statusBarHeight: 20, safeBottom: 0 };
+  }
 }
 
 Page({
   data: {
     roomId: '',
-    navbarPaddingTop: 44,
+    compactMode: false,
+    singleCol: false,
     avatarList: [],
-    turnCountdownText: '1:00',
     myCard: null,
     myWord: '',
     myBlurb: '',
@@ -71,31 +50,38 @@ Page({
     word1FallbackSrc: '',
     cardReady: false,
     libraryGroupCount: 0,
+    libraryCards: [],
+    contentTab: 0,
     acting: false,
-    isMyTurn: false,
-    speakAllDone: false,
+    isHost: false,
     tieBreak: false,
-    progressList: [],
-    canFinish: false
+    viewerOpen: false,
+    selectedWord: '',
+    selectedCard: null
+  },
+
+  _applyLayoutMetrics() {
+    const { windowWidth } = getWindowMetrics();
+    this.setData({
+      compactMode: windowWidth < 340,
+      singleCol: windowWidth < 300
+    });
   },
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      navbarPaddingTop = (wx.getSystemInfoSync().statusBarHeight || 0) + 16;
-    } catch (e) {
-      // ignore
-    }
+    this._applyLayoutMetrics();
     this.setData({
       roomId: (options && options.roomId) || getApp().globalData.roomId || '',
-      navbarPaddingTop,
-      libraryGroupCount: getLibraryGroupCount()
+      libraryGroupCount: getLibraryGroupCount(),
+      libraryCards: listLibraryCards(),
+      contentTab: 0
     });
   },
 
   onShow() {
     this._pageAlive = true;
+    this._applyLayoutMetrics();
     this.refresh();
     this.startPolling();
   },
@@ -103,13 +89,15 @@ Page({
   onHide() {
     this._pageAlive = false;
     this.stopPolling();
-    this.stopTicker();
   },
 
   onUnload() {
     this._pageAlive = false;
     this.stopPolling();
-    this.stopTicker();
+  },
+
+  onResize() {
+    this._applyLayoutMetrics();
   },
 
   startPolling() {
@@ -127,67 +115,32 @@ Page({
     }
   },
 
-  stopTicker() {
-    if (this._tickTimer) {
-      clearInterval(this._tickTimer);
-      this._tickTimer = null;
-    }
-  },
-
-  ensureTurnTicker(startedAt, durationMs) {
-    const duration = durationMs || SPEAK_TURN_MS;
-    if (!startedAt) {
-      this.stopTicker();
-      this._turnStartedAt = 0;
-      this.setData({ turnCountdownText: '0:00' });
-      return;
-    }
-    if (this._turnStartedAt === startedAt && this._tickTimer) {
-      this._speakDuration = duration;
-      return;
-    }
-    this.stopTicker();
-    this._turnStartedAt = startedAt;
-    this._speakDuration = duration;
-    this._tickTimer = startSpyCountdownTicker(
-      this,
-      () => this._turnStartedAt,
-      this._speakDuration,
-      'turnCountdownText'
-    );
-  },
-
   async refresh() {
     const roomId = this.data.roomId;
     if (!roomId) return;
     await withSpyRefreshGuard(this, async () => {
       try {
-        const res = await callCloudFunction('getAddPlayerData', { roomId });
-        const result = (res && res.result) || {};
-        if (!this._pageAlive || result.ok !== true) return;
+        const result = await fetchRoomDataOrExit(roomId);
+        if (!this._pageAlive || !result || result.ok !== true) return;
 
         followSpyRoomState(result, roomId, {
           stayOnPage: 'spyspeak',
-          allowHost: true
+          allowHost: true,
+          // 投票已开始：必须全员进投票页，覆盖大厅停留锁
+          force: !!(result.roomState
+            && result.roomState.spyGame
+            && result.roomState.spyGame.phase === 'vote')
         });
 
         const spyGame = result.roomState && result.roomState.spyGame;
         const members = result.members || [];
-        const membersWithAvatar = assignAvatarImages(members);
-        const memberByIndex = {};
-        membersWithAvatar.forEach((m) => {
-          if (m && m.playerIndex != null) {
-            memberByIndex[m.playerIndex] = m;
-            memberByIndex[Number(m.playerIndex)] = m;
-          }
+        const isHost = result.isHost === true;
+        this.setData({
+          avatarList: buildAvatarList(members),
+          isHost
         });
-
-        this.setData({ avatarList: buildAvatarList(members) });
         if (!spyGame) return;
 
-        const myMember = members.find((m) => m.isMe);
-        let myPlayerIndex = myMember ? myMember.playerIndex : null;
-        // 兼容：用自己的卡确认 playerIndex
         let myCard = this.data.myCard;
         if (!myCard) {
           const cardRes = await callSpyAction('getMyCard', { roomId });
@@ -195,32 +148,14 @@ Page({
             myCard = cardRes.card;
           }
         }
-        if (myPlayerIndex == null && myCard && myCard.playerIndex != null) {
-          myPlayerIndex = myCard.playerIndex;
-        }
-
-        const order = spyGame.speakOrder || [];
-        const cur = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
-        const speakAllDone = order.length > 0 && cur >= order.length;
-        const currentPlayerIndex = !speakAllDone && cur < order.length ? order[cur] : null;
-        const isMyTurn = !speakAllDone
-          && currentPlayerIndex != null
-          && myPlayerIndex != null
-          && samePlayerIndex(currentPlayerIndex, myPlayerIndex);
 
         const myWord = (myCard && myCard.word) || '';
         const assets = getWordCardAssets(myWord);
-
-        // 仅在词语/资源首次就绪或变化时更新卡面路径，减少组件抖动
         const nextCard = {
           myCard,
           myWord,
           myBlurb: (myCard && myCard.blurb) || '',
-          isMyTurn,
-          speakAllDone,
-          tieBreak: spyGame.tieBreak === true,
-          progressList: buildProgressList(spyGame, myPlayerIndex, memberByIndex),
-          canFinish: isMyTurn && !this.data.acting
+          tieBreak: spyGame.tieBreak === true
         };
         const cardReady = !!(myWord && (assets.assignedWordSrc || assets.assignedWordFallbackSrc));
         if (
@@ -237,35 +172,93 @@ Page({
         }
 
         this.setData(nextCard);
-
-        this.ensureTurnTicker(
-          speakAllDone ? 0 : (spyGame.speakTurnStartedAt || spyGame.speakRoundStartedAt || 0),
-          spyGame.speakTurnMs || SPEAK_TURN_MS
-        );
       } catch (e) {
         console.warn('spy speak refresh', e);
       }
     });
   },
 
-  async onFinishSpeak() {
-    if (!this.data.isMyTurn || this.data.acting || this.data.speakAllDone) return;
-    this.setData({ acting: true, canFinish: false });
+  onTapContentTab(e) {
+    const tab = Number(e.currentTarget.dataset.tab);
+    if (!Number.isFinite(tab) || tab === this.data.contentTab) return;
+    this.setData({ contentTab: tab });
+  },
+
+  onPanelTouchStart(e) {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    this._panelTouchX = t.clientX;
+    this._panelTouchY = t.clientY;
+  },
+
+  onPanelTouchEnd(e) {
+    const startX = this._panelTouchX;
+    const startY = this._panelTouchY;
+    this._panelTouchX = null;
+    this._panelTouchY = null;
+    if (startX == null) return;
+
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+    if (dx < 0 && this.data.contentTab === 0) {
+      this.setData({ contentTab: 1 });
+    } else if (dx > 0 && this.data.contentTab === 1) {
+      this.setData({ contentTab: 0 });
+    }
+  },
+
+  onTapLibraryCard(e) {
+    const word = e.currentTarget.dataset.word;
+    const card = (this.data.libraryCards || []).find((c) => c.word === word);
+    if (!card) return;
+    this.setData({
+      selectedWord: word,
+      selectedCard: card,
+      viewerOpen: true
+    });
+  },
+
+  onCloseViewer() {
+    this.setData({
+      viewerOpen: false,
+      selectedWord: '',
+      selectedCard: null
+    });
+  },
+
+  async onStartVote() {
+    if (!this.data.isHost || this.data.acting) return;
+    this.setData({ acting: true });
     try {
-      const result = await callSpyAction('advanceSpeak', { roomId: this.data.roomId });
+      const result = await callSpyAction('startVote', { roomId: this.data.roomId });
       if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
+        const hint = result.errCode === 'DEPRECATED'
+          ? '请重新上传云函数 spyGameAction 后再试'
+          : (result.errMsg || '操作失败');
+        wx.showToast({ title: hint, icon: 'none', duration: 2500 });
         return;
       }
-      if (result.autoVote || result.finished) {
-        wx.showToast({ title: '进入匿名投票', icon: 'success' });
-        openUrl(buildSpyPageUrl('vote', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-        return;
+      // 房主立即进投票页；成员由发言页轮询 follow 同步
+      try {
+        const { clearSpyLobbyStay, clearSpyFollowLock } = require('../../../../utils/spyFollow');
+        const { clearPendingNavigation } = require('../../../../utils/pageNavigate');
+        clearSpyLobbyStay();
+        clearSpyFollowLock();
+        clearPendingNavigation();
+      } catch (e) {
+        // ignore
       }
-      await this.refresh();
+      this._pageAlive = false;
+      this.stopPolling();
+      openUrl(buildSpyPageUrl('vote', this.data.roomId), {
+        immediate: true,
+        noReLaunch: true
+      });
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
     } finally {
@@ -274,12 +267,10 @@ Page({
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
+    if (typeof this.stopPolling === 'function') this.stopPolling();
     goRoomPage(this.data.roomId);
   },
 
-  onOpenLibrary() {
-    wx.navigateTo({
-      url: buildSpyPageUrl('cardLibrary', this.data.roomId)
-    });
-  }
+  noop() {}
 });

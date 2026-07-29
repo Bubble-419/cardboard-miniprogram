@@ -696,77 +696,95 @@
                 </scroll-view>
 
                 <view class="spectator-bottom-stack">
-                  <!-- 表达按钮始终贴在打分面板上方，上滑展开后面板变高时间距保持不变 -->
-                  <view class="spectator-express-dock {{expressComposerOpen ? 'spectator-express-dock-open' : ''}}">
-                    <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
-                      <input
-                        class="spectator-express-input"
-                        value="{{expressDraftText}}"
-                        focus="{{expressComposerOpen}}"
-                        maxlength="40"
-                        confirm-type="send"
-                        placeholder="说点什么…"
-                        placeholder-class="spectator-express-placeholder"
-                        bindinput="onExpressInput"
-                        bindconfirm="submitExpress"
-                        bindblur="onExpressComposerBlur"
-                      />
-                      <view
-                        class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                        catchtap="submitExpress"
-                      >
-                        <image
-                          class="spectator-express-send-icon"
-                          src="/assets/partnerMode/icon-express-send.png"
-                          mode="aspectFit"
-                        />
-                      </view>
-                    </view>
-                    <view
-                      wx:else
-                      class="spectator-express-fab"
-                      catchtap="openExpressComposer"
-                    >
-                      <image
-                        class="spectator-express-fab-bubble"
-                        src="/assets/partnerMode/icon-express-bubble.svg"
-                        mode="aspectFit"
-                      />
-                    </view>
-                  </view>
+                  <!-- 占位：仅保留收起高度，避免上方内容随展开抖动 -->
+                  <view class="score-sheet-spacer" style="height: {{scoreSheetCollapsedPx}}px;"></view>
 
-                  <!-- 统一打分列表：可收起，点击/上滑展开 -->
-                  <view class="score-sheet {{scorePanelExpanded ? 'score-sheet-expanded' : ''}}">
+                  <!--
+                    裁剪容器：高度随 translateY 连续变化，评分按钮渐显/渐隐
+                    内部 sheet 用 transform 跟手 / 吸附动画
+                  -->
+                  <view
+                    class="score-sheet-clip {{scoreSheetAnimating ? 'score-sheet-clip-animating' : ''}}"
+                    style="height: {{scoreSheetVisiblePx}}px;"
+                  >
                     <view
-                      class="score-sheet-handle-wrap"
-                      catchtap="toggleScorePanel"
+                      class="score-sheet {{scoreSheetAnimating ? 'score-sheet-animating' : ''}}"
+                      style="transform: translateY({{scoreSheetTranslateY}}px);"
                       catchtouchstart="onScoreSheetTouchStart"
                       catchtouchmove="onScoreSheetTouchMove"
                       catchtouchend="onScoreSheetTouchEnd"
+                      catchtouchcancel="onScoreSheetTouchEnd"
                     >
-                      <view class="score-sheet-handle"></view>
-                    </view>
-                    <view
-                      class="score-sheet-head"
-                      catchtap="toggleScorePanel"
-                      catchtouchstart="onScoreSheetTouchStart"
-                      catchtouchmove="onScoreSheetTouchMove"
-                      catchtouchend="onScoreSheetTouchEnd"
-                    >
-                      <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
-                      <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
-                    </view>
-                    <view class="score-buttons" wx:if="{{scorePanelExpanded}}">
+                      <!-- 表达入口贴在抽屉顶边，随面板连续上下移动 -->
                       <view
-                        class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
-                        wx:for="{{scoreOptions}}"
-                        wx:key="*this"
-                        data-score="{{item}}"
-                        catchtap="onScoreTap"
+                        class="spectator-express-dock {{expressComposerOpen ? 'spectator-express-dock-open' : ''}}"
+                        catchtouchstart="onScoreInteractiveTouchStart"
+                        catchtouchmove="noop"
+                        catchtap="noop"
                       >
-                        <view class="score-btn-content">
-                          <text class="score-num">{{item}}</text>
-                          <text class="score-unit">分</text>
+                        <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
+                          <input
+                            class="spectator-express-input"
+                            value="{{expressDraftText}}"
+                            focus="{{expressComposerOpen}}"
+                            maxlength="40"
+                            confirm-type="send"
+                            placeholder="说点什么…"
+                            placeholder-class="spectator-express-placeholder"
+                            bindinput="onExpressInput"
+                            bindconfirm="submitExpress"
+                            bindblur="onExpressComposerBlur"
+                          />
+                          <view
+                            class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                            catchtap="submitExpress"
+                          >
+                            <image
+                              class="spectator-express-send-icon"
+                              src="/assets/partnerMode/icon-express-send.png"
+                              mode="aspectFit"
+                            />
+                          </view>
+                        </view>
+                        <view
+                          wx:else
+                          class="spectator-express-fab"
+                          catchtap="openExpressComposer"
+                        >
+                          <image
+                            class="spectator-express-fab-bubble"
+                            src="/assets/partnerMode/icon-express-bubble.svg"
+                            mode="aspectFit"
+                          />
+                        </view>
+                      </view>
+
+                      <!-- 头部非交互区：点击展开/收起（与拖动手势在 JS 中分离） -->
+                      <view class="score-sheet-handle-wrap" data-sheet-hit="header">
+                        <view class="score-sheet-handle"></view>
+                      </view>
+                      <view class="score-sheet-head" data-sheet-hit="header">
+                        <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
+                        <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+                      </view>
+                      <view
+                        class="score-buttons"
+                        catchtouchstart="onScoreButtonsTouchStart"
+                        catchtouchmove="onScoreButtonsTouchMove"
+                        catchtouchend="onScoreButtonsTouchEnd"
+                        catchtouchcancel="onScoreButtonsTouchEnd"
+                      >
+                        <view
+                          class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
+                          wx:for="{{scoreOptions}}"
+                          wx:key="*this"
+                          data-score="{{item}}"
+                          catchtap="onScoreTap"
+                        >
+                          <view class="score-btn-content">
+                            <text class="score-num">{{item}}</text>
+                            <text class="score-unit">分</text>
+                          </view>
                         </view>
                       </view>
                     </view>

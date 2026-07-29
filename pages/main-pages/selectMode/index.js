@@ -3,6 +3,7 @@ const { buildAvatarList } = require('../../../utils/avatars');
 const scenarioCategories = require('../../../utils/scenarioCategories');
 const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 const {
   DEFAULT_CATEGORIES,
@@ -217,5 +218,9 @@ Page({
 
   goBack() {
     wx.navigateBack();
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   }
 });

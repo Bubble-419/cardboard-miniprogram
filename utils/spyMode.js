@@ -18,6 +18,18 @@ const { followSubScreenRoomPoll } = require('./subScreenRoomPoll');
 const { openUrl } = require('./pageNavigate');
 const { goRoomPage } = require('./goRoomPage');
 const { buildAvatarList } = require('./avatars');
+const { handleRoomGoneFromResult } = require('./roomDissolved');
+const { handleRoomLastEvent } = require('./roomMembersSync');
+
+/** 拉取房间；若已解散/不在房间则统一回首页并返回 null */
+async function fetchRoomDataOrExit(roomId) {
+  const res = await callCloudFunction('getAddPlayerData', { roomId });
+  const result = (res && res.result) || {};
+  if (handleRoomGoneFromResult(result, roomId)) return null;
+  // 只剩 1 人回退房间：停止局内 UI 更新
+  if (handleRoomLastEvent(result, roomId)) return null;
+  return result;
+}
 
 function buildSpyPageUrl(pageKey, roomId, query = {}) {
   const roomIdEnc = encodeURIComponent(roomId || '');
@@ -143,6 +155,7 @@ module.exports = {
   parseIsHostOption,
   callSpyAction,
   callCloudFunction,
+  fetchRoomDataOrExit,
   followSubScreenRoomPoll,
   openUrl,
   goRoomPage,

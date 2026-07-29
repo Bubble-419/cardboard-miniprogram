@@ -10,6 +10,16 @@ const {
   buildRoomJoinPayload
 } = require('../../../utils/wxUserAvatar');
 const { AVATAR_IMAGES } = require('../../../utils/avatars');
+const {
+  handleRoomGoneFromResult,
+  consumePendingRoomGoneToast,
+  isRoomDissolvedResult
+} = require('../../../utils/roomDissolved');
+const {
+  beginUserAuthFlow,
+  endUserAuthFlow,
+  isUserAuthInProgress
+} = require('../../../utils/userAuthSession');
 
 Page({
   data: {
@@ -43,6 +53,14 @@ Page({
   },
 
   onShow() {
+    // 系统头像选择面板关闭后 chooseavatar 可能不回调，释放闸门以免挂起解散跳转
+    if (isUserAuthInProgress()) {
+      setTimeout(() => {
+        if (isUserAuthInProgress()) endUserAuthFlow();
+      }, 300);
+    }
+    consumePendingRoomGoneToast();
+    this._restoreUserProfile();
     this.loadJoinedRoomState();
   },
 
@@ -52,8 +70,18 @@ Page({
       wx.showToast({ title: '房间信息缺失', icon: 'none' });
       return;
     }
+    // stayLobby：游戏进行中从首页再进大厅时，避免轮询立刻拉回游戏页
+    try {
+      const { setSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
+      const { clearPendingNavigation } = require('../../../utils/pageNavigate');
+      setSpyLobbyStay(roomId);
+      clearSpyFollowLock();
+      clearPendingNavigation();
+    } catch (e) {
+      // ignore
+    }
     wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&stayLobby=1`
     });
   },
 
@@ -75,13 +103,32 @@ Page({
       const result = (res && res.result) || {};
 
       if (result.ok !== true) {
+        // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
+        if (isRoomDissolvedResult(result) || result.errCode === 'NOT_IN_ROOM') {
+          handleRoomGoneFromResult(result, roomId, {
+            allowToastOnHome: true,
+            title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
+          });
+          this._setNotJoinedState();
+          return;
+        }
         this._clearJoinedRoom(roomId);
+        this._setNotJoinedState();
         return;
       }
 
       const isMember = (result.members || []).some(m => m.isMe);
       if (!isMember) {
-        this._clearJoinedRoom(roomId);
+        if (result.isHost !== true) {
+          handleRoomGoneFromResult(
+            { ok: false, errCode: 'NOT_IN_ROOM', errMsg: '您已不在该房间' },
+            roomId,
+            { allowToastOnHome: true }
+          );
+        } else {
+          this._clearJoinedRoom(roomId);
+        }
+        this._setNotJoinedState();
         return;
       }
 
@@ -127,6 +174,7 @@ Page({
   },
 
   _setNotJoinedState() {
+    const stored = getStoredProfile();
     this.setData({
       isJoinedRoom: false,
       role: '',
@@ -136,8 +184,9 @@ Page({
       roomDesc: '',
       roomTimeText: '',
       timeLabel: '创建/加入时间',
-      userNickName: '微信用户',
-      userAvatarUrl: DEFAULT_AVATAR
+      // 保留微信授权头像昵称，不因离开房间回到默认态
+      userNickName: (stored && stored.nickName) || this.data.userNickName || '微信用户',
+      userAvatarUrl: (stored && stored.avatarUrl) || this.data.userAvatarUrl || DEFAULT_AVATAR
     });
   },
 
@@ -167,13 +216,21 @@ Page({
     });
   },
 
+  onAvatarAuthTap() {
+    beginUserAuthFlow();
+  },
+
   onChooseAvatar(e) {
-    const profile = applyChooseAvatarEvent(e.detail);
-    if (!profile) return;
-    this.setData({
-      userAvatarUrl: profile.avatarUrl,
-      userNickName: profile.nickName || this.data.userNickName || '微信用户'
-    });
+    try {
+      const profile = applyChooseAvatarEvent(e.detail);
+      if (!profile) return;
+      this.setData({
+        userAvatarUrl: profile.avatarUrl,
+        userNickName: profile.nickName || this.data.userNickName || '微信用户'
+      });
+    } finally {
+      endUserAuthFlow();
+    }
   },
 
   onNickNameInput(e) {

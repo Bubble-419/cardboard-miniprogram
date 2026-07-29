@@ -3,7 +3,12 @@
   <view class="main-header" style="padding-top: {{headerPaddingTop}}px">
     <view class="user-info">
       <view class="avatar-wrap">
-        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <button
+          class="avatar-btn"
+          open-type="chooseAvatar"
+          catchtap="onAvatarAuthTap"
+          bindchooseavatar="onChooseAvatar"
+        >
           <image class="user-avatar" src="{{userAvatarUrl}}" mode="aspectFill" />
         </button>
         <view class="online-dot" />

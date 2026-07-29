@@ -1,6 +1,5 @@
-const { goRoomPage, buildSpyPageUrl, openUrl } = require('../../../../utils/spyMode');
+const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../../../utils/spyMode');
 const { listLibraryCards, getLibraryGroupCount } = require('../../../../utils/spyWordCardAssets');
-const { callCloudFunction } = require('../../../../utils/cloudApi');
 const { SPY_PHASE } = require('../../../../utils/spyGameState');
 
 /** 分词开始后不允许查阅牌库 */
@@ -20,7 +19,6 @@ function isLibraryLocked(spyGame) {
 Page({
   data: {
     roomId: '',
-    navbarPaddingTop: 44,
     groupCount: 0,
     cards: [],
     selectedWord: '',
@@ -31,17 +29,10 @@ Page({
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      navbarPaddingTop = (wx.getSystemInfoSync().statusBarHeight || 0) + 16;
-    } catch (e) {
-      // ignore
-    }
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const cards = listLibraryCards();
     this.setData({
       roomId,
-      navbarPaddingTop,
       groupCount: getLibraryGroupCount(),
       cards
     });
@@ -64,9 +55,8 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId) return;
     try {
-      const res = await callCloudFunction('getAddPlayerData', { roomId });
-      const result = (res && res.result) || {};
-      if (!this._pageAlive || result.ok !== true) return;
+      const result = await fetchRoomDataOrExit(roomId);
+      if (!this._pageAlive || !result || result.ok !== true) return;
       const spyGame = result.roomState && result.roomState.spyGame;
       if (isLibraryLocked(spyGame)) {
         this.setData({ locked: true, viewerOpen: false });
@@ -122,6 +112,7 @@ Page({
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
     goRoomPage(this.data.roomId);
   },
 

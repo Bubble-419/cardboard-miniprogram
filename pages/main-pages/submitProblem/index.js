@@ -14,7 +14,6 @@ const { goRoomPage } = require('../../../utils/goRoomPage');
 
 Page({
   data: {
-    navbarPaddingTop: 0,
     roomId: '',
     workshopName: '脑暴工作坊',
     avatarList: [],
@@ -40,17 +39,8 @@ Page({
       return;
     }
 
-    let navbarPaddingTop = 0;
-    try {
-      const sys = wx.getSystemInfoSync();
-      const h = sys.statusBarHeight || 0;
-      navbarPaddingTop = sys.platform === 'ios' ? Math.max(6, h - 36) : h;
-    } catch (e) {
-      console.warn('getSystemInfo for navbar', e);
-    }
-
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId, navbarPaddingTop });
+    this.setData({ roomId });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
       this.refreshSubmitStatus();

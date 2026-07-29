@@ -7,6 +7,7 @@ const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames'
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarList } = require('../../../utils/avatars');
 const { callCloudFunction } = require('../../../utils/cloudApi');
+const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 
 const BRAINSTORM_MODES = [
   {
@@ -46,14 +47,15 @@ function parseIsHostOption(options) {
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
-function computeScrollHeight(navbarPaddingTop) {
+function computeScrollHeight() {
   try {
     const sys = wx.getSystemInfoSync();
     const windowHeight = sys.windowHeight || 667;
     const footerReserve = 120 + (sys.safeAreaInsets && sys.safeAreaInsets.bottom
       ? sys.safeAreaInsets.bottom
       : 0);
-    const headerReserve = navbarPaddingTop + 140;
+    const m = getCapsuleTopBarMetrics();
+    const headerReserve = (m.padTop || 0) + (m.barHeight || 32) + 140;
     return Math.max(320, windowHeight - headerReserve - footerReserve);
   } catch (e) {
     return 520;
@@ -70,20 +72,11 @@ Page({
     brainstormModes: cloneModesWithoutCover(),
     selectedModeId: null,
     isSelecting: false,
-    navbarPaddingTop: 44,
     scrollHeight: 520
   },
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      const sys = wx.getSystemInfoSync();
-      navbarPaddingTop = (sys.statusBarHeight || 0) + 16;
-    } catch (e) {
-      console.warn('getSystemInfo for navbar', e);
-    }
-
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isHost = parseIsHostOption(options);
     if (!roomId) {
@@ -97,8 +90,7 @@ Page({
     this.setData({
       roomId,
       isHost,
-      navbarPaddingTop,
-      scrollHeight: computeScrollHeight(navbarPaddingTop),
+      scrollHeight: computeScrollHeight(),
       brainstormModes: cloneModesWithoutCover()
     });
   },

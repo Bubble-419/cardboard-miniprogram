@@ -1,10 +1,9 @@
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../../utils/goRoomPage');
 
 Page({
-    data: {
-    navbarPaddingTop: 0,
-    contentOffsetTop: 52,
+  data: {
     roomId: '',
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
@@ -38,28 +37,10 @@ Page({
       return;
     }
 
-    // 真机 iOS 顶部留白与模拟器不一致，与 gamepage 一致计算
-    let navbarPaddingTop = 0;
-    try {
-      const sys = wx.getSystemInfoSync();
-      const h = sys.statusBarHeight || 0;
-      if (sys.platform === 'ios') {
-        navbarPaddingTop = Math.max(6, h - 36);
-      } else {
-        navbarPaddingTop = h;
-      }
-    } catch (e) {
-      console.warn('getSystemInfo for navbar', e);
-    }
-    // 固定 60px，与 gamepage 一致，实测合适且不遮挡；iOS/Android 保持一致
-    const contentOffsetTop = 60;
-
     this.setData({
       roomId,
       currentPlayerIndex,
-      currentPlayerName,
-      navbarPaddingTop,
-      contentOffsetTop
+      currentPlayerName
     });
 
     this.loadRoomData(roomId);
@@ -177,6 +158,10 @@ Page({
         });
       }
     });
+  },
+
+  handleGoRoom() {
+    goRoomPage(this.data.roomId);
   },
 
   // 房主点击“继续游戏”

@@ -2,22 +2,13 @@
   <!-- 等待视图（非房主 / 等待中） -->
   <block wx:if="{{!isHost || isWaiting}}">
     <view class="wait-page">
-      <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+      <view class="header-section">
+        <player-top-bar
+          avatarList="{{avatarList}}"
+          maxVisible="{{5}}"
+          bind:goroom="handleGoRoom"
+        />
         <text class="workshop-name">{{workshopName}}</text>
-        <view class="topbar">
-          <view class="room-entry" bindtap="handleGoRoom">
-            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-          </view>
-          <view class="avatar-bar">
-            <user-list
-              avatarList="{{avatarList}}"
-              enableAdd="{{false}}"
-              isFold="{{true}}"
-              showName="{{false}}"
-              layout="stack"
-            />
-          </view>
-        </view>
       </view>
       <view class="wait-body">
         <text class="wait-title">选择情境</text>
@@ -33,24 +24,15 @@
 
   <!-- 房主视图 -->
   <block wx:else>
-    <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-      <!-- 页面头部 -->
-      <view class="header-section" style="padding-top: {{navbarPaddingTop}}px">
+    <view class="host-page">
+      <!-- 页面头部（固定） -->
+      <view class="header-section">
+        <player-top-bar
+          avatarList="{{avatarList}}"
+          maxVisible="{{5}}"
+          bind:goroom="handleGoRoom"
+        />
         <text class="workshop-name">{{workshopName}}</text>
-        <view class="topbar">
-          <view class="room-entry" bindtap="handleGoRoom">
-            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-          </view>
-          <view class="avatar-bar">
-            <user-list
-              avatarList="{{avatarList}}"
-              enableAdd="{{false}}"
-              isFold="{{true}}"
-              showName="{{false}}"
-              layout="stack"
-            />
-          </view>
-        </view>
         <view class="title-block">
           <text class="page-main-title">选择情境</text>
           <text class="page-subtitle">选择一个情境开始游戏，或新建自定义情境</text>
@@ -59,7 +41,7 @@
 
       <!-- 主内容区 -->
       <view class="main-content">
-        <!-- 线下情境卡片（halliGalli 模式才有） -->
+        <!-- 线下情境卡片（固定） -->
         <view
           wx:if="{{offlineScenario}}"
           class="offline-card"
@@ -83,20 +65,19 @@
           </view>
         </view>
 
-        <!-- 我的自定义情境 -->
+        <!-- 脑暴情境：标题固定，仅列表可滚动 -->
         <view class="custom-section">
           <view class="section-header-row">
             <view class="section-header-left">
               <view class="section-indicator"></view>
-              <text class="section-title">我的自定义情境</text>
+              <text class="section-title">脑暴情境</text>
             </view>
             <view class="section-add-btn" bindtap="handleAddScenario">
               <image class="section-add-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
             </view>
           </view>
 
-          <view class="scenario-list">
-            <!-- 每个情境卡片 -->
+          <scroll-view class="scenario-list" scroll-y enhanced show-scrollbar="{{false}}">
             <view
               class="scenario-item"
               wx:for="{{customScenarios}}"
@@ -119,10 +100,10 @@
                 </view>
               </view>
             </view>
-          </view>
+          </scroll-view>
         </view>
       </view>
-    </scroll-view>
+    </view>
 
     <page-footer
       extClass="footer"

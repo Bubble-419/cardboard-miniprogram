@@ -1,5 +1,5 @@
 const {
-  callCloudFunction,
+  fetchRoomDataOrExit,
   goRoomPage,
   buildSpyPageUrl,
   openUrl,
@@ -47,9 +47,8 @@ Page({
     if (!roomId) return;
     await withSpyRefreshGuard(this, async () => {
       try {
-        const res = await callCloudFunction('getAddPlayerData', { roomId });
-        const result = (res && res.result) || {};
-        if (!this._pageAlive || result.ok !== true) return;
+        const result = await fetchRoomDataOrExit(roomId);
+        if (!this._pageAlive || !result || result.ok !== true) return;
         const followed = followSpyRoomState(result, roomId, { allowHost: true });
         if (!followed) {
           openUrl(buildSpyPageUrl('speak', roomId), { immediate: true, noReLaunch: true });
@@ -61,6 +60,8 @@ Page({
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
+    if (typeof this.stopPolling === 'function') this.stopPolling();
     goRoomPage(this.data.roomId);
   }
 });

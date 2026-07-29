@@ -82,14 +82,13 @@
   box-shadow: 0 0 0 4rpx #5ec159, 0 0 12rpx rgba(94, 193, 89, 0.8);
 }
 
-/* ── 向上三角指示箭头 ▲ ─────────────────────────── */
+/* ── 向上三角指示箭头 ▲（Figma 6004:3865） ───────── */
 .avatar-arrow {
   margin-top: 6rpx;
-  width: 0;
-  height: 0;
-  border-left: 14rpx solid transparent;
-  border-right: 14rpx solid transparent;
-  border-bottom: 16rpx solid #5ec159;
+  width: 34rpx;
+  height: 16rpx;
+  flex-shrink: 0;
+  display: block;
 }
 
 /* ── 小号：游戏主流程页 ───────────────────────────── */
@@ -129,7 +128,6 @@
 
 .partner-avatar.size-sm .avatar-arrow {
   margin-top: 4rpx;
-  border-left-width: 12rpx;
-  border-right-width: 12rpx;
-  border-bottom-width: 13rpx;
+  width: 30rpx;
+  height: 14rpx;
 }

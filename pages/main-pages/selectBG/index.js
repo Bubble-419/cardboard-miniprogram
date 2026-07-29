@@ -25,17 +25,10 @@ Page({
       function: ''
     },
     canConfirm: false,
-    navbarPaddingTop: 44
+    avatarList: []
   },
 
   onLoad(options) {
-    try {
-      const sys = wx.getSystemInfoSync();
-      this.setData({ navbarPaddingTop: sys.statusBarHeight || 44 });
-    } catch (e) {
-      this.setData({ navbarPaddingTop: 44 });
-    }
-
     const mode = (options && options.mode) || getApp().globalData.gameMode || '';
     const includePlatform = mode === 'partner';
     const steps = includePlatform ? STEPS_WITH_PLATFORM : STEPS_WITHOUT_PLATFORM;

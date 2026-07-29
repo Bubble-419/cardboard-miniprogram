@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk');
 const { resolveActiveClosingVotes } = require('./closingVoteState');
+const { syncRoomAfterMemberRemoved } = require('./memberSync');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -8,6 +9,9 @@ cloud.init({
 const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
+
+/** 未轮询刷新超过该时长视为断线，移出房间（毫秒） */
+const PRESENCE_TIMEOUT_MS = 90 * 1000;
 
 const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement'];
 
@@ -21,7 +25,7 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
   const voteStatus = spyGame.voteStatus || {};
   const phase = spyGame.phase || 'intro';
   const aliveCount = (Array.isArray(spyGame.players) ? spyGame.players : [])
-    .filter((p) => p && p.alive !== false).length;
+    .filter((p) => p && p.alive !== false && p.leftRoom !== true).length;
   const votedCount = Array.isArray(voteStatus.votedPlayerIndexes)
     ? voteStatus.votedPlayerIndexes.length
     : 0;
@@ -29,7 +33,8 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
     phase,
     spyCount: spyGame.spyCount || 0,
     round: spyGame.round || 1,
-    players: Array.isArray(spyGame.players) ? spyGame.players : [],
+    players: (Array.isArray(spyGame.players) ? spyGame.players : [])
+      .filter((p) => p && p.leftRoom !== true),
     speakOrder: Array.isArray(spyGame.speakOrder) ? spyGame.speakOrder : [],
     currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
     speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
@@ -62,11 +67,90 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
         name: p.name || card.name || `玩家${p.playerIndex}`,
         role: card.role || '',
         word: card.word || '',
-        alive: p.alive !== false
+        alive: p.alive !== false && p.leftRoom !== true
       };
     });
   }
   return base;
+}
+
+/**
+ * 触摸当前用户在线心跳；清理超时未刷新的非房主成员，并写入 lastEvent
+ * @returns {{ members: Array, room: object, lastEvent: object|null }}
+ */
+async function touchPresenceAndPrune(room, roomId, currentUserId, members) {
+  const now = Date.now();
+  let list = Array.isArray(members) ? members.slice() : [];
+  let lastEvent = room.lastEvent || null;
+  let liveRoom = room;
+
+  const myMember = list.find((m) => m && String(m.userId) === String(currentUserId)) || null;
+  if (myMember && myMember._id) {
+    try {
+      await db.collection(ROOM_MEMBERS_COLLECTION).doc(myMember._id).update({
+        data: { lastSeenAt: now }
+      });
+      myMember.lastSeenAt = now;
+    } catch (e) {
+      console.warn('touch lastSeenAt failed', e);
+    }
+  }
+
+  const hostUserId = room.creatorId;
+  const stale = list.filter((m) => {
+    if (!m || !m._id) return false;
+    if (hostUserId && String(m.userId) === String(hostUserId)) return false;
+    if (String(m.userId) === String(currentUserId)) return false;
+    // 仅清理已建立心跳的成员，避免旧数据无 lastSeenAt 被误踢
+    if (m.lastSeenAt == null || m.lastSeenAt === '') return false;
+    return now - Number(m.lastSeenAt) > PRESENCE_TIMEOUT_MS;
+  });
+
+  if (!stale.length) {
+    return { members: list, room: liveRoom, lastEvent };
+  }
+
+  for (let i = 0; i < stale.length; i += 1) {
+    try {
+      await db.collection(ROOM_MEMBERS_COLLECTION).doc(stale[i]._id).remove();
+    } catch (e) {
+      console.warn('prune stale member failed', e);
+    }
+  }
+
+  const remainRes = await db
+    .collection(ROOM_MEMBERS_COLLECTION)
+    .where({ roomId })
+    .orderBy('playerIndex', 'asc')
+    .get();
+  list = remainRes.data || [];
+
+  const lastRemoved = stale[stale.length - 1];
+  try {
+    const sync = await syncRoomAfterMemberRemoved(
+      db,
+      liveRoom,
+      roomId,
+      { userId: lastRemoved.userId, playerIndex: lastRemoved.playerIndex },
+      list
+    );
+    lastEvent = sync.event || lastEvent;
+  } catch (e) {
+    console.error('sync after prune failed', e);
+  }
+
+  // 重新读取房间（sync 可能已回退局况）
+  try {
+    const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+    if (roomRes.data && roomRes.data[0]) {
+      liveRoom = roomRes.data[0];
+      if (liveRoom.lastEvent) lastEvent = liveRoom.lastEvent;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return { members: list, room: liveRoom, lastEvent };
 }
 
 function isLocalTempAvatar(url) {
@@ -151,24 +235,72 @@ exports.main = async (event, context) => {
       return {
         ok: false,
         errCode: 'ROOM_NOT_FOUND',
-        errMsg: '房间不存在'
+        errMsg: '房间不存在',
+        roomDissolved: true,
+        event: 'room_dissolved',
+        roomId
       };
     }
 
-    const room = roomRes.data[0];
+    let room = roomRes.data[0];
     if (room.status === 'DISSOLVED') {
       return {
         ok: false,
         errCode: 'ROOM_DISSOLVED',
         errMsg: '房间已解散',
-        roomDissolved: true
+        roomDissolved: true,
+        event: 'room_dissolved',
+        roomId
       };
     }
 
-    const isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
+    const membersRes = await db
+      .collection(ROOM_MEMBERS_COLLECTION)
+      .where({ roomId })
+      .orderBy('playerIndex', 'asc')
+      .get();
+
+    let rawMembers = membersRes.data || [];
+    let myMember = rawMembers.find((m) => m.userId === currentUserId) || null;
+    let isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
+
+    if (!isHost && !myMember) {
+      return {
+        ok: false,
+        errCode: 'NOT_IN_ROOM',
+        errMsg: '您已不在该房间'
+      };
+    }
+
+    // 在线心跳 + 断线超时移出（90s）；可能写 lastEvent / 回退局况
+    const presence = await touchPresenceAndPrune(room, roomId, currentUserId, rawMembers);
+    room = presence.room || room;
+    rawMembers = presence.members || rawMembers;
+    myMember = rawMembers.find((m) => m.userId === currentUserId) || null;
+    const lastEvent = presence.lastEvent || room.lastEvent || null;
+
+    if (room.status === 'DISSOLVED') {
+      return {
+        ok: false,
+        errCode: 'ROOM_DISSOLVED',
+        errMsg: '房间已解散',
+        roomDissolved: true,
+        event: 'room_dissolved',
+        roomId
+      };
+    }
+
+    isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
+    if (!isHost && !myMember) {
+      return {
+        ok: false,
+        errCode: 'NOT_IN_ROOM',
+        errMsg: '您已不在该房间'
+      };
+    }
+
     const selectedModeId = room.selectedModeId != null ? room.selectedModeId : null;
     const hasSelectedMode = selectedModeId != null && selectedModeId !== '';
-
     const brainstormSessionEnded = room.brainstormSessionEnded === true;
     const brainstormSessionSeq = room.brainstormSessionSeq != null ? room.brainstormSessionSeq : 0;
     let currentPage = room.currentPage || 'addPlayer';
@@ -204,7 +336,7 @@ exports.main = async (event, context) => {
       currentPlayerIndex: room.currentPlayerIndex != null ? room.currentPlayerIndex : 1,
       currentPlayerName: room.currentPlayerName || '玩家1',
       passCount: room.currentPassCount != null ? room.currentPassCount : null,
-      memberCount: room.currentMemberCount != null ? room.currentMemberCount : null,
+      memberCount: rawMembers.length,
       partnerGamePhase: room.partnerGamePhase || 'play',
       partnerMasterMode: room.partnerMasterMode === true,
       partnerClosingStep: room.partnerClosingStep || 'rune',
@@ -248,24 +380,7 @@ exports.main = async (event, context) => {
         : { blocks: [], texts: [], images: [] };
     }
 
-    const membersRes = await db
-      .collection(ROOM_MEMBERS_COLLECTION)
-      .where({ roomId })
-      .orderBy('playerIndex', 'asc')
-      .get();
-
-    const rawMembers = membersRes.data || [];
-    const myMember = rawMembers.find(m => m.userId === currentUserId) || null;
-
-    if (!isHost && !myMember) {
-      return {
-        ok: false,
-        errCode: 'NOT_IN_ROOM',
-        errMsg: '您已不在该房间'
-      };
-    }
-
-    const members = rawMembers.map(m => {
+    const members = rawMembers.map((m) => {
       const out = {
         playerIndex: m.playerIndex,
         nickName: m.nickName || `玩家${m.playerIndex}`,
@@ -313,7 +428,9 @@ exports.main = async (event, context) => {
       selectedModeDesc: room.selectedModeDesc || '',
       selectedBG: room.selectedBG || null,
       selectedDesignProblem: room.selectedDesignProblem || null,
-      roomState
+      roomState,
+      lastEvent,
+      event: lastEvent && lastEvent.type ? lastEvent.type : null
     };
   } catch (e) {
     console.error('getAddPlayerData error', e);

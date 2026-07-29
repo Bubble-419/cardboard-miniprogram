@@ -1,10 +1,9 @@
-<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+<view class="container">
   <view class="header-section">
-    <view class="topbar">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-      </view>
-    </view>
+    <player-top-bar
+      maxVisible="{{5}}"
+      bind:goroom="handleGoRoom"
+    />
     <view class="title-block">
       <text class="page-title">谁是卧底牌库</text>
       <text class="page-subtitle">共 {{groupCount}} 组词语卡 · 自由翻阅，不参与本局分词</text>

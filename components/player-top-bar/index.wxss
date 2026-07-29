@@ -1,0 +1,55 @@
+.player-top-bar-wrap {
+  width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.top-bar-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  gap: 12rpx;
+}
+
+.room-entry {
+  border-radius: 9999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.room-entry:active {
+  opacity: 0.75;
+}
+
+.room-entry-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.avatar-group {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.top-bar-right-spacer {
+  flex-shrink: 0;
+}

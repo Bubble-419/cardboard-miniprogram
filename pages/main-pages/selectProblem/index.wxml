@@ -1,26 +1,15 @@
 <view class="container">
 
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}" style="height: {{scrollHeight}}px">
-    <view class="main-content" style="padding-top: {{contentPaddingTop}}px">
+    <view class="main-content">
 
       <!-- 顶部：TopBar + 情境格 -->
       <view class="header-section">
-
-        <!-- TopBar：房间入口 + 堆叠头像 -->
-        <view class="topbar">
-          <view class="room-entry" bindtap="handleGoRoom">
-            <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-          </view>
-          <view class="avatar-bar">
-            <user-list
-              avatarList="{{avatarList}}"
-              enableAdd="{{false}}"
-              isFold="{{true}}"
-              showName="{{false}}"
-              layout="stack"
-            />
-          </view>
-        </view>
+        <player-top-bar
+          avatarList="{{avatarList}}"
+          maxVisible="{{5}}"
+          bind:goroom="handleGoRoom"
+        />
 
         <!-- 情境展示 -->
         <context-display items="{{categories}}" />

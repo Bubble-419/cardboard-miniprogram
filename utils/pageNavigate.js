@@ -212,11 +212,21 @@ function openPartnerPage(url) {
   return openUrl(url, { preferNavigate: true });
 }
 
+/** 清空排队/在途导航（主动回大厅前调用，避免竞态把人拉回游戏） */
+function clearPendingNavigation() {
+  _clearTimer();
+  _nav.inFlight = false;
+  _nav.pendingUrl = '';
+  _nav.lastTarget = '';
+  _nav.lastAt = 0;
+}
+
 module.exports = {
   getCurrentRoute,
   normalizeRoute,
   isRouteRegistered,
   openUrl,
   safeOpenUrl,
-  openPartnerPage
+  openPartnerPage,
+  clearPendingNavigation
 };
