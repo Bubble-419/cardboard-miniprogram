@@ -1,5 +1,25 @@
 const { navigateByRoomState, safeOpenUrl } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const {
+  followSubScreenRoomPoll,
+  shouldSubScreenLeaveRoom
+} = require('../../../utils/subScreenRoomPoll');
+const {
+  clearSpyLobbyStay,
+  isSpyLobbyStayActive,
+  setSpyLobbyStay
+} = require('../../../utils/spyFollow');
+const {
+  exitRoomGone,
+  handleRoomGoneFromResult
+} = require('../../../utils/roomDissolved');
+const {
+  handleRoomLastEvent,
+  consumePendingGameReturnedToast
+} = require('../../../utils/roomMembersSync');
+const {
+  beginUserAuthFlow,
+  endUserAuthFlow
+} = require('../../../utils/userAuthSession');
 const {
   saveLocalBrainstormProgress,
   clearLocalBrainstormProgress,
@@ -22,9 +42,10 @@ const {
 } = require('../../../utils/wxUserAvatar');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
-const CIRCLE_R = 280;     // 头像圆心半径 rpx
-const AVATAR_SIZE = 80;   // 头像直径 rpx
-const CENTER_XY = 300;    // 圆心在 600rpx 区域内的坐标
+const CIRCLE_R = 310;     // 头像圆心半径 rpx（略放大，作为视觉主体）
+const AVATAR_SIZE = 88;   // 头像直径 rpx
+const CENTER_XY = 330;    // 圆心在 660rpx 区域内的坐标
+const CIRCLE_WRAP_SIZE = 660;
 const START_ANGLE = -Math.PI / 2; // 从顶部开始
 /**
  * 长按进入拖拽的延时（毫秒）
@@ -58,6 +79,7 @@ Page({
     isFromScan: false,
     isHost: true,
     memberCount: 0,
+    maxMembers: MEMBER_SLOTS,
     memberCountBounce: false,
     hasSelectedMode: false,
     brainstormSessionEnded: false,
@@ -78,7 +100,61 @@ Page({
     showQRCodeModal: false,
     showAvatarAuth: false,
     pendingJoinRoomId: '',
-    navFreeze: false
+    navFreeze: false,
+    primaryBtnText: '开始游戏',
+    primaryBtnDisabled: false,
+    primaryBtnAction: 'selectMode',
+    showExitText: false,
+    exitTextLabel: '退出房间',
+    exitTextAction: 'leave',
+    exitTextDanger: false
+  },
+
+  _computeFooterActions(patch = {}) {
+    const isHost = patch.isHost != null ? patch.isHost : this.data.isHost;
+    const hasSelectedMode = patch.hasSelectedMode != null
+      ? patch.hasSelectedMode
+      : this.data.hasSelectedMode;
+    const brainstormSessionEnded = patch.brainstormSessionEnded != null
+      ? patch.brainstormSessionEnded
+      : this.data.brainstormSessionEnded;
+    const memberCount = patch.memberCount != null ? patch.memberCount : this.data.memberCount;
+
+    let primaryBtnText = '开始游戏';
+    let primaryBtnDisabled = false;
+    let primaryBtnAction = 'selectMode';
+    // 底部次级文案：房主恒为「解散房间」，成员恒为「退出房间」
+    let showExitText = true;
+    let exitTextLabel = isHost ? '解散房间' : '退出房间';
+    let exitTextAction = isHost ? 'dissolve' : 'leave';
+    let exitTextDanger = isHost === true;
+
+    if (hasSelectedMode && !brainstormSessionEnded) {
+      primaryBtnText = '继续游戏';
+      primaryBtnAction = 'continue';
+    } else if (brainstormSessionEnded) {
+      primaryBtnText = '开始游戏';
+      primaryBtnAction = 'anotherRound';
+    } else if (isHost) {
+      // 房主未选模式：可开始选模式；人数不足时仍可进入选模式页（由后续校验）
+      primaryBtnText = memberCount < 2 ? '等待成员加入' : '开始游戏';
+      primaryBtnDisabled = memberCount < 2;
+      primaryBtnAction = 'selectMode';
+    } else {
+      primaryBtnText = '等待房主开始';
+      primaryBtnDisabled = true;
+      primaryBtnAction = '';
+    }
+
+    return {
+      primaryBtnText,
+      primaryBtnDisabled,
+      primaryBtnAction,
+      showExitText,
+      exitTextLabel,
+      exitTextAction,
+      exitTextDanger
+    };
   },
 
   _syncLobbyRoomState(result) {
@@ -101,6 +177,10 @@ Page({
     let roomId = (options && options.roomId) || '';
     const scene = options && options.scene;
     const fromScanQuery = options && (options.fromScan === '1' || options.fromScan === 'true');
+    const stayLobby = options
+      && (options.stayLobby === '1' || options.stayLobby === 'true');
+    // 主动回大厅（如卧底页点房间入口）：本页停留期间不跟随 currentPage 拉回游戏
+    this._stayOnLobby = stayLobby === true;
 
     if (scene) {
       try {
@@ -116,6 +196,13 @@ Page({
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
       setTimeout(() => wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' }), 1500);
       return;
+    }
+
+    if (this._stayOnLobby) {
+      setSpyLobbyStay(roomId);
+    } else {
+      // 扫码加入等正常进大厅：允许跟随进入进行中的游戏
+      clearSpyLobbyStay();
     }
 
     getApp().globalData.roomId = roomId;
@@ -162,6 +249,7 @@ Page({
   onShow() {
     if (!this._pageAlive || this._navigatingToBrainstorm) return;
     this.setData({ navFreeze: false });
+    consumePendingGameReturnedToast();
     if (this.data.roomId) {
       this._startMemberPolling();
       this.loadRoomData(this.data.roomId, { silent: true });
@@ -188,7 +276,7 @@ Page({
     const memberCount = result.memberCount != null
       ? result.memberCount
       : (dedupedMembers || []).length;
-    return {
+    const meta = {
       memberCount,
       hasSelectedMode: result.hasSelectedMode === true,
       brainstormSessionEnded: !!(result.roomState && result.roomState.brainstormSessionEnded),
@@ -199,6 +287,13 @@ Page({
       ),
       selectedModeDesc: result.selectedModeDesc || '',
       workshopName: result.workshopName || this.data.workshopName
+    };
+    return {
+      ...meta,
+      ...this._computeFooterActions({
+        ...meta,
+        isHost: result.isHost != null ? result.isHost === true : this.data.isHost
+      })
     };
   },
 
@@ -213,17 +308,17 @@ Page({
   },
 
   _handleMembershipLost(reason = 'left') {
-    try {
-      wx.removeStorageSync('joinedRoomId');
-    } catch (e) {
-      console.warn('removeStorage joinedRoomId failed', e);
+    if (reason === 'dissolved') {
+      handleRoomGoneFromResult(
+        { ok: false, errCode: 'ROOM_DISSOLVED', roomDissolved: true, event: 'room_dissolved' },
+        this.data.roomId
+      );
+      return;
     }
-    getApp().globalData.roomId = null;
-    const msg = reason === 'dissolved' ? '原房间已解散' : '您已不在该房间';
-    wx.showToast({ title: msg, icon: 'none' });
-    setTimeout(() => {
-      wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
-    }, 1500);
+    exitRoomGone(
+      { ok: false, errCode: 'NOT_IN_ROOM', errMsg: '您已不在该房间' },
+      { roomId: this.data.roomId }
+    );
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra = {}) {
@@ -261,6 +356,15 @@ Page({
   },
 
   _followRoomPageFromResult(result, roomId) {
+    // 主动停留大厅时：只处理被踢/解散，不跟随游戏页
+    if (this._stayOnLobby || isSpyLobbyStayActive(roomId)) {
+      this._stayOnLobby = true;
+      if (shouldSubScreenLeaveRoom(result)) {
+        clearSpyLobbyStay();
+        followSubScreenRoomPoll(result, roomId);
+      }
+      return;
+    }
     if (!result || result.ok !== true || !result.roomState) {
       followSubScreenRoomPoll(result, roomId);
       return;
@@ -270,6 +374,15 @@ Page({
     if (result.roomState.brainstormSessionEnded === true) {
       const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
       if (stalePages.includes(page)) return;
+    }
+    // 谁是卧底：走专用跟随，避免 reLaunch 白屏 / 进错共用页
+    const modeId = result.selectedModeId
+      || (result.roomState && result.roomState.selectedModeId)
+      || '';
+    if (modeId === 'spy' || page.indexOf('spy') === 0) {
+      const { followSpyRoomState } = require('../../../utils/spyFollow');
+      followSpyRoomState(result, roomId);
+      return;
     }
     followSubScreenRoomPoll(result, roomId);
   },
@@ -351,6 +464,7 @@ Page({
       this.joinRoomThenLoad(roomId);
       return;
     }
+    beginUserAuthFlow();
     this.setData({
       showAvatarAuth: true,
       pendingJoinRoomId: roomId
@@ -358,20 +472,28 @@ Page({
   },
 
   onChooseAvatarAuth(e) {
-    const profile = applyChooseAvatarEvent(e.detail);
-    if (!profile) return;
-    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
-    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
-    if (roomId) {
-      this.joinRoomThenLoad(roomId);
+    try {
+      const profile = applyChooseAvatarEvent(e.detail);
+      if (!profile) return;
+      const roomId = this.data.pendingJoinRoomId || this.data.roomId;
+      this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+      if (roomId) {
+        this.joinRoomThenLoad(roomId);
+      }
+    } finally {
+      endUserAuthFlow();
     }
   },
 
   onSkipAvatarAuth() {
-    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
-    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
-    if (roomId) {
-      this.joinRoomThenLoad(roomId);
+    try {
+      const roomId = this.data.pendingJoinRoomId || this.data.roomId;
+      this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+      if (roomId) {
+        this.joinRoomThenLoad(roomId);
+      }
+    } finally {
+      endUserAuthFlow();
     }
   },
 
@@ -483,6 +605,9 @@ Page({
         }
         return null;
       }
+
+      // 统一消费 room_members_updated / game_returned_to_room（已在大厅则只 toast+清本局态）
+      handleRoomLastEvent(result, roomId);
 
       const rawMembers = result.members || [];
       const deduped = this._dedupeMembersById(rawMembers);
@@ -1628,6 +1753,9 @@ Page({
     getApp().globalData.gameMode = selectedModeId;
 
     if (!this.data.isHost) {
+      // 用户主动继续：解除大厅停留锁，允许回到当前游戏页
+      this._stayOnLobby = false;
+      clearSpyLobbyStay();
       const page = (roomState && roomState.currentPage) || 'addPlayer';
       const modeId = selectedModeId || '';
       if (modeId === 'spy' || String(page).toLowerCase().indexOf('spy') === 0) {
@@ -1639,7 +1767,8 @@ Page({
             selectedModeId: modeId,
             roomState: roomState || { currentPage: page }
           },
-          roomId
+          roomId,
+          { force: true }
         );
         return;
       }
@@ -1700,10 +1829,32 @@ Page({
     });
   },
 
+  onTapPrimaryAction() {
+    if (this.data.primaryBtnDisabled) return;
+    const action = this.data.primaryBtnAction;
+    if (action === 'continue') {
+      this.handleContinueBrainstorm();
+    } else if (action === 'selectMode') {
+      this.handleGoBrainstormMode();
+    } else if (action === 'anotherRound') {
+      this.handleAnotherRound();
+    }
+  },
+
+  onTapExitText() {
+    const action = this.data.exitTextAction;
+    if (action === 'dissolve') {
+      this.handleDissolveRoom();
+    } else {
+      this.handleLeaveRoom();
+    }
+  },
+
   handleDissolveRoom() {
+    if (!this.data.isHost) return;
     wx.showModal({
       title: '解散房间',
-      content: '解散后所有成员将被移出，此操作不可撤销。',
+      content: '解散后所有成员将退出房间，当前游戏进度会被清除且无法恢复。确定要解散吗？',
       confirmText: '解散',
       confirmColor: '#dc2626',
       success: async (res) => {
@@ -1720,16 +1871,11 @@ Page({
             wx.showToast({ title: result.errMsg || '解散失败', icon: 'none' });
             return;
           }
-          try {
-            wx.removeStorageSync('joinedRoomId');
-          } catch (e) {
-            console.warn('removeStorage joinedRoomId failed', e);
-          }
-          getApp().globalData.roomId = null;
-          wx.showToast({ title: '房间已解散', icon: 'success' });
-          setTimeout(() => {
-            wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
-          }, 1200);
+          // 全房间事件：清本地态 + 回首页提示「房间已解散」（成员靠轮询同步）
+          exitRoomGone(
+            { ...result, event: 'room_dissolved', roomDissolved: true },
+            { roomId: this.data.roomId, forceDissolved: true, title: '房间已解散' }
+          );
         } catch (err) {
           wx.hideLoading();
           wx.showToast({ title: err.errMsg || '解散失败', icon: 'none' });
@@ -1786,7 +1932,8 @@ Page({
         wx.showToast({ title: '已复制房间号', icon: 'none' });
       }
     });
-  }
+  },
   /* DEV_TEST_END */
 
+  noop() {}
 });

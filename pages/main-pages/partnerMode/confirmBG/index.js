@@ -19,17 +19,10 @@ Page({
     canConfirm: false,
     isHost: true,
     isWaiting: false,
-    navbarPaddingTop: 44,
     avatarList: []
   },
 
   onLoad(options) {
-    try {
-      const sys = wx.getSystemInfoSync();
-      this.setData({ navbarPaddingTop: sys.statusBarHeight || 44 });
-    } catch (e) {
-      this.setData({ navbarPaddingTop: 44 });
-    }
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
 

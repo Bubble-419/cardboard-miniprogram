@@ -1,21 +1,12 @@
-<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+<view class="container">
   <!-- 顶部标题区 -->
   <view class="header-section">
-    <view class="topbar">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-      </view>
-      <view class="avatar-bar">
-        <user-list
-          avatarList="{{avatarList}}"
-          currentUser="{{currentUser}}"
-          enableAdd="{{false}}"
-          isFold="{{true}}"
-          showName="{{false}}"
-          layout="stack"
-        />
-      </view>
-    </view>
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      currentUser="{{currentUser}}"
+      maxVisible="{{5}}"
+      bind:goroom="handleGoRoom"
+    />
     <view class="title-block">
       <text class="page-title">脑暴模式</text>
       <text class="page-subtitle">

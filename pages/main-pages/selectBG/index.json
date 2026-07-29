@@ -1,6 +1,7 @@
 {
   "navigationStyle": "custom",
   "usingComponents": {
+    "player-top-bar": "/components/player-top-bar/index",
     "bg-card": "/components/bg-card/index",
     "page-footer": "/components/page-footer/index"
   }

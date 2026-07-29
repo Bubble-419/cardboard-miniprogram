@@ -96,27 +96,10 @@ Page({
     inspirationKeyboardHeight: 0,
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
-    reverseSteps: REVERSE_STEPS,
-    topBarPaddingRight: 30
-  },
-
-  _applyTopBarSafeInset() {
-    try {
-      const menu = wx.getMenuButtonBoundingClientRect();
-      const sys = typeof wx.getWindowInfo === 'function'
-        ? wx.getWindowInfo()
-        : wx.getSystemInfoSync();
-      const windowWidth = (sys && sys.windowWidth) || 375;
-      const rightPx = Math.max(12, windowWidth - (menu.left || windowWidth) + 8);
-      const rightRpx = Math.ceil((rightPx * 750) / windowWidth);
-      this.setData({ topBarPaddingRight: rightRpx });
-    } catch (e) {
-      this.setData({ topBarPaddingRight: 200 });
-    }
+    reverseSteps: REVERSE_STEPS
   },
 
   onLoad(options) {
-    this._applyTopBarSafeInset();
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const initiatorPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)

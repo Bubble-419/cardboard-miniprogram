@@ -31,17 +31,10 @@ Page({
     offlineScenario: null,
     customScenarios: [],
     selectedScenarioId: null,
-    actionMode: 'add',
-    navbarPaddingTop: 0
+    actionMode: 'add'
   },
 
   onLoad(options) {
-    try {
-      const sysInfo = wx.getSystemInfoSync();
-      this.setData({ navbarPaddingTop: sysInfo.statusBarHeight || 44 });
-    } catch (e) {
-      this.setData({ navbarPaddingTop: 44 });
-    }
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const modeId = (options && options.modeId) || 'partner';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);

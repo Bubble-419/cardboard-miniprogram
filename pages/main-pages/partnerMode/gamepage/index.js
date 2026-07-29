@@ -95,6 +95,14 @@ Page({
     scoreOptions: [0, 1, 2, 3, 4, 5],
     selectedScore: null,
     scoredCount: 0,
+    /** 打分抽屉：translateY=0 全展开；=max 仅露头部 */
+    scorePanelExpanded: false,
+    scoreSheetTranslateY: 120,
+    scoreSheetCollapsedPx: 72,
+    scoreSheetMaxTranslateY: 120,
+    /** 裁剪可见高度 = collapsed + (maxY - translateY)，与 transform 同步 */
+    scoreSheetVisiblePx: 72,
+    scoreSheetAnimating: false,
     totalRequired: 0,
     isMasterMode: false,
     closingStep: CLOSING_STEP_RUNE,
@@ -165,7 +173,6 @@ Page({
     expressChatAnchor: '',
     discussionExpressChatAnchor: '',
     expressViewRound: 0,
-    scorePanelExpanded: false,
     /** 房主首次进入：开始表态按钮引导蒙层 */
     showHostStatementTip: false,
     hostStatementTipReady: false,
@@ -1383,6 +1390,9 @@ Page({
       patch.canStartStatement = false;
       patch.scoredCount = 0;
       patch.scorePanelExpanded = false;
+      patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
+      patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
+      patch.scoreSheetAnimating = false;
       patch.expressComposerOpen = false;
       patch.expressDraftText = '';
       patch.expressHasText = false;
@@ -1541,6 +1551,10 @@ Page({
         this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
       }
       this._syncRoundSpeech();
+      // 非出牌玩家：测量打分抽屉可拖动行程（不挤压聊天区）
+      if (!patch.isCurrentPlayer) {
+        setTimeout(() => this._measureScoreSheetHeights(), 40);
+      }
     });
     return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
@@ -2320,37 +2334,263 @@ Page({
 
   noop() {},
 
+  /** 点击/拖动分界：约 10rpx 换算为 px */
+  _getScoreSheetTapSlopPx() {
+    if (this._scoreSheetTapSlopPx != null) return this._scoreSheetTapSlopPx;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const w = (sys && sys.windowWidth) || 375;
+      this._scoreSheetTapSlopPx = Math.max(4, (w / 750) * 10);
+    } catch (e) {
+      this._scoreSheetTapSlopPx = 5;
+    }
+    return this._scoreSheetTapSlopPx;
+  },
+
+  _scoreSheetVisibleFromY(translateY, maxY, collapsedPx) {
+    const y = Math.max(0, Math.min(maxY, translateY));
+    return Math.max(collapsedPx, collapsedPx + (maxY - y));
+  },
+
+  _measureScoreSheetHeights(done) {
+    const query = wx.createSelectorQuery().in(this);
+    query.select('.score-sheet').boundingClientRect();
+    query.select('.score-sheet-handle-wrap').boundingClientRect();
+    query.select('.score-sheet-head').boundingClientRect();
+    query.select('.score-buttons').boundingClientRect();
+    query.exec((rects) => {
+      const sheet = rects && rects[0];
+      const handle = rects && rects[1];
+      const head = rects && rects[2];
+      const buttons = rects && rects[3];
+      if (!sheet || !sheet.height) {
+        if (typeof done === 'function') done();
+        return;
+      }
+      const headerH = Math.max(
+        56,
+        Math.round(((handle && handle.height) || 0) + ((head && head.height) || 0) + 12)
+      );
+      // 收起时露出头部；按钮区高度即最大 translateY
+      const buttonsH = Math.max(
+        48,
+        Math.round((buttons && buttons.height) || (sheet.height - headerH))
+      );
+      const maxY = Math.max(0, buttonsH);
+      this._scoreSheetMaxY = maxY;
+      const expanded = this.data.scorePanelExpanded === true;
+      const translateY = expanded ? 0 : maxY;
+      // 测量中途不打断吸附动画
+      if (this.data.scoreSheetAnimating) {
+        this.setData({
+          scoreSheetCollapsedPx: headerH,
+          scoreSheetMaxTranslateY: maxY
+        });
+      } else {
+        this.setData({
+          scoreSheetCollapsedPx: headerH,
+          scoreSheetMaxTranslateY: maxY,
+          scoreSheetTranslateY: translateY,
+          scoreSheetVisiblePx: this._scoreSheetVisibleFromY(translateY, maxY, headerH)
+        });
+      }
+      if (typeof done === 'function') done();
+    });
+  },
+
+  _setScoreSheetExpanded(expanded, options = {}) {
+    const maxY = this._scoreSheetMaxY != null
+      ? this._scoreSheetMaxY
+      : (this.data.scoreSheetMaxTranslateY || 120);
+    const collapsed = this.data.scoreSheetCollapsedPx || 72;
+    const targetY = expanded ? 0 : maxY;
+    const targetVisible = this._scoreSheetVisibleFromY(targetY, maxY, collapsed);
+    const animate = options.animate !== false;
+    if (!animate) {
+      this.setData({
+        scorePanelExpanded: !!expanded,
+        scoreSheetAnimating: false,
+        scoreSheetTranslateY: targetY,
+        scoreSheetVisiblePx: targetVisible
+      });
+      return;
+    }
+    this.setData({
+      scorePanelExpanded: !!expanded,
+      scoreSheetAnimating: true,
+      scoreSheetTranslateY: targetY,
+      scoreSheetVisiblePx: targetVisible
+    });
+    clearTimeout(this._scoreSheetAnimTimer);
+    this._scoreSheetAnimTimer = setTimeout(() => {
+      if (this.data.scoreSheetAnimating) {
+        this.setData({ scoreSheetAnimating: false });
+      }
+    }, 260);
+  },
+
+  /** 评分 / 表达等可操作控件：不触发面板展开收起 */
+  onScoreInteractiveTouchStart() {
+    this._scoreSheetInteractive = true;
+  },
+
   toggleScorePanel() {
-    this.setData({ scorePanelExpanded: !this.data.scorePanelExpanded });
+    if (this._scoreSheetDidDrag || this._scoreSheetInteractive) return;
+    this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
   },
 
   onScoreSheetTouchStart(e) {
     const t = e.touches && e.touches[0];
     if (!t) return;
+    this._scoreSheetTouchStartX = t.clientX;
+    this._scoreSheetTouchStartY = t.clientY;
     this._scoreSheetTouchY = t.clientY;
-    this._scoreSheetTouchMoved = false;
+    this._scoreSheetTouchAt = Date.now();
+    this._scoreSheetDidDrag = false;
+    this._scoreSheetDragging = false;
+    this._scoreSheetAxis = '';
+    this._scoreSheetInteractive = false;
+    this._scoreSheetFromButtons = false;
+    this._scoreSheetBaseY = this.data.scoreSheetTranslateY || 0;
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
+    // 拖动开始前关掉过渡，保证跟手
+    if (this.data.scoreSheetAnimating) {
+      this.setData({ scoreSheetAnimating: false });
+    }
+  },
+
+  onScoreButtonsTouchStart(e) {
+    this.onScoreSheetTouchStart(e);
+    // 评分按钮：默认按「可操作控件」处理；纵向拖够阈值后才改为拖面板
+    this._scoreSheetFromButtons = true;
+    this._scoreSheetInteractive = true;
+  },
+
+  onScoreButtonsTouchMove(e) {
+    const t = e.touches && e.touches[0];
+    if (!t || this._scoreSheetTouchStartY == null) return;
+    const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
+    const dy = Math.abs(t.clientY - (this._scoreSheetTouchStartY || 0));
+    const slop = this._getScoreSheetTapSlopPx();
+    // 横向为主：只选分，不拖面板
+    if (!this._scoreSheetDragging && dx > dy && dx > slop) {
+      this._scoreSheetAxis = 'x';
+      this._scoreSheetInteractive = true;
+      return;
+    }
+    if (this._scoreSheetAxis === 'x') return;
+    // 纵向超过阈值：改拖面板，松手不再当点击评分区
+    if (dy > slop && dy > dx) {
+      this._scoreSheetInteractive = false;
+      this._scoreSheetAxis = 'y';
+      this.onScoreSheetTouchMove(e);
+    }
+  },
+
+  onScoreButtonsTouchEnd(e) {
+    // 在按钮区结束：若已进入拖动则走吸附；纯点击交给 onScoreTap
+    if (this._scoreSheetDragging) {
+      this.onScoreSheetTouchEnd(e);
+      return;
+    }
+    this._scoreSheetTouchStartY = null;
+    this._scoreSheetFromButtons = false;
+    // 保留 interactive 直到 onScoreTap；否则短延迟清空
+    setTimeout(() => {
+      this._scoreSheetDidDrag = false;
+      this._scoreSheetInteractive = false;
+    }, 80);
   },
 
   onScoreSheetTouchMove(e) {
     const t = e.touches && e.touches[0];
-    if (!t || this._scoreSheetTouchY == null) return;
-    const dy = this._scoreSheetTouchY - t.clientY;
-    if (Math.abs(dy) > 8) this._scoreSheetTouchMoved = true;
-    // 上滑展开，下滑收起
-    if (dy > 28 && !this.data.scorePanelExpanded) {
-      this.setData({ scorePanelExpanded: true });
-      this._scoreSheetTouchY = t.clientY;
-    } else if (dy < -28 && this.data.scorePanelExpanded) {
-      this.setData({ scorePanelExpanded: false });
-      this._scoreSheetTouchY = t.clientY;
+    if (!t || this._scoreSheetTouchStartY == null) return;
+
+    const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
+    const dyFromStart = t.clientY - this._scoreSheetTouchStartY;
+    const slop = this._getScoreSheetTapSlopPx();
+
+    if (!this._scoreSheetDragging) {
+      if (Math.abs(dyFromStart) < slop && dx < slop) return;
+      // 明显纵向才进入拖拽；横向轻微滑动忽略
+      if (Math.abs(dyFromStart) <= dx) return;
+      this._scoreSheetDragging = true;
+      this._scoreSheetDidDrag = true;
+      this._scoreSheetAxis = 'y';
+      this._scoreSheetInteractive = false;
     }
+
+    const maxY = this._scoreSheetMaxY != null
+      ? this._scoreSheetMaxY
+      : (this.data.scoreSheetMaxTranslateY || 120);
+    const collapsed = this.data.scoreSheetCollapsedPx || 72;
+    // 下拖增大 translateY（收起），上拖减小（展开）
+    let nextY = this._scoreSheetBaseY + dyFromStart;
+    if (nextY < 0) nextY = 0;
+    if (nextY > maxY) nextY = maxY;
+
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
+    this.setData({
+      scoreSheetAnimating: false,
+      scoreSheetTranslateY: nextY,
+      scoreSheetVisiblePx: this._scoreSheetVisibleFromY(nextY, maxY, collapsed)
+    });
   },
 
   onScoreSheetTouchEnd() {
-    this._scoreSheetTouchY = null;
+    const maxY = this._scoreSheetMaxY != null
+      ? this._scoreSheetMaxY
+      : (this.data.scoreSheetMaxTranslateY || 120);
+    const currentY = this.data.scoreSheetTranslateY || 0;
+    const wasDragging = this._scoreSheetDragging === true;
+    const interactive = this._scoreSheetInteractive === true;
+    const slop = this._getScoreSheetTapSlopPx();
+
+    if (!wasDragging) {
+      this._scoreSheetTouchStartY = null;
+      this._scoreSheetFromButtons = false;
+      this._scoreSheetDragging = false;
+      // 可操作控件上的点击：不切换面板
+      if (!interactive) {
+        this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
+      }
+      setTimeout(() => {
+        this._scoreSheetDidDrag = false;
+        this._scoreSheetInteractive = false;
+      }, 80);
+      return;
+    }
+
+    const totalDy = (this._scoreSheetLastY != null && this._scoreSheetTouchStartY != null)
+      ? (this._scoreSheetLastY - this._scoreSheetTouchStartY)
+      : 0;
+
+    let expand = this.data.scorePanelExpanded;
+    // 达到最小手势阈值后：上滑展开、下滑收起（不要求大位移）
+    if (totalDy <= -slop) {
+      expand = true;
+    } else if (totalDy >= slop) {
+      expand = false;
+    } else {
+      expand = currentY < maxY / 2;
+    }
+
+    this._scoreSheetDragging = false;
+    this._scoreSheetTouchStartY = null;
+    this._scoreSheetFromButtons = false;
+    this._scoreSheetInteractive = false;
+    this._setScoreSheetExpanded(expand, { animate: true });
+    setTimeout(() => {
+      this._scoreSheetDidDrag = false;
+    }, 80);
   },
 
   async onScoreTap(e) {
+    // 评分只选分，不联动面板；拖动手势过程中忽略
+    this._scoreSheetInteractive = false;
+    if (this._scoreSheetDidDrag) return;
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
@@ -2889,6 +3129,10 @@ Page({
       selectedScore: null,
       canStartStatement: false,
       scoredCount: 0,
+      scorePanelExpanded: false,
+      scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
+      scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
+      scoreSheetAnimating: false,
       specialMoveUsedThisTurn: false,
       isCurrentPlayer: amCurrentAfterPass,
       showSpecialMoveBtn: amCurrentAfterPass,

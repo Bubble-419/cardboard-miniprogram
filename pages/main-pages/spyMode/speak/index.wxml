@@ -1,84 +1,128 @@
-<view class="container" style="padding-top: {{navbarPaddingTop}}px">
-  <view class="header-section">
-    <view class="topbar">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
+<view class="page {{compactMode ? 'is-compact' : ''}} {{singleCol ? 'is-single-col' : ''}}">
+  <!-- 顶部固定区 -->
+  <view class="fixed-header">
+    <view class="page-shell">
+      <player-top-bar
+        avatarList="{{avatarList}}"
+        maxVisible="{{5}}"
+        bind:goroom="handleGoRoom"
+      />
+
+      <view class="title-block">
+        <text class="page-title">发言阶段</text>
+        <text class="page-subtitle" wx:if="{{tieBreak}}">平票加时：并列玩家重新陈述</text>
       </view>
-      <view class="avatar-bar">
-        <user-list
-          avatarList="{{avatarList}}"
-          enableAdd="{{false}}"
-          isFold="{{true}}"
-          showName="{{false}}"
-          layout="stack"
+
+      <view class="my-word-card-wrap">
+        <view class="my-word-label">我的词语卡</view>
+        <view class="my-word-card-frame">
+          <flip-word-card
+            wx:if="{{cardReady}}"
+            word="{{myWord}}"
+            backSrc="{{cardBackSrc}}"
+            assignedWordSrc="{{assignedWordSrc}}"
+            assignedWordFallbackSrc="{{assignedWordFallbackSrc}}"
+            word1Src="{{word1Src}}"
+            word1FallbackSrc="{{word1FallbackSrc}}"
+          />
+          <view class="my-word-card-loading" wx:else>词语加载中…</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 中部弹性区：标签 + 滚动内容 -->
+  <view class="content-section">
+    <view class="page-shell content-section-inner">
+      <view class="content-tabs">
+        <view
+          class="content-tab {{contentTab === 0 ? 'content-tab-active' : ''}}"
+          data-tab="0"
+          bindtap="onTapContentTab"
+        >
+          <text class="content-tab-text">牌库（{{libraryGroupCount}}）</text>
+        </view>
+        <view
+          class="content-tab {{contentTab === 1 ? 'content-tab-active' : ''}}"
+          data-tab="1"
+          bindtap="onTapContentTab"
+        >
+          <text class="content-tab-text">玩法说明</text>
+        </view>
+      </view>
+
+      <scroll-view
+        class="card-scroll"
+        scroll-y
+        enhanced
+        show-scrollbar="{{false}}"
+        bindtouchstart="onPanelTouchStart"
+        bindtouchend="onPanelTouchEnd"
+        bindtouchcancel="onPanelTouchEnd"
+      >
+        <view class="panel panel-visible" wx:if="{{contentTab === 0}}">
+          <view class="card-grid">
+            <view
+              class="card-tile"
+              wx:for="{{libraryCards}}"
+              wx:key="word"
+              data-word="{{item.word}}"
+              bindtap="onTapLibraryCard"
+            >
+              <view class="tile-stack">
+                <image
+                  class="tile-cover"
+                  src="{{item.coverSrc}}"
+                  mode="aspectFit"
+                  lazy-load
+                />
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="panel panel-visible" wx:else>
+          <view class="rules-panel">
+            <view class="rules-list">
+              <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
+              <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
+              <text class="rules-item">3. 发言阶段可翻看自己的词语卡；房主在合适时机点击「开始投票」。</text>
+              <text class="rules-item">4. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
+              <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 牌库翻阅弹层 -->
+  <view class="viewer-mask" wx:if="{{viewerOpen}}" catchtouchmove="noop" bindtap="onCloseViewer">
+    <view class="viewer-sheet" catchtap="noop">
+      <view class="viewer-head">
+        <text class="viewer-title">{{selectedWord}}</text>
+        <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
+      </view>
+      <text class="viewer-hint">点击卡牌：词语 → 词语1 → 词语，可循环翻看</text>
+      <view class="viewer-card-frame">
+        <flip-word-card
+          wx:if="{{selectedCard}}"
+          word="{{selectedCard.word}}"
+          skipBack="{{true}}"
+          assignedWordSrc="{{selectedCard.assignedWordSrc}}"
+          assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
+          word1Src="{{selectedCard.word1Src}}"
+          word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
         />
       </view>
-    </view>
-    <view class="title-block">
-      <text class="page-title">发言阶段</text>
-      <text class="page-subtitle">请口头描述，勿直接念出词名</text>
+      <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
     </view>
   </view>
 
-  <view class="section">
-    <view class="countdown">{{countdownText}}</view>
-    <view class="countdown-label">本轮发言倒计时（5 分钟）</view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">发言规则</view>
-    <view class="rules-list">
-      <text class="rules-item">• 用自己的话描述交互方式的特征与使用场景</text>
-      <text class="rules-item">• 不要直接说出词语本身或明显同义替换</text>
-      <text class="rules-item">• 认真听其他人的描述，寻找差异线索</text>
-      <text class="rules-item">• 发言在线下完成，本页仅作倒计时与提示</text>
+  <!-- 底部固定操作区（参与 flex，不 position:fixed） -->
+  <view class="bottom-action" wx:if="{{isHost}}">
+    <view class="page-shell">
+      <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onStartVote">开始投票</view>
     </view>
   </view>
-
-  <block wx:if="{{isHost}}">
-    <view class="section">
-      <view class="section-title">交互方式卡（主持可见）</view>
-      <view class="word-card">
-        <view class="word-card-tag">平民词</view>
-        <view class="word-card-word">{{civilianWord}}</view>
-        <view class="word-card-blurb">{{civilianBlurb}}</view>
-      </view>
-      <view class="word-card">
-        <view class="word-card-tag spy">卧底词</view>
-        <view class="word-card-word">{{spyWord}}</view>
-        <view class="word-card-blurb">{{spyBlurb}}</view>
-      </view>
-    </view>
-    <view class="section">
-      <view class="section-title">卧底是谁</view>
-      <view class="player-row" wx:for="{{spyPlayers}}" wx:key="playerIndex">
-        <view class="player-name">{{item.name}}</view>
-        <view class="player-meta">{{item.word}}</view>
-      </view>
-      <view class="section-body" wx:if="{{!spyPlayers.length}}">加载中…</view>
-    </view>
-  </block>
-
-  <block wx:else>
-    <view class="section" bindtap="onToggleCard">
-      <view class="section-title">你的交互方式卡</view>
-      <block wx:if="{{cardRevealed && myCard}}">
-        <view class="word-card">
-          <view class="word-card-tag">你的词语</view>
-          <view class="word-card-word">{{myCard.word}}</view>
-          <view class="word-card-blurb">{{myCard.blurb}}</view>
-        </view>
-        <view class="flip-hint">点击收起卡片</view>
-      </block>
-      <block wx:else>
-        <view class="section-body">点击展开你的交互方式卡</view>
-        <view class="flip-hint">请注意遮挡屏幕，避免被他人看到</view>
-      </block>
-    </view>
-    <view class="vote-opened-tip" wx:if="{{voteOpening}}">主持人已开启投票，正在进入…</view>
-  </block>
-
-  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
-    <view class="primary-btn" bindtap="onStartVote">进入投票</view>
-  </page-footer>
 </view>

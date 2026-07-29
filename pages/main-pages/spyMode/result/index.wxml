@@ -1,22 +1,13 @@
-<view class="container" style="padding-top: {{navbarPaddingTop}}px">
+<view class="container">
   <view class="header-section">
-    <view class="topbar">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/icons/icon-room-entry.svg" mode="aspectFit" />
-      </view>
-      <view class="avatar-bar">
-        <user-list
-          avatarList="{{avatarList}}"
-          enableAdd="{{false}}"
-          isFold="{{true}}"
-          showName="{{false}}"
-          layout="stack"
-        />
-      </view>
-    </view>
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      bind:goroom="handleGoRoom"
+    />
     <view class="title-block">
-      <text class="page-title">公布淘汰结果</text>
-      <text class="page-subtitle">第 {{round}} 轮</text>
+      <text class="page-title">公布结果</text>
+      <text class="page-subtitle">第 {{round}} 轮 · 匿名计票</text>
     </view>
   </view>
 
@@ -28,8 +19,17 @@
     </view>
     <view class="result-hero" wx:else>
       <view class="result-name">本轮无人出局</view>
-      <view class="section-body">{{tied ? '最高票并列' : '有效票不足或全员弃票'}}</view>
+      <view class="section-body">{{tied ? '最高票并列，将进入加时陈述' : '有效票不足'}}</view>
     </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">得票统计（不公开投票人）</view>
+    <view class="tally-row" wx:for="{{tallyList}}" wx:key="playerIndex">
+      <text>{{item.name}}</text>
+      <text>{{item.votes}} 票</text>
+    </view>
+    <view class="section-body" wx:if="{{!tallyList.length}}">本轮无有效选票</view>
   </view>
 
   <view class="section">
@@ -40,15 +40,7 @@
     </view>
   </view>
 
-  <page-footer wx:if="{{isHost}}" extClass="footer" showPrev="{{false}}">
-    <view class="primary-btn" bindtap="onNext">进入下一轮准备</view>
+  <page-footer extClass="footer" showPrev="{{false}}">
+    <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onContinue">进入下一轮</view>
   </page-footer>
-
-  <page-footer
-    wx:else
-    extClass="footer"
-    showPrimary="{{false}}"
-    bind:prev="handleGoRoom"
-    prevText="房间"
-  ></page-footer>
 </view>

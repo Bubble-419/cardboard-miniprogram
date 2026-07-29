@@ -1,25 +1,17 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        />
-      </view>
-      <view class="navbar-title"></view>
-      <view class="navbar-right"></view>
-    </view>
-  </view>
-
   <view class="page-body">
-    <!-- 顶部：房间入口 + 设计问题（与脑暴主流程一致） -->
-    <view class="top-bar" style="padding-right: {{topBarPaddingRight}}rpx;">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
-      </view>
+    <!-- 顶部：房间入口 + 头像（与胶囊对齐） -->
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      roomIcon="/assets/partnerMode/icon-room-entry-gp.svg"
+      actingUser="{{currentPlayerIndex}}"
+      showActingFrame="{{true}}"
+      bind:goroom="handleGoRoom"
+    />
+
+    <!-- 设计问题 chip（顶栏下方） -->
+    <view class="problem-chip-row">
       <view
         class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{problemTextOverflow || problemExpanded ? 'problem-chip-tappable' : ''}}"
         bindtap="handleToggleProblemExpand"
@@ -33,18 +25,6 @@
           <text wx:if="{{selectedProblemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{selectedProblemText}}</text>
         </view>
       </view>
-    </view>
-
-    <!-- 玩家头像列表（与脑暴主流程一致） -->
-    <view class="user-section">
-      <user-list
-        avatarList="{{avatarList}}"
-        actingUser="{{currentPlayerIndex}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{false}}"
-        showActingFrame="{{true}}"
-      />
     </view>
 
     <view class="divider-line"></view>

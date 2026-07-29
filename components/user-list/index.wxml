@@ -5,7 +5,7 @@
     show-scrollbar="false"
   >
     <view class="avatar-row {{layout === 'stack' ? 'avatar-row-stack' : ''}}">
-      <block wx:for="{{avatarList}}" wx:key="id">
+      <block wx:for="{{displayList}}" wx:key="id">
         <view
           class="avatar-item {{item.id == resolvedIndicatorUser ? 'avatar-item-indicator' : ''}}"
           bindtap="onAvatarTap"
@@ -44,7 +44,12 @@
                 class="partner-ring partner-ring-selected"
               ></view>
             </view>
-            <view wx:if="{{item.id == resolvedIndicatorUser}}" class="me-indicator"></view>
+            <image
+              wx:if="{{item.id == resolvedIndicatorUser}}"
+              class="me-indicator"
+              src="/assets/partnerMode/avatar-arrow.svg"
+              mode="aspectFit"
+            />
           </view>
           <view class="avatar-name-wrap" wx:if="{{showName && layout !== 'stack' && (item.nickName != null || item.isMe)}}">
             <text class="avatar-name">{{item.nickName || '玩家' + item.id}}</text>
@@ -52,6 +57,15 @@
           </view>
         </view>
       </block>
+      <view class="avatar-item overflow-item" wx:if="{{overflowCount > 0}}">
+        <view class="avatar-slot">
+          <view class="avatar-frame-box">
+            <view class="avatar-wrap overflow-wrap">
+              <text class="overflow-text">+{{overflowCount}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
       <view class="add-btn" wx:if="{{enableAdd}}" bindtap="onAddTap">
         <image class="add-icon" src="/assets/icons/add-icon.png" mode="aspectFit"></image>
       </view>

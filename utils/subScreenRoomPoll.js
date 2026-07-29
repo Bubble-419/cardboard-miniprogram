@@ -2,18 +2,14 @@ const { navigateByRoomState } = require('./subAwaitRoutes');
 const { getCurrentRoute, openUrl } = require('./pageNavigate');
 const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
 const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
+const {
+  isRoomDissolvedResult,
+  isRemovedFromRoomResult,
+  handleRoomGoneFromResult
+} = require('./roomDissolved');
+const { handleRoomLastEvent } = require('./roomMembersSync');
 
-const HOME_ROUTE = 'pages/main-pages/aaa/index';
 const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
-
-let _dissolvedRedirecting = false;
-
-function isRoomDissolvedResult(result) {
-  if (!result) return false;
-  if (result.roomDissolved === true) return true;
-  const code = result.errCode || '';
-  return code === 'ROOM_DISSOLVED' || code === 'ROOM_NOT_FOUND';
-}
 
 function isSubScreenRemovedFromRoom(result) {
   if (!result || result.ok !== true) return false;
@@ -24,28 +20,20 @@ function isSubScreenRemovedFromRoom(result) {
 
 function shouldSubScreenLeaveRoom(result) {
   if (isRoomDissolvedResult(result)) return true;
-  if (result && result.errCode === 'NOT_IN_ROOM') return true;
+  if (isRemovedFromRoomResult(result)) return true;
   return isSubScreenRemovedFromRoom(result);
 }
 
-function redirectSubScreenHomeDissolved(result) {
-  if (_dissolvedRedirecting) return true;
-  if (getCurrentRoute() === HOME_ROUTE) return true;
-  _dissolvedRedirecting = true;
-  try {
-    wx.removeStorageSync('joinedRoomId');
-  } catch (e) {
-    console.warn('removeStorage joinedRoomId failed', e);
+function redirectSubScreenHomeDissolved(result, roomId) {
+  // 成员被踢但房间仍在：handleRoomGoneFromResult 走「不在房间」文案
+  if (isRoomDissolvedResult(result) || isRemovedFromRoomResult(result)) {
+    return handleRoomGoneFromResult(result, roomId);
   }
-  const app = getApp();
-  if (app && app.globalData) app.globalData.roomId = null;
-  const msg = isRoomDissolvedResult(result) ? '原房间已解散' : '您已不在该房间';
-  wx.showToast({ title: msg, icon: 'none' });
-  setTimeout(() => {
-    wx.reLaunch({ url: `/${HOME_ROUTE}` });
-    _dissolvedRedirecting = false;
-  }, 1200);
-  return true;
+  // 轮询到不在成员列表（被踢/成员表已空）
+  return handleRoomGoneFromResult(
+    { ok: false, errCode: 'NOT_IN_ROOM', errMsg: '您已不在该房间' },
+    roomId
+  );
 }
 
 function redirectSubScreenToAddPlayer(roomId) {
@@ -68,10 +56,15 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
 
   if (shouldSubScreenLeaveRoom(result)) {
-    return redirectSubScreenHomeDissolved(result);
+    return redirectSubScreenHomeDissolved(result, id);
   }
 
   if (!result || result.ok !== true || !result.roomState) return false;
+
+  // 成员变更 / 只剩 1 人回退房间：房主与成员均处理（幂等）
+  if (handleRoomLastEvent(result, id, options)) {
+    return true;
+  }
 
   const page = (result.roomState.currentPage || 'addplayer').toLowerCase();
 
@@ -83,6 +76,16 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   // 房主不做副屏页面跳转，但仍允许 beforeNavigate 更新页内状态（如倒计时）
   if (result.isHost === true) {
     return false;
+  }
+
+  // 主动回大厅期间：不跟随游戏页
+  try {
+    const { isSpyLobbyStayActive } = require('./spyFollow');
+    if (isSpyLobbyStayActive(id) && getCurrentRoute() === ADD_PLAYER_ROUTE) {
+      return false;
+    }
+  } catch (e) {
+    // ignore
   }
 
   if (page === 'addplayer' && result.hasSelectedMode !== true) {

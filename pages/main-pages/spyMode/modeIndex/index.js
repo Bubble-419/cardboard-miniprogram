@@ -1,44 +1,52 @@
 const {
-  callCloudFunction,
+  fetchRoomDataOrExit,
   callSpyAction,
   goRoomPage,
   buildAvatarList,
   filterPlayerMembers,
-  parseIsHostOption,
   buildSpyPageUrl,
   getDefaultSpyCount,
   MIN_PLAYERS,
-  openUrl
+  openUrl,
+  withSpyRefreshGuard,
+  safePageSetData
 } = require('../../../../utils/spyMode');
 const { followSpyRoomState } = require('../../../../utils/spyFollow');
+const { getLibraryGroupCount } = require('../../../../utils/spyWordCardAssets');
+const { SPY_PHASE } = require('../../../../utils/spyGameState');
+
+function shouldShowLibrary(spyGame) {
+  if (!spyGame || !spyGame.phase) return true;
+  const phase = spyGame.phase;
+  // 未开局 / 已结算回大厅：可查；分词及对局中锁定
+  return (
+    phase === SPY_PHASE.INTRO
+    || phase === SPY_PHASE.SETTLE
+    || phase === 'idle'
+    || phase === 'lobby'
+  );
+}
 
 Page({
   data: {
     roomId: '',
-    isHost: false,
-    navbarPaddingTop: 44,
     avatarList: [],
     playerAvatarList: [],
     playerCount: 0,
     minPlayers: MIN_PLAYERS,
     spyCountHint: '',
     canStart: false,
-    hostStatusText: '等待主持人开始分配…',
-    starting: false
+    statusText: '等待玩家到齐后开始',
+    starting: false,
+    showLibraryEntry: true,
+    libraryGroupCount: 0,
+    rulesExpanded: false
   },
 
   onLoad(options) {
     this._pageAlive = true;
-    let navbarPaddingTop = 44;
-    try {
-      const sys = wx.getSystemInfoSync();
-      navbarPaddingTop = (sys.statusBarHeight || 0) + 16;
-    } catch (e) {
-      // ignore
-    }
 
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const isHost = parseIsHostOption(options);
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
       setTimeout(() => wx.navigateBack(), 1200);
@@ -46,22 +54,22 @@ Page({
     }
     getApp().globalData.roomId = roomId;
     getApp().globalData.gameMode = 'spy';
-    this.setData({ roomId, isHost, navbarPaddingTop, minPlayers: MIN_PLAYERS });
-  },
-
-  onReady() {
-    this._readyOnce = true;
-    this.refreshRoom();
+    this.setData({
+      roomId,
+      minPlayers: MIN_PLAYERS,
+      libraryGroupCount: getLibraryGroupCount()
+    });
   },
 
   onShow() {
     this._pageAlive = true;
-    if (!this._readyOnce) return;
     this.refreshRoom();
     this.startPolling();
   },
 
   onHide() {
+    // hide 时也标记不可写，避免 navigateTo 牌库后异步轮询 setData 触发基础库空指针
+    this._pageAlive = false;
     this.stopPolling();
   },
 
@@ -72,47 +80,50 @@ Page({
 
   async refreshRoom() {
     const roomId = this.data.roomId;
-    if (!roomId || this._refreshing) return;
-    this._refreshing = true;
-    try {
-      const res = await callCloudFunction('getAddPlayerData', { roomId });
-      const result = (res && res.result) || {};
-      if (!this._pageAlive || result.ok !== true) return;
+    if (!roomId || this._pageAlive === false) return;
+    await withSpyRefreshGuard(this, async () => {
+      try {
+        if (this._pageAlive === false) return;
+        const result = await fetchRoomDataOrExit(roomId);
+        if (this._pageAlive === false || !result || result.ok !== true) return;
 
-      const isHost = result.isHost === true;
-      const members = result.members || [];
-      const players = filterPlayerMembers(members, { excludeHostSelf: isHost });
-      const playerCount = players.length;
-      const spyCount = getDefaultSpyCount(playerCount);
+        followSpyRoomState(result, roomId, {
+          stayOnPage: 'spymodeindex',
+          allowHost: true
+        });
 
-      this.setData({
-        isHost,
-        avatarList: buildAvatarList(members),
-        playerAvatarList: buildAvatarList(players),
-        playerCount,
-        canStart: isHost && playerCount >= MIN_PLAYERS,
-        spyCountHint: playerCount >= MIN_PLAYERS
-          ? `当前 ${playerCount} 名参与者，本局将自动分配 ${spyCount} 名卧底`
-          : `当前 ${playerCount} 名参与者，人数不足`,
-        hostStatusText: '等待主持人开始分配…'
-      });
+        if (this._pageAlive === false) return;
 
-      if (!isHost) {
-        followSpyRoomState(result, roomId, { stayOnPage: 'spymodeindex' });
+        const members = result.members || [];
+        const players = filterPlayerMembers(members);
+        const playerCount = players.length;
+        const spyCount = getDefaultSpyCount(playerCount);
+        const canStart = playerCount >= MIN_PLAYERS;
+        const spyGame = result.roomState && result.roomState.spyGame;
+
+        safePageSetData(this, {
+          avatarList: buildAvatarList(members),
+          playerAvatarList: buildAvatarList(players),
+          playerCount,
+          canStart,
+          spyCountHint: canStart
+            ? `当前 ${playerCount} 名玩家，本局将自动分配 ${spyCount} 名卧底`
+            : `当前 ${playerCount} 名玩家，人数不足`,
+          statusText: canStart ? '人数已齐，任意玩家可开始游戏' : '等待更多玩家加入…',
+          showLibraryEntry: shouldShowLibrary(spyGame)
+        });
+      } catch (e) {
+        console.warn('spy modeIndex refresh', e);
       }
-    } catch (e) {
-      console.warn('spy modeIndex refresh', e);
-    } finally {
-      this._refreshing = false;
-    }
+    });
   },
 
   startPolling() {
     this.stopPolling();
-    const interval = this.data.isHost ? 2000 : 800;
     this._pollTimer = setInterval(() => {
+      if (this._pageAlive === false) return;
       this.refreshRoom();
-    }, interval);
+    }, 1000);
   },
 
   stopPolling() {
@@ -122,24 +133,43 @@ Page({
     }
   },
 
-  async onStartAssign() {
-    if (!this.data.isHost || !this.data.canStart || this.data.starting) return;
-    this.setData({ starting: true });
-    wx.showLoading({ title: '分配中…' });
+  onOpenLibrary() {
+    if (!this.data.showLibraryEntry) {
+      wx.showToast({ title: '对局中不可查阅牌库', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: buildSpyPageUrl('cardLibrary', this.data.roomId)
+    });
+  },
+
+  onToggleRules() {
+    this.setData({ rulesExpanded: !this.data.rulesExpanded });
+  },
+
+  async onStartGame() {
+    if (!this.data.canStart || this.data.starting) return;
+    this.setData({ starting: true, showLibraryEntry: false });
+    wx.showLoading({ title: '分配词语中…' });
     try {
       const result = await callSpyAction('startAssign', { roomId: this.data.roomId });
       wx.hideLoading();
       if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '分配失败', icon: 'none' });
-        this.setData({ starting: false });
+        wx.showToast({ title: result.errMsg || '开始失败', icon: 'none' });
+        this.setData({ starting: false, showLibraryEntry: true });
         return;
       }
-      openUrl(buildSpyPageUrl('assign', this.data.roomId), { immediate: true, noReLaunch: true });
+      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
+        immediate: true,
+        noReLaunch: true
+      });
+      if (!navigated && this._pageAlive) {
+        this.setData({ starting: false });
+      }
     } catch (e) {
       wx.hideLoading();
-      wx.showToast({ title: (e && e.errMsg) || '分配失败', icon: 'none' });
-    } finally {
-      if (this._pageAlive) this.setData({ starting: false });
+      wx.showToast({ title: (e && e.errMsg) || '开始失败', icon: 'none' });
+      if (this._pageAlive) this.setData({ starting: false, showLibraryEntry: true });
     }
   },
 
@@ -147,13 +177,15 @@ Page({
     wx.navigateBack({
       fail: () => {
         wx.redirectTo({
-          url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(this.data.roomId)}&isHost=${this.data.isHost ? 1 : 0}`
+          url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(this.data.roomId)}`
         });
       }
     });
   },
 
   handleGoRoom() {
+    this._pageAlive = false;
+    if (typeof this.stopPolling === 'function') this.stopPolling();
     goRoomPage(this.data.roomId);
   }
 });

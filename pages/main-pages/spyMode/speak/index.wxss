@@ -1,19 +1,399 @@
-@import "../styles/common.wxss";
+/* 发言阶段：三段式自适应布局 */
 
-.vote-opened-tip {
-  margin: 0 40rpx 24rpx;
-  padding: 24rpx 28rpx;
-  background: #E8F8E6;
-  border-radius: 24rpx;
-  color: #3AAE34;
-  font-size: 28rpx;
+.page {
+  height: 100vh;
+  background-color: #F3FAF9;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fixed-header {
+  flex-shrink: 0;
+  background: #F3FAF9;
+  z-index: 20;
+}
+
+.content-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-section-inner {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.page-shell {
+  width: calc(100vw - 80rpx);
+  max-width: 750rpx;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ===== 标题区（顶栏由 player-top-bar 组件负责） ===== */
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 18rpx;
+  min-width: 0;
+}
+
+.page-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #333333;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 24rpx;
+  font-weight: 400;
+  color: #6F6F6F;
+  line-height: 1.4;
+}
+
+/* ===== 我的词语卡（略缩小高度，保持宽高比） ===== */
+.my-word-card-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 14rpx 0 0;
+  box-sizing: border-box;
+}
+
+.my-word-label {
+  width: 78%;
+  max-width: 100%;
+  font-size: 22rpx;
   font-weight: 600;
+  color: #3AAE34;
+  margin-bottom: 10rpx;
+}
+
+.my-word-card-frame {
+  width: 78%;
+  max-width: 100%;
+  aspect-ratio: 16 / 10;
+  position: relative;
+  box-sizing: border-box;
+  background: #eef2f6;
+  border-radius: 18rpx;
+  overflow: hidden;
+}
+
+.my-word-card-frame flip-word-card,
+.my-word-card-frame .my-word-card-loading {
+  width: 100%;
+  height: 100%;
+}
+
+.my-word-card-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #94A3B8;
+  box-sizing: border-box;
+}
+
+/* ===== 双标签：高度 64–72rpx ===== */
+.content-tabs {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 68rpx;
+  margin-top: 18rpx;
+  border-bottom: 2rpx solid rgba(148, 163, 184, 0.18);
+  background: #F3FAF9;
+  box-sizing: border-box;
+}
+
+.content-tab {
+  position: relative;
+  flex: 1;
+  width: 50%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.content-tab-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #94A3B8;
+  line-height: 1.2;
   text-align: center;
 }
 
-.flip-hint {
-  text-align: center;
+.content-tab-active .content-tab-text {
+  color: #5EC159;
+  font-weight: 700;
+}
+
+.content-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 44rpx;
+  height: 6rpx;
+  margin-left: -22rpx;
+  border-radius: 6rpx;
+  background: #5EC159;
+}
+
+/* ===== 滚动面板 ===== */
+.panel {
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: 16rpx;
+  padding-bottom: 20rpx;
+}
+
+.panel-visible {
+  animation: panel-fade-in 240ms ease;
+}
+
+@keyframes panel-fade-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ===== 牌库两列网格 ===== */
+.card-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0 -12rpx;
+  box-sizing: border-box;
+}
+
+.card-tile {
+  width: 50%;
+  padding: 0 12rpx;
+  margin-bottom: 22rpx;
+  box-sizing: border-box;
+}
+
+.card-tile:active {
+  opacity: 0.88;
+}
+
+.tile-stack {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  position: relative;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #e8edf2;
+}
+
+.tile-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== 玩法说明 ===== */
+.rules-panel {
+  background: #FFFFFF;
+  border-radius: 28rpx;
+  padding: 28rpx;
+  box-shadow: 0 12rpx 36rpx 0 rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.rules-item {
+  font-size: 26rpx;
+  color: #6F6F6F;
+  line-height: 1.65;
+}
+
+/* ===== 底部操作区：安全区 + 12rpx ===== */
+.bottom-action {
+  flex-shrink: 0;
+  padding: 22rpx 0 calc(env(safe-area-inset-bottom) + 12rpx);
+  background: #F3FAF9;
+  box-sizing: border-box;
+}
+
+.primary-btn {
+  width: 100%;
+  height: 90rpx;
+  background-color: #5EC159;
+  color: #FFFFFF;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  font-weight: 500;
+  letter-spacing: 4rpx;
+  box-sizing: border-box;
+}
+
+.primary-btn.dimmed {
+  opacity: 0.45;
+}
+
+.primary-btn:active {
+  opacity: 0.85;
+}
+
+/* ===== 翻阅弹层 ===== */
+.viewer-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 20, 30, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.viewer-sheet {
+  width: 100%;
+  max-width: 750rpx;
+  max-height: 88vh;
+  background: #f7f9fb;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 28rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.viewer-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+
+.viewer-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #222;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-close {
+  font-size: 26rpx;
+  color: #3aae34;
+  padding: 8rpx 12rpx;
+}
+
+.viewer-hint {
+  display: block;
+  font-size: 22rpx;
+  color: #94a3b8;
+  margin-bottom: 20rpx;
+}
+
+.viewer-card-frame {
+  width: 78%;
+  max-width: 100%;
+  margin: 0 auto;
+  aspect-ratio: 16 / 10;
+  background: #eef2f6;
+  border-radius: 18rpx;
+  overflow: hidden;
+}
+
+.viewer-blurb {
+  display: block;
+  margin-top: 20rpx;
   font-size: 24rpx;
-  color: #94A3B8;
-  margin-top: 12rpx;
+  color: #6f6f6f;
+  line-height: 1.55;
+}
+
+/* ===== 窄屏 ===== */
+.is-compact .page-shell {
+  width: calc(100vw - 48rpx);
+}
+
+.is-compact .page-title {
+  font-size: 40rpx;
+}
+
+.is-compact .rules-item {
+  font-size: 22rpx;
+}
+
+.is-compact .content-tab-text {
+  font-size: 26rpx;
+}
+
+.is-compact .my-word-label {
+  font-size: 20rpx;
+}
+
+.is-compact .card-grid {
+  margin: 0 -10rpx;
+}
+
+.is-compact .card-tile {
+  padding: 0 10rpx;
+  margin-bottom: 20rpx;
+}
+
+.is-compact .my-word-card-frame,
+.is-compact .my-word-label,
+.is-compact .viewer-card-frame {
+  width: 82%;
+}
+
+.is-compact .primary-btn {
+  height: 88rpx;
+  font-size: 32rpx;
+}
+
+.is-single-col .card-tile {
+  width: 100%;
+  padding: 0;
+}
+
+.is-single-col .card-grid {
+  margin: 0;
 }

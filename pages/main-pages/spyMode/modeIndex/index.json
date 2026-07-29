@@ -2,6 +2,7 @@
   "navigationBarTitleText": "谁是卧底",
   "navigationStyle": "custom",
   "usingComponents": {
+    "player-top-bar": "/components/player-top-bar/index",
     "user-list": "/components/user-list/index",
     "page-footer": "/components/page-footer/index"
   }

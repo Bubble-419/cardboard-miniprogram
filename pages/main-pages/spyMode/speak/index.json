@@ -2,7 +2,7 @@
   "navigationBarTitleText": "发言阶段",
   "navigationStyle": "custom",
   "usingComponents": {
-    "user-list": "/components/user-list/index",
-    "page-footer": "/components/page-footer/index"
+    "player-top-bar": "/components/player-top-bar/index",
+    "flip-word-card": "/components/flip-word-card/index"
   }
 }

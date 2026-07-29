@@ -8,10 +8,14 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
+/**
+ * 房主解散房间：全员清出；状态 DISSOLVED。
+ * 客户端通过轮询 getAddPlayerData 收到 ROOM_DISSOLVED（等同 room_dissolved 广播）。
+ */
 exports.main = async (event, context) => {
   const { roomId } = event || {};
 
-  if (!roomId) {
+  if (!roomId || typeof roomId !== 'string') {
     return { ok: false, errCode: 'INVALID_PARAM', errMsg: 'roomId is required' };
   }
 
@@ -21,23 +25,58 @@ exports.main = async (event, context) => {
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
     if (!roomRes.data || roomRes.data.length === 0) {
-      return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+      // 幂等：房间已不存在，视为已解散
+      return {
+        ok: true,
+        event: 'room_dissolved',
+        roomId,
+        alreadyDissolved: true
+      };
     }
 
     const room = roomRes.data[0];
-    if (!room.creatorId || room.creatorId !== currentUserId) {
+    if (!room.creatorId || String(room.creatorId) !== String(currentUserId)) {
       return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可解散房间' };
     }
 
-    await db.collection(ROOM_MEMBERS_COLLECTION).where({ roomId }).remove();
-    await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
+    if (room.status === 'DISSOLVED') {
+      return {
+        ok: true,
+        event: 'room_dissolved',
+        roomId,
+        alreadyDissolved: true
+      };
+    }
+
+    const now = Date.now();
+    // 先改房间状态，确保轮询能立刻读到 DISSOLVED
+    await db.collection(ROOMS_COLLECTION).doc(room._id).update({
       data: {
         status: 'DISSOLVED',
-        updatedAt: Date.now()
+        dissolvedAt: now,
+        updatedAt: now,
+        currentPage: 'addPlayer',
+        brainstormProgressPage: '',
+        lastEvent: {
+          type: 'room_dissolved',
+          at: now,
+          by: currentUserId
+        }
       }
     });
 
-    return { ok: true };
+    try {
+      await db.collection(ROOM_MEMBERS_COLLECTION).where({ roomId }).remove();
+    } catch (e) {
+      console.warn('roomDissolve remove members', e);
+    }
+
+    return {
+      ok: true,
+      event: 'room_dissolved',
+      roomId,
+      alreadyDissolved: false
+    };
   } catch (e) {
     console.error('roomDissolve error', e);
     return {

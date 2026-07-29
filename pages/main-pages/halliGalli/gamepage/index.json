@@ -1,6 +1,6 @@
 {
   "usingComponents": {
-    "user-list": "/components/user-list/index",
+    "player-top-bar": "/components/player-top-bar/index",
     "context-display": "/components/context-display/index"
   },
   "navigationStyle": "custom",

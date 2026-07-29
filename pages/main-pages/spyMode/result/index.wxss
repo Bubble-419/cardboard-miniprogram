@@ -21,3 +21,16 @@
 .result-role.spy {
   color: #E07A5F;
 }
+
+.tally-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #EEF2F0;
+  font-size: 26rpx;
+  color: #545454;
+}
+
+.tally-row:last-child {
+  border-bottom: none;
+}

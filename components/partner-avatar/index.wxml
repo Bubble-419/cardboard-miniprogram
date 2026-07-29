@@ -7,5 +7,10 @@
       lazy-load
     />
   </view>
-  <view class="avatar-arrow" wx:if="{{showArrow}}"></view>
+  <image
+    class="avatar-arrow"
+    wx:if="{{showArrow}}"
+    src="/assets/partnerMode/avatar-arrow.svg"
+    mode="aspectFit"
+  />
 </view>
