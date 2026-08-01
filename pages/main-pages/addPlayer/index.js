@@ -132,11 +132,12 @@ Page({
     if (hasSelectedMode && !brainstormSessionEnded) {
       primaryBtnText = '继续游戏';
       primaryBtnAction = 'continue';
-    } else if (brainstormSessionEnded) {
+    } else if (brainstormSessionEnded && hasSelectedMode) {
+      // 上一局结束且模式仍在：同模式再开一局
       primaryBtnText = '开始游戏';
       primaryBtnAction = 'anotherRound';
     } else if (isHost) {
-      // 房主未选模式：可开始选模式；人数不足时仍可进入选模式页（由后续校验）
+      // 未选模式 / 回大厅已清模式：开始游戏应进选模式页，不能走 anotherRound
       primaryBtnText = memberCount < 2 ? '等待成员加入' : '开始游戏';
       primaryBtnDisabled = memberCount < 2;
       primaryBtnAction = 'selectMode';
@@ -1508,7 +1509,10 @@ Page({
         return;
       }
       if (check.hasSelectedMode !== true && !this.data.hasSelectedMode) {
-        wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+        // 模式已被清掉（如只剩一人回大厅）：改为重新选模式，而不是卡住提示
+        wx.hideLoading();
+        this.setData({ isHost: true, hasSelectedMode: false, brainstormSessionEnded: true });
+        this.handleGoBrainstormMode();
         return;
       }
 
@@ -1701,7 +1705,12 @@ Page({
       return;
     }
     if (!this.data.hasSelectedMode) {
-      wx.showToast({ title: '请先选择脑暴模式', icon: 'none' });
+      // 无已选模式时「继续」无意义，引导房主重新选模式
+      if (this.data.isHost) {
+        this.handleGoBrainstormMode();
+      } else {
+        wx.showToast({ title: '请等待房主选择脑暴模式', icon: 'none' });
+      }
       return;
     }
 
