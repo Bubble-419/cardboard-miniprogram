@@ -42,9 +42,11 @@ Component({
 
   lifetimes: {
     ready() {
+      this._detached = false;
       this._syncDisplayMode();
     },
     detached() {
+      this._detached = true;
       this._stopLocalTimer();
       this._clearExpireTimer();
     }
@@ -52,6 +54,7 @@ Component({
 
   pageLifetimes: {
     show() {
+      this._detached = false;
       // 页面重新可见时重置上一次生命周期留下的倒计时状态，
       // 防止旧的过期 startedAt 被 _hasNaturallyExpired 误判为需要触发震动
       this._timerWasActive = false;
@@ -65,7 +68,17 @@ Component({
     hide() {
       this._stopLocalTimer();
       this._clearExpireTimer();
-      this._hideBorder();
+      // hide 时只清 canvas，避免对已隐藏页 setData 触发基础库空指针
+      const ctx = this._ctx;
+      const w = this._width;
+      const h = this._height;
+      if (ctx && w && h) {
+        try {
+          ctx.clearRect(0, 0, w, h);
+        } catch (e) {
+          // ignore
+        }
+      }
     }
   },
 
@@ -298,17 +311,32 @@ Component({
       const w = this._width;
       const h = this._height;
       if (ctx && w && h) {
-        ctx.clearRect(0, 0, w, h);
+        try {
+          ctx.clearRect(0, 0, w, h);
+        } catch (e) {
+          // ignore
+        }
       }
       if (this.data.borderVisible) {
-        this.setData({ borderVisible: false });
+        try {
+          this.setData({ borderVisible: false });
+        } catch (e) {
+          // 页面/组件已销毁时忽略
+        }
       }
     },
 
     _restartLocalTimer() {
       this._stopLocalTimer();
       if (this.data.displayMode !== 'timer') return;
-      const tick = () => this._drawBorder();
+      const tick = () => {
+        if (this._detached) return;
+        try {
+          this._drawBorder();
+        } catch (e) {
+          this._stopLocalTimer();
+        }
+      };
       tick();
       this._localTimer = setInterval(tick, 200);
     },

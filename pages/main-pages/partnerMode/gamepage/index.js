@@ -385,6 +385,7 @@ Page({
     this._stopRoundTimerBurstPoll();
     this.setData({ roundTimerReady: false, roundTimerVisible: false });
     this._ensureSharedRoundTimerOnEnter().then(() => {
+      if (this._pageVisible === false) return;
       this._applyPendingSpecialMoveUsed();
       this._applyAdoptDeckHint();
       this.refreshScoreStatus();
@@ -392,7 +393,7 @@ Page({
       this._refreshInspirationCount();
     }).catch((e) => {
       console.warn('gamepage onShow timer sync', e);
-      this._refreshInspirationCount();
+      if (this._pageVisible !== false) this._refreshInspirationCount();
     });
   },
 
@@ -424,19 +425,25 @@ Page({
   onHide() {
     this._pageVisible = false;
     this._unbindInspirationKeyboard();
-    this.setData({
-      roundTimerVisible: false,
-      inspirationKeyboardHeight: 0
-    });
+    // 先停所有定时器，避免 hide 后 setInterval 继续 setData 触发基础库空指针
     this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
+    try {
+      this.setData({
+        roundTimerVisible: false,
+        inspirationKeyboardHeight: 0
+      });
+    } catch (e) {
+      // ignore: 页面帧已销毁
+    }
     this._syncRoundContentToRoom();
   },
 
   onUnload() {
+    this._pageVisible = false;
     this._unbindInspirationKeyboard();
     this._stopRoundSpeech();
     if (this._roundSpeech) {
@@ -445,6 +452,8 @@ Page({
     }
     this._stopScorePolling();
     this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
+    this._stopRoundTimer();
     this._resetRoundTimerSession();
   },
 
@@ -768,6 +777,7 @@ Page({
     const delayToNextSecond = Math.max(50, 1000 - (elapsedMs % 1000));
 
     const tick = () => {
+      if (this._pageVisible === false) return;
       // 输入灵感时避免高频 setData 顶布局/卡死
       if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) return;
       const startedAt = this.data.partnerRoundStartedAt;
@@ -777,10 +787,14 @@ Page({
         this.data.roundTimerMaxSec || ROUND_DURATION_SEC,
         this._getTimerNow()
       );
-      this.setData({
-        roundTimerElapsedRatio: timerState.elapsedRatio,
-        roundTimerRemainingSec: timerState.remainingSec
-      });
+      try {
+        this.setData({
+          roundTimerElapsedRatio: timerState.elapsedRatio,
+          roundTimerRemainingSec: timerState.remainingSec
+        });
+      } catch (e) {
+        return;
+      }
       if (timerState.remainingSec <= 0) {
         if (this.data.isHost === true && !this._rollingRoundCountdown) {
           this._rollRoundCountdown();
@@ -794,6 +808,7 @@ Page({
     clearTimeout(this._roundTimerAlignTimer);
     this._roundTimerAlignTimer = setTimeout(() => {
       this._roundTimerAlignTimer = null;
+      if (this._pageVisible === false) return;
       tick();
       this._stopRoundTimer();
       this._roundTimerInterval = setInterval(tick, 1000);
@@ -818,6 +833,10 @@ Page({
     this._stopRoundTimerBurstPoll();
     let count = 0;
     const tick = async () => {
+      if (this._pageVisible === false) {
+        this._stopRoundTimerBurstPoll();
+        return;
+      }
       count += 1;
       if (count > 16 || !this.data.roomId || isClosingPhase(this.data.gamepagePhase)) {
         this._stopRoundTimerBurstPoll();
@@ -1724,14 +1743,14 @@ Page({
 
   async refreshScoreStatus() {
     const { roomId, isHost, gamepagePhase } = this.data;
-    if (!roomId || isClosingPhase(gamepagePhase)) return;
+    if (!roomId || isClosingPhase(gamepagePhase) || this._pageVisible === false) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getGameScoreStatus',
         data: { roomId }
       });
       const result = (res && res.result) || {};
-      if (result.ok !== true) return;
+      if (result.ok !== true || this._pageVisible === false) return;
 
       const scoredCount = result.scoredCount || 0;
       const totalRequired = result.totalRequired != null
@@ -1743,11 +1762,15 @@ Page({
         && totalRequired > 0
         && scoredCount >= totalRequired;
 
-      this.setData({
-        scoredCount,
-        totalRequired,
-        canStartStatement
-      });
+      try {
+        this.setData({
+          scoredCount,
+          totalRequired,
+          canStartStatement
+        });
+      } catch (e) {
+        // ignore
+      }
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
@@ -1755,7 +1778,10 @@ Page({
 
   _startScorePolling() {
     this._stopScorePolling();
-    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
+    this._scorePollTimer = setInterval(() => {
+      if (this._pageVisible === false) return;
+      this.refreshScoreStatus();
+    }, 3000);
   },
 
   _stopScorePolling() {
@@ -1768,6 +1794,7 @@ Page({
   _startStatePolling() {
     this._stopStatePolling();
     const poll = async () => {
+      if (this._pageVisible === false) return;
       const roomId = this.data.roomId || '';
       if (!roomId) return;
       try {
@@ -1775,9 +1802,23 @@ Page({
           name: 'getAddPlayerData',
           data: { roomId, full: true }
         });
+        if (this._pageVisible === false) return;
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
+            // 模式已清除：房主/成员均回房间等待页
+            if (pollResult.hasSelectedMode !== true) {
+              try {
+                clearLocalBrainstormProgress(roomId);
+                clearPartnerSpecialMoveUsedFlag(roomId);
+              } catch (e) {
+                // ignore
+              }
+              safeOpenUrl(`/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`, {
+                immediate: true
+              });
+              return true;
+            }
             const state = pollResult.roomState || {};
             // 房主/副屏：收尾相关页必须主动跳转（followSubScreenRoomPoll 对房主不会 navigate）
             if (page === 'closingstatement') {

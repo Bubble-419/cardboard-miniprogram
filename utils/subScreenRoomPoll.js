@@ -73,6 +73,19 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
     if (handled === true) return true;
   }
 
+  // 已退出游戏模式：房主与成员均从游戏页回到房间等待态
+  if (result.hasSelectedMode !== true) {
+    const current = getCurrentRoute();
+    // 正在「选择脑暴模式」页时不要强行拉回大厅（房主主动进入）
+    if (current === 'pages/main-pages/brainstormMode/index') {
+      return false;
+    }
+    if (current !== ADD_PLAYER_ROUTE) {
+      return redirectSubScreenToAddPlayer(id);
+    }
+    return false;
+  }
+
   // 房主不做副屏页面跳转，但仍允许 beforeNavigate 更新页内状态（如倒计时）
   if (result.isHost === true) {
     return false;
@@ -86,18 +99,6 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
     }
   } catch (e) {
     // ignore
-  }
-
-  if (page === 'addplayer' && result.hasSelectedMode !== true) {
-    const current = getCurrentRoute();
-    // 正在「选择脑暴模式」页时不要强行拉回大厅（房主/成员主动进入）
-    if (current === 'pages/main-pages/brainstormMode/index') {
-      return false;
-    }
-    if (current !== ADD_PLAYER_ROUTE) {
-      return redirectSubScreenToAddPlayer(id);
-    }
-    return false;
   }
 
   return navigateByRoomState(page, result.roomState, id, { isHost: false });

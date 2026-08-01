@@ -7,6 +7,12 @@ cloud.init({
 const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 
+/**
+ * 房主退出当前游戏模式：
+ * - 清除模式 ID 与该模式游戏进度
+ * - 保留房间号、房主、成员
+ * - 全员回到房间等待态（currentPage = addPlayer）
+ */
 exports.main = async (event, context) => {
   const { roomId } = event || {};
 
@@ -25,7 +31,7 @@ exports.main = async (event, context) => {
 
     const room = roomRes.data[0];
     if (!room.creatorId || room.creatorId !== currentUserId) {
-      return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可退出脑暴' };
+      return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可退出当前游戏模式' };
     }
 
     await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
@@ -69,17 +75,26 @@ exports.main = async (event, context) => {
           texts: [],
           images: []
         },
+        selectedBG: db.command.remove(),
+        selectedDesignProblem: db.command.remove(),
+        spyGame: db.command.remove(),
+        spyAssignments: db.command.remove(),
+        lastEvent: {
+          type: 'mode_cleared',
+          at: Date.now(),
+          by: currentUserId
+        },
         updatedAt: Date.now()
       }
     });
 
-    return { ok: true };
+    return { ok: true, currentPage: 'addPlayer', hasSelectedMode: false };
   } catch (e) {
     console.error('roomClearBrainstormMode error', e);
     return {
       ok: false,
       errCode: e.errCode || e.code || 'CLEAR_MODE_ERROR',
-      errMsg: e.errMsg || e.message || '退出脑暴失败'
+      errMsg: e.errMsg || e.message || '退出当前游戏模式失败'
     };
   }
 };
