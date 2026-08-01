@@ -5,8 +5,8 @@ const {
   buildSpyPageUrl,
   openUrl,
   withSpyRefreshGuard
-} = require('../../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
+} = require('../../../utils/spyMode');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
 
 /** 旧下一轮准备页：任意玩家可继续，或自动跟随 */
 Page({

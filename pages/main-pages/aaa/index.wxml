@@ -123,7 +123,7 @@
 
       <!-- 空状态 -->
       <view class="history-empty" wx:if="{{historyWorkshops.length === 0}}">
-        <image class="empty-illustration" src="/assets/home/empty-history-6f27f1.png" mode="aspectFit" />
+        <image class="empty-illustration" src="/assets/home/empty-history-6f27f1.webp" mode="aspectFit" />
         <text class="empty-title">暂无历史工作坊</text>
         <text class="empty-desc">加入或创建房间，开始你的脑暴之旅吧！</text>
       </view>

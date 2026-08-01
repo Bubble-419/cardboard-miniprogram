@@ -9,9 +9,9 @@ const {
   withSpyRefreshGuard,
   samePlayerIndex,
   playerIndexIncludes
-} = require('../../../../utils/spyMode');
-const { assignAvatarImages, buildAvatarList } = require('../../../../utils/avatars');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
+} = require('../../../utils/spyMode');
+const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
 
 function buildCircleSlots(players, memberByIndex) {
   const list = (players || []).filter((p) => p.alive !== false);

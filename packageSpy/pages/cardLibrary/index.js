@@ -1,6 +1,6 @@
-const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../../../utils/spyMode');
-const { listLibraryCards, getLibraryGroupCount } = require('../../../../utils/spyWordCardAssets');
-const { SPY_PHASE } = require('../../../../utils/spyGameState');
+const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../../utils/spyMode');
+const { listLibraryCards, getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
+const { SPY_PHASE } = require('../../../utils/spyGameState');
 
 /** 分词开始后不允许查阅牌库 */
 function isLibraryLocked(spyGame) {

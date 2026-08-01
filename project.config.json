@@ -6,9 +6,9 @@
     "es6": true,
     "postcss": false,
     "compileWorklet": false,
-    "minified": false,
+    "minified": true,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
     "minifyWXSS": true,
@@ -29,7 +29,24 @@
   "libVersion": "3.12.0",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "prd"
+      },
+      {
+        "type": "suffix",
+        "value": ".md"
+      },
+      {
+        "type": "glob",
+        "value": "**/.DS_Store"
+      },
+      {
+        "type": "file",
+        "value": "bg-card-demo.html"
+      }
+    ],
     "include": []
   },
   "editorSetting": {}

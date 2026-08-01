@@ -10,7 +10,7 @@
 
 const { WORD_ENTRIES, SPY_WORD_PAIRS } = require('./spyWordPairs');
 
-const ASSET_ROOT = '/assets/spyMode/interactionCards';
+const ASSET_ROOT = '/packageSpy/assets/interactionCards';
 const RAW_DIR = `${ASSET_ROOT}/raw`;
 const WEBP_DIR = `${ASSET_ROOT}/webp`;
 const CARD_BACK_WEBP = `${WEBP_DIR}/背面3x.webp`;

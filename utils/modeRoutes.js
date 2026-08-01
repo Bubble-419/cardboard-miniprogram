@@ -10,14 +10,14 @@ function getSelectedModeId(fallback) {
 function buildSpyPageUrl(pageKey, roomId, query = {}) {
   const roomIdEnc = encodeURIComponent(roomId || '');
   const pathMap = {
-    intro: '/pages/main-pages/spyMode/modeIndex/index',
-    modeIndex: '/pages/main-pages/spyMode/modeIndex/index',
-    assign: '/pages/main-pages/spyMode/assign/index',
-    speak: '/pages/main-pages/spyMode/speak/index',
-    vote: '/pages/main-pages/spyMode/vote/index',
-    result: '/pages/main-pages/spyMode/result/index',
-    nextRound: '/pages/main-pages/spyMode/nextRound/index',
-    settle: '/pages/main-pages/spyMode/settle/index'
+    intro: '/packageSpy/pages/modeIndex/index',
+    modeIndex: '/packageSpy/pages/modeIndex/index',
+    assign: '/packageSpy/pages/assign/index',
+    speak: '/packageSpy/pages/speak/index',
+    vote: '/packageSpy/pages/vote/index',
+    result: '/packageSpy/pages/result/index',
+    nextRound: '/packageSpy/pages/nextRound/index',
+    settle: '/packageSpy/pages/settle/index'
   };
   let url = `${pathMap[pageKey] || pathMap.intro}?roomId=${roomIdEnc}`;
   Object.keys(query || {}).forEach((key) => {

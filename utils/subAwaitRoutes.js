@@ -113,13 +113,13 @@ const ROUTE_TO_PAGE = {
   'pages/main-pages/partnerMode/closingEnd/index': 'closingend',
   'pages/main-pages/discussion/index': 'discussion',
   'pages/leaderboard/index': 'leaderboard',
-  'pages/main-pages/spyMode/modeIndex/index': 'spymodeindex',
-  'pages/main-pages/spyMode/assign/index': 'spyassign',
-  'pages/main-pages/spyMode/speak/index': 'spyspeak',
-  'pages/main-pages/spyMode/vote/index': 'spyvote',
-  'pages/main-pages/spyMode/result/index': 'spyresult',
-  'pages/main-pages/spyMode/nextRound/index': 'spynextround',
-  'pages/main-pages/spyMode/settle/index': 'spysettle'
+  'packageSpy/pages/modeIndex/index': 'spymodeindex',
+  'packageSpy/pages/assign/index': 'spyassign',
+  'packageSpy/pages/speak/index': 'spyspeak',
+  'packageSpy/pages/vote/index': 'spyvote',
+  'packageSpy/pages/result/index': 'spyresult',
+  'packageSpy/pages/nextRound/index': 'spynextround',
+  'packageSpy/pages/settle/index': 'spysettle'
 };
 
 function getPageKeyForCurrentRoute() {

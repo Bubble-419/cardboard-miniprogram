@@ -6,13 +6,13 @@ const {
   buildSpyPageUrl,
   openUrl,
   withSpyRefreshGuard
-} = require('../../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
+} = require('../../../utils/spyMode');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   getWordCardAssets,
   getLibraryGroupCount,
   listLibraryCards
-} = require('../../../../utils/spyWordCardAssets');
+} = require('../../../utils/spyWordCardAssets');
 
 const SWIPE_THRESHOLD_PX = 48;
 
@@ -245,8 +245,8 @@ Page({
       }
       // 房主立即进投票页；成员由发言页轮询 follow 同步
       try {
-        const { clearSpyLobbyStay, clearSpyFollowLock } = require('../../../../utils/spyFollow');
-        const { clearPendingNavigation } = require('../../../../utils/pageNavigate');
+        const { clearSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
+        const { clearPendingNavigation } = require('../../../utils/pageNavigate');
         clearSpyLobbyStay();
         clearSpyFollowLock();
         clearPendingNavigation();

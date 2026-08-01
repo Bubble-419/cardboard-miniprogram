@@ -29,7 +29,7 @@ const BRAINSTORM_MODES = [
     title: '谁是卧底模式',
     description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
     coverImage: '/assets/brainstormMode/mode-cover-spy.jpg',
-    pagePath: '/pages/main-pages/spyMode/modeIndex/index'
+    pagePath: '/packageSpy/pages/modeIndex/index'
   }
 ];
 

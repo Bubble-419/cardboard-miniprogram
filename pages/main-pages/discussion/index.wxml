@@ -11,7 +11,7 @@
     <text class="discussion-title">提出疑问并讨论</text>
     <image
       class="discussion-empty-img"
-      src="./images/discussion.jpg"
+      src="./images/discussion.webp"
       mode="widthFix"
     ></image>
   </view>
