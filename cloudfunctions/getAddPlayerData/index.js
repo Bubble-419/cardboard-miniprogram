@@ -412,6 +412,8 @@ exports.main = async (event, context) => {
 
     return {
       ok: true,
+      serverNow: Date.now(),
+      roundTimerMaxSec: 5 * 60,
       qrcodeFileID,
       qrcodeUrl,
       members: membersWithDisplayUrls,

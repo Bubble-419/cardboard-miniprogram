@@ -14,29 +14,50 @@ function getBorderSegmentProgress(elapsedRatio) {
   };
 }
 
-function getRoundElapsedSec(startedAt) {
+function getSyncedNow(clockOffsetMs) {
+  const offset = Number(clockOffsetMs);
+  return Date.now() + (Number.isFinite(offset) ? offset : 0);
+}
+
+/**
+ * @param {number} startedAt
+ * @param {number} [nowMs] 服务端对齐后的当前时间；缺省用本机 Date.now()
+ */
+function getRoundElapsedSec(startedAt, nowMs) {
   if (!startedAt) return 0;
   const ts = Number(startedAt);
   if (!Number.isFinite(ts) || ts <= 0) return 0;
-  return Math.max(0, (Date.now() - ts) / 1000);
+  const now = nowMs != null && Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  return Math.max(0, (now - ts) / 1000);
 }
 
 /** 计时仍在窗口内，过期时间戳视为无效 */
-function isRoundTimerActive(startedAt, durationSec = ROUND_DURATION_SEC) {
+function isRoundTimerActive(startedAt, durationSec = ROUND_DURATION_SEC, nowMs) {
   const ts = Number(startedAt);
   if (!Number.isFinite(ts) || ts <= 0) return false;
-  const elapsedSec = (Date.now() - ts) / 1000;
+  const elapsedSec = getRoundElapsedSec(ts, nowMs);
   return elapsedSec >= 0 && elapsedSec < durationSec;
 }
 
-function getRoundTimerState(startedAt, durationSec = ROUND_DURATION_SEC) {
-  const elapsedSecExact = getRoundElapsedSec(startedAt);
+/**
+ * remaining = max(0, max - floor((now - start) / 1000))
+ * 刚开始的整秒内保持 max；满 1 秒后才减 1。
+ */
+function getRemainingSec(startedAt, durationSec = ROUND_DURATION_SEC, nowMs) {
+  const max = Number(durationSec);
+  if (!Number.isFinite(max) || max <= 0) return 0;
+  const elapsedFloor = Math.floor(getRoundElapsedSec(startedAt, nowMs));
+  return Math.max(0, max - elapsedFloor);
+}
+
+function getRoundTimerState(startedAt, durationSec = ROUND_DURATION_SEC, nowMs) {
+  const elapsedSecExact = getRoundElapsedSec(startedAt, nowMs);
   const elapsedSec = Math.floor(elapsedSecExact);
   const elapsedRatio = Math.min(1, elapsedSecExact / durationSec);
   return {
     elapsedSec,
     elapsedRatio,
-    remainingSec: Math.max(0, Math.ceil(durationSec - elapsedSecExact)),
+    remainingSec: getRemainingSec(startedAt, durationSec, nowMs),
     border: getBorderSegmentProgress(elapsedRatio)
   };
 }
@@ -133,7 +154,9 @@ module.exports = {
   ROUND_DURATION_SEC,
   PAGINATION_MAX_VISIBLE,
   getBorderSegmentProgress,
+  getSyncedNow,
   getRoundElapsedSec,
+  getRemainingSec,
   isRoundTimerActive,
   getRoundTimerState,
   buildPaginationIndexes,

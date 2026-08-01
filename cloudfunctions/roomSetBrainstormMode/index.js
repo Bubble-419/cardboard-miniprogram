@@ -74,8 +74,9 @@ exports.main = async (event, context) => {
         texts: [],
         images: []
       },
-      partnerRoundStartedAt: Date.now(),
-      partnerTurnStartedAt: Date.now(),
+      // 倒计时起点改由进入 gamepage 时建立，避免选模式时预写导致进房少秒
+      partnerRoundStartedAt: null,
+      partnerTurnStartedAt: null,
       updatedAt: Date.now()
     };
 

@@ -32,6 +32,7 @@ const {
   getRoundTimerState,
   buildPaginationDots,
   isRoundTimerActive,
+  getSyncedNow,
   ROUND_DURATION_SEC
 } = require('../../../../utils/partnerRoundTimer');
 const {
@@ -125,8 +126,11 @@ Page({
     /** 当前行动玩家本轮首次倒计时起点；卡片循环重启不更新，供头像框同步 */
     avatarRoundStartedAt: null,
     roundTimerVisible: false,
+    /** 服务端 max / startTime 就绪前不启动倒计时 */
+    roundTimerReady: false,
+    roundTimerMaxSec: ROUND_DURATION_SEC,
     roundTimerElapsedRatio: 0,
-    roundTimerRemainingSec: 30,
+    roundTimerRemainingSec: ROUND_DURATION_SEC,
     cardCount: 1,
     paginationDots: [{ key: 0, sizeClass: 'dot-lg', active: true }],
     playHistory: [],
@@ -222,6 +226,9 @@ Page({
       specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
     });
 
+    // 进房先清旧倒计时，避免沿用上一房间/阶段
+    this._resetRoundTimerSession();
+
     this._applyTopBarSafeInset();
     this.loadRoomData();
     this._roundSpeech = createPartnerRoundSpeech({
@@ -316,7 +323,10 @@ Page({
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
-    // 进入页：同步房间倒计时（房主负责重开并广播，其他人跟随）
+    // 前后台切换：先停旧 interval，再按服务端重算剩余时间（不叠加定时器）
+    this._stopRoundTimer();
+    this._stopRoundTimerBurstPoll();
+    this.setData({ roundTimerReady: false, roundTimerVisible: false });
     this._ensureSharedRoundTimerOnEnter().then(() => {
       this._applyPendingSpecialMoveUsed();
       this._applyAdoptDeckHint();
@@ -373,8 +383,7 @@ Page({
     }
     this._stopScorePolling();
     this._stopStatePolling();
-    this._stopRoundTimerBurstPoll();
-    this._stopRoundTimer();
+    this._resetRoundTimerSession();
   },
 
   _applyRoundContentFromRoom(roomState) {
@@ -624,15 +633,55 @@ Page({
     return this.data.currentPlayerIndex;
   },
 
+  _getTimerNow() {
+    return getSyncedNow(this._serverClockOffsetMs || 0);
+  },
+
+  _ingestServerClock(result) {
+    const serverNow = result && result.serverNow != null ? Number(result.serverNow) : NaN;
+    if (!Number.isFinite(serverNow) || serverNow <= 0) return;
+    // 用往返中点近似对齐服务端时间，避免各端墙钟漂移
+    const localNow = Date.now();
+    this._serverClockOffsetMs = serverNow - localNow;
+    if (result.roundTimerMaxSec != null) {
+      const maxSec = Number(result.roundTimerMaxSec);
+      if (Number.isFinite(maxSec) && maxSec > 0 && maxSec !== this.data.roundTimerMaxSec) {
+        this.setData({ roundTimerMaxSec: maxSec });
+      }
+    }
+  },
+
+  /** 清空倒计时会话：停所有定时器 + 丢掉旧 startTime（进房/换房/卸页时调用） */
+  _resetRoundTimerSession() {
+    this._stopRoundTimer();
+    this._stopRoundTimerBurstPoll();
+    this._pendingRoundStartedAt = 0;
+    this._rollingRoundCountdown = false;
+    this._avatarTimerTurnKey = '';
+    this._clearRoundStartedAtCache();
+    this.setData({
+      partnerRoundStartedAt: null,
+      avatarRoundStartedAt: null,
+      roundTimerVisible: false,
+      roundTimerReady: false,
+      roundTimerElapsedRatio: 0,
+      roundTimerRemainingSec: this.data.roundTimerMaxSec || ROUND_DURATION_SEC
+    });
+  },
+
   _syncTimerFromStartedAt() {
-    const { partnerRoundStartedAt, gamepagePhase } = this.data;
-    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) {
+    const { partnerRoundStartedAt, gamepagePhase, roundTimerMaxSec } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt || !this.data.roundTimerReady) {
       if (this.data.roundTimerElapsedRatio !== 0) {
         this.setData({ roundTimerElapsedRatio: 0 });
       }
       return;
     }
-    const timerState = getRoundTimerState(partnerRoundStartedAt);
+    const timerState = getRoundTimerState(
+      partnerRoundStartedAt,
+      roundTimerMaxSec || ROUND_DURATION_SEC,
+      this._getTimerNow()
+    );
     this.setData({
       roundTimerElapsedRatio: timerState.elapsedRatio,
       roundTimerRemainingSec: timerState.remainingSec
@@ -641,18 +690,33 @@ Page({
 
   _restartRoundTimer() {
     this._stopRoundTimer();
-    const { partnerRoundStartedAt, gamepagePhase } = this.data;
-    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) return;
+    const { partnerRoundStartedAt, gamepagePhase, roundTimerReady, roundTimerMaxSec } = this.data;
+    if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt || !roundTimerReady) return;
+
+    const maxSec = roundTimerMaxSec || ROUND_DURATION_SEC;
+    // 先渲染当前剩余（新开局为 max），不在加载瞬间人为减 1
+    const initial = getRoundTimerState(partnerRoundStartedAt, maxSec, this._getTimerNow());
+    this.setData({
+      roundTimerElapsedRatio: initial.elapsedRatio,
+      roundTimerRemainingSec: initial.remainingSec
+    });
+
+    // 对齐到下一整秒边界再开始 interval，保证「满 1 秒后才首次减 1」
+    const elapsedMs = Math.max(0, this._getTimerNow() - Number(partnerRoundStartedAt));
+    const delayToNextSecond = Math.max(50, 1000 - (elapsedMs % 1000));
 
     const tick = () => {
       const startedAt = this.data.partnerRoundStartedAt;
-      if (!startedAt) return;
-      const timerState = getRoundTimerState(startedAt);
+      if (!startedAt || !this.data.roundTimerReady) return;
+      const timerState = getRoundTimerState(
+        startedAt,
+        this.data.roundTimerMaxSec || ROUND_DURATION_SEC,
+        this._getTimerNow()
+      );
       this.setData({
         roundTimerElapsedRatio: timerState.elapsedRatio,
         roundTimerRemainingSec: timerState.remainingSec
       });
-      // 房主兜底：本地到期立刻开下一轮，避免只靠组件事件导致全员卡住
       if (timerState.remainingSec <= 0) {
         if (this.data.isHost === true && !this._rollingRoundCountdown) {
           this._rollRoundCountdown();
@@ -663,11 +727,20 @@ Page({
       }
     };
 
-    tick();
-    this._roundTimerInterval = setInterval(tick, 250);
+    clearTimeout(this._roundTimerAlignTimer);
+    this._roundTimerAlignTimer = setTimeout(() => {
+      this._roundTimerAlignTimer = null;
+      tick();
+      this._stopRoundTimer();
+      this._roundTimerInterval = setInterval(tick, 1000);
+    }, delayToNextSecond);
   },
 
   _stopRoundTimer() {
+    if (this._roundTimerAlignTimer) {
+      clearTimeout(this._roundTimerAlignTimer);
+      this._roundTimerAlignTimer = null;
+    }
     if (this._roundTimerInterval) {
       clearInterval(this._roundTimerInterval);
       this._roundTimerInterval = null;
@@ -692,14 +765,16 @@ Page({
           data: { roomId: this.data.roomId }
         });
         const result = (res && res.result) || {};
+        this._ingestServerClock(result);
         const next = result.roomState && result.roomState.partnerRoundStartedAt != null
           ? Number(result.roomState.partnerRoundStartedAt)
           : 0;
+        const maxSec = this.data.roundTimerMaxSec || ROUND_DURATION_SEC;
         // 非房主：仅在服务端戳更新且不被本地防回滚拒绝时应用
         if (
           next > 0
           && next !== Number(this.data.partnerRoundStartedAt)
-          && isRoundTimerActive(next)
+          && isRoundTimerActive(next, maxSec, this._getTimerNow())
         ) {
           this._applySharedRoundTimer(next);
           if (Number(this.data.partnerRoundStartedAt) === next) {
@@ -856,14 +931,16 @@ Page({
       return pending;
     }
 
-    if (isRoundTimerActive(fromServer)) {
+    const maxSec = this.data.roundTimerMaxSec || ROUND_DURATION_SEC;
+    const now = this._getTimerNow();
+    if (isRoundTimerActive(fromServer, maxSec, now)) {
       this._cacheRoundStartedAt(this.data.roomId, currentRound, fromServer);
       return fromServer;
     }
 
     // 服务端戳已过期：若本地仍活跃则保留本地；否则返回 null 等待滚下一轮
     const local = Number(this.data.partnerRoundStartedAt) || 0;
-    if (local > 0 && isRoundTimerActive(local)) {
+    if (local > 0 && isRoundTimerActive(local, maxSec, now)) {
       return local;
     }
     return null;
@@ -929,13 +1006,17 @@ Page({
 
   _applySharedRoundTimer(startedAt, options = {}) {
     const force = options.force === true;
+    const maxSec = this.data.roundTimerMaxSec || ROUND_DURATION_SEC;
+    const now = this._getTimerNow();
     const ts = Number(startedAt);
     if (!Number.isFinite(ts) || ts <= 0 || isClosingPhase(this.data.gamepagePhase)) {
       this.setData({
         partnerRoundStartedAt: null,
         avatarRoundStartedAt: null,
         roundTimerVisible: false,
-        roundTimerElapsedRatio: 0
+        roundTimerReady: false,
+        roundTimerElapsedRatio: 0,
+        roundTimerRemainingSec: maxSec
       });
       this._avatarTimerTurnKey = '';
       this._stopRoundTimer();
@@ -943,12 +1024,14 @@ Page({
     }
 
     // 已过期的服务端戳只清空，绝不点亮倒计时（避免进主流程立刻震动）
-    if (!isRoundTimerActive(ts)) {
-      if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+    if (!isRoundTimerActive(ts, maxSec, now)) {
+      if (isRoundTimerActive(this.data.partnerRoundStartedAt, maxSec, now)) return;
       this.setData({
         partnerRoundStartedAt: null,
         roundTimerVisible: false,
-        roundTimerElapsedRatio: 0
+        roundTimerReady: false,
+        roundTimerElapsedRatio: 0,
+        roundTimerRemainingSec: maxSec
       });
       this._stopRoundTimer();
       return;
@@ -961,17 +1044,20 @@ Page({
     if (!force) {
       if (pending > 0 && ts < pending) return;
       if (current > 0 && ts < current) return;
-      if (current > 0 && isRoundTimerActive(current) && !isRoundTimerActive(ts)) return;
+      if (current > 0 && isRoundTimerActive(current, maxSec, now) && !isRoundTimerActive(ts, maxSec, now)) {
+        return;
+      }
     }
 
     if (pending > 0 && ts >= pending) {
       this._pendingRoundStartedAt = 0;
     }
 
-    const timerState = getRoundTimerState(ts);
+    const timerState = getRoundTimerState(ts, maxSec, now);
     this._cacheRoundStartedAt(this.data.roomId, this.data.currentRound, ts);
     this.setData({
       partnerRoundStartedAt: ts,
+      roundTimerReady: true,
       roundTimerVisible: this._pageVisible !== false,
       roundTimerRemainingSec: timerState.remainingSec,
       roundTimerElapsedRatio: timerState.elapsedRatio
@@ -984,7 +1070,8 @@ Page({
   },
 
   /**
-   * 进入 gamepage：有活跃服务端计时则跟随；否则仅房主开新一轮并广播
+   * 进入 gamepage：先拉服务端 max / startTime，再渲染并启动。
+   * 已有活跃计时 → 按墙钟算真实剩余；无活跃计时 → 仅房主开新一轮（从 max 起）。
    */
   async _ensureSharedRoundTimerOnEnter() {
     if (isClosingPhase(this.data.gamepagePhase)) {
@@ -995,6 +1082,8 @@ Page({
     if (!this.data.roomId) return;
     if (this._syncingRoundTimer) return;
     this._syncingRoundTimer = true;
+    // 拉取完成前保持占位，禁止用默认值抢跑倒计时
+    this.setData({ roundTimerReady: false, roundTimerVisible: false });
     try {
       let serverStartedAt = null;
       let serverTurnStartedAt = null;
@@ -1004,16 +1093,19 @@ Page({
           data: { roomId: this.data.roomId }
         });
         const result = (res && res.result) || {};
+        this._ingestServerClock(result);
         if (result.ok === true && result.roomState) {
           if (result.isHost === true && this.data.isHost !== true) {
             this.setData({ isHost: true });
           } else if (result.isHost === false && this.data.isHost === true) {
             this.setData({ isHost: false });
           }
+          const maxSec = this.data.roundTimerMaxSec || ROUND_DURATION_SEC;
+          const now = this._getTimerNow();
           const ts = result.roomState.partnerRoundStartedAt != null
             ? Number(result.roomState.partnerRoundStartedAt)
             : 0;
-          if (Number.isFinite(ts) && ts > 0 && isRoundTimerActive(ts)) {
+          if (Number.isFinite(ts) && ts > 0 && isRoundTimerActive(ts, maxSec, now)) {
             serverStartedAt = ts;
           }
           const turnTs = result.roomState.partnerTurnStartedAt != null
@@ -1027,7 +1119,7 @@ Page({
         console.warn('_ensureSharedRoundTimerOnEnter fetch', e);
       }
 
-      // 已有活跃计时：全员（含房主）只跟随；头像锚点用回合级时间戳，勿被卡片循环戳覆盖
+      // 已有活跃计时：中途进入按真实剩余时间，不从 max 重开
       if (serverStartedAt) {
         this._applySharedRoundTimer(serverStartedAt, { force: true, syncTurnAvatar: false });
         this._syncAvatarRoundStartedAt(serverTurnStartedAt || serverStartedAt, { force: true });
@@ -1035,6 +1127,7 @@ Page({
       }
 
       if (this.data.isHost === true) {
+        // 新阶段：用本机墙钟作 startTime（与写库一致），首屏按公式显示 max
         const startedAt = Date.now();
         this._pendingRoundStartedAt = startedAt;
         this._applySharedRoundTimer(startedAt, { force: true, syncTurnAvatar: true });
@@ -1053,6 +1146,7 @@ Page({
 
       // 非房主等待房主广播，不使用本地 Date.now() 占位（会永久不同步）
       this._syncRoundTimerVisible(null);
+      this.setData({ roundTimerReady: false });
       this._startRoundTimerBurstPoll();
     } finally {
       this._syncingRoundTimer = false;
@@ -1075,7 +1169,11 @@ Page({
     if (!this.data.isHost) return;
     if (this._rollingRoundCountdown) return;
     // 卡片框与头像框都会触发到期；当前周期仍有效则不再开新一轮
-    if (isRoundTimerActive(this.data.partnerRoundStartedAt)) return;
+    if (isRoundTimerActive(
+      this.data.partnerRoundStartedAt,
+      this.data.roundTimerMaxSec || ROUND_DURATION_SEC,
+      this._getTimerNow()
+    )) return;
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
     if (!roomId || isClosingPhase(this.data.gamepagePhase)) return;
 
@@ -1152,6 +1250,7 @@ Page({
   },
 
   _applyRoomContext(result, options = {}) {
+    this._ingestServerClock(result);
     const members = assignAvatarImages(result.members || this.data.members || []);
     const roomState = result.roomState || {};
     const player = resolveCurrentPlayerFromRoom(
@@ -1230,13 +1329,18 @@ Page({
       );
     const timerPatch = (!isClosingPhase(roomPhase) && partnerRoundStartedAt)
       ? (() => {
-        const timerState = getRoundTimerState(partnerRoundStartedAt);
+        const timerState = getRoundTimerState(
+          partnerRoundStartedAt,
+          this.data.roundTimerMaxSec || ROUND_DURATION_SEC,
+          this._getTimerNow()
+        );
         return {
+          roundTimerReady: true,
           roundTimerElapsedRatio: timerState.elapsedRatio,
           roundTimerRemainingSec: timerState.remainingSec
         };
       })()
-      : { roundTimerElapsedRatio: 0 };
+      : { roundTimerElapsedRatio: 0, roundTimerReady: false };
     const nextFilteredPlayerIndex = (playerChanged || roundChanged || sessionChanged || options.resetTurnUi)
       ? null
       : this._resolveActivePlayerFilter();
@@ -1320,7 +1424,11 @@ Page({
         ? Number(roomState.partnerRoundStartedAt)
         : 0;
       // 过期戳不得写入 UI，否则进页会覆盖新计时并误触发到期震动
-      patch.partnerRoundStartedAt = (serverTs > 0 && isRoundTimerActive(serverTs))
+      patch.partnerRoundStartedAt = (serverTs > 0 && isRoundTimerActive(
+        serverTs,
+        this.data.roundTimerMaxSec || ROUND_DURATION_SEC,
+        this._getTimerNow()
+      ))
         ? serverTs
         : null;
     }
@@ -2285,34 +2393,42 @@ Page({
 
   _scoreSheetVisibleFromY(translateY, maxY, collapsedPx) {
     const y = Math.max(0, Math.min(maxY, translateY));
-    return Math.max(collapsedPx, collapsedPx + (maxY - y));
+    // 可见高度 = 头部保留高度 + 仍未移出裁剪窗的按钮区高度
+    return Math.max(collapsedPx, Math.round(collapsedPx + (maxY - y)));
   },
 
   _measureScoreSheetHeights(done) {
     const query = wx.createSelectorQuery().in(this);
     query.select('.score-sheet').boundingClientRect();
-    query.select('.score-sheet-handle-wrap').boundingClientRect();
-    query.select('.score-sheet-head').boundingClientRect();
+    query.select('.score-sheet-header').boundingClientRect();
     query.select('.score-buttons').boundingClientRect();
     query.exec((rects) => {
       const sheet = rects && rects[0];
-      const handle = rects && rects[1];
-      const head = rects && rects[2];
-      const buttons = rects && rects[3];
+      const header = rects && rects[1];
+      const buttons = rects && rects[2];
       if (!sheet || !sheet.height) {
         if (typeof done === 'function') done();
         return;
       }
-      const headerH = Math.max(
-        56,
-        Math.round(((handle && handle.height) || 0) + ((head && head.height) || 0) + 12)
-      );
-      // 收起时露出头部；按钮区高度即最大 translateY
-      const buttonsH = Math.max(
-        48,
-        Math.round((buttons && buttons.height) || (sheet.height - headerH))
-      );
-      const maxY = Math.max(0, buttonsH);
+
+      // 头部保留高度：面板顶 → 按钮顶（含顶部 padding / 拖拽条 / 状态行 / 间距）
+      let headerH = 0;
+      if (buttons && Number.isFinite(buttons.top) && Number.isFinite(sheet.top)) {
+        headerH = Math.max(0, Math.floor(buttons.top - sheet.top));
+      } else if (header && header.height) {
+        // 回退：实测 header + 面板顶部 padding 近似
+        headerH = Math.max(0, Math.floor(header.height + 6));
+      }
+      if (headerH < 40) headerH = 56;
+
+      // 收起位移 = 按钮区顶 → 面板底（含按钮、间距、底部 padding），向上取整避免露边
+      let maxY = 0;
+      if (buttons && Number.isFinite(buttons.top) && Number.isFinite(sheet.bottom)) {
+        maxY = Math.max(0, Math.ceil(sheet.bottom - buttons.top));
+      } else {
+        maxY = Math.max(0, Math.ceil(sheet.height - headerH));
+      }
+
       this._scoreSheetMaxY = maxY;
       const expanded = this.data.scorePanelExpanded === true;
       const translateY = expanded ? 0 : maxY;
@@ -2359,8 +2475,16 @@ Page({
     });
     clearTimeout(this._scoreSheetAnimTimer);
     this._scoreSheetAnimTimer = setTimeout(() => {
-      if (this.data.scoreSheetAnimating) {
-        this.setData({ scoreSheetAnimating: false });
+      if (!this.data.scoreSheetAnimating) return;
+      // 动画结束后再精确对齐一次，并挂上 collapsed 类彻底藏住按钮
+      this.setData({
+        scoreSheetAnimating: false,
+        scoreSheetTranslateY: targetY,
+        scoreSheetVisiblePx: targetVisible
+      });
+      if (!expanded) {
+        // 收起后复测，防止字体/安全区变化导致露边
+        this._measureScoreSheetHeights();
       }
     }, 260);
   },
@@ -2401,6 +2525,7 @@ Page({
     // 评分按钮：默认按「可操作控件」处理；纵向拖够阈值后才改为拖面板
     this._scoreSheetFromButtons = true;
     this._scoreSheetInteractive = true;
+    this._scoreButtonTouchScore = this._readScoreFromTouch(e);
   },
 
   onScoreButtonsTouchMove(e) {
@@ -2419,24 +2544,50 @@ Page({
     // 纵向超过阈值：改拖面板，松手不再当点击评分区
     if (dy > slop && dy > dx) {
       this._scoreSheetInteractive = false;
+      this._scoreButtonTouchScore = null;
       this._scoreSheetAxis = 'y';
       this.onScoreSheetTouchMove(e);
     }
   },
 
   onScoreButtonsTouchEnd(e) {
-    // 在按钮区结束：若已进入拖动则走吸附；纯点击交给 onScoreTap
+    // 在按钮区结束：若已进入拖动则走吸附；纯点击在此提交分数
+    // （catchtouchend 会吞掉子节点 catchtap，不能只依赖 onScoreTap）
     if (this._scoreSheetDragging) {
+      this._scoreButtonTouchScore = null;
       this.onScoreSheetTouchEnd(e);
       return;
     }
+    const score = this._scoreButtonTouchScore != null
+      ? this._scoreButtonTouchScore
+      : this._readScoreFromTouch(e);
+    this._scoreButtonTouchScore = null;
     this._scoreSheetTouchStartY = null;
     this._scoreSheetFromButtons = false;
-    // 保留 interactive 直到 onScoreTap；否则短延迟清空
+    if (score != null && !this._scoreSheetDidDrag) {
+      this._submitScoreValue(score);
+    }
     setTimeout(() => {
       this._scoreSheetDidDrag = false;
       this._scoreSheetInteractive = false;
     }, 80);
+  },
+
+  _readScoreFromTouch(e) {
+    const dataset = (e && e.currentTarget && e.currentTarget.dataset)
+      || (e && e.target && e.target.dataset)
+      || {};
+    if (dataset.score != null && dataset.score !== '') {
+      const n = parseInt(dataset.score, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    // touchend 落在按钮容器上时，尝试从 changedTouches 命中的子节点取分
+    const mark = e && e.mark;
+    if (mark && mark.score != null) {
+      const n = parseInt(mark.score, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
   },
 
   onScoreSheetTouchMove(e) {
@@ -2525,15 +2676,24 @@ Page({
 
   async onScoreTap(e) {
     // 评分只选分，不联动面板；拖动手势过程中忽略
-    this._scoreSheetInteractive = false;
+    // 主路径已由 onScoreButtonsTouchEnd → _submitScoreValue；此处兜底防漏
+    if (this._scoreSheetDidDrag || this._scoreSubmitLock) return;
+    const score = this._readScoreFromTouch(e);
+    if (score == null) return;
+    await this._submitScoreValue(score);
+  },
+
+  async _submitScoreValue(score) {
+    if (!Number.isFinite(score)) return;
+    if (this._scoreSubmitLock) return;
     if (this._scoreSheetDidDrag) return;
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
     }
-    const score = parseInt(e.currentTarget.dataset.score, 10);
-    if (!Number.isFinite(score)) return;
 
+    this._scoreSubmitLock = true;
+    this._scoreSheetInteractive = false;
     this.setData({ selectedScore: score });
 
     const { roomId, currentPlayerIndex } = this.data;
@@ -2562,6 +2722,10 @@ Page({
     } catch (err) {
       console.warn('submitGameScore', err);
       wx.showToast({ title: '提交失败', icon: 'none' });
+    } finally {
+      setTimeout(() => {
+        this._scoreSubmitLock = false;
+      }, 300);
     }
   },
 
