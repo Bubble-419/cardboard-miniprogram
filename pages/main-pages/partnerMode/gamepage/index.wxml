@@ -754,11 +754,19 @@
                         </view>
                       </view>
 
-                      <!-- 头部非交互区：点击展开/收起（与拖动手势在 JS 中分离） -->
-                      <view class="score-sheet-handle-wrap" data-sheet-hit="header">
+                      <!-- 头部：点击展开/收起；touchend 也会兜底（真机 catchtouchmove 常吞 tap） -->
+                      <view
+                        class="score-sheet-handle-wrap"
+                        data-sheet-hit="header"
+                        catchtap="toggleScorePanel"
+                      >
                         <view class="score-sheet-handle"></view>
                       </view>
-                      <view class="score-sheet-head" data-sheet-hit="header">
+                      <view
+                        class="score-sheet-head"
+                        data-sheet-hit="header"
+                        catchtap="toggleScorePanel"
+                      >
                         <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
                         <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
                       </view>
@@ -774,6 +782,7 @@
                           wx:for="{{scoreOptions}}"
                           wx:key="*this"
                           data-score="{{item}}"
+                          bindtouchstart="onScoreBtnTouchStart"
                           catchtap="onScoreTap"
                         >
                           <view class="score-btn-content">

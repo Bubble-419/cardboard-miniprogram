@@ -2365,6 +2365,31 @@ Page({
     return this._scoreSheetTapSlopPx;
   },
 
+  _getScoreSheetDragSlopPx() {
+    if (this._scoreSheetDragSlopPx != null) return this._scoreSheetDragSlopPx;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const w = (sys && sys.windowWidth) || 375;
+      this._scoreSheetDragSlopPx = Math.max(14, (w / 750) * 28);
+    } catch (e) {
+      this._scoreSheetDragSlopPx = 14;
+    }
+    return this._scoreSheetDragSlopPx;
+  },
+
+  _isScoreSheetTapGesture() {
+    const startAt = this._scoreSheetTouchAt || 0;
+    const dt = Date.now() - startAt;
+    if (dt > 380) return false;
+    const startX = this._scoreSheetTouchStartX;
+    const startY = this._scoreSheetTouchStartY;
+    if (startX == null || startY == null) return true;
+    const lastX = this._scoreSheetLastX != null ? this._scoreSheetLastX : startX;
+    const lastY = this._scoreSheetLastY != null ? this._scoreSheetLastY : startY;
+    const dragSlop = this._getScoreSheetDragSlopPx();
+    return Math.abs(lastX - startX) < dragSlop && Math.abs(lastY - startY) < dragSlop;
+  },
+
   _scoreSheetVisibleFromY(translateY, maxY, collapsedPx) {
     const y = Math.max(0, Math.min(maxY, translateY));
     return Math.max(collapsedPx, collapsedPx + (maxY - y));
@@ -2453,7 +2478,10 @@ Page({
   },
 
   toggleScorePanel() {
-    if (this._scoreSheetDidDrag || this._scoreSheetInteractive) return;
+    // 真拖拽中不切换；轻触即使误标 DidDrag 也允许（由 tap 手势判定）
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
+    if (this._scoreSheetInteractive && this._scoreSheetFromButtons) return;
+    this._scoreSheetDidDrag = false;
     this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
   },
 
@@ -2469,7 +2497,9 @@ Page({
     this._scoreSheetAxis = '';
     this._scoreSheetInteractive = false;
     this._scoreSheetFromButtons = false;
+    this._pendingScoreTap = null;
     this._scoreSheetBaseY = this.data.scoreSheetTranslateY || 0;
+    this._scoreSheetLastX = t.clientX;
     this._scoreSheetLastY = t.clientY;
     this._scoreSheetLastAt = Date.now();
     // 拖动开始前关掉过渡，保证跟手
@@ -2478,28 +2508,46 @@ Page({
     }
   },
 
+  onScoreBtnTouchStart(e) {
+    const score = parseInt(e.currentTarget.dataset.score, 10);
+    this._pendingScoreTap = Number.isFinite(score) ? score : null;
+  },
+
   onScoreButtonsTouchStart(e) {
+    // 子按钮 bindtouchstart 可能已写入待选分；sheet start 会清空，这里先保住
+    const keptScore = this._pendingScoreTap;
     this.onScoreSheetTouchStart(e);
     // 评分按钮：默认按「可操作控件」处理；纵向拖够阈值后才改为拖面板
     this._scoreSheetFromButtons = true;
     this._scoreSheetInteractive = true;
+    this._pendingScoreTap = keptScore;
+    if (this._pendingScoreTap == null) {
+      const score = parseInt(
+        (e.target && e.target.dataset && e.target.dataset.score),
+        10
+      );
+      if (Number.isFinite(score)) this._pendingScoreTap = score;
+    }
   },
 
   onScoreButtonsTouchMove(e) {
     const t = e.touches && e.touches[0];
     if (!t || this._scoreSheetTouchStartY == null) return;
+    this._scoreSheetLastX = t.clientX;
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
     const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
     const dy = Math.abs(t.clientY - (this._scoreSheetTouchStartY || 0));
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
     // 横向为主：只选分，不拖面板
-    if (!this._scoreSheetDragging && dx > dy && dx > slop) {
+    if (!this._scoreSheetDragging && dx > dy && dx > dragSlop) {
       this._scoreSheetAxis = 'x';
       this._scoreSheetInteractive = true;
       return;
     }
     if (this._scoreSheetAxis === 'x') return;
-    // 纵向超过阈值：改拖面板，松手不再当点击评分区
-    if (dy > slop && dy > dx) {
+    // 纵向超过拖动阈值：改拖面板
+    if (dy > dragSlop && dy > dx) {
       this._scoreSheetInteractive = false;
       this._scoreSheetAxis = 'y';
       this.onScoreSheetTouchMove(e);
@@ -2507,14 +2555,25 @@ Page({
   },
 
   onScoreButtonsTouchEnd(e) {
-    // 在按钮区结束：若已进入拖动则走吸附；纯点击交给 onScoreTap
-    if (this._scoreSheetDragging) {
+    const pending = this._pendingScoreTap;
+    this._pendingScoreTap = null;
+
+    // 轻触被误判为拖动时，仍按选分处理
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) {
       this.onScoreSheetTouchEnd(e);
       return;
     }
+
+    this._scoreSheetDragging = false;
+    this._scoreSheetDidDrag = false;
     this._scoreSheetTouchStartY = null;
     this._scoreSheetFromButtons = false;
-    // 保留 interactive 直到 onScoreTap；否则短延迟清空
+
+    // catchtouchmove 在真机上常取消 tap：touchend 直接提交
+    if (pending != null) {
+      this._applyScoreTap(pending);
+    }
+
     setTimeout(() => {
       this._scoreSheetDidDrag = false;
       this._scoreSheetInteractive = false;
@@ -2527,10 +2586,14 @@ Page({
 
     const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
     const dyFromStart = t.clientY - this._scoreSheetTouchStartY;
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
+
+    this._scoreSheetLastX = t.clientX;
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
 
     if (!this._scoreSheetDragging) {
-      if (Math.abs(dyFromStart) < slop && dx < slop) return;
+      if (Math.abs(dyFromStart) < dragSlop && dx < dragSlop) return;
       // 明显纵向才进入拖拽；横向轻微滑动忽略
       if (Math.abs(dyFromStart) <= dx) return;
       this._scoreSheetDragging = true;
@@ -2548,8 +2611,6 @@ Page({
     if (nextY < 0) nextY = 0;
     if (nextY > maxY) nextY = maxY;
 
-    this._scoreSheetLastY = t.clientY;
-    this._scoreSheetLastAt = Date.now();
     this.setData({
       scoreSheetAnimating: false,
       scoreSheetTranslateY: nextY,
@@ -2562,14 +2623,16 @@ Page({
       ? this._scoreSheetMaxY
       : (this.data.scoreSheetMaxTranslateY || 120);
     const currentY = this.data.scoreSheetTranslateY || 0;
-    const wasDragging = this._scoreSheetDragging === true;
     const interactive = this._scoreSheetInteractive === true;
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
+    // 位移很小 / 时间很短：按点击展开收起，避免 5px 抖动导致「点了没反应」
+    const wasDragging = this._scoreSheetDragging === true && !this._isScoreSheetTapGesture();
 
     if (!wasDragging) {
       this._scoreSheetTouchStartY = null;
       this._scoreSheetFromButtons = false;
       this._scoreSheetDragging = false;
+      this._scoreSheetDidDrag = false;
       // 可操作控件上的点击：不切换面板
       if (!interactive) {
         this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
@@ -2586,10 +2649,10 @@ Page({
       : 0;
 
     let expand = this.data.scorePanelExpanded;
-    // 达到最小手势阈值后：上滑展开、下滑收起（不要求大位移）
-    if (totalDy <= -slop) {
+    // 达到拖动阈值后：上滑展开、下滑收起
+    if (totalDy <= -dragSlop) {
       expand = true;
-    } else if (totalDy >= slop) {
+    } else if (totalDy >= dragSlop) {
       expand = false;
     } else {
       expand = currentY < maxY / 2;
@@ -2605,16 +2668,30 @@ Page({
     }, 80);
   },
 
-  async onScoreTap(e) {
-    // 评分只选分，不联动面板；拖动手势过程中忽略
+  onScoreTap(e) {
+    // 评分只选分，不联动面板；真实拖动手势忽略
     this._scoreSheetInteractive = false;
-    if (this._scoreSheetDidDrag) return;
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
+    if (this._scoreSheetDidDrag && !this._isScoreSheetTapGesture()) return;
+    const score = parseInt(e.currentTarget.dataset.score, 10);
+    if (!Number.isFinite(score)) return;
+    this._applyScoreTap(score);
+  },
+
+  async _applyScoreTap(score) {
+    if (!Number.isFinite(score)) return;
+    // 防止 touchend 兜底与 tap 双发
+    if (this._scoreTapLockScore === score && Date.now() - (this._scoreTapLockAt || 0) < 400) {
+      return;
+    }
+    this._scoreTapLockScore = score;
+    this._scoreTapLockAt = Date.now();
+    this._scoreSheetDidDrag = false;
+
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
     }
-    const score = parseInt(e.currentTarget.dataset.score, 10);
-    if (!Number.isFinite(score)) return;
 
     this.setData({ selectedScore: score });
 
