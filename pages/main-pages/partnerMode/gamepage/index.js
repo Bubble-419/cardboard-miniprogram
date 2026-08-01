@@ -1279,7 +1279,11 @@ Page({
         };
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
-    this._ingestExpressMessages(expressMessages, { currentRound });
+    // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
+    this._ingestExpressMessages(expressMessages, {
+      currentRound,
+      force: roundChanged || sessionChanged
+    });
     const lastExpressId = expressMessages.length
       ? (expressMessages[expressMessages.length - 1].id || '')
       : '';
@@ -1784,12 +1788,8 @@ Page({
       paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
       indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
     });
-    // 切到历史卡 / 当前卡时，表达列表跟随对应轮次
-    this._syncExpressChatList(this._expressMessagesAll || [], {
-      force: true,
-      scrollBottom: false,
-      cardIndex
-    });
+    // 历史纪要卡自带 play/discussionExpressChatList；页面级列表始终对应当前轮，
+    // 切卡时不得改写，否则滑动预览当前卡会短暂串出上一轮聊天记录。
   },
 
   handleAvatarTap(e) {
@@ -2837,13 +2837,11 @@ Page({
     };
   },
 
-  /** 当前卡片对应的表达轮次：历史纪要卡用 item.round，最新卡用 currentRound */
-  _getExpressViewRound(cardIndex, currentRoundOverride) {
-    const summaries = this.data.displayRoundSummaries || [];
-    const idx = cardIndex != null ? cardIndex : this.data.cardIndex;
-    if (idx < summaries.length && summaries[idx] && summaries[idx].round != null) {
-      return Number(summaries[idx].round);
-    }
+  /**
+   * 页面级表达列表对应的轮次：始终为当前进行中的轮次。
+   * 历史纪要卡使用 item.*ExpressChatList，不复用页面级字段（避免 swiper 预览串台）。
+   */
+  _getExpressViewRound(currentRoundOverride) {
     const cr = currentRoundOverride != null
       ? Number(currentRoundOverride)
       : Number(this.data.currentRound);
@@ -2909,9 +2907,10 @@ Page({
       this._expressMessagesAll = messages;
     }
     const all = this._expressMessagesAll || [];
+    // 页面级列表只绑定当前轮卡片，与 swiper cardIndex 无关
     const viewRound = options.viewRound != null
       ? Number(options.viewRound)
-      : this._getExpressViewRound(options.cardIndex, options.currentRound);
+      : this._getExpressViewRound(options.currentRound);
     const lists = this._buildExpressListsForRound(all, viewRound, options.currentRound);
     const prevPlay = this.data.playExpressChatList || [];
     const prevDiscussion = this.data.discussionExpressChatList || [];
@@ -2958,12 +2957,12 @@ Page({
     const all = (this._expressMessagesAll || []).concat([msg]).slice(-40);
     this._expressMessagesAll = all;
 
-    const viewRound = this._getExpressViewRound();
+    const currentRound = this._getExpressViewRound();
     const msgRound = msg.round != null
       ? Number(msg.round)
-      : (Number(this.data.currentRound) || 0);
-    if (msgRound === viewRound) {
-      this._syncExpressChatList(all, { force: true, viewRound });
+      : currentRound;
+    if (msgRound === currentRound) {
+      this._syncExpressChatList(all, { force: true, viewRound: currentRound });
     }
     this._refreshSummaryExpressLists(all);
   },
