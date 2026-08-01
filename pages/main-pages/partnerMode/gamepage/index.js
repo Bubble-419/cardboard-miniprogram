@@ -143,9 +143,10 @@ Page({
     inspirationDraftText: '',
     inspirationDraftPhotos: [],
     inspirationInputFocused: false,
-    inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
+    /** transform 上移量；不改文档流，避免进页/点击闪动 */
+    inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     topBarPaddingRight: 30,
@@ -380,9 +381,11 @@ Page({
       this.refreshScoreStatus();
       this._syncRoundSpeech();
       this._refreshInspirationCount();
+      this._measureInspirationFooterClearance();
     }).catch((e) => {
       console.warn('gamepage onShow timer sync', e);
       this._refreshInspirationCount();
+      this._measureInspirationFooterClearance();
     });
   },
 
@@ -416,7 +419,8 @@ Page({
     this._unbindInspirationKeyboard();
     this.setData({
       roundTimerVisible: false,
-      inspirationKeyboardHeight: 0
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: ''
     });
     this._stopRoundSpeech();
     this._stopScorePolling();
@@ -708,7 +712,11 @@ Page({
 
     const tick = () => {
       // 输入灵感时避免高频 setData 顶布局/卡死
-      if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) return;
+      if (
+        this.data.inspirationInputFocused
+        || this.data.inspirationHoldKeyboard
+        || this._inspirationNativeFocused
+      ) return;
       const startedAt = this.data.partnerRoundStartedAt;
       if (!startedAt) return;
       const timerState = getRoundTimerState(startedAt);
@@ -1689,7 +1697,11 @@ Page({
             }
             if (page === 'gamepage') {
               // 灵感输入聚焦时跳过整页 setData，避免键盘顶起 + 轮询互相拉扯卡死
-              if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) {
+              if (
+                this.data.inspirationInputFocused
+                || this.data.inspirationHoldKeyboard
+                || this._inspirationNativeFocused
+              ) {
                 return true;
               }
               const prevMaster = this.data.isMasterMode;
@@ -3214,41 +3226,68 @@ Page({
     }
   },
 
-  onInspirationComposerTap() {
-    if (this._inspirationBlurTimer) {
-      clearTimeout(this._inspirationBlurTimer);
-      this._inspirationBlurTimer = null;
+  /**
+   * 灵感输入稳定策略（模拟器 + 真机）：
+   * 1) 栏体始终在文档流；icon / 输入框同高 92rpx
+   * 2) 不绑 focus 属性（真机 focus=false 会锁死输入法）；点击交给 input 原生聚焦
+   * 3) bindfocus 内禁止立刻 setData（Android 会打断键盘）；延后标记 focused
+   * 4) 真机用 transform 上移（键盘高 - 底栏高），底栏留在键盘下；devtools 忽略高度
+   */
+  _isDevtools() {
+    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
+    try {
+      const sys = wx.getSystemInfoSync();
+      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
+    } catch (e) {
+      this._isDevtoolsCached = false;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    // 已进入 focused 但键盘没起来时，必须允许再次脉冲 focus（否则要多点一次）
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: false
-      });
-      setTimeout(() => {
-        if (!this.data.inspirationInputFocused) return;
-        this.setData({ inspirationAutoFocus: true });
-      }, 48);
-      return;
-    }
-    this.setData({ inspirationAutoFocus: false });
-    setTimeout(() => {
-      if (!this.data.inspirationInputFocused) return;
-      this.setData({ inspirationAutoFocus: true });
-    }, 30);
+    return this._isDevtoolsCached;
   },
 
-  _requestInspirationAutoFocus() {
-    // 兼容旧调用：选图返回后可主动拉起键盘
-    this.setData({ inspirationAutoFocus: true });
-    if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
-    // 拉起后释放 focus 绑定，避免后续 setData 反复抢焦
-    this._inspirationAutoFocusTimer = setTimeout(() => {
-      if (this.data.inspirationAutoFocus) {
-        this.setData({ inspirationAutoFocus: false });
-      }
-    }, 320);
+  _measureInspirationFooterClearance() {
+    // 只缓存高度，禁止 setData，避免进页闪一下
+    setTimeout(() => {
+      wx.createSelectorQuery()
+        .in(this)
+        .select('.page-footer')
+        .boundingClientRect((rect) => {
+          this._inspirationFooterClearancePx = rect && rect.height
+            ? Math.ceil(rect.height)
+            : 0;
+        })
+        .exec();
+    }, 64);
+  },
+
+  _buildInspirationLiftStyle(keyboardHeight) {
+    const kh = Math.max(0, Number(keyboardHeight) || 0);
+    if (kh <= 0) return '';
+    // 栏在底栏上方：上移 (键盘高 - 底栏高) 后贴齐输入法顶边
+    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
+    const dy = Math.max(0, kh - footer);
+    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+  },
+
+  _resetInspirationKeyboardUi() {
+    return {
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: ''
+    };
+  },
+
+  _setInspirationKeyboardHeight(height) {
+    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const style = this._buildInspirationLiftStyle(next);
+    if (
+      next === this.data.inspirationKeyboardHeight
+      && style === this.data.inspirationLiftStyle
+    ) {
+      return;
+    }
+    this.setData({
+      inspirationKeyboardHeight: next,
+      inspirationLiftStyle: style
+    });
   },
 
   onInspirationFocus() {
@@ -3256,54 +3295,45 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    // 只标记 UI 态；释放 autoFocus，避免后续 setData 反复抢焦
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    this._inspirationNativeFocused = true;
+    // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
+    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
+    this._inspirationFocusUiTimer = setTimeout(() => {
+      this._inspirationFocusUiTimer = null;
+      if (!this._inspirationNativeFocused) return;
+      if (!this.data.inspirationInputFocused) {
+        this.setData({ inspirationInputFocused: true });
+      }
+    }, 280);
   },
 
   onInspirationBlur() {
-    // 布局抖动（footer 隐藏/mask 出现）会误触发 blur，短窗口内忽略
-    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
-      return;
+    this._inspirationNativeFocused = false;
+    if (this._inspirationFocusUiTimer) {
+      clearTimeout(this._inspirationFocusUiTimer);
+      this._inspirationFocusUiTimer = null;
     }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
-      if (this.data.inspirationHoldKeyboard) return;
+      if (this._inspirationPickingImage) return;
+      if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
-        inspirationKeyboardHeight: 0
+        inspirationHoldKeyboard: false,
+        ...this._resetInspirationKeyboardUi()
       });
     }, 180);
   },
 
-  onInspirationDismissFocus() {
-    if (this._inspirationBlurTimer) {
-      clearTimeout(this._inspirationBlurTimer);
-      this._inspirationBlurTimer = null;
-    }
-    this._inspirationFocusRequestedAt = 0;
-    this.setData({
-      inspirationInputFocused: false,
-      inspirationAutoFocus: false,
-      inspirationHoldKeyboard: false,
-      inspirationKeyboardHeight: 0
-    });
-  },
-
   onInspirationKeyboardHeightChange(e) {
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
-    if (!this.data.inspirationInputFocused && height <= 0) {
-      if (this.data.inspirationKeyboardHeight !== 0) {
-        this.setData({ inspirationKeyboardHeight: 0 });
-      }
+    const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
+    if (!active && height > 0) return;
+    if (!active && height <= 0) {
+      this._setInspirationKeyboardHeight(0);
       return;
     }
-    if (height === this.data.inspirationKeyboardHeight) return;
-    this.setData({ inspirationKeyboardHeight: height });
+    this._setInspirationKeyboardHeight(height);
   },
 
   _bindInspirationKeyboard() {
@@ -3355,6 +3385,7 @@ Page({
       wx.showToast({ title: '最多 9 张图片', icon: 'none' });
       return;
     }
+    this._inspirationPickingImage = true;
     this.setData({ inspirationHoldKeyboard: true });
     wx.showActionSheet({
       itemList: ['拍照', '从相册选择'],
@@ -3366,6 +3397,7 @@ Page({
           sourceType,
           success: (chooseRes) => {
             const paths = chooseRes.tempFilePaths || [];
+            this._inspirationPickingImage = false;
             if (!paths.length) {
               this.setData({ inspirationHoldKeyboard: false });
               return;
@@ -3373,21 +3405,20 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
-              inspirationAutoFocus: true,
-              inspirationHoldKeyboard: true
+              inspirationHoldKeyboard: false
             });
-            this._requestInspirationAutoFocus();
           },
           fail: () => {
+            this._inspirationPickingImage = false;
             this.setData({
               inspirationHoldKeyboard: false,
-              inspirationInputFocused: true
+              inspirationInputFocused: false
             });
-            this._requestInspirationAutoFocus();
           }
         });
       },
       fail: () => {
+        this._inspirationPickingImage = false;
         this.setData({ inspirationHoldKeyboard: false });
       }
     });
@@ -3461,9 +3492,8 @@ Page({
         inspirationDraftPhotos: [],
         inspirationHasText: false,
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
         inspirationHoldKeyboard: false,
-        inspirationKeyboardHeight: 0
+        ...this._resetInspirationKeyboardUi()
       });
       wx.showToast({ title: '已保存', icon: 'success' });
       await this._refreshInspirationCount();

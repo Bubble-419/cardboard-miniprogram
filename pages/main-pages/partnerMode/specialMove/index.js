@@ -92,8 +92,8 @@ Page({
     silentTimerActive: false,
     inspirationDraftText: '',
     inspirationInputFocused: false,
-    inspirationAutoFocus: false,
     inspirationKeyboardHeight: 0,
+    inspirationLiftStyle: '',
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
     reverseSteps: REVERSE_STEPS
@@ -121,13 +121,15 @@ Page({
     if (this.data.roomId) {
       this._startStatePolling();
     }
+    this._measureInspirationFooterClearance();
   },
 
   onHide() {
     this._unbindInspirationKeyboard();
-    if (this.data.inspirationKeyboardHeight !== 0) {
-      this.setData({ inspirationKeyboardHeight: 0 });
-    }
+    this.setData({
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: ''
+    });
     this._stopStatePolling();
   },
 
@@ -219,28 +221,52 @@ Page({
     wx.navigateTo({ url });
   },
 
-  onInspirationComposerTap() {
-    if (this._inspirationBlurTimer) {
-      clearTimeout(this._inspirationBlurTimer);
-      this._inspirationBlurTimer = null;
+  _isDevtools() {
+    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
+    try {
+      const sys = wx.getSystemInfoSync();
+      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
+    } catch (e) {
+      this._isDevtoolsCached = false;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: false
-      });
-      setTimeout(() => {
-        if (!this.data.inspirationInputFocused) return;
-        this.setData({ inspirationAutoFocus: true });
-      }, 48);
+    return this._isDevtoolsCached;
+  },
+
+  _measureInspirationFooterClearance() {
+    setTimeout(() => {
+      wx.createSelectorQuery()
+        .in(this)
+        .select('.page-footer')
+        .boundingClientRect((rect) => {
+          this._inspirationFooterClearancePx = rect && rect.height
+            ? Math.ceil(rect.height)
+            : 0;
+        })
+        .exec();
+    }, 64);
+  },
+
+  _buildInspirationLiftStyle(keyboardHeight) {
+    const kh = Math.max(0, Number(keyboardHeight) || 0);
+    if (kh <= 0) return '';
+    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
+    const dy = Math.max(0, kh - footer);
+    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+  },
+
+  _setInspirationKeyboardHeight(height) {
+    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const style = this._buildInspirationLiftStyle(next);
+    if (
+      next === this.data.inspirationKeyboardHeight
+      && style === this.data.inspirationLiftStyle
+    ) {
       return;
     }
-    this.setData({ inspirationAutoFocus: false });
-    setTimeout(() => {
-      if (!this.data.inspirationInputFocused) return;
-      this.setData({ inspirationAutoFocus: true });
-    }, 30);
+    this.setData({
+      inspirationKeyboardHeight: next,
+      inspirationLiftStyle: style
+    });
   },
 
   onInspirationFocus() {
@@ -248,37 +274,44 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    this._inspirationNativeFocused = true;
+    // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
+    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
+    this._inspirationFocusUiTimer = setTimeout(() => {
+      this._inspirationFocusUiTimer = null;
+      if (!this._inspirationNativeFocused) return;
+      if (!this.data.inspirationInputFocused) {
+        this.setData({ inspirationInputFocused: true });
+      }
+    }, 280);
   },
 
   onInspirationBlur() {
-    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
-      return;
+    this._inspirationNativeFocused = false;
+    if (this._inspirationFocusUiTimer) {
+      clearTimeout(this._inspirationFocusUiTimer);
+      this._inspirationFocusUiTimer = null;
     }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
+      if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
-        inspirationKeyboardHeight: 0
+        inspirationKeyboardHeight: 0,
+        inspirationLiftStyle: ''
       });
     }, 180);
   },
 
   onInspirationKeyboardHeightChange(e) {
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
-    if (!this.data.inspirationInputFocused && height <= 0) {
-      if (this.data.inspirationKeyboardHeight !== 0) {
-        this.setData({ inspirationKeyboardHeight: 0 });
-      }
+    const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
+    if (!active && height > 0) return;
+    if (!active && height <= 0) {
+      this._setInspirationKeyboardHeight(0);
       return;
     }
-    if (height === this.data.inspirationKeyboardHeight) return;
-    this.setData({ inspirationKeyboardHeight: height });
+    this._setInspirationKeyboardHeight(height);
   },
 
   _bindInspirationKeyboard() {
@@ -317,8 +350,8 @@ Page({
         inspirationDraftText: '',
         inspirationHasText: false,
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
-        inspirationKeyboardHeight: 0
+        inspirationKeyboardHeight: 0,
+        inspirationLiftStyle: ''
       });
       return;
     }
