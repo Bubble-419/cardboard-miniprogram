@@ -124,7 +124,7 @@
         </view>
         <view
           class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
+          bindtap="onInspirationComposerTap"
         >
           <view class="inspiration-row">
             <input
@@ -224,7 +224,7 @@
         </view>
         <view
           class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
+          bindtap="onInspirationComposerTap"
         >
           <view class="inspiration-row">
             <input
@@ -261,8 +261,8 @@
     </view>
   </view>
 
-  <!-- 底部按钮 -->
-  <view class="page-footer">
+  <!-- 底部按钮：灵感聚焦时折叠，避免卸载跳动 -->
+  <view class="page-footer {{inspirationInputFocused ? 'page-footer-insp-collapsed' : ''}}">
     <view class="silent-hint-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'silent'}}">
       <text
         class="silent-hint-line {{index === 0 ? 'silent-hint-title' : ''}}"

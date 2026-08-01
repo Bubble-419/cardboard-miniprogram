@@ -51,8 +51,18 @@
 /* Figma #5848:3368 — 顶部内容避开微信胶囊 */
 .page-footer {
   flex-shrink: 0;
-  padding: 18rpx 0 calc(40rpx + env(safe-area-inset-bottom));
+  padding: 18rpx 0 calc(16rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
+}
+
+/* 灵感聚焦：折叠底栏而不是卸载，减少整页闪跳 */
+.page-footer-insp-collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .top-bar {
@@ -275,7 +285,8 @@
 
 .action-card-scroll {
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   width: 100%;
 }
 
@@ -711,7 +722,7 @@
 
 .action-express-chat {
   flex: 1;
-  height: 0;
+  height: 100%;
   min-height: 280rpx;
   max-height: 520rpx;
   width: 100%;
@@ -760,7 +771,7 @@
 .discussion-card-body .action-express-chat-body {
   flex: 1;
   min-height: 0;
-  height: 0;
+  height: 100%;
 }
 
 .discussion-card-body .action-express-chat {
@@ -1045,7 +1056,8 @@ game-card-timer {
 
 .card-scroll {
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1661,7 +1673,8 @@ game-card-timer {
 .discussion-card-body {
   position: relative;
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   /* 水平内边距放在 header / scroll 内容上，避免滚动条被挤离卡片右缘 */
@@ -1723,7 +1736,8 @@ game-card-timer {
 
 .discussion-scroll {
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1862,7 +1876,8 @@ game-card-timer {
 
 .closing-card-body {
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   padding: 88rpx 24rpx 16rpx;
   box-sizing: border-box;
   display: flex;
@@ -1994,7 +2009,8 @@ game-card-timer {
 
 .closing-scroll {
   flex: 1;
-  height: 0;
+  height: 100%;
+  min-height: 0;
   /* 抵消父级水平内边距，让滚动条贴齐卡片内右缘 */
   margin: 0 -24rpx;
   width: auto;

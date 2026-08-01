@@ -1,14 +1,27 @@
 /** 微信胶囊对齐的顶部栏尺寸（禁止写死 top） */
 
-function getWindowWidth() {
+function getWindowInfoSafe() {
   try {
-    const sys = typeof wx.getWindowInfo === 'function'
+    return typeof wx.getWindowInfo === 'function'
       ? wx.getWindowInfo()
       : wx.getSystemInfoSync();
-    return (sys && sys.windowWidth) || 375;
   } catch (e) {
-    return 375;
+    return null;
   }
+}
+
+function getWindowWidth() {
+  const sys = getWindowInfoSafe();
+  return (sys && sys.windowWidth) || 375;
+}
+
+function resolveStatusBarHeight(sys, fallback) {
+  if (!sys) return fallback;
+  if (sys.statusBarHeight > 0) return sys.statusBarHeight;
+  const insetTop = sys.safeAreaInsets && sys.safeAreaInsets.top;
+  if (insetTop > 0) return insetTop;
+  if (sys.safeArea && sys.safeArea.top > 0) return sys.safeArea.top;
+  return fallback;
 }
 
 /**
@@ -25,15 +38,8 @@ function getWindowWidth() {
 function getCapsuleTopBarMetrics(options = {}) {
   const minBarPx = options.minBarPx != null ? options.minBarPx : 32;
   const statusBarFallback = 20;
-  let statusBarHeight = statusBarFallback;
-  try {
-    const sys = typeof wx.getWindowInfo === 'function'
-      ? wx.getWindowInfo()
-      : wx.getSystemInfoSync();
-    statusBarHeight = (sys && sys.statusBarHeight) || statusBarFallback;
-  } catch (e) {
-    // ignore
-  }
+  const sys = getWindowInfoSafe();
+  const statusBarHeight = resolveStatusBarHeight(sys, statusBarFallback);
 
   let capsuleTop = statusBarHeight;
   let capsuleHeight = minBarPx;
@@ -42,11 +48,14 @@ function getCapsuleTopBarMetrics(options = {}) {
 
   try {
     const menu = wx.getMenuButtonBoundingClientRect();
-    if (menu && menu.height) {
+    // 仅采纳有效胶囊尺寸；menu.top===0 时回退 statusBar，避免 iOS padTop 塌成 0
+    if (menu && menu.height > 0) {
       capsuleHeight = Math.round(menu.height);
-      capsuleWidth = Math.round(menu.width || 87);
-      capsuleTop = Math.round(menu.top != null ? menu.top : statusBarHeight);
-      if (menu.right != null) capsuleRight = menu.right;
+      if (menu.width > 0) capsuleWidth = Math.round(menu.width);
+      if (menu.top > 0) {
+        capsuleTop = Math.round(menu.top);
+      }
+      if (menu.right > 0) capsuleRight = menu.right;
     }
   } catch (e) {
     // ignore

@@ -83,8 +83,14 @@
     style="bottom: calc(180rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
     catchtap="onInspirationDismissFocus"
   ></view>
-  <view class="inspiration-bar" style="padding-bottom: calc(18rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)">
-    <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
+  <view
+    class="inspiration-bar {{inspirationInputFocused ? 'inspiration-bar-focused' : ''}}"
+    style="margin-bottom: {{inspirationKeyboardHeight}}px"
+  >
+    <view
+      class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+      bindtap="onInspirationComposerTap"
+    >
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
         class="inspiration-photo-strip"
@@ -129,7 +135,7 @@
           auto-height
           show-confirm-bar="{{false}}"
           adjust-position="{{false}}"
-          cursor-spacing="24"
+          cursor-spacing="8"
         />
         <view
           class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

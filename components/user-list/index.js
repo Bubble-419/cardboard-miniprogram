@@ -106,17 +106,18 @@ Component({
     'avatarList, maxVisible': function syncDisplayList(avatarList, maxVisible) {
       const list = Array.isArray(avatarList) ? avatarList : [];
       const max = Number(maxVisible) || 0;
-      if (max > 0 && list.length > max) {
-        this.setData({
-          displayList: list.slice(0, max),
-          overflowCount: list.length - max
-        });
-      } else {
-        this.setData({
-          displayList: list,
-          overflowCount: 0
-        });
+      const nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
+      const nextOverflow = max > 0 && list.length > max ? list.length - max : 0;
+      // 临时 HTTPS 签名变化时稳定键不变，避免无意义 setData 触发 <image> 重载闪烁
+      const nextFp = this._avatarDisplayFingerprint(nextDisplay, nextOverflow);
+      if (nextFp && nextFp === this._avatarDisplayFingerprintCache) {
+        return;
       }
+      this._avatarDisplayFingerprintCache = nextFp;
+      this.setData({
+        displayList: nextDisplay,
+        overflowCount: nextOverflow
+      });
     },
     'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame': function syncFrameUsers() {
       this._syncFrameUsers();
@@ -137,14 +138,13 @@ Component({
     attached() {
       const list = Array.isArray(this.properties.avatarList) ? this.properties.avatarList : [];
       const max = Number(this.properties.maxVisible) || 0;
-      if (max > 0 && list.length > max) {
-        this.setData({
-          displayList: list.slice(0, max),
-          overflowCount: list.length - max
-        });
-      } else {
-        this.setData({ displayList: list, overflowCount: 0 });
-      }
+      const nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
+      const nextOverflow = max > 0 && list.length > max ? list.length - max : 0;
+      this._avatarDisplayFingerprintCache = this._avatarDisplayFingerprint(nextDisplay, nextOverflow);
+      this.setData({
+        displayList: nextDisplay,
+        overflowCount: nextOverflow
+      });
       this._syncFrameUsers();
       this._syncRoundTimerKey();
       this._syncActingFrameMode();
@@ -176,6 +176,30 @@ Component({
   },
 
   methods: {
+    /** 忽略临时链 query 签名，只比较展示用稳定键 */
+    _stableAvatarSrc(url) {
+      if (!url || typeof url !== 'string') return '';
+      if (url.startsWith('/') || url.startsWith('cloud://') || url.startsWith('wxfile://')) {
+        return url;
+      }
+      const q = url.indexOf('?');
+      return q >= 0 ? url.slice(0, q) : url;
+    },
+
+    _avatarDisplayFingerprint(list, overflowCount) {
+      const rows = (list || []).map((item) => {
+        if (!item) return '-';
+        const id = item.id != null ? item.id : '';
+        const src = this._stableAvatarSrc(
+          item.avatar || item.avatarImage || item.url || ''
+        );
+        const name = item.nickName || '';
+        const me = item.isMe ? 1 : 0;
+        return `${id}:${src}:${name}:${me}`;
+      });
+      return `${overflowCount || 0}#${rows.join('|')}`;
+    },
+
     _syncRoundTimerKey() {
       const key = this.properties.roundTimerKey || '';
       if (key !== this._seenRoundTimerKey) {

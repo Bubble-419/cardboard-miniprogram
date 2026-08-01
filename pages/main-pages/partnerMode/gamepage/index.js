@@ -365,6 +365,7 @@ Page({
 
   onShow() {
     this._pageVisible = true;
+    this._bindInspirationKeyboard();
     this._applyPendingSpecialMoveUsed();
     if (this.data.roomId) {
       this._startStatePolling();
@@ -412,7 +413,11 @@ Page({
 
   onHide() {
     this._pageVisible = false;
-    this.setData({ roundTimerVisible: false });
+    this._unbindInspirationKeyboard();
+    this.setData({
+      roundTimerVisible: false,
+      inspirationKeyboardHeight: 0
+    });
     this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
@@ -422,6 +427,7 @@ Page({
   },
 
   onUnload() {
+    this._unbindInspirationKeyboard();
     this._stopRoundSpeech();
     if (this._roundSpeech) {
       this._roundSpeech.destroy();
@@ -3210,12 +3216,32 @@ Page({
   },
 
   onInspirationComposerTap() {
-    // 兼容旧调用：选图返回后可主动拉起键盘
-    if (this.data.inspirationInputFocused) return;
-    this._requestInspirationAutoFocus();
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this._inspirationFocusRequestedAt = Date.now();
+    // 已进入 focused 但键盘没起来时，必须允许再次脉冲 focus（否则要多点一次）
+    if (!this.data.inspirationInputFocused) {
+      this.setData({
+        inspirationInputFocused: true,
+        inspirationAutoFocus: false
+      });
+      setTimeout(() => {
+        if (!this.data.inspirationInputFocused) return;
+        this.setData({ inspirationAutoFocus: true });
+      }, 48);
+      return;
+    }
+    this.setData({ inspirationAutoFocus: false });
+    setTimeout(() => {
+      if (!this.data.inspirationInputFocused) return;
+      this.setData({ inspirationAutoFocus: true });
+    }, 30);
   },
 
   _requestInspirationAutoFocus() {
+    // 兼容旧调用：选图返回后可主动拉起键盘
     this.setData({ inspirationAutoFocus: true });
     if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
     // 拉起后释放 focus 绑定，避免后续 setData 反复抢焦
@@ -3231,13 +3257,19 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    // 只标记 UI 态，不要在这里改 focus 属性，否则会把原生聚焦打掉
-    if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
-    }
+    this._inspirationFocusRequestedAt = Date.now();
+    // 只标记 UI 态；释放 autoFocus，避免后续 setData 反复抢焦
+    this.setData({
+      inspirationInputFocused: true,
+      inspirationAutoFocus: false
+    });
   },
 
   onInspirationBlur() {
+    // 布局抖动（footer 隐藏/mask 出现）会误触发 blur，短窗口内忽略
+    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
+      return;
+    }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
       if (this.data.inspirationHoldKeyboard) return;
@@ -3254,6 +3286,7 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
+    this._inspirationFocusRequestedAt = 0;
     this.setData({
       inspirationInputFocused: false,
       inspirationAutoFocus: false,
@@ -3263,9 +3296,36 @@ Page({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || 0;
+    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    if (!this.data.inspirationInputFocused && height <= 0) {
+      if (this.data.inspirationKeyboardHeight !== 0) {
+        this.setData({ inspirationKeyboardHeight: 0 });
+      }
+      return;
+    }
     if (height === this.data.inspirationKeyboardHeight) return;
     this.setData({ inspirationKeyboardHeight: height });
+  },
+
+  _bindInspirationKeyboard() {
+    if (this._inspirationKeyboardBound) return;
+    this._inspirationKeyboardBound = true;
+    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
+    if (typeof wx.onKeyboardHeightChange === 'function') {
+      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+    }
+  },
+
+  _unbindInspirationKeyboard() {
+    if (!this._inspirationKeyboardBound) return;
+    this._inspirationKeyboardBound = false;
+    if (
+      typeof wx.offKeyboardHeightChange === 'function'
+      && this._onInspirationKeyboardHeightChange
+    ) {
+      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+    }
+    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {
@@ -3314,6 +3374,7 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
+              inspirationAutoFocus: true,
               inspirationHoldKeyboard: true
             });
             this._requestInspirationAutoFocus();

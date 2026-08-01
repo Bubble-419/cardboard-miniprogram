@@ -269,6 +269,7 @@
 
 /* 占位块，避免内容被固定按钮遮挡 */
 .footer-placeholder {
+  /* 与 fixed footer 总高对齐：192rpx 为非安全区部分，safe-area 只计一次 */
   height: calc(192rpx + env(safe-area-inset-bottom));
 }
 

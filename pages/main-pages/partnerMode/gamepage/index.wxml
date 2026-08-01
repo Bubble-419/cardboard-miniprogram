@@ -111,7 +111,7 @@
                   show-confirm-bar="{{false}}"
                   adjust-position="{{true}}"
                   hold-keyboard="{{true}}"
-                  cursor-spacing="24"
+                  cursor-spacing="8"
                 />
               </view>
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
@@ -163,7 +163,10 @@
             <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
           </view>
         </view>
-        <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
+        <view
+          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+          bindtap="onInspirationComposerTap"
+        >
           <scroll-view
             wx:if="{{inspirationDraftPhotos.length}}"
             class="inspiration-photo-strip"
@@ -208,7 +211,7 @@
               auto-height
               show-confirm-bar="{{false}}"
               adjust-position="{{false}}"
-              cursor-spacing="24"
+              cursor-spacing="8"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -812,7 +815,10 @@
           <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
         </view>
       </view>
-      <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
+      <view
+        class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
+        bindtap="onInspirationComposerTap"
+      >
         <scroll-view
           wx:if="{{inspirationDraftPhotos.length}}"
           class="inspiration-photo-strip"
@@ -857,7 +863,7 @@
             auto-height
             show-confirm-bar="{{false}}"
             adjust-position="{{false}}"
-            cursor-spacing="24"
+            cursor-spacing="8"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -879,12 +885,12 @@
         </view>
       </view>
     </view>
-    </block>
+  </block>
   </view>
 
-  <!-- 底部操作：收尾/讨论阶段非房主不显示底部按钮区 -->
+  <!-- 底部操作：收尾/讨论阶段非房主不显示；灵感聚焦时折叠，避免 wx:if 卸载导致整页跳动 -->
   <view
-    class="page-footer"
+    class="page-footer {{inspirationInputFocused ? 'page-footer-insp-collapsed' : ''}}"
     wx:if="{{!((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">

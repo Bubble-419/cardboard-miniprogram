@@ -128,15 +128,20 @@ function assignAvatarImages(members) {
       isDisplayableAvatarUrl(m.avatarUrl) &&
       (m.isMe === true || isShareableAvatarUrl(m.avatarUrl) || isLocalTempAvatar(m.avatarUrl));
     if (canUseUrl) {
-      // 临时链签名每轮变化；稳定键相同则复用旧 URL，避免 <image src> 重载闪烁
-      if (userKey) {
+      const incoming = m.avatarUrl;
+      const incomingKey = getAvatarStableKey(incoming);
+      if (userKey && stickyCustomAvatarByUser.has(userKey)) {
         const sticky = stickyCustomAvatarByUser.get(userKey);
-        if (sticky && getAvatarStableKey(sticky) === getAvatarStableKey(m.avatarUrl)) {
-          return { ...m, avatarImage: sticky };
+        // 稳定键相同（仅签名变化）时复用旧 URL，避免 <image src> 每次轮询都变
+        if (
+          isDisplayableAvatarUrl(sticky)
+          && getAvatarStableKey(sticky) === incomingKey
+        ) {
+          return { ...m, avatarUrl: sticky, avatarImage: sticky };
         }
-        stickyCustomAvatarByUser.set(userKey, m.avatarUrl);
       }
-      return { ...m, avatarImage: m.avatarUrl };
+      if (userKey) stickyCustomAvatarByUser.set(userKey, incoming);
+      return { ...m, avatarImage: incoming };
     }
     if (userKey && stickyCustomAvatarByUser.has(userKey)) {
       const sticky = stickyCustomAvatarByUser.get(userKey);
