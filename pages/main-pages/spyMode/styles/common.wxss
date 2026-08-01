@@ -3,7 +3,7 @@
   min-height: 100vh;
   background-color: #F3FAF9;
   box-sizing: border-box;
-  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
+  padding-bottom: 200rpx;
 }
 
 .header-section {

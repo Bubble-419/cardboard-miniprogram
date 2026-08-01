@@ -134,7 +134,7 @@
   text-align: center;
 }
 
-/* ??????*/
+/* 紧凑信息区：工作坊名 + 人数 · 模式 */
 .info-section {
   flex-shrink: 0;
   padding: 12rpx 40rpx 8rpx;
@@ -214,41 +214,6 @@
   text-align: center;
 }
 
-/* ?????? */
-.room-name-wrap {
-  margin-top: 16rpx;
-  width: 100%;
-  max-width: 560rpx;
-  box-sizing: border-box;
-}
-
-.room-name-display,
-.room-name-edit {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.room-name-value-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 12rpx;
-  padding: 8rpx 16rpx;
-}
-
-.room-name-value {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #111827;
-  max-width: 400rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .room-name-edit-icon {
   width: 32rpx;
   height: 32rpx;
@@ -294,7 +259,7 @@
   line-height: 1.4;
 }
 
-/* DEV_TEST_START: ?????????? */
+/* DEV_TEST_START: 显示房间号（测试用） */
 .dev-room-id-banner {
   flex-shrink: 0;
   margin: 0 40rpx 16rpx;

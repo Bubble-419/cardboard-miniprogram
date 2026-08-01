@@ -197,19 +197,4 @@
       </view>
     </view>
   </scroll-view>
-
-  <!-- 调试用：输入房间号加入（固定底部，不占文档流，后续会移除） -->
-  <view class="debug-join-bar" wx:if="{{!isJoinedRoom}}">
-    <input
-      class="debug-join-input"
-      type="number"
-      maxlength="8"
-      placeholder="输入房间号"
-      value="{{debugRoomIdInput}}"
-      bindinput="onDebugRoomIdInput"
-      confirm-type="go"
-      bindconfirm="handleJoinByRoomId"
-    />
-    <view class="debug-join-btn" bindtap="handleJoinByRoomId">加入</view>
-  </view>
 </view>

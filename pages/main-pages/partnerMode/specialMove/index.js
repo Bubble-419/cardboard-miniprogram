@@ -92,6 +92,8 @@ Page({
     silentTimerActive: false,
     inspirationDraftText: '',
     inspirationInputFocused: false,
+    inspirationAutoFocus: false,
+    inspirationKeyboardHeight: 0,
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
     reverseSteps: REVERSE_STEPS
@@ -115,16 +117,22 @@ Page({
   },
 
   onShow() {
+    this._bindInspirationKeyboard();
     if (this.data.roomId) {
       this._startStatePolling();
     }
   },
 
   onHide() {
+    this._unbindInspirationKeyboard();
+    if (this.data.inspirationKeyboardHeight !== 0) {
+      this.setData({ inspirationKeyboardHeight: 0 });
+    }
     this._stopStatePolling();
   },
 
   onUnload() {
+    this._unbindInspirationKeyboard();
     this.clearSilentTimer();
     this._stopStatePolling();
   },
@@ -212,17 +220,86 @@ Page({
   },
 
   onInspirationComposerTap() {
-    if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
     }
+    this._inspirationFocusRequestedAt = Date.now();
+    if (!this.data.inspirationInputFocused) {
+      this.setData({
+        inspirationInputFocused: true,
+        inspirationAutoFocus: false
+      });
+      setTimeout(() => {
+        if (!this.data.inspirationInputFocused) return;
+        this.setData({ inspirationAutoFocus: true });
+      }, 48);
+      return;
+    }
+    this.setData({ inspirationAutoFocus: false });
+    setTimeout(() => {
+      if (!this.data.inspirationInputFocused) return;
+      this.setData({ inspirationAutoFocus: true });
+    }, 30);
   },
 
   onInspirationFocus() {
-    this.setData({ inspirationInputFocused: true });
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+    this._inspirationFocusRequestedAt = Date.now();
+    this.setData({
+      inspirationInputFocused: true,
+      inspirationAutoFocus: false
+    });
   },
 
   onInspirationBlur() {
-    this.setData({ inspirationInputFocused: false });
+    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
+      return;
+    }
+    if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
+    this._inspirationBlurTimer = setTimeout(() => {
+      this.setData({
+        inspirationInputFocused: false,
+        inspirationAutoFocus: false,
+        inspirationKeyboardHeight: 0
+      });
+    }, 180);
+  },
+
+  onInspirationKeyboardHeightChange(e) {
+    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    if (!this.data.inspirationInputFocused && height <= 0) {
+      if (this.data.inspirationKeyboardHeight !== 0) {
+        this.setData({ inspirationKeyboardHeight: 0 });
+      }
+      return;
+    }
+    if (height === this.data.inspirationKeyboardHeight) return;
+    this.setData({ inspirationKeyboardHeight: height });
+  },
+
+  _bindInspirationKeyboard() {
+    if (this._inspirationKeyboardBound) return;
+    this._inspirationKeyboardBound = true;
+    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
+    if (typeof wx.onKeyboardHeightChange === 'function') {
+      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+    }
+  },
+
+  _unbindInspirationKeyboard() {
+    if (!this._inspirationKeyboardBound) return;
+    this._inspirationKeyboardBound = false;
+    if (
+      typeof wx.offKeyboardHeightChange === 'function'
+      && this._onInspirationKeyboardHeightChange
+    ) {
+      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+    }
+    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {
@@ -239,7 +316,9 @@ Page({
       this.setData({
         inspirationDraftText: '',
         inspirationHasText: false,
-        inspirationInputFocused: false
+        inspirationInputFocused: false,
+        inspirationAutoFocus: false,
+        inspirationKeyboardHeight: 0
       });
       return;
     }

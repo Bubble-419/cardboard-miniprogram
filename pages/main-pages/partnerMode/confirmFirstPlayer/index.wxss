@@ -91,7 +91,7 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
-  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+  padding-bottom: 160rpx;
 }
 
 .main-stage {

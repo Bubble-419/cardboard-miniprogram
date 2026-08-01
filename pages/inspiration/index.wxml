@@ -80,12 +80,16 @@
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused}}"
-    catchtouchstart="onInspirationDismissFocus"
+    style="bottom: calc(180rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
+    catchtap="onInspirationDismissFocus"
   ></view>
-  <view class="inspiration-bar">
+  <view
+    class="inspiration-bar {{inspirationInputFocused ? 'inspiration-bar-focused' : ''}}"
+    style="margin-bottom: {{inspirationKeyboardHeight}}px"
+  >
     <view
       class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-      catchtap="onInspirationComposerTap"
+      bindtap="onInspirationComposerTap"
     >
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
@@ -119,18 +123,19 @@
         <textarea
           class="inspiration-textarea"
           value="{{inspirationDraftText}}"
-          focus="{{inspirationInputFocused}}"
+          focus="{{inspirationAutoFocus}}"
           hold-keyboard="{{inspirationHoldKeyboard}}"
           bindfocus="onInspirationFocus"
           bindblur="onInspirationBlur"
           bindinput="onInspirationInput"
+          bindkeyboardheightchange="onInspirationKeyboardHeightChange"
           placeholder="记录您的灵感..."
           placeholder-class="inspiration-placeholder"
           maxlength="2000"
           auto-height
           show-confirm-bar="{{false}}"
-          adjust-position="{{true}}"
-          cursor-spacing="24"
+          adjust-position="{{false}}"
+          cursor-spacing="8"
         />
         <view
           class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

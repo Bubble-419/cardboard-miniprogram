@@ -1,5 +1,5 @@
 const PROFILE_STORAGE_KEY = 'wxUserProfile';
-const DEFAULT_AVATAR = '/assets/home/user-avatar-default.svg';
+const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
 
 function getStoredProfile() {
   try {

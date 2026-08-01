@@ -118,26 +118,27 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
+      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         </view>
         <view
           class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
+          bindtap="onInspirationComposerTap"
         >
           <view class="inspiration-row">
             <input
               class="inspiration-textarea"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationInputFocused}}"
+              focus="{{inspirationAutoFocus}}"
               maxlength="200"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
+              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
@@ -217,26 +218,27 @@
         </view>
       </view>
 
-      <view class="inspiration-bar">
+      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         </view>
         <view
           class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          catchtap="onInspirationComposerTap"
+          bindtap="onInspirationComposerTap"
         >
           <view class="inspiration-row">
             <input
               class="inspiration-textarea"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationInputFocused}}"
+              focus="{{inspirationAutoFocus}}"
               maxlength="200"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
+              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
@@ -259,8 +261,8 @@
     </view>
   </view>
 
-  <!-- 底部按钮 -->
-  <view class="page-footer">
+  <!-- 底部按钮：灵感聚焦时折叠，避免卸载跳动 -->
+  <view class="page-footer {{inspirationInputFocused ? 'page-footer-insp-collapsed' : ''}}">
     <view class="silent-hint-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'silent'}}">
       <text
         class="silent-hint-line {{index === 0 ? 'silent-hint-title' : ''}}"

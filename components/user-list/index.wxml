@@ -20,12 +20,16 @@
                   mode="aspectFill"
                 />
               </view>
-              <block wx:if="{{item.id == resolvedActingUser && actingFrameMode === 'timer'}}">
+              <block wx:if="{{item.id == resolvedActingUser && actingFrameMode === 'timer' && !suppressTimerCanvas}}">
                 <canvas
                   type="2d"
                   id="actingTimerCanvas"
                   class="acting-timer-canvas acting-timer-canvas-visible"
                 ></canvas>
+              </block>
+              <block wx:elif="{{item.id == resolvedActingUser && actingFrameMode === 'timer' && suppressTimerCanvas}}">
+                <view class="partner-ring partner-ring-acting-outer"></view>
+                <view class="partner-ring partner-ring-acting-inner"></view>
               </block>
               <block wx:elif="{{item.id == resolvedActingUser && actingFrameMode === 'expiring'}}">
                 <view class="partner-ring partner-ring-acting-outer partner-ring-expiring"></view>

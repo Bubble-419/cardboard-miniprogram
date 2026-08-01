@@ -26,7 +26,7 @@ function buildCircleSlots(players, memberByIndex) {
       playerIndex: Number(p.playerIndex),
       name: p.name,
       isMe: !!p.isMe,
-      avatarImage: member.avatarImage || '/assets/avatar/frame_2085662311_1x.webp',
+      avatarImage: member.avatarImage || '/assets/avatar/frame_2085662311_1x.png',
       left: left.toFixed(2),
       top: top.toFixed(2)
     };

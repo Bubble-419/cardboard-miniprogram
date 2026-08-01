@@ -13,9 +13,9 @@
 }
 
 /* ===== 顶部区：TopBar + 情境格 ===== */
-/* padding-top 由 style="padding-top:{{navbarPaddingTop}}px" 覆盖，提供设备状态栏适配 */
+/* 顶栏贴页顶，状态栏由 player-top-bar.padTop 负责；勿在顶栏外包一层大 padding */
 .header-section {
-  padding: 60rpx 40rpx 0;
+  padding: 0 40rpx;
   display: flex;
   flex-direction: column;
   align-items: stretch;

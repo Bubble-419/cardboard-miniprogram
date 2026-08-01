@@ -1,10 +1,14 @@
-<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}}">
+<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}} {{suppressCanvas && displayMode === 'timer' ? 'gct-wrap-suppressed' : ''}}">
   <canvas
-    wx:if="{{displayMode === 'timer'}}"
+    wx:if="{{displayMode === 'timer' && !suppressCanvas}}"
     type="2d"
     id="gctCanvas"
     class="gct-canvas {{borderVisible ? 'gct-canvas-visible' : ''}}"
   ></canvas>
+  <view
+    wx:elif="{{displayMode === 'timer' && suppressCanvas}}"
+    class="gct-canvas-placeholder"
+  ></view>
   <block wx:if="{{displayMode === 'expiring'}}">
     <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-1"></view>
     <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-2"></view>
