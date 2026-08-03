@@ -156,17 +156,15 @@
         </view>
       </view>
 
-      <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
+      <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
+      <view class="inspiration-bar" style="{{inspirationLiftStyle}}">
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
           <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
             <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
           </view>
         </view>
-        <view
-          class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-          bindtap="onInspirationComposerTap"
-        >
+        <view class="inspiration-composer {{inspirationDraftPhotos.length ? 'inspiration-composer-with-photos' : ''}}">
           <scroll-view
             wx:if="{{inspirationDraftPhotos.length}}"
             class="inspiration-photo-strip"
@@ -196,10 +194,10 @@
             </view>
           </scroll-view>
           <view class="inspiration-row">
-            <textarea
+            <input
               class="inspiration-textarea"
+              type="text"
               value="{{inspirationDraftText}}"
-              focus="{{inspirationAutoFocus}}"
               hold-keyboard="{{inspirationHoldKeyboard}}"
               bindfocus="onInspirationFocus"
               bindblur="onInspirationBlur"
@@ -208,10 +206,9 @@
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               maxlength="2000"
-              auto-height
-              show-confirm-bar="{{false}}"
+              confirm-type="done"
               adjust-position="{{false}}"
-              cursor-spacing="8"
+              cursor-spacing="12"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -788,16 +785,19 @@
                           <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
                         </view>
                       </view>
-                      <view class="score-buttons">
+                      <view
+                        class="score-buttons"
+                        catchtouchstart="onScoreButtonsTouchStart"
+                        catchtouchmove="onScoreButtonsTouchMove"
+                        catchtouchend="onScoreButtonsTouchEnd"
+                        catchtouchcancel="onScoreButtonsTouchEnd"
+                      >
                         <view
                           class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
                           wx:for="{{scoreOptions}}"
                           wx:key="*this"
                           data-score="{{item}}"
-                          catchtouchstart="onScoreButtonsTouchStart"
-                          catchtouchmove="onScoreButtonsTouchMove"
-                          catchtouchend="onScoreButtonsTouchEnd"
-                          catchtouchcancel="onScoreButtonsTouchEnd"
+                          bindtouchstart="onScoreBtnTouchStart"
                           catchtap="onScoreTap"
                         >
                           <view class="score-btn-content">
@@ -830,18 +830,15 @@
       </view>
     </view>
 
-    <!-- 灵感记录 -->
-    <view class="inspiration-bar" style="margin-bottom: {{inspirationKeyboardHeight}}px">
+    <!-- 灵感记录：文档流 + 键盘时 transform 上移；勿绑 focus=false -->
+    <view class="inspiration-bar" style="{{inspirationLiftStyle}}">
       <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
         <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
           <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
         </view>
       </view>
-      <view
-        class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-        bindtap="onInspirationComposerTap"
-      >
+      <view class="inspiration-composer {{inspirationDraftPhotos.length ? 'inspiration-composer-with-photos' : ''}}">
         <scroll-view
           wx:if="{{inspirationDraftPhotos.length}}"
           class="inspiration-photo-strip"
@@ -871,10 +868,10 @@
           </view>
         </scroll-view>
         <view class="inspiration-row">
-          <textarea
+          <input
             class="inspiration-textarea"
+            type="text"
             value="{{inspirationDraftText}}"
-            focus="{{inspirationAutoFocus}}"
             hold-keyboard="{{inspirationHoldKeyboard}}"
             bindfocus="onInspirationFocus"
             bindblur="onInspirationBlur"
@@ -883,10 +880,9 @@
             placeholder="记录您的灵感..."
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
-            auto-height
-            show-confirm-bar="{{false}}"
+            confirm-type="done"
             adjust-position="{{false}}"
-            cursor-spacing="8"
+            cursor-spacing="12"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -911,9 +907,9 @@
   </block>
   </view>
 
-  <!-- 底部操作：收尾/讨论阶段非房主不显示；灵感聚焦时折叠，避免 wx:if 卸载导致整页跳动 -->
+  <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
   <view
-    class="page-footer {{inspirationInputFocused ? 'page-footer-insp-collapsed' : ''}}"
+    class="page-footer {{inspirationKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
     wx:if="{{!((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">
@@ -1011,10 +1007,4 @@
     </view>
   </view>
 
-  <view
-    class="inspiration-focus-mask"
-    wx:if="{{inspirationInputFocused}}"
-    style="bottom: calc(200rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
-    catchtap="onInspirationDismissFocus"
-  ></view>
 </view>

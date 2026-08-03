@@ -10,10 +10,10 @@ const {
   openUrl,
   withSpyRefreshGuard,
   safePageSetData
-} = require('../../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
-const { getLibraryGroupCount } = require('../../../../utils/spyWordCardAssets');
-const { SPY_PHASE } = require('../../../../utils/spyGameState');
+} = require('../../../utils/spyMode');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
+const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
+const { SPY_PHASE } = require('../../../utils/spyGameState');
 
 function shouldShowLibrary(spyGame) {
   if (!spyGame || !spyGame.phase) return true;

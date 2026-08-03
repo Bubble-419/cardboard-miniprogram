@@ -4,8 +4,8 @@ const {
   buildSpyPageUrl,
   openUrl,
   withSpyRefreshGuard
-} = require('../../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
+} = require('../../../utils/spyMode');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
 
 /** 旧分配页：兼容跳转，自动跟随到发言页 */
 Page({

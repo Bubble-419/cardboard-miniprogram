@@ -7,13 +7,13 @@ const { buildSpyPageUrl } = require('./modeRoutes');
 const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
 
 const SPY_ROUTE_BY_PAGE = {
-  spymodeindex: 'pages/main-pages/spyMode/modeIndex/index',
-  spyassign: 'pages/main-pages/spyMode/assign/index',
-  spyspeak: 'pages/main-pages/spyMode/speak/index',
-  spyvote: 'pages/main-pages/spyMode/vote/index',
-  spyresult: 'pages/main-pages/spyMode/result/index',
-  spynextround: 'pages/main-pages/spyMode/nextRound/index',
-  spysettle: 'pages/main-pages/spyMode/settle/index'
+  spymodeindex: 'packageSpy/pages/modeIndex/index',
+  spyassign: 'packageSpy/pages/assign/index',
+  spyspeak: 'packageSpy/pages/speak/index',
+  spyvote: 'packageSpy/pages/vote/index',
+  spyresult: 'packageSpy/pages/result/index',
+  spynextround: 'packageSpy/pages/nextRound/index',
+  spysettle: 'packageSpy/pages/settle/index'
 };
 
 const PHASE_TO_PAGE = {

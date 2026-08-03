@@ -11,7 +11,7 @@ Page({
     members: [],
     isHost: false,
     // 直接使用当前页面目录下的图片，避免真机路径解析问题
-    discussionImgSrc: './images/discussion.jpg'
+    discussionImgSrc: './images/discussion.webp'
   },
 
   onDiscussionImageError(e) {

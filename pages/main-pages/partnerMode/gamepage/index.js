@@ -147,9 +147,10 @@ Page({
     inspirationDraftText: '',
     inspirationDraftPhotos: [],
     inspirationInputFocused: false,
-    inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
+    /** transform 上移量；不改文档流，避免进页/点击闪动 */
+    inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     topBarPaddingRight: 30,
@@ -391,9 +392,13 @@ Page({
       this.refreshScoreStatus();
       this._syncRoundSpeech();
       this._refreshInspirationCount();
+      this._measureInspirationFooterClearance();
     }).catch((e) => {
       console.warn('gamepage onShow timer sync', e);
-      if (this._pageVisible !== false) this._refreshInspirationCount();
+      if (this._pageVisible !== false) {
+        this._refreshInspirationCount();
+        this._measureInspirationFooterClearance();
+      }
     });
   },
 
@@ -434,7 +439,8 @@ Page({
     try {
       this.setData({
         roundTimerVisible: false,
-        inspirationKeyboardHeight: 0
+        inspirationKeyboardHeight: 0,
+        inspirationLiftStyle: ''
       });
     } catch (e) {
       // ignore: 页面帧已销毁
@@ -779,7 +785,11 @@ Page({
     const tick = () => {
       if (this._pageVisible === false) return;
       // 输入灵感时避免高频 setData 顶布局/卡死
-      if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) return;
+      if (
+        this.data.inspirationInputFocused
+        || this.data.inspirationHoldKeyboard
+        || this._inspirationNativeFocused
+      ) return;
       const startedAt = this.data.partnerRoundStartedAt;
       if (!startedAt || !this.data.roundTimerReady) return;
       const timerState = getRoundTimerState(
@@ -1397,7 +1407,11 @@ Page({
         };
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
-    this._ingestExpressMessages(expressMessages, { currentRound });
+    // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
+    this._ingestExpressMessages(expressMessages, {
+      currentRound,
+      force: roundChanged || sessionChanged
+    });
     const lastExpressId = expressMessages.length
       ? (expressMessages[expressMessages.length - 1].id || '')
       : '';
@@ -1834,7 +1848,11 @@ Page({
             }
             if (page === 'gamepage') {
               // 灵感输入聚焦时跳过整页 setData，避免键盘顶起 + 轮询互相拉扯卡死
-              if (this.data.inspirationInputFocused || this.data.inspirationHoldKeyboard) {
+              if (
+                this.data.inspirationInputFocused
+                || this.data.inspirationHoldKeyboard
+                || this._inspirationNativeFocused
+              ) {
                 return true;
               }
               const prevMaster = this.data.isMasterMode;
@@ -1933,12 +1951,8 @@ Page({
       paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
       indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
     });
-    // 切到历史卡 / 当前卡时，表达列表跟随对应轮次
-    this._syncExpressChatList(this._expressMessagesAll || [], {
-      force: true,
-      scrollBottom: false,
-      cardIndex
-    });
+    // 历史纪要卡自带 play/discussionExpressChatList；页面级列表始终对应当前轮，
+    // 切卡时不得改写，否则滑动预览当前卡会短暂串出上一轮聊天记录。
   },
 
   handleAvatarTap(e) {
@@ -2502,6 +2516,31 @@ Page({
     return this._scoreSheetTapSlopPx;
   },
 
+  _getScoreSheetDragSlopPx() {
+    if (this._scoreSheetDragSlopPx != null) return this._scoreSheetDragSlopPx;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const w = (sys && sys.windowWidth) || 375;
+      this._scoreSheetDragSlopPx = Math.max(14, (w / 750) * 28);
+    } catch (e) {
+      this._scoreSheetDragSlopPx = 14;
+    }
+    return this._scoreSheetDragSlopPx;
+  },
+
+  _isScoreSheetTapGesture() {
+    const startAt = this._scoreSheetTouchAt || 0;
+    const dt = Date.now() - startAt;
+    if (dt > 380) return false;
+    const startX = this._scoreSheetTouchStartX;
+    const startY = this._scoreSheetTouchStartY;
+    if (startX == null || startY == null) return true;
+    const lastX = this._scoreSheetLastX != null ? this._scoreSheetLastX : startX;
+    const lastY = this._scoreSheetLastY != null ? this._scoreSheetLastY : startY;
+    const dragSlop = this._getScoreSheetDragSlopPx();
+    return Math.abs(lastX - startX) < dragSlop && Math.abs(lastY - startY) < dragSlop;
+  },
+
   _scoreSheetVisibleFromY(translateY, maxY, collapsedPx) {
     const y = Math.max(0, Math.min(maxY, translateY));
     // 可见高度 = 头部保留高度 + 仍未移出裁剪窗的按钮区高度
@@ -2606,7 +2645,10 @@ Page({
   },
 
   toggleScorePanel() {
-    if (this._scoreSheetDidDrag || this._scoreSheetInteractive) return;
+    // 真拖拽中不切换；轻触即使误标 DidDrag 也允许（由 tap 手势判定）
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
+    if (this._scoreSheetInteractive && this._scoreSheetFromButtons) return;
+    this._scoreSheetDidDrag = false;
     this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
   },
 
@@ -2622,7 +2664,9 @@ Page({
     this._scoreSheetAxis = '';
     this._scoreSheetInteractive = false;
     this._scoreSheetFromButtons = false;
+    this._pendingScoreTap = null;
     this._scoreSheetBaseY = this.data.scoreSheetTranslateY || 0;
+    this._scoreSheetLastX = t.clientX;
     this._scoreSheetLastY = t.clientY;
     this._scoreSheetLastAt = Date.now();
     // 拖动开始前关掉过渡，保证跟手
@@ -2631,74 +2675,76 @@ Page({
     }
   },
 
+  onScoreBtnTouchStart(e) {
+    const score = parseInt(e.currentTarget.dataset.score, 10);
+    this._pendingScoreTap = Number.isFinite(score) ? score : null;
+  },
+
   onScoreButtonsTouchStart(e) {
+    // 子按钮 bindtouchstart 可能已写入待选分；sheet start 会清空，这里先保住
+    const keptScore = this._pendingScoreTap;
     this.onScoreSheetTouchStart(e);
     // 评分按钮：默认按「可操作控件」处理；纵向拖够阈值后才改为拖面板
     this._scoreSheetFromButtons = true;
     this._scoreSheetInteractive = true;
-    this._scoreButtonTouchScore = this._readScoreFromTouch(e);
+    this._pendingScoreTap = keptScore;
+    if (this._pendingScoreTap == null) {
+      const score = parseInt(
+        (e.target && e.target.dataset && e.target.dataset.score),
+        10
+      );
+      if (Number.isFinite(score)) this._pendingScoreTap = score;
+    }
   },
 
   onScoreButtonsTouchMove(e) {
     const t = e.touches && e.touches[0];
     if (!t || this._scoreSheetTouchStartY == null) return;
+    this._scoreSheetLastX = t.clientX;
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
     const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
     const dy = Math.abs(t.clientY - (this._scoreSheetTouchStartY || 0));
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
     // 横向为主：只选分，不拖面板
-    if (!this._scoreSheetDragging && dx > dy && dx > slop) {
+    if (!this._scoreSheetDragging && dx > dy && dx > dragSlop) {
       this._scoreSheetAxis = 'x';
       this._scoreSheetInteractive = true;
       return;
     }
     if (this._scoreSheetAxis === 'x') return;
-    // 纵向超过阈值：改拖面板，松手不再当点击评分区
-    if (dy > slop && dy > dx) {
+    // 纵向超过拖动阈值：改拖面板
+    if (dy > dragSlop && dy > dx) {
       this._scoreSheetInteractive = false;
-      this._scoreButtonTouchScore = null;
       this._scoreSheetAxis = 'y';
       this.onScoreSheetTouchMove(e);
     }
   },
 
   onScoreButtonsTouchEnd(e) {
-    // 在按钮区结束：若已进入拖动则走吸附；纯点击在此提交分数
-    // （catchtouchend 会吞掉子节点 catchtap，不能只依赖 onScoreTap）
-    if (this._scoreSheetDragging) {
-      this._scoreButtonTouchScore = null;
+    const pending = this._pendingScoreTap;
+    this._pendingScoreTap = null;
+
+    // 轻触被误判为拖动时，仍按选分处理
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) {
       this.onScoreSheetTouchEnd(e);
       return;
     }
-    const score = this._scoreButtonTouchScore != null
-      ? this._scoreButtonTouchScore
-      : this._readScoreFromTouch(e);
-    this._scoreButtonTouchScore = null;
+
+    this._scoreSheetDragging = false;
+    this._scoreSheetDidDrag = false;
     this._scoreSheetTouchStartY = null;
     this._scoreSheetFromButtons = false;
-    if (score != null && !this._scoreSheetDidDrag) {
-      this._submitScoreValue(score);
+
+    // catchtouchmove 在真机上常取消 tap：touchend 直接提交
+    if (pending != null) {
+      this._applyScoreTap(pending);
     }
+
     setTimeout(() => {
       this._scoreSheetDidDrag = false;
       this._scoreSheetInteractive = false;
     }, 80);
-  },
-
-  _readScoreFromTouch(e) {
-    const dataset = (e && e.currentTarget && e.currentTarget.dataset)
-      || (e && e.target && e.target.dataset)
-      || {};
-    if (dataset.score != null && dataset.score !== '') {
-      const n = parseInt(dataset.score, 10);
-      return Number.isFinite(n) ? n : null;
-    }
-    // touchend 落在按钮容器上时，尝试从 changedTouches 命中的子节点取分
-    const mark = e && e.mark;
-    if (mark && mark.score != null) {
-      const n = parseInt(mark.score, 10);
-      return Number.isFinite(n) ? n : null;
-    }
-    return null;
   },
 
   onScoreSheetTouchMove(e) {
@@ -2707,10 +2753,14 @@ Page({
 
     const dx = Math.abs(t.clientX - (this._scoreSheetTouchStartX || 0));
     const dyFromStart = t.clientY - this._scoreSheetTouchStartY;
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
+
+    this._scoreSheetLastX = t.clientX;
+    this._scoreSheetLastY = t.clientY;
+    this._scoreSheetLastAt = Date.now();
 
     if (!this._scoreSheetDragging) {
-      if (Math.abs(dyFromStart) < slop && dx < slop) return;
+      if (Math.abs(dyFromStart) < dragSlop && dx < dragSlop) return;
       // 明显纵向才进入拖拽；横向轻微滑动忽略
       if (Math.abs(dyFromStart) <= dx) return;
       this._scoreSheetDragging = true;
@@ -2728,8 +2778,6 @@ Page({
     if (nextY < 0) nextY = 0;
     if (nextY > maxY) nextY = maxY;
 
-    this._scoreSheetLastY = t.clientY;
-    this._scoreSheetLastAt = Date.now();
     this.setData({
       scoreSheetAnimating: false,
       scoreSheetTranslateY: nextY,
@@ -2742,14 +2790,16 @@ Page({
       ? this._scoreSheetMaxY
       : (this.data.scoreSheetMaxTranslateY || 120);
     const currentY = this.data.scoreSheetTranslateY || 0;
-    const wasDragging = this._scoreSheetDragging === true;
     const interactive = this._scoreSheetInteractive === true;
-    const slop = this._getScoreSheetTapSlopPx();
+    const dragSlop = this._getScoreSheetDragSlopPx();
+    // 位移很小 / 时间很短：按点击展开收起，避免 5px 抖动导致「点了没反应」
+    const wasDragging = this._scoreSheetDragging === true && !this._isScoreSheetTapGesture();
 
     if (!wasDragging) {
       this._scoreSheetTouchStartY = null;
       this._scoreSheetFromButtons = false;
       this._scoreSheetDragging = false;
+      this._scoreSheetDidDrag = false;
       // 可操作控件上的点击：不切换面板
       if (!interactive) {
         this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
@@ -2766,10 +2816,10 @@ Page({
       : 0;
 
     let expand = this.data.scorePanelExpanded;
-    // 达到最小手势阈值后：上滑展开、下滑收起（不要求大位移）
-    if (totalDy <= -slop) {
+    // 达到拖动阈值后：上滑展开、下滑收起
+    if (totalDy <= -dragSlop) {
       expand = true;
-    } else if (totalDy >= slop) {
+    } else if (totalDy >= dragSlop) {
       expand = false;
     } else {
       expand = currentY < maxY / 2;
@@ -2785,19 +2835,26 @@ Page({
     }, 80);
   },
 
-  async onScoreTap(e) {
-    // 评分只选分，不联动面板；拖动手势过程中忽略
-    // 主路径已由 onScoreButtonsTouchEnd → _submitScoreValue；此处兜底防漏
-    if (this._scoreSheetDidDrag || this._scoreSubmitLock) return;
-    const score = this._readScoreFromTouch(e);
-    if (score == null) return;
-    await this._submitScoreValue(score);
+  onScoreTap(e) {
+    // 评分只选分，不联动面板；真实拖动手势忽略
+    this._scoreSheetInteractive = false;
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
+    if (this._scoreSheetDidDrag && !this._isScoreSheetTapGesture()) return;
+    const score = parseInt(e.currentTarget.dataset.score, 10);
+    if (!Number.isFinite(score)) return;
+    this._applyScoreTap(score);
   },
 
-  async _submitScoreValue(score) {
+  async _applyScoreTap(score) {
     if (!Number.isFinite(score)) return;
-    if (this._scoreSubmitLock) return;
-    if (this._scoreSheetDidDrag) return;
+    // 防止 touchend 兜底与 tap 双发
+    if (this._scoreTapLockScore === score && Date.now() - (this._scoreTapLockAt || 0) < 400) {
+      return;
+    }
+    this._scoreTapLockScore = score;
+    this._scoreTapLockAt = Date.now();
+    this._scoreSheetDidDrag = false;
+
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
@@ -3042,13 +3099,11 @@ Page({
     };
   },
 
-  /** 当前卡片对应的表达轮次：历史纪要卡用 item.round，最新卡用 currentRound */
-  _getExpressViewRound(cardIndex, currentRoundOverride) {
-    const summaries = this.data.displayRoundSummaries || [];
-    const idx = cardIndex != null ? cardIndex : this.data.cardIndex;
-    if (idx < summaries.length && summaries[idx] && summaries[idx].round != null) {
-      return Number(summaries[idx].round);
-    }
+  /**
+   * 页面级表达列表对应的轮次：始终为当前进行中的轮次。
+   * 历史纪要卡使用 item.*ExpressChatList，不复用页面级字段（避免 swiper 预览串台）。
+   */
+  _getExpressViewRound(currentRoundOverride) {
     const cr = currentRoundOverride != null
       ? Number(currentRoundOverride)
       : Number(this.data.currentRound);
@@ -3114,9 +3169,10 @@ Page({
       this._expressMessagesAll = messages;
     }
     const all = this._expressMessagesAll || [];
+    // 页面级列表只绑定当前轮卡片，与 swiper cardIndex 无关
     const viewRound = options.viewRound != null
       ? Number(options.viewRound)
-      : this._getExpressViewRound(options.cardIndex, options.currentRound);
+      : this._getExpressViewRound(options.currentRound);
     const lists = this._buildExpressListsForRound(all, viewRound, options.currentRound);
     const prevPlay = this.data.playExpressChatList || [];
     const prevDiscussion = this.data.discussionExpressChatList || [];
@@ -3163,12 +3219,12 @@ Page({
     const all = (this._expressMessagesAll || []).concat([msg]).slice(-40);
     this._expressMessagesAll = all;
 
-    const viewRound = this._getExpressViewRound();
+    const currentRound = this._getExpressViewRound();
     const msgRound = msg.round != null
       ? Number(msg.round)
-      : (Number(this.data.currentRound) || 0);
-    if (msgRound === viewRound) {
-      this._syncExpressChatList(all, { force: true, viewRound });
+      : currentRound;
+    if (msgRound === currentRound) {
+      this._syncExpressChatList(all, { force: true, viewRound: currentRound });
     }
     this._refreshSummaryExpressLists(all);
   },
@@ -3420,41 +3476,68 @@ Page({
     }
   },
 
-  onInspirationComposerTap() {
-    if (this._inspirationBlurTimer) {
-      clearTimeout(this._inspirationBlurTimer);
-      this._inspirationBlurTimer = null;
+  /**
+   * 灵感输入稳定策略（模拟器 + 真机）：
+   * 1) 栏体始终在文档流；icon / 输入框同高 92rpx
+   * 2) 不绑 focus 属性（真机 focus=false 会锁死输入法）；点击交给 input 原生聚焦
+   * 3) bindfocus 内禁止立刻 setData（Android 会打断键盘）；延后标记 focused
+   * 4) 真机用 transform 上移（键盘高 - 底栏高），底栏留在键盘下；devtools 忽略高度
+   */
+  _isDevtools() {
+    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
+    try {
+      const sys = wx.getSystemInfoSync();
+      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
+    } catch (e) {
+      this._isDevtoolsCached = false;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    // 已进入 focused 但键盘没起来时，必须允许再次脉冲 focus（否则要多点一次）
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: false
-      });
-      setTimeout(() => {
-        if (!this.data.inspirationInputFocused) return;
-        this.setData({ inspirationAutoFocus: true });
-      }, 48);
-      return;
-    }
-    this.setData({ inspirationAutoFocus: false });
-    setTimeout(() => {
-      if (!this.data.inspirationInputFocused) return;
-      this.setData({ inspirationAutoFocus: true });
-    }, 30);
+    return this._isDevtoolsCached;
   },
 
-  _requestInspirationAutoFocus() {
-    // 兼容旧调用：选图返回后可主动拉起键盘
-    this.setData({ inspirationAutoFocus: true });
-    if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
-    // 拉起后释放 focus 绑定，避免后续 setData 反复抢焦
-    this._inspirationAutoFocusTimer = setTimeout(() => {
-      if (this.data.inspirationAutoFocus) {
-        this.setData({ inspirationAutoFocus: false });
-      }
-    }, 320);
+  _measureInspirationFooterClearance() {
+    // 只缓存高度，禁止 setData，避免进页闪一下
+    setTimeout(() => {
+      wx.createSelectorQuery()
+        .in(this)
+        .select('.page-footer')
+        .boundingClientRect((rect) => {
+          this._inspirationFooterClearancePx = rect && rect.height
+            ? Math.ceil(rect.height)
+            : 0;
+        })
+        .exec();
+    }, 64);
+  },
+
+  _buildInspirationLiftStyle(keyboardHeight) {
+    const kh = Math.max(0, Number(keyboardHeight) || 0);
+    if (kh <= 0) return '';
+    // 栏在底栏上方：上移 (键盘高 - 底栏高) 后贴齐输入法顶边
+    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
+    const dy = Math.max(0, kh - footer);
+    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+  },
+
+  _resetInspirationKeyboardUi() {
+    return {
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: ''
+    };
+  },
+
+  _setInspirationKeyboardHeight(height) {
+    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const style = this._buildInspirationLiftStyle(next);
+    if (
+      next === this.data.inspirationKeyboardHeight
+      && style === this.data.inspirationLiftStyle
+    ) {
+      return;
+    }
+    this.setData({
+      inspirationKeyboardHeight: next,
+      inspirationLiftStyle: style
+    });
   },
 
   onInspirationFocus() {
@@ -3462,54 +3545,45 @@ Page({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    this._inspirationFocusRequestedAt = Date.now();
-    // 只标记 UI 态；释放 autoFocus，避免后续 setData 反复抢焦
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    this._inspirationNativeFocused = true;
+    // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
+    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
+    this._inspirationFocusUiTimer = setTimeout(() => {
+      this._inspirationFocusUiTimer = null;
+      if (!this._inspirationNativeFocused) return;
+      if (!this.data.inspirationInputFocused) {
+        this.setData({ inspirationInputFocused: true });
+      }
+    }, 280);
   },
 
   onInspirationBlur() {
-    // 布局抖动（footer 隐藏/mask 出现）会误触发 blur，短窗口内忽略
-    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
-      return;
+    this._inspirationNativeFocused = false;
+    if (this._inspirationFocusUiTimer) {
+      clearTimeout(this._inspirationFocusUiTimer);
+      this._inspirationFocusUiTimer = null;
     }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
-      if (this.data.inspirationHoldKeyboard) return;
+      if (this._inspirationPickingImage) return;
+      if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
-        inspirationKeyboardHeight: 0
+        inspirationHoldKeyboard: false,
+        ...this._resetInspirationKeyboardUi()
       });
     }, 180);
   },
 
-  onInspirationDismissFocus() {
-    if (this._inspirationBlurTimer) {
-      clearTimeout(this._inspirationBlurTimer);
-      this._inspirationBlurTimer = null;
-    }
-    this._inspirationFocusRequestedAt = 0;
-    this.setData({
-      inspirationInputFocused: false,
-      inspirationAutoFocus: false,
-      inspirationHoldKeyboard: false,
-      inspirationKeyboardHeight: 0
-    });
-  },
-
   onInspirationKeyboardHeightChange(e) {
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
-    if (!this.data.inspirationInputFocused && height <= 0) {
-      if (this.data.inspirationKeyboardHeight !== 0) {
-        this.setData({ inspirationKeyboardHeight: 0 });
-      }
+    const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
+    if (!active && height > 0) return;
+    if (!active && height <= 0) {
+      this._setInspirationKeyboardHeight(0);
       return;
     }
-    if (height === this.data.inspirationKeyboardHeight) return;
-    this.setData({ inspirationKeyboardHeight: height });
+    this._setInspirationKeyboardHeight(height);
   },
 
   _bindInspirationKeyboard() {
@@ -3561,6 +3635,7 @@ Page({
       wx.showToast({ title: '最多 9 张图片', icon: 'none' });
       return;
     }
+    this._inspirationPickingImage = true;
     this.setData({ inspirationHoldKeyboard: true });
     wx.showActionSheet({
       itemList: ['拍照', '从相册选择'],
@@ -3572,6 +3647,7 @@ Page({
           sourceType,
           success: (chooseRes) => {
             const paths = chooseRes.tempFilePaths || [];
+            this._inspirationPickingImage = false;
             if (!paths.length) {
               this.setData({ inspirationHoldKeyboard: false });
               return;
@@ -3579,21 +3655,20 @@ Page({
             this.setData({
               inspirationDraftPhotos: photos.concat(paths),
               inspirationInputFocused: true,
-              inspirationAutoFocus: true,
-              inspirationHoldKeyboard: true
+              inspirationHoldKeyboard: false
             });
-            this._requestInspirationAutoFocus();
           },
           fail: () => {
+            this._inspirationPickingImage = false;
             this.setData({
               inspirationHoldKeyboard: false,
-              inspirationInputFocused: true
+              inspirationInputFocused: false
             });
-            this._requestInspirationAutoFocus();
           }
         });
       },
       fail: () => {
+        this._inspirationPickingImage = false;
         this.setData({ inspirationHoldKeyboard: false });
       }
     });
@@ -3667,9 +3742,8 @@ Page({
         inspirationDraftPhotos: [],
         inspirationHasText: false,
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
         inspirationHoldKeyboard: false,
-        inspirationKeyboardHeight: 0
+        ...this._resetInspirationKeyboardUi()
       });
       wx.showToast({ title: '已保存', icon: 'success' });
       await this._refreshInspirationCount();

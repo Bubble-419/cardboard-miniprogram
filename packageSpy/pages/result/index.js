@@ -7,8 +7,8 @@ const {
   openUrl,
   roleLabel,
   withSpyRefreshGuard
-} = require('../../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../../utils/spyFollow');
+} = require('../../../utils/spyMode');
+const { followSpyRoomState } = require('../../../utils/spyFollow');
 
 Page({
   data: {

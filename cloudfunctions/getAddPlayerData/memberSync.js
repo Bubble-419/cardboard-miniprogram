@@ -116,9 +116,11 @@ async function syncRoomAfterMemberRemoved(db, room, roomId, removedMember, remai
     updateData.selectedModeId = null;
     updateData.selectedModeTitle = '';
     updateData.selectedModeDesc = '';
-    updateData.selectedBG = null;
-    updateData.spyGame = null;
-    updateData.spyAssignments = {};
+    // 用 remove 而非 null：云库对 null 对象字段后续整对象写入会失败
+    // （Cannot create field 'function' in element {selectedBG: null}）
+    updateData.selectedBG = db.command.remove();
+    updateData.spyGame = db.command.remove();
+    updateData.spyAssignments = db.command.remove();
     updateData.partnerGamePhase = 'play';
     updateData.partnerMasterMode = false;
     updateData.partnerClosingStep = 'rune';

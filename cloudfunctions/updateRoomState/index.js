@@ -403,7 +403,9 @@ exports.main = async (event, context) => {
         function: selectedBG.function || ''
       };
       if (selectedBG.platform) bgData.platform = selectedBG.platform;
-      updateData.selectedBG = bgData;
+      // 必须用 _.set：selectedBG 曾被写成 null 时，浅合并会报
+      // Cannot create field 'function' in element {selectedBG: null}
+      updateData.selectedBG = _.set(bgData);
     }
     if (selectedDesignProblem && typeof selectedDesignProblem === 'object') {
       if (!isCreator) {

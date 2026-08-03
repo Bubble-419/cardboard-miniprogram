@@ -55,16 +55,6 @@
   box-sizing: border-box;
 }
 
-/* 灵感聚焦：折叠底栏而不是卸载，减少整页闪跳 */
-.page-footer-insp-collapsed {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
 .top-bar {
   display: flex;
   align-items: center;
@@ -1278,23 +1268,23 @@ game-card-timer {
   color: rgba(94, 193, 89, 0.72);
 }
 
-/* Figma #5926:2116 — icon 49×50 + input 302×46, gap 9px */
+/* Figma #5926:2116 — icon / 输入框同高 92rpx，垂直居中对齐 */
 .inspiration-bar {
   margin: 18rpx 30rpx 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   gap: 18rpx;
   flex-shrink: 0;
   position: relative;
   z-index: 60;
-  min-height: 100rpx;
+  min-height: 92rpx;
   box-sizing: border-box;
 }
 
 .insp-icon-wrap {
-  width: 98rpx;
-  height: 100rpx;
+  width: 92rpx;
+  height: 92rpx;
   position: relative;
   flex-shrink: 0;
   z-index: 2;
@@ -1303,7 +1293,6 @@ game-card-timer {
 .insp-icon-img {
   width: 92rpx;
   height: 92rpx;
-  margin-top: 8rpx;
 }
 
 .insp-dot {
@@ -1344,8 +1333,9 @@ game-card-timer {
 .inspiration-composer {
   flex: 1;
   min-width: 0;
+  height: 92rpx;
   min-height: 92rpx;
-  padding: 18rpx 30rpx;
+  padding: 0 24rpx;
   background: #fff;
   border: 1rpx solid #d7d7d7;
   border-radius: 28rpx;
@@ -1353,6 +1343,12 @@ game-card-timer {
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+.inspiration-composer-with-photos {
+  height: auto;
+  min-height: 92rpx;
+  padding: 16rpx 24rpx;
 }
 
 .inspiration-composer-focused {
@@ -1411,18 +1407,20 @@ game-card-timer {
 .inspiration-textarea {
   flex: 1;
   min-width: 0;
-  min-height: 44rpx;
-  max-height: 200rpx;
-  font-size: 32rpx;
+  height: 48rpx;
+  min-height: 48rpx;
+  max-height: 48rpx;
+  font-size: 30rpx;
   color: #333;
-  line-height: 1.3;
+  line-height: 48rpx;
   letter-spacing: -0.02em;
+  padding: 0;
 }
 
 .inspiration-placeholder {
-  font-size: 32rpx;
+  font-size: 30rpx;
   color: #aeaeae;
-  line-height: 1.3;
+  line-height: 48rpx;
   letter-spacing: -0.02em;
 }
 
@@ -1445,14 +1443,10 @@ game-card-timer {
   height: 44rpx;
 }
 
-.inspiration-focus-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  /* bottom 由内联样式动态留出输入栏，避免盖住 textarea */
-  z-index: 50;
-  background: transparent;
+/* 键盘弹起时隐藏底栏按钮（保留占位，避免回流打断聚焦） */
+.page-footer-insp-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 房主首次进入：开始表态 spotlight 引导 */
