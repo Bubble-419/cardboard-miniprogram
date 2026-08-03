@@ -199,6 +199,38 @@
   transition: transform 0.18s ease;
 }
 
+/* 选中态：粗绿环 + 放大，压过「我」的常规描边 */
+.avatar-slot-selected {
+  z-index: 5;
+  transform: scale(1.12);
+}
+
+.avatar-slot-selected .avatar-img,
+.avatar-slot-selected .avatar-img.avatar-me {
+  border: 6rpx solid #5ec159;
+  box-shadow:
+    0 8rpx 18rpx rgba(94, 193, 89, 0.5),
+    0 0 28rpx rgba(94, 193, 89, 0.35);
+  animation: none;
+}
+
+.avatar-slot-selected .first-player-badge {
+  width: 40rpx;
+  height: 40rpx;
+  right: -4rpx;
+  bottom: -4rpx;
+  box-shadow: 0 4rpx 14rpx rgba(94, 193, 89, 0.45);
+}
+
+.avatar-slot-selected .first-player-badge-num {
+  font-size: 22rpx;
+}
+
+.avatar-slot-selected .avatar-name {
+  color: #3aae34;
+  font-weight: 600;
+}
+
 .avatar-slot-me {
   position: relative;
 }
@@ -238,8 +270,8 @@
 
 .first-player-badge {
   position: absolute;
-  right: -6rpx;
-  bottom: -6rpx;
+  right: -2rpx;
+  bottom: -2rpx;
   width: 32rpx;
   height: 32rpx;
   border-radius: 50%;

@@ -167,6 +167,7 @@ Page({
     expressChatPanelVisible: false,
     expressCanSend: false,
     expressComposerOpen: false,
+    expressInputFocus: false,
     expressDraftText: '',
     expressHasText: false,
     expressSending: false,
@@ -1532,7 +1533,7 @@ Page({
         : null;
     }
 
-    if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
+    if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
       patch.scoredCount = 0;
@@ -1541,17 +1542,14 @@ Page({
       patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
       patch.scoreSheetAnimating = false;
       patch.expressComposerOpen = false;
+      patch.expressInputFocus = false;
       patch.expressDraftText = '';
       patch.expressHasText = false;
-      if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
-        patch.expressChatPanelVisible = false;
-      }
-      if (playerChanged || roundChanged || sessionChanged || options.resetTurnUi) {
-        patch.filteredPlayerIndex = null;
-        patch.isPlayerFilterActive = false;
-        patch.cardIndexBeforeFilter = 0;
-        this._playerFilterIndex = null;
-      }
+      patch.expressChatPanelVisible = false;
+      patch.filteredPlayerIndex = null;
+      patch.isPlayerFilterActive = false;
+      patch.cardIndexBeforeFilter = 0;
+      this._playerFilterIndex = null;
       if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
         const resetCardState = this._buildDisplayCardState({
           roundSummaries,
@@ -1568,6 +1566,12 @@ Page({
         patch.indicatorPlayerIndex = resetCardState.indicatorPlayerIndex;
         patch.isPlayerFilterActive = false;
       }
+    } else if (phaseChanged) {
+      // 阶段切换只收起打分抽屉，不打断正在输入的匿名表达
+      patch.scorePanelExpanded = false;
+      patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
+      patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
+      patch.scoreSheetAnimating = false;
     }
 
     if (playerChanged || roundChanged || sessionChanged) {
@@ -2902,27 +2906,65 @@ Page({
       wx.showToast({ title: '当前阶段不可表达', icon: 'none' });
       return;
     }
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
+    }
+    if (this._expressBlurCloseTimer) {
+      clearTimeout(this._expressBlurCloseTimer);
+      this._expressBlurCloseTimer = null;
+    }
+    // 打开后短时间内忽略 blur，避免刚展开就被收起
+    this._expressIgnoreBlurUntil = Date.now() + 400;
     this.setData({
       expressComposerOpen: true,
+      expressInputFocus: false,
       expressDraftText: '',
       expressHasText: false
     });
+    this._expressFocusTimer = setTimeout(() => {
+      this._expressFocusTimer = null;
+      if (!this.data.expressComposerOpen) return;
+      this._expressIgnoreBlurUntil = Date.now() + 300;
+      this.setData({ expressInputFocus: true });
+    }, 100);
+  },
+
+  onSpectatorExpressDockTap() {
+    this.openExpressComposer();
   },
 
   closeExpressComposer() {
     if (this.data.expressSending) return;
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
+    }
+    if (this._expressBlurCloseTimer) {
+      clearTimeout(this._expressBlurCloseTimer);
+      this._expressBlurCloseTimer = null;
+    }
     this.setData({
       expressComposerOpen: false,
+      expressInputFocus: false,
       expressDraftText: '',
       expressHasText: false
     });
   },
 
   onExpressComposerBlur() {
-    // 无内容时失焦收起，避免挡聊天区
     if (this.data.expressSending) return;
-    if ((this.data.expressDraftText || '').trim()) return;
-    this.setData({ expressComposerOpen: false });
+    if (Date.now() < (this._expressIgnoreBlurUntil || 0)) return;
+    if (this._expressBlurCloseTimer) {
+      clearTimeout(this._expressBlurCloseTimer);
+    }
+    // 点发送会先 blur：稍延迟，给 submitExpress 留出手势
+    this._expressBlurCloseTimer = setTimeout(() => {
+      this._expressBlurCloseTimer = null;
+      if (this.data.expressSending) return;
+      if (!this.data.expressComposerOpen) return;
+      this.closeExpressComposer();
+    }, 180);
   },
 
   /** 出牌玩家：表态结束后（进入讨论）才可发送；讨论阶段全员可发；旁观出牌阶段可发 */
@@ -3005,6 +3047,10 @@ Page({
     if (!roomId) return;
 
     const phase = isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play';
+    if (this._expressBlurCloseTimer) {
+      clearTimeout(this._expressBlurCloseTimer);
+      this._expressBlurCloseTimer = null;
+    }
     this.setData({ expressSending: true });
     try {
       const res = await wx.cloud.callFunction({
@@ -3028,6 +3074,7 @@ Page({
       this.setData({
         expressModalVisible: false,
         expressComposerOpen: false,
+        expressInputFocus: false,
         expressDraftText: '',
         expressHasText: false
       });
