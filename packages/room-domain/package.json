@@ -1,0 +1,10 @@
+{
+  "name": "@cardboard/room-domain",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@cardboard/room-contracts": "workspace:*"
+  }
+}

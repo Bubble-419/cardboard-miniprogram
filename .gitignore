@@ -9,6 +9,9 @@ cloudfunctions/**/node_modules/
 # ========== 小程序 npm 构建产物 ==========
 miniprogram_npm/
 
+# ========== workspace ==========
+node_modules/
+
 # ========== 通用忽略 ==========
 .DS_Store
 *.log

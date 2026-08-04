@@ -6,6 +6,11 @@
 
 `refactor/room-protocol-v2`（自 `april` 切出）
 
+## 进度
+
+- Phase 0/1：见 [PHASE1_CHANGELOG.md](./PHASE1_CHANGELOG.md)
+- Phase 2：见 [PHASE2_CHANGELOG.md](./PHASE2_CHANGELOG.md)
+
 ## 冻结规则（Phase 0）
 
 重构期间禁止：
@@ -29,3 +34,5 @@
 | REVIEW_REPORT_2026-08-01.md | P0/P1 缺陷与证据 |
 | TENCENT_CLOUD_COST_RESEARCH_2026-08-01.md | 轮询与成本 |
 | REFACTORING_BLUEPRINT_2026-08-01.md | 分阶段实施方案 |
+| PHASE1_CHANGELOG.md | Phase 1 落地说明 |
+| PHASE2_CHANGELOG.md | Phase 2 落地说明 |

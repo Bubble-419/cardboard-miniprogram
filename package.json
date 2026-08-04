@@ -1,0 +1,18 @@
+{
+  "name": "cardboard-miniprogram",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cardboard 微信小程序 workspace（房间协议 V2）",
+  "scripts": {
+    "test": "node --require ./scripts/test-register.js --test tests/room-domain/*.test.js tests/room-contract/*.test.js",
+    "test:domain": "node --require ./scripts/test-register.js --test tests/room-domain/*.test.js",
+    "build:cloud": "node scripts/build-cloud-functions.js",
+    "build:roomCommand": "node scripts/build-cloud-functions.js roomCommand"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.8"
+  }
+}
