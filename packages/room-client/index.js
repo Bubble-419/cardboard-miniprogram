@@ -17,9 +17,11 @@ function normalizeLegacyResult(result, roomId) {
   const protocolVersion = result.protocolVersion != null
     ? Number(result.protocolVersion)
     : (roomState.protocolVersion != null ? Number(roomState.protocolVersion) : 1);
+  // 无 revision 时不要用 Date.now()：每次轮询都会被当成「更新」而 emit，
+  // 游戏页高频 setData 会打爆 scroll-view 横向布局。
   const revision = result.revision != null
     ? Number(result.revision)
-    : (roomState.revision != null ? Number(roomState.revision) : Date.now());
+    : (roomState.revision != null ? Number(roomState.revision) : 0);
 
   return {
     ok: true,
@@ -47,7 +49,10 @@ function normalizeLegacyResult(result, roomId) {
 function shouldApplySnapshot(prev, next) {
   if (!next || next.ok !== true) return false;
   if (!prev || prev.ok !== true) return true;
-  if (next.revision < prev.revision) return false;
+  // 双方都有正 revision 时才做单调校验；0 表示未知，交给页面 fingerprint 去重
+  if (next.revision > 0 && prev.revision > 0 && next.revision < prev.revision) {
+    return false;
+  }
   return true;
 }
 
@@ -61,8 +66,8 @@ function shouldApplySnapshot(prev, next) {
  */
 function createRoomSession(options) {
   const roomId = options.roomId;
-  const transport = options.transport;
-  const intervalMs = options.intervalMs != null ? options.intervalMs : 2000;
+  let transport = options.transport;
+  let intervalMs = options.intervalMs != null ? options.intervalMs : 2000;
   const setIntervalFn = options.setIntervalFn || setInterval;
   const clearIntervalFn = options.clearIntervalFn || clearInterval;
 
@@ -140,10 +145,16 @@ function createRoomSession(options) {
       startPolling();
       return snapshot;
     },
-    subscribe(listener) {
+    /**
+     * @param {Function} listener
+     * @param {{ emitCurrent?: boolean }} [subOpts] emitCurrent 默认 true；
+     *   gamepage 应传 false，避免进页同步 setData 打坏 scroll-view 横向头像
+     */
+    subscribe(listener, subOpts) {
       const id = ++subscriberSeq;
       subscribers.set(id, listener);
-      if (snapshot) {
+      const emitCurrent = !subOpts || subOpts.emitCurrent !== false;
+      if (emitCurrent && snapshot) {
         try {
           listener(snapshot);
         } catch (e) {
@@ -162,6 +173,21 @@ function createRoomSession(options) {
     },
     async refresh() {
       return pullOnce();
+    },
+    /**
+     * 同房间内升级轮询参数（不 dispose），避免 gamepage 进页重建会话触发布局抖动
+     */
+    reconfigure(next) {
+      if (disposed) return;
+      if (next && next.transport) {
+        transport = next.transport;
+      }
+      if (next && next.intervalMs != null && next.intervalMs !== intervalMs) {
+        intervalMs = next.intervalMs;
+        const wasPolling = !!pollTimer && !paused;
+        stopPolling();
+        if (wasPolling) startPolling();
+      }
     },
     pause() {
       paused = true;
@@ -196,6 +222,9 @@ function createRoomSession(options) {
     },
     _isPaused() {
       return paused;
+    },
+    _getIntervalMs() {
+      return intervalMs;
     }
   };
 }

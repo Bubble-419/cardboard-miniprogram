@@ -308,6 +308,12 @@
   right: 16rpx;
 }
 
+/* 出牌阶段旁观：表达钮随打分抽屉高度上移，且不受 clip overflow 影响 */
+.spectator-play-express-corner {
+  bottom: 80px;
+  transition: bottom 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .action-card-inner-spectator {
   padding: 50rpx 30rpx 220rpx;
   min-height: 100%;

@@ -90,6 +90,69 @@ describe('room-client RoomSession', () => {
     assert.equal(session._isPaused(), true);
     session.dispose();
   });
+  it('skips sync emit when emitCurrent is false', async () => {
+    const session = createRoomSession({
+      roomId: 'room-2',
+      intervalMs: 10000,
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      transport: {
+        async fetchSnapshot() {
+          return {
+            ok: true,
+            members: [],
+            roomState: { currentPage: 'gamepage', revision: 3 }
+          };
+        }
+      }
+    });
+    await session.open();
+    let notified = 0;
+    session.subscribe(() => {
+      notified += 1;
+    }, { emitCurrent: false });
+    assert.equal(notified, 0);
+    await session.refresh();
+    assert.equal(notified, 1);
+    session.dispose();
+  });
+
+  it('reconfigure upgrades interval without dropping snapshot', async () => {
+    const timers = [];
+    const session = createRoomSession({
+      roomId: 'room-3',
+      intervalMs: 2000,
+      setIntervalFn: (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length;
+      },
+      clearIntervalFn: () => {},
+      transport: {
+        async fetchSnapshot() {
+          return {
+            ok: true,
+            members: [{ playerIndex: 1 }],
+            roomState: { currentPage: 'gamepage', revision: 1 }
+          };
+        }
+      }
+    });
+    await session.open();
+    assert.equal(session.getSnapshot().revision, 1);
+    session.reconfigure({ intervalMs: 800 });
+    assert.equal(session._getIntervalMs(), 800);
+    assert.equal(session.getSnapshot().revision, 1);
+    session.dispose();
+  });
+
+  it('missing revision normalizes to 0 instead of Date.now()', () => {
+    const a = normalizeLegacyResult({
+      ok: true,
+      members: [],
+      roomState: { currentPage: 'gamepage' }
+    }, '1');
+    assert.equal(a.revision, 0);
+  });
 });
 
 describe('room-navigation projector', () => {

@@ -710,50 +710,6 @@
                       catchtouchend="onScoreSheetTouchEnd"
                       catchtouchcancel="onScoreSheetTouchEnd"
                     >
-                      <!-- 表达入口贴在抽屉顶边，随面板连续上下移动 -->
-                      <view
-                        class="spectator-express-dock {{expressComposerOpen ? 'spectator-express-dock-open' : ''}}"
-                        catchtouchstart="onScoreInteractiveTouchStart"
-                        catchtouchmove="noop"
-                        catchtap="noop"
-                      >
-                        <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
-                          <input
-                            class="spectator-express-input"
-                            value="{{expressDraftText}}"
-                            focus="{{expressComposerOpen}}"
-                            maxlength="40"
-                            confirm-type="send"
-                            placeholder="说点什么…"
-                            placeholder-class="spectator-express-placeholder"
-                            bindinput="onExpressInput"
-                            bindconfirm="submitExpress"
-                            bindblur="onExpressComposerBlur"
-                          />
-                          <view
-                            class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                            catchtap="submitExpress"
-                          >
-                            <image
-                              class="spectator-express-send-icon"
-                              src="/assets/partnerMode/icon-express-send.png"
-                              mode="aspectFit"
-                            />
-                          </view>
-                        </view>
-                        <view
-                          wx:else
-                          class="spectator-express-fab"
-                          catchtap="openExpressComposer"
-                        >
-                          <image
-                            class="spectator-express-fab-bubble"
-                            src="/assets/partnerMode/icon-express-bubble.svg"
-                            mode="aspectFit"
-                          />
-                        </view>
-                      </view>
-
                       <!-- 头部：点击展开/收起；touchend 也会兜底（真机 catchtouchmove 常吞 tap） -->
                       <view
                         class="score-sheet-handle-wrap"
@@ -792,6 +748,51 @@
                         </view>
                       </view>
                     </view>
+                  </view>
+                </view>
+
+                <!--
+                  表达入口必须在 score-sheet-clip 外：
+                  clip 为 overflow:hidden，原先 dock 用 bottom:100% 挂在抽屉顶会被裁掉
+                -->
+                <view
+                  class="card-express-corner spectator-play-express-corner {{expressComposerOpen ? 'card-express-corner-open' : ''}}"
+                  style="bottom: {{scoreSheetVisiblePx + 8}}px;"
+                >
+                  <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
+                    <input
+                      class="spectator-express-input"
+                      value="{{expressDraftText}}"
+                      focus="{{expressComposerOpen}}"
+                      maxlength="40"
+                      confirm-type="send"
+                      placeholder="说点什么…"
+                      placeholder-class="spectator-express-placeholder"
+                      bindinput="onExpressInput"
+                      bindconfirm="submitExpress"
+                      bindblur="onExpressComposerBlur"
+                    />
+                    <view
+                      class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                      catchtap="submitExpress"
+                    >
+                      <image
+                        class="spectator-express-send-icon"
+                        src="/assets/partnerMode/icon-express-send.png"
+                        mode="aspectFit"
+                      />
+                    </view>
+                  </view>
+                  <view
+                    wx:else
+                    class="express-fab-btn"
+                    catchtap="openExpressComposer"
+                  >
+                    <image
+                      class="express-fab-bubble"
+                      src="/assets/partnerMode/icon-express-bubble.svg"
+                      mode="aspectFit"
+                    />
                   </view>
                 </view>
               </view>

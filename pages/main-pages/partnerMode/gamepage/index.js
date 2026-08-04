@@ -4,7 +4,8 @@
  */
 const {
   assignAvatarImages,
-  getMemberAvatarFingerprint
+  getMemberAvatarFingerprint,
+  getAvatarStableKey
 } = require('../../../../utils/avatars');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
@@ -374,6 +375,9 @@ Page({
     this._applyPendingSpecialMoveUsed();
     if (this.data.roomId) {
       this._startStatePolling();
+      if (!this._scoreProgressFromSnapshot) {
+        this._startScorePolling();
+      }
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
@@ -381,6 +385,7 @@ Page({
     this._ensureSharedRoundTimerOnEnter().then(() => {
       this._applyPendingSpecialMoveUsed();
       this._applyAdoptDeckHint();
+      this.refreshScoreStatus();
       this._syncRoundSpeech();
       this._refreshInspirationCount();
       this._measureInspirationFooterClearance();
@@ -744,7 +749,7 @@ Page({
   },
 
   /**
-   * 倒计时到期后加速校准 RoomSession，缩短非房主刷新延迟（不再直打 getAddPlayerData）
+   * 倒计时到期后加速校准（优先 RoomSession.refresh，避免并行直打云函数）
    */
   _startRoundTimerBurstPoll() {
     this._stopRoundTimerBurstPoll();
@@ -1417,6 +1422,7 @@ Page({
       patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
       patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
       patch.scoreSheetAnimating = false;
+      this._scoreSheetMeasuredOk = false;
       patch.expressComposerOpen = false;
       patch.expressDraftText = '';
       patch.expressHasText = false;
@@ -1447,7 +1453,7 @@ Page({
       }
     }
 
-    // Phase 5：评分进度来自状态快照 progress，去掉独立 3s 评分轮询
+    // Phase 5：状态快照可带 progress；有则标记，关掉独立评分轮询
     if (roomState.scoredCount != null || (roomState.progress && roomState.progress.scoredCount != null)) {
       const scoredCount = roomState.progress && roomState.progress.scoredCount != null
         ? roomState.progress.scoredCount
@@ -1465,6 +1471,7 @@ Page({
         && !isClosingPhase(phaseForScore)
         && req > 0
         && scoredCount >= req;
+      this._scoreProgressFromSnapshot = true;
     }
 
     if (playerChanged || roundChanged || sessionChanged) {
@@ -1531,20 +1538,24 @@ Page({
       roundSummaries.length,
       roundContent.voiceLines.length,
       roundContent.turnRecords.length,
-      // 内容指纹：避免同长度改文案时轮询不刷新
+      // 内容指纹：忽略临时链 query，避免每轮签名变化触发整页 setData（打坏横向头像）
       (roundContent.playHistory || []).join('\u0001'),
       (roundContent.discussionNotes || []).join('\u0001'),
-      (roundContent.playImages || []).join('|'),
-      (roundContent.discussionImages || []).join('|'),
-      (roundContent.playBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
-      (roundContent.discussionBlocks || []).map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
+      (roundContent.playImages || []).map((u) => getAvatarStableKey(u)).join('|'),
+      (roundContent.discussionImages || []).map((u) => getAvatarStableKey(u)).join('|'),
+      (roundContent.playBlocks || []).map((b) => `${b.type}:${b.text || getAvatarStableKey(b.url) || ''}`).join('\u0001'),
+      (roundContent.discussionBlocks || []).map((b) => `${b.type}:${b.text || getAvatarStableKey(b.url) || ''}`).join('\u0001'),
       ((roomState.partnerClosingCreativePoints
         && roomState.partnerClosingCreativePoints.blocks) || [])
-        .map((b) => `${b.type}:${b.text || b.url || ''}`).join('\u0001'),
+        .map((b) => `${b.type}:${b.text || getAvatarStableKey(b.url) || ''}`).join('\u0001'),
       lastExpressId,
       paginationState.cardIndex,
       paginationState.cardCount,
       !!patch.specialMoveUsedThisTurn,
+      // Phase 5：评分进度变化也要刷 UI（原先指纹未覆盖 progress）
+      patch.scoredCount != null ? patch.scoredCount : '',
+      patch.totalRequired != null ? patch.totalRequired : '',
+      patch.canStartStatement ? 1 : 0,
       options.resetTurnUi ? 1 : 0
     ].join('#');
     const forcePatch = !!(
@@ -1558,6 +1569,10 @@ Page({
       || leftMyTurn
     );
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
+      // 指纹未变也补测抽屉：首测失败时表达入口 bottom 依赖 visiblePx
+      if (!isClosingPhase(roomPhase) && !player.isCurrentPlayer && !this._scoreSheetMeasuredOk) {
+        setTimeout(() => this._measureScoreSheetHeights(), 80);
+      }
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
     this._roomContextFingerprint = contextFingerprint;
@@ -1639,6 +1654,11 @@ Page({
 
       this._startStatePolling();
       this.refreshScoreStatus();
+      if (!this._scoreProgressFromSnapshot) {
+        this._startScorePolling();
+      } else {
+        this._stopScorePolling();
+      }
       this._roomLoaded = true;
       // 房主重开并广播；其他端跟随同一时间戳显示倒计时
       await this._ensureSharedRoundTimerOnEnter();
@@ -1652,27 +1672,23 @@ Page({
   },
 
   async refreshScoreStatus() {
-    // 兼容旧调用点：优先用最近 RoomSession / 状态快照中的 progress
-    const snap = this._boundRoomSession && this._boundRoomSession.getSnapshot
-      ? this._boundRoomSession.getSnapshot()
-      : null;
-    const state = (snap && snap.ok && snap.raw && snap.raw.roomState) || null;
-    if (state && (state.scoredCount != null || (state.progress && state.progress.scoredCount != null))) {
-      const scoredCount = state.progress && state.progress.scoredCount != null
-        ? state.progress.scoredCount
-        : state.scoredCount;
-      const totalRequired = state.progress && state.progress.requiredScoreCount != null
-        ? state.progress.requiredScoreCount
-        : (state.totalRequired != null ? state.totalRequired : this.data.totalRequired);
-      const canStartStatement = this.data.isHost
-        && !isDiscussionPhase(this.data.gamepagePhase)
-        && !isClosingPhase(this.data.gamepagePhase)
-        && totalRequired > 0
+    // 优先用状态快照里已写入的 progress（getAddPlayerData Phase 5）
+    const { scoredCount, totalRequired, isHost, gamepagePhase, roomId } = this.data;
+    if (
+      scoredCount != null
+      && totalRequired != null
+      && totalRequired > 0
+      && this._scoreProgressFromSnapshot
+    ) {
+      const canStartStatement = isHost
+        && !isDiscussionPhase(gamepagePhase)
+        && !isClosingPhase(gamepagePhase)
         && scoredCount >= totalRequired;
-      this.setData({ scoredCount, totalRequired, canStartStatement });
+      if (canStartStatement !== this.data.canStartStatement) {
+        this.setData({ canStartStatement });
+      }
       return;
     }
-    const { roomId, isHost, gamepagePhase } = this.data;
     if (!roomId || isClosingPhase(gamepagePhase)) return;
     try {
       const res = await wx.cloud.callFunction({
@@ -1681,24 +1697,30 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
-      const scoredCount = result.scoredCount || 0;
-      const totalRequired = result.totalRequired != null
+      const nextScored = result.scoredCount || 0;
+      const nextRequired = result.totalRequired != null
         ? result.totalRequired
-        : this.data.totalRequired;
+        : totalRequired;
       const canStartStatement = isHost
         && !isDiscussionPhase(gamepagePhase)
         && !isClosingPhase(gamepagePhase)
-        && totalRequired > 0
-        && scoredCount >= totalRequired;
-      this.setData({ scoredCount, totalRequired, canStartStatement });
+        && nextRequired > 0
+        && nextScored >= nextRequired;
+      this.setData({
+        scoredCount: nextScored,
+        totalRequired: nextRequired,
+        canStartStatement
+      });
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
   },
 
   _startScorePolling() {
-    // Phase 5：评分进度已并入状态轮询，不再启动独立 3s 轮询
+    // 快照已带 progress 时不再双轮询；否则回退 3s getGameScoreStatus
     this._stopScorePolling();
+    if (this._scoreProgressFromSnapshot) return;
+    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
   },
 
   _stopScorePolling() {
@@ -1712,10 +1734,12 @@ Page({
     this._stopStatePolling();
     const roomId = this.data.roomId || '';
     if (!roomId) return;
+    // emitCurrent:false —— 首屏由 loadRoomData 负责；禁止订阅瞬间同步 setData
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || '',
       intervalMs: 800,
       full: true,
+      emitCurrent: false,
       followNavigation: true,
       beforeNavigate(pollResult, page) {
         const state = pollResult.roomState || {};
@@ -1738,7 +1762,24 @@ Page({
           ) {
             return true;
           }
-          this._applyRoomContext(pollResult);
+          const prevMaster = this.data.isMasterMode;
+          const prevClosingStep = this.data.closingStep;
+          const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
+          if (
+            playerChanged
+            || phaseChanged
+            || roundChanged
+            || prevMaster !== this.data.isMasterMode
+            || prevClosingStep !== this.data.closingStep
+          ) {
+            this.refreshScoreStatus();
+          }
+          // 快照已含 progress 时关掉独立评分轮询
+          if (this._scoreProgressFromSnapshot) {
+            this._stopScorePolling();
+          } else if (!this._scorePollTimer) {
+            this._startScorePolling();
+          }
           return true;
         }
         if (page === 'statement') {
@@ -2410,7 +2451,8 @@ Page({
     return Math.max(collapsedPx, collapsedPx + (maxY - y));
   },
 
-  _measureScoreSheetHeights(done) {
+  _measureScoreSheetHeights(done, retry) {
+    const attempt = retry || 0;
     const query = wx.createSelectorQuery().in(this);
     query.select('.score-sheet').boundingClientRect();
     query.select('.score-sheet-handle-wrap').boundingClientRect();
@@ -2422,6 +2464,11 @@ Page({
       const head = rects && rects[2];
       const buttons = rects && rects[3];
       if (!sheet || !sheet.height) {
+        if (attempt < 5) {
+          setTimeout(() => this._measureScoreSheetHeights(done, attempt + 1), 60);
+          return;
+        }
+        this._scoreSheetMeasuredOk = false;
         if (typeof done === 'function') done();
         return;
       }
@@ -2436,6 +2483,7 @@ Page({
       );
       const maxY = Math.max(0, buttonsH);
       this._scoreSheetMaxY = maxY;
+      this._scoreSheetMeasuredOk = true;
       const expanded = this.data.scorePanelExpanded === true;
       const translateY = expanded ? 0 : maxY;
       // 测量中途不打断吸附动画

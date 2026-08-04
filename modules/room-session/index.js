@@ -49,26 +49,31 @@ async function openRoomSession(roomId, options) {
   const app = getApp();
   app.globalData = app.globalData || {};
   const existing = app.globalData.roomSession;
+  const intervalMs = (options && options.intervalMs) || 2000;
+  const full = !!(options && options.full);
+
   if (existing && existing.roomId === roomId) {
-    const nextInterval = (options && options.intervalMs) || existing._intervalMs;
-    const nextFull = !!(options && options.full);
-    if (
-      (options && options.intervalMs && existing._intervalMs !== nextInterval)
-      || (options && options.full != null && existing._full !== nextFull)
-    ) {
-      existing.dispose();
-      app.globalData.roomSession = null;
-    } else {
-      return existing;
+    const needInterval = options && options.intervalMs != null
+      && existing._intervalMs !== intervalMs;
+    const needFull = options && options.full != null
+      && existing._full !== full;
+    // 同房间只升级 transport / 间隔，禁止 dispose 重建（gamepage 进页会触发，曾打坏横向头像）
+    if (needInterval || needFull) {
+      existing.reconfigure({
+        intervalMs,
+        transport: createLegacyTransport(roomId, { full })
+      });
+      existing._intervalMs = intervalMs;
+      existing._full = full;
     }
+    return existing;
   }
+
   if (existing) {
     existing.dispose();
     app.globalData.roomSession = null;
   }
 
-  const intervalMs = (options && options.intervalMs) || 2000;
-  const full = !!(options && options.full);
   const session = createRoomSession({
     roomId,
     intervalMs,
@@ -107,7 +112,10 @@ function resumeRoomSession() {
  * @param {() => string} options.getRoomId
  * @param {(snapshot: object) => void} options.onSnapshot
  * @param {number} [options.intervalMs]
+ * @param {boolean} [options.full]
  * @param {boolean} [options.followNavigation] 是否对副屏走 followSubScreenRoomPoll
+ * @param {boolean} [options.emitCurrent] 订阅时是否立刻回放当前快照（默认 true）
+ *   gamepage 必须 false：进页同步 setData 会打坏 user-list 横向 scroll-view
  */
 async function bindPageToRoomSession(page, options) {
   const getRoomId = options.getRoomId;
@@ -125,6 +133,7 @@ async function bindPageToRoomSession(page, options) {
     page._roomSessionUnsub = null;
   }
 
+  const emitCurrent = options.emitCurrent !== false;
   page._roomSessionUnsub = session.subscribe((snapshot) => {
     if (!snapshot) return;
     if (typeof onSnapshot === 'function') {
@@ -137,7 +146,7 @@ async function bindPageToRoomSession(page, options) {
           : undefined
       });
     }
-  });
+  }, { emitCurrent });
 
   page._boundRoomSession = session;
   return session;
