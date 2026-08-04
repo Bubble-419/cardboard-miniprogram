@@ -70,10 +70,28 @@ function buildCapabilities(room, actorUserId) {
         : (room.workflow && Number(seatNo) === Number(room.workflow.activeSeatNo) ? 'SELF_SCORE' : null)
     },
     startStatement: {
-      allowed: isHost
-        && room.progress
-        && room.progress.requiredScoreCount > 0
-        && room.progress.scoredCount >= room.progress.requiredScoreCount,
+      allowed: (() => {
+        if (!isHost || !room.progress) return false;
+        const actingSeat = room.workflow && room.workflow.activeSeatNo != null
+          ? Number(room.workflow.activeSeatNo)
+          : (room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null);
+        const roundNo = room.workflow && room.workflow.roundNo != null
+          ? Number(room.workflow.roundNo)
+          : (room.currentRound != null ? Number(room.currentRound) : 1);
+        const expectedTurnId = (room.workflow && room.workflow.turnId)
+          || (actingSeat != null ? `turn_r${roundNo}_s${actingSeat}` : null);
+        const progressFresh = !!(
+          expectedTurnId
+          && room.progress.turnId
+          && room.progress.turnId === expectedTurnId
+        );
+        if (!progressFresh) return false;
+        const required = Math.max(
+          Number(room.progress.requiredScoreCount) || 0,
+          Math.max(0, memberCount(room.seatMap) - 1)
+        );
+        return required > 0 && (room.progress.scoredCount || 0) >= required;
+      })(),
       reason: !isHost
         ? 'HOST_ONLY'
         : 'SCORES_INCOMPLETE'
@@ -625,8 +643,22 @@ function executeCommand({
   if (type === COMMAND_TYPES.START_STATEMENT) {
     if (!isHost) return fail(ERR.HOST_REQUIRED);
     const progress = room.progress || {};
-    const scored = progress.scoredCount || 0;
-    const required = progress.requiredScoreCount || 0;
+    const actingSeat = room.workflow && room.workflow.activeSeatNo != null
+      ? Number(room.workflow.activeSeatNo)
+      : (room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null);
+    const roundNo = room.workflow && room.workflow.roundNo != null
+      ? Number(room.workflow.roundNo)
+      : (room.currentRound != null ? Number(room.currentRound) : 1);
+    const expectedTurnId = (room.workflow && room.workflow.turnId)
+      || (actingSeat != null ? `turn_r${roundNo}_s${actingSeat}` : null);
+    // 过期 progress（上一回合满分）不得放行
+    const progressFresh = !!(expectedTurnId && progress.turnId && progress.turnId === expectedTurnId);
+    const scored = progressFresh ? (progress.scoredCount || 0) : 0;
+    // 门槛取 progress 与席位数较大值，避免 seatMap 滞后写成 required=1 误放行
+    const required = Math.max(
+      progressFresh ? (Number(progress.requiredScoreCount) || 0) : 0,
+      Math.max(0, memberCount(room.seatMap) - 1)
+    );
     if (required <= 0 || scored < required) {
       return fail(ERR.INVALID_TRANSITION, '评分未完成');
     }
@@ -702,6 +734,9 @@ function executeCommand({
         partnerRoundSummaries.push({
           round: currentRound,
           ...(clientSummary || {}),
+          // 强制写入刚结束的出牌座位（覆盖客户端兜底），避免 (round-1)%n+1 误推
+          playerIndex: current,
+          playerName: room.currentPlayerName || `玩家${current}`,
           // 客户端未带齐时尽量保留服务端当前轮内容
           playHistory: (clientSummary && clientSummary.playHistory)
             || (serverContent && serverContent.playHistory)
@@ -775,6 +810,7 @@ function executeCommand({
       partnerRoundStartedAt,
       workflow,
       progress,
+      scoresByKey: {},
       revision: room.revision + 1,
       domainRevisions: {
         ...(room.domainRevisions || emptyDomainRevisions()),

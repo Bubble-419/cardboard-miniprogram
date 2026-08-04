@@ -26,6 +26,21 @@ function clearClosingVoteFields(updateData, brainstormSessionSeq) {
   return emptyState;
 }
 
+function buildFreshScoreProgress(room, currentRound, actingPlayerIndex) {
+  const seatCount = room.seatMap
+    ? Object.keys(room.seatMap).length
+    : (room.currentMemberCount != null ? Number(room.currentMemberCount) : 0);
+  const round = currentRound != null ? Number(currentRound) : 1;
+  const seat = actingPlayerIndex != null ? Number(actingPlayerIndex) : 1;
+  return {
+    scoredCount: 0,
+    requiredScoreCount: Math.max(0, seatCount - 1),
+    votedCount: 0,
+    requiredVoteCount: 0,
+    turnId: `turn_r${round}_s${seat}`
+  };
+}
+
 function makeBlockKey(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -144,7 +159,7 @@ function pickPreferredList(clientList, serverList) {
   return Array.isArray(clientList) ? clientList : (Array.isArray(serverList) ? serverList : []);
 }
 
-function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
+function buildArchivedRoundSummary(currentRound, clientSummary, serverContent, meta) {
   const client = clientSummary ? normalizePartnerRoundContent(clientSummary) : null;
   const server = normalizePartnerRoundContent(serverContent);
   const playBlocks = pickPreferredList(client && client.playBlocks, server.playBlocks);
@@ -154,7 +169,15 @@ function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
   );
   const playDerived = deriveListsFromBlocks(playBlocks);
   const discussionDerived = deriveListsFromBlocks(discussionBlocks);
-  return {
+  const playerIndex = meta && meta.playerIndex != null
+    ? Number(meta.playerIndex)
+    : (clientSummary && clientSummary.playerIndex != null
+      ? Number(clientSummary.playerIndex)
+      : null);
+  const playerName = (meta && meta.playerName)
+    || (clientSummary && clientSummary.playerName)
+    || (Number.isFinite(playerIndex) ? `玩家${playerIndex}` : '');
+  const out = {
     round: currentRound,
     playHistory: playDerived.texts.length
       ? playDerived.texts
@@ -175,6 +198,11 @@ function buildArchivedRoundSummary(currentRound, clientSummary, serverContent) {
     turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
     aiSummary: server.aiSummary || { status: 'pending' }
   };
+  if (Number.isFinite(playerIndex) && playerIndex > 0) {
+    out.playerIndex = playerIndex;
+    out.playerName = playerName;
+  }
+  return out;
 }
 
 /**
@@ -260,6 +288,7 @@ exports.main = async (event, context) => {
 
     if (incrementRound === true) {
       if (event.clearBrainstormProgress === true) {
+        // 再来一轮：重置到第 1 轮，清空纪要/表达，而不是 currentRound+=1
         roundPatch.partnerRoundSummaries = [];
         roundPatch.partnerCurrentRoundContent = emptyRoundContent;
         roundPatch.partnerClosingCreativePoints = {
@@ -267,8 +296,31 @@ exports.main = async (event, context) => {
           texts: [],
           images: []
         };
+        roundPatch.partnerExpressMessages = [];
         roundPatch.brainstormSessionSeq = getBrainstormSessionSeq(room) + 1;
         roundPatch.partnerTurnStartedAt = null;
+        roundPatch.progress = _.set({
+          scoredCount: 0,
+          requiredScoreCount: 0,
+          votedCount: 0,
+          requiredVoteCount: 0,
+          turnId: null
+        });
+        currentRound = 1;
+        // 再来一轮必须清 roomScores，否则 round 回到 1 会读到旧满分
+        try {
+          const MAX_BATCH = 100;
+          let hasMore = true;
+          while (hasMore) {
+            const scoreRes = await db.collection('roomScores').where({ roomId }).limit(MAX_BATCH).get();
+            const docs = (scoreRes && scoreRes.data) || [];
+            if (!docs.length) break;
+            await Promise.all(docs.map((doc) => db.collection('roomScores').doc(doc._id).remove()));
+            if (docs.length < MAX_BATCH) hasMore = false;
+          }
+        } catch (clearScoreErr) {
+          console.warn('[updateRoomState] clear roomScores on brainstorm reset', clearScoreErr);
+        }
       } else {
         const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
         const contentRoom = (freshRes.data && freshRes.data[0]) || room;
@@ -278,12 +330,18 @@ exports.main = async (event, context) => {
           const summaries = Array.isArray(room.partnerRoundSummaries)
             ? room.partnerRoundSummaries.slice()
             : [];
-          summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent));
+          const actingIdx = room.currentPlayerIndex != null
+            ? Number(room.currentPlayerIndex)
+            : null;
+          summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent, {
+            playerIndex: actingIdx,
+            playerName: room.currentPlayerName || (actingIdx != null ? `玩家${actingIdx}` : '')
+          }));
           roundPatch.partnerRoundSummaries = summaries;
           roundPatch.partnerCurrentRoundContent = emptyRoundContent;
         }
+        currentRound += 1;
       }
-      currentRound += 1;
       roundPatch.partnerRoundStartedAt = Date.now();
     }
     if (currentPage === 'auth') {
@@ -383,6 +441,32 @@ exports.main = async (event, context) => {
     }
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
+    // 换人/换轮进入 gamepage：必须清零评分进度，否则上一回合满分会让「开始表态」误亮
+    {
+      const pageKey = (currentPage || updateData.currentPage || '').toLowerCase();
+      const playerChanging = currentPlayerIndex != null
+        && Number(currentPlayerIndex) !== Number(room.currentPlayerIndex);
+      if (pageKey === 'gamepage' && (playerChanging || incrementRound === true)) {
+        const actingIdx = currentPlayerIndex != null
+          ? Number(currentPlayerIndex)
+          : Number(room.currentPlayerIndex);
+        updateData.progress = _.set(buildFreshScoreProgress(room, currentRound, actingIdx));
+        // 换人后清掉本房历史打分行，避免脏数据把 0 抬成满分
+        try {
+          const MAX_BATCH = 100;
+          let hasMore = true;
+          while (hasMore) {
+            const scoreRes = await db.collection('roomScores').where({ roomId }).limit(MAX_BATCH).get();
+            const docs = (scoreRes && scoreRes.data) || [];
+            if (!docs.length) break;
+            await Promise.all(docs.map((doc) => db.collection('roomScores').doc(doc._id).remove()));
+            if (docs.length < MAX_BATCH) hasMore = false;
+          }
+        } catch (clearScoreErr) {
+          console.warn('[updateRoomState] clear roomScores on turn change', clearScoreErr);
+        }
+      }
+    }
     if (passCount != null && Number.isFinite(Number(passCount))) {
       updateData.currentPassCount = Number(passCount);
     }
@@ -427,6 +511,8 @@ exports.main = async (event, context) => {
       const phase = String(partnerGamePhase);
       if (phase === 'closing') {
         updateData.partnerGamePhase = phase;
+        // legacy 写 phase 也抬 revision，避免 RoomSession 被 revision=0 快照回打
+        updateData.revision = _.inc(1);
       } else if (phase === 'play' || phase === 'discussion') {
         if (!isCreator) {
           return {
@@ -436,6 +522,7 @@ exports.main = async (event, context) => {
           };
         }
         updateData.partnerGamePhase = phase;
+        updateData.revision = _.inc(1);
       }
     }
     if (partnerMasterMode === true) {

@@ -49,11 +49,93 @@ function normalizeLegacyResult(result, roomId) {
 function shouldApplySnapshot(prev, next) {
   if (!next || next.ok !== true) return false;
   if (!prev || prev.ok !== true) return true;
-  // 双方都有正 revision 时才做单调校验；0 表示未知，交给页面 fingerprint 去重
-  if (next.revision > 0 && prev.revision > 0 && next.revision < prev.revision) {
-    return false;
-  }
+  const prevRev = Number(prev.revision) || 0;
+  const nextRev = Number(next.revision) || 0;
+  // 已建立正 revision 水位后，禁止 revision=0 的未知/旧快照回写（否则会把 play 打回 discussion）
+  if (prevRev > 0 && nextRev === 0) return false;
+  if (prevRev > 0 && nextRev > 0 && nextRev < prevRev) return false;
   return true;
+}
+
+/**
+ * 用命令结果乐观补丁本地快照（含 raw.roomState），避免只抬 revision、roomState 仍是旧 phase。
+ */
+function patchSnapshotFromCommand(prev, result) {
+  if (!result || result.ok !== true) return prev;
+  const effects = result.effects || {};
+  const rev = Number(result.appliedRevision);
+  const base = prev && prev.ok === true
+    ? prev
+    : {
+      ok: true,
+      roomId: result.roomId || '',
+      revision: 0,
+      roomState: {},
+      raw: { ok: true, roomState: {} },
+      members: [],
+      memberCount: 0
+    };
+
+  const nextRev = Number.isFinite(rev) && rev > 0
+    ? Math.max(Number(base.revision) || 0, rev)
+    : Number(base.revision) || 0;
+  const roomState = { ...(base.roomState || {}) };
+  const raw = base.raw && typeof base.raw === 'object' ? { ...base.raw } : { ok: true };
+  const rawRoomState = { ...(raw.roomState || {}) };
+
+  if (effects.advancedTurn === true || (effects.activeSeatNo != null && effects.legacyPage === 'gamepage')) {
+    roomState.partnerGamePhase = 'play';
+    rawRoomState.partnerGamePhase = 'play';
+    roomState.partnerMasterMode = false;
+    rawRoomState.partnerMasterMode = false;
+    if (effects.activeSeatNo != null) {
+      roomState.currentPlayerIndex = effects.activeSeatNo;
+      rawRoomState.currentPlayerIndex = effects.activeSeatNo;
+    }
+    if (effects.roundNo != null) {
+      roomState.currentRound = effects.roundNo;
+      rawRoomState.currentRound = effects.roundNo;
+    }
+    roomState.currentPage = 'gamepage';
+    rawRoomState.currentPage = 'gamepage';
+    // 换轮必须清零评分快照，否则 emit 瞬间仍带上一回合满分 → 误亮「开始表态」
+    const seat = effects.activeSeatNo != null
+      ? effects.activeSeatNo
+      : roomState.currentPlayerIndex;
+    const round = effects.roundNo != null
+      ? effects.roundNo
+      : roomState.currentRound;
+    const freshProgress = {
+      scoredCount: 0,
+      requiredScoreCount: 0,
+      votedCount: 0,
+      requiredVoteCount: 0,
+      turnId: (effects.turnId
+        || (seat != null && round != null ? `turn_r${round}_s${seat}` : null))
+    };
+    roomState.scoredCount = 0;
+    roomState.totalRequired = 0;
+    roomState.progress = freshProgress;
+    rawRoomState.scoredCount = 0;
+    rawRoomState.totalRequired = 0;
+    rawRoomState.progress = { ...freshProgress };
+  }
+
+  if (nextRev > 0) {
+    roomState.revision = nextRev;
+    rawRoomState.revision = nextRev;
+  }
+
+  raw.roomState = rawRoomState;
+  if (nextRev > 0) raw.revision = nextRev;
+
+  return {
+    ...base,
+    revision: nextRev,
+    roomState,
+    raw,
+    syncedAt: Date.now()
+  };
 }
 
 /**
@@ -92,9 +174,27 @@ function createRoomSession(options) {
     });
   }
 
-  async function pullOnce() {
-    if (disposed || paused || inFlight || !transport || typeof transport.fetchSnapshot !== 'function') {
+  async function pullOnce(opts) {
+    const force = !!(opts && opts.force);
+    if (disposed || paused || !transport || typeof transport.fetchSnapshot !== 'function') {
       return snapshot;
+    }
+    if (inFlight) {
+      if (!force) return snapshot;
+      // 等待当前请求结束后再强制拉一次，避免 dispatch 后读到旧 revision
+      await new Promise((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          if (!inFlight || disposed || Date.now() - started > 4000) {
+            resolve();
+            return;
+          }
+          setTimeout(tick, 24);
+        };
+        tick();
+      });
+      if (disposed || paused) return snapshot;
+      if (inFlight) return snapshot;
     }
     inFlight = true;
     const mySeq = ++seq;
@@ -171,8 +271,8 @@ function createRoomSession(options) {
     getAppliedRevision() {
       return appliedRevision;
     },
-    async refresh() {
-      return pullOnce();
+    async refresh(opts) {
+      return pullOnce(opts);
     },
     /**
      * 同房间内升级轮询参数（不 dispose），避免 gamepage 进页重建会话触发布局抖动
@@ -206,7 +306,15 @@ function createRoomSession(options) {
       }
       const result = await transport.dispatchCommand(command);
       if (result && result.ok === true) {
-        await pullOnce();
+        // 先按 effects 补丁 roomState/raw（含 phase），再抬水位并 emit，最后强制拉齐
+        snapshot = patchSnapshotFromCommand(snapshot, result);
+        appliedRevision = Math.max(
+          appliedRevision,
+          Number(snapshot && snapshot.revision) || 0,
+          Number(result.appliedRevision) || 0
+        );
+        emit();
+        await pullOnce({ force: true });
       }
       return result;
     },
@@ -232,5 +340,6 @@ function createRoomSession(options) {
 module.exports = {
   createRoomSession,
   normalizeLegacyResult,
-  shouldApplySnapshot
+  shouldApplySnapshot,
+  patchSnapshotFromCommand
 };

@@ -1,5 +1,10 @@
 const cloud = require('wx-server-sdk');
 const { getCallerOpenId, assertRoomMember } = require('./roomAuth');
+const {
+  buildTurnScoreId,
+  listEligibleScorers,
+  countEligibleScores
+} = require('./scoreProgress');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -8,7 +13,8 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /**
- * 提交当前用户对当前出牌玩家的评分（0～5），并返回本轮已评分人数与应评分总人数
+ * 提交当前用户对当前出牌玩家的评分（0～5）
+ * 仅非出牌玩家可打分；返回合格成员口径的进度
  */
 exports.main = async (event, context) => {
   const { roomId, currentPlayerIndex, score } = event || {};
@@ -50,9 +56,11 @@ exports.main = async (event, context) => {
       .where({ roomId })
       .get();
     const members = membersRes.data || [];
-    const totalRequired = Math.max(0, members.length - 1);
-    const actingMember = members.find((m) => m.playerIndex === actingPlayerIndex);
-    if (actingMember && actingMember.userId === currentUserId) {
+    const eligible = listEligibleScorers(members, actingPlayerIndex);
+    const eligibleIds = new Set(eligible.map((m) => String(m.userId)));
+    const totalRequired = eligible.length;
+
+    if (!eligibleIds.has(String(currentUserId))) {
       return {
         ok: false,
         errCode: 'SELF_SCORE',
@@ -96,21 +104,37 @@ exports.main = async (event, context) => {
       .collection(ROOM_SCORES_COLLECTION)
       .where({ roomId, currentPlayerIndex: actingPlayerIndex, round: currentRound })
       .get();
-    const actingUserId = actingMember && actingMember.userId;
-    const seen = new Set();
-    let scoredCount = 0;
-    for (const row of countRes.data || []) {
-      if (!row || !row.userId) continue;
-      if (actingUserId && row.userId === actingUserId) continue;
-      if (seen.has(row.userId)) continue;
-      seen.add(row.userId);
-      scoredCount += 1;
+    const scoredCount = countEligibleScores(countRes.data, eligibleIds);
+    const turnId = buildTurnScoreId(currentRound, actingPlayerIndex);
+
+    try {
+      const rooms = db.collection('rooms');
+      const progressPayload = {
+        scoredCount,
+        requiredScoreCount: totalRequired,
+        votedCount: (room.progress && room.progress.votedCount) || 0,
+        requiredVoteCount: (room.progress && room.progress.requiredVoteCount) || 0,
+        turnId
+      };
+      if (room._id) {
+        await rooms.doc(room._id).update({
+          data: { progress: progressPayload, updatedAt: now }
+        });
+      } else {
+        await rooms.where({ roomId }).update({
+          data: { progress: progressPayload, updatedAt: now }
+        });
+      }
+    } catch (e) {
+      console.warn('submitGameScore sync progress', e);
     }
 
     return {
       ok: true,
       scoredCount,
-      totalRequired
+      totalRequired,
+      myScore: s,
+      turnId
     };
   } catch (e) {
     console.error('submitGameScore error', e);

@@ -69,6 +69,7 @@ exports.main = async (event, context) => {
         turnRecords: [],
         aiSummary: { status: 'pending' }
       },
+      partnerExpressMessages: [],
       partnerClosingCreativePoints: {
         blocks: [],
         texts: [],
@@ -76,6 +77,13 @@ exports.main = async (event, context) => {
       },
       partnerRoundStartedAt: Date.now(),
       partnerTurnStartedAt: Date.now(),
+      progress: db.command.set({
+        scoredCount: 0,
+        requiredScoreCount: 0,
+        votedCount: 0,
+        requiredVoteCount: 0,
+        turnId: null
+      }),
       updatedAt: Date.now()
     };
 

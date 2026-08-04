@@ -17,11 +17,20 @@ function resolvePlayerName(members, playerIndex) {
 
 function enrichSummaryWithPlayer(summary, members, memberCount) {
   const round = summary && summary.round != null ? summary.round : 1;
-  const playerIndex = getActingPlayerForRound(round, memberCount);
+  const stored = summary && summary.playerIndex != null
+    ? parseInt(summary.playerIndex, 10)
+    : NaN;
+  // 优先用归档时写入的真实出牌座位；公式仅兜底旧数据（且无法表达「首位非玩家1」）
+  const playerIndex = Number.isFinite(stored) && stored > 0
+    ? stored
+    : getActingPlayerForRound(round, memberCount);
+  const storedName = summary && typeof summary.playerName === 'string'
+    ? summary.playerName.trim()
+    : '';
   return {
     ...summary,
     playerIndex,
-    playerName: resolvePlayerName(members, playerIndex)
+    playerName: storedName || resolvePlayerName(members, playerIndex)
   };
 }
 
@@ -31,7 +40,13 @@ function filterSummariesForPlayer(roundSummaries, playerIndex, memberCount) {
   return (roundSummaries || [])
     .slice()
     .sort((a, b) => (a.round || 0) - (b.round || 0))
-    .filter((item) => getActingPlayerForRound(item.round, count) === idx);
+    .filter((item) => {
+      const stored = item && item.playerIndex != null
+        ? parseInt(item.playerIndex, 10)
+        : NaN;
+      if (Number.isFinite(stored) && stored > 0) return stored === idx;
+      return getActingPlayerForRound(item.round, count) === idx;
+    });
 }
 
 function buildDisplaySummaries(roundSummaries, members, filteredPlayerIndex, isFilterActive) {

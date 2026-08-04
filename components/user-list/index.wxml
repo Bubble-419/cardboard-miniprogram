@@ -2,7 +2,9 @@
   <scroll-view
     class="avatar-scroll"
     scroll-x="{{layout !== 'stack'}}"
-    show-scrollbar="false"
+    enable-flex="{{layout !== 'stack'}}"
+    show-scrollbar="{{false}}"
+    style="{{layout !== 'stack' ? (isFold ? 'height:120rpx;max-height:120rpx;' : 'height:160rpx;max-height:160rpx;') : ''}}"
   >
     <view class="avatar-row {{layout === 'stack' ? 'avatar-row-stack' : ''}}">
       <block wx:for="{{displayList}}" wx:key="id">

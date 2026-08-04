@@ -143,4 +143,39 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(repo.rooms.get('30000001').currentPage, 'gamepage');
     assert.equal(repo.rooms.get('30000001').partnerGamePhase, 'play');
   });
+
+  it('rejects START_STATEMENT when progress belongs to previous turn', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    // 模拟表态后换人但未清 progress：席位已是 2，progress 仍是 turn_r1_s1 满分
+    room.currentPlayerIndex = 2;
+    room.workflow = {
+      mode: 'PARTNER',
+      step: 'TURN_ACTIVE',
+      roundNo: 1,
+      activeSeatNo: 2,
+      turnId: 'turn_r1_s2'
+    };
+    room.progress = {
+      scoredCount: 1,
+      requiredScoreCount: 1,
+      votedCount: 0,
+      requiredVoteCount: 0,
+      turnId: 'turn_r1_s1'
+    };
+    room.revision = (room.revision || 1) + 1;
+    const stmt = await app.execute(
+      envelope({
+        commandId: 'p5-stmt-stale',
+        type: COMMAND_TYPES.START_STATEMENT,
+        roomId: '30000001',
+        expectedRevision: room.revision
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(stmt.ok, false);
+    assert.equal(stmt.errCode, ERR.INVALID_TRANSITION);
+  });
 });

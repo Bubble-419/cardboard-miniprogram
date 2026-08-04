@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk');
 const { resolveActiveClosingVotes } = require('./closingVoteState');
+const { resolveScoreProgress } = require('./scoreProgress');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -87,35 +88,32 @@ function countValidScores(scoreRows, actingUserId) {
   return scoredCount;
 }
 
-async function loadScoreProgress(room, members) {
-  if (room.progress && room.progress.requiredScoreCount != null) {
-    return {
-      scoredCount: room.progress.scoredCount || 0,
-      totalRequired: room.progress.requiredScoreCount || 0,
-      turnId: room.progress.turnId || null
-    };
-  }
+async function loadScoreProgress(room, members, currentUserId) {
   const actingPlayerIndex = room.currentPlayerIndex != null
     ? parseInt(room.currentPlayerIndex, 10)
     : 1;
   const currentRound = room.currentRound != null ? room.currentRound : 1;
-  const actingMember = (members || []).find((m) => m.playerIndex === actingPlayerIndex);
-  const actingUserId = actingMember && actingMember.userId;
-  const totalRequired = Math.max(0, (members || []).length - 1);
+
+  let scoreRows = [];
   try {
     const scoresRes = await db
       .collection(ROOM_SCORES_COLLECTION)
       .where({ roomId: room.roomId, currentPlayerIndex: actingPlayerIndex, round: currentRound })
       .get();
-    return {
-      scoredCount: countValidScores(scoresRes.data, actingUserId),
-      totalRequired,
-      turnId: null
-    };
+    scoreRows = scoresRes.data || [];
   } catch (e) {
-    console.warn('loadScoreProgress failed', e);
-    return { scoredCount: 0, totalRequired, turnId: null };
+    console.warn('loadScoreProgress roomScores', e);
   }
+
+  return resolveScoreProgress({
+    progress: room.progress,
+    scoreRows,
+    scoresByKey: room.scoresByKey,
+    members,
+    currentRound,
+    actingPlayerIndex,
+    myUserId: currentUserId
+  });
 }
 
 function isMemberOnline(member, now, hostUserId) {
@@ -317,7 +315,7 @@ exports.main = async (event, context) => {
         sessionId: 0
       };
     const includeFullPartnerContent = event && event.full === true;
-    const scoreProgress = await loadScoreProgress(room, rawMembers);
+    const scoreProgress = await loadScoreProgress(room, rawMembers, currentUserId);
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -343,9 +341,10 @@ exports.main = async (event, context) => {
       // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
       partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null,
       spyGame: buildPublicSpyGame(room.spyGame, isHost, room.spyAssignments),
-      // Phase 5：评分进度并入状态快照，消除 gamepage 独立 3s 评分轮询
+      // 评分：只计「非出牌且仍在房」成员；myScore 用于同步「已打分/未打分」
       scoredCount: scoreProgress.scoredCount,
       totalRequired: scoreProgress.totalRequired,
+      myScore: scoreProgress.myScore,
       progress: {
         scoredCount: scoreProgress.scoredCount,
         requiredScoreCount: scoreProgress.totalRequired,
@@ -434,6 +433,9 @@ exports.main = async (event, context) => {
       selectedBG: room.selectedBG || null,
       selectedDesignProblem: room.selectedDesignProblem || null,
       roomState,
+      // 顶层 revision 供 RoomSession 单调校验；缺省时 normalize 仍会读 roomState.revision
+      revision: room.revision != null ? room.revision : null,
+      protocolVersion: room.protocolVersion != null ? room.protocolVersion : 1,
       lastEvent,
       event: lastEvent && lastEvent.type ? lastEvent.type : null
     };

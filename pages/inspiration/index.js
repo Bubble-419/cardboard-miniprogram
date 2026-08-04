@@ -280,38 +280,16 @@ Page({
   },
 
   onInspirationComposerTap() {
+    // 点击交给原生 textarea 聚焦，禁止 focus 脉冲（真机会秒收键盘）
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
     this._inspirationFocusRequestedAt = Date.now();
-    // 已进入 focused 但键盘没起来时，允许再次脉冲 focus
-    if (!this.data.inspirationInputFocused) {
-      this.setData({
-        inspirationInputFocused: true,
-        inspirationAutoFocus: false
-      });
-      setTimeout(() => {
-        if (!this.data.inspirationInputFocused) return;
-        this.setData({ inspirationAutoFocus: true });
-      }, 48);
-      return;
-    }
-    this.setData({ inspirationAutoFocus: false });
-    setTimeout(() => {
-      if (!this.data.inspirationInputFocused) return;
-      this.setData({ inspirationAutoFocus: true });
-    }, 30);
   },
 
   _requestInspirationAutoFocus() {
-    this.setData({ inspirationAutoFocus: true });
-    if (this._inspirationAutoFocusTimer) clearTimeout(this._inspirationAutoFocusTimer);
-    this._inspirationAutoFocusTimer = setTimeout(() => {
-      if (this.data.inspirationAutoFocus) {
-        this.setData({ inspirationAutoFocus: false });
-      }
-    }, 320);
+    // 保留空实现，避免其它入口报错；不再脉冲 focus
   },
 
   onInspirationFocus() {
@@ -320,49 +298,69 @@ Page({
       this._inspirationBlurTimer = null;
     }
     this._inspirationFocusRequestedAt = Date.now();
-    this.setData({
-      inspirationInputFocused: true,
-      inspirationAutoFocus: false
-    });
+    this._inspirationNativeFocused = true;
+    // 延后 setData，避免 Android 聚焦瞬间重渲把键盘打掉
+    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
+    this._inspirationFocusUiTimer = setTimeout(() => {
+      this._inspirationFocusUiTimer = null;
+      if (!this._inspirationNativeFocused) return;
+      if (!this.data.inspirationInputFocused) {
+        this.setData({ inspirationInputFocused: true });
+      }
+    }, 280);
   },
 
   onInspirationBlur() {
+    this._inspirationNativeFocused = false;
     if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
       return;
+    }
+    if (this._inspirationFocusUiTimer) {
+      clearTimeout(this._inspirationFocusUiTimer);
+      this._inspirationFocusUiTimer = null;
     }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
       if (this.data.inspirationHoldKeyboard) return;
+      if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationAutoFocus: false,
         inspirationKeyboardHeight: 0
       });
     }, 180);
   },
 
   onInspirationDismissFocus() {
+    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 400) return;
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
+    if (this._inspirationFocusUiTimer) {
+      clearTimeout(this._inspirationFocusUiTimer);
+      this._inspirationFocusUiTimer = null;
+    }
     this._inspirationFocusRequestedAt = 0;
+    this._inspirationNativeFocused = false;
     this.setData({
       inspirationInputFocused: false,
-      inspirationAutoFocus: false,
       inspirationHoldKeyboard: false,
       inspirationKeyboardHeight: 0
     });
   },
 
   onInspirationKeyboardHeightChange(e) {
+    // adjust-position=true 已由系统顶页；禁止再 margin 抬栏，否则双通道上下跳
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
-    if (!this.data.inspirationInputFocused && height <= 0) {
+    const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
+    if (!active && height <= 0) {
       if (this.data.inspirationKeyboardHeight !== 0) {
         this.setData({ inspirationKeyboardHeight: 0 });
       }
       return;
     }
+    if (active && height <= 0) return;
+    // 仅记录高度供调试/其它逻辑，不驱动布局
     if (height === this.data.inspirationKeyboardHeight) return;
     this.setData({ inspirationKeyboardHeight: height });
   },
@@ -370,22 +368,18 @@ Page({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 仅依赖 input bindkeyboardheightchange，避免双通道高度抖动
   },
 
   _unbindInspirationKeyboard() {
-    if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
     if (
       typeof wx.offKeyboardHeightChange === 'function'
       && this._onInspirationKeyboardHeightChange
     ) {
       wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+      this._onInspirationKeyboardHeightChange = null;
     }
-    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {

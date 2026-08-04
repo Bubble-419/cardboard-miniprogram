@@ -71,6 +71,7 @@ const {
   withSessionFields
 } = require('../../../../utils/partnerInspirationSession');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
+const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 
 /** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
 const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
@@ -109,6 +110,7 @@ Page({
     scoreSheetVisiblePx: 72,
     scoreSheetAnimating: false,
     totalRequired: 0,
+    scoreTurnKey: '',
     isMasterMode: false,
     closingStep: CLOSING_STEP_RUNE,
     closingQuestionPlayers: [],
@@ -154,7 +156,11 @@ Page({
     inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
-    topBarPaddingRight: 30,
+    /** 与微信胶囊垂直对齐 */
+    topBarPadTop: 20,
+    topBarHeight: 32,
+    topBarIconSize: 32,
+    topBarPaddingRight: 12,
     cardDraftText: '',
     cardDraftPhotos: [],
     cardDraftHasText: false,
@@ -188,17 +194,30 @@ Page({
 
   _applyTopBarSafeInset() {
     try {
-      const menu = wx.getMenuButtonBoundingClientRect();
+      const metrics = getCapsuleTopBarMetrics({ minBarPx: 36 });
+      // 设计问题 chip 约 74rpx，取与胶囊行高的较大值，保证垂直中心仍对齐胶囊
       const sys = typeof wx.getWindowInfo === 'function'
         ? wx.getWindowInfo()
         : wx.getSystemInfoSync();
       const windowWidth = (sys && sys.windowWidth) || 375;
-      // 避开右上角胶囊：保留「屏幕右边距到胶囊左边」的空间
-      const rightPx = Math.max(12, windowWidth - (menu.left || windowWidth) + 8);
-      const rightRpx = Math.ceil((rightPx * 750) / windowWidth);
-      this.setData({ topBarPaddingRight: rightRpx });
+      const chipNeedPx = Math.ceil((74 * windowWidth) / 750);
+      const barHeight = Math.max(metrics.barHeight, chipNeedPx);
+      const capsuleCenter = metrics.padTop + metrics.barHeight / 2;
+      // 按更大的 barHeight 重新算 padTop，使整行与胶囊中心齐平
+      const padTop = Math.max(0, Math.round(capsuleCenter - barHeight / 2));
+      this.setData({
+        topBarPadTop: padTop,
+        topBarHeight: barHeight,
+        topBarIconSize: Math.min(barHeight, Math.max(metrics.iconSize, chipNeedPx)),
+        topBarPaddingRight: Math.max(8, metrics.padRightPx + 8)
+      });
     } catch (e) {
-      this.setData({ topBarPaddingRight: 200 });
+      this.setData({
+        topBarPadTop: 48,
+        topBarHeight: 40,
+        topBarIconSize: 40,
+        topBarPaddingRight: 100
+      });
     }
   },
 
@@ -208,6 +227,9 @@ Page({
     this._expressMessagesAll = [];
     this._seenExpressIds = {};
     this._expressReady = false;
+    this._cardSwipeBusy = false;
+    this._pendingRoomContext = null;
+    this._roomDataReady = false;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -369,9 +391,7 @@ Page({
     this._applyPendingSpecialMoveUsed();
     if (this.data.roomId) {
       this._startStatePolling();
-      if (!this._scoreProgressFromSnapshot) {
-        this._startScorePolling();
-      }
+      this._startScorePolling();
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
@@ -379,7 +399,10 @@ Page({
     this._ensureSharedRoundTimerOnEnter().then(() => {
       this._applyPendingSpecialMoveUsed();
       this._applyAdoptDeckHint();
-      this.refreshScoreStatus();
+      // 等 loadRoomData 钉好 currentPlayerIndex 后再拉分，避免 URL 脏座位读到上一回合满分
+      if (this._roomDataReady) {
+        this.refreshScoreStatus();
+      }
       this._syncRoundSpeech();
       this._refreshInspirationCount();
       this._measureInspirationFooterClearance();
@@ -526,6 +549,8 @@ Page({
   _buildRoundSummaryPayload() {
     return {
       ...this._buildClientRoundContentPatch(),
+      playerIndex: this.data.currentPlayerIndex,
+      playerName: this.data.currentPlayerName || `玩家${this.data.currentPlayerIndex || ''}`,
       voiceLines: this.data.voiceLines || [],
       turnRecords: this.data.turnRecords || [],
       aiSummary: { status: 'pending' }
@@ -1137,7 +1162,7 @@ Page({
         try {
           await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
             partnerRoundStartedAt: startedAt,
-            partnerGamePhase: this.data.gamepagePhase,
+            // 只同步计时锚点，勿回写 phase，避免结束讨论后被旧态写回 discussion
             syncPartnerTurnTimer: true
           });
         } catch (e) {
@@ -1247,6 +1272,23 @@ Page({
   },
 
   _applyRoomContext(result, options = {}) {
+    // 滑动中勿 setData 改写 controlled swiper.current，否则会顶飞手势并左右晃动
+    if (this._cardSwipeBusy && !options.force && !options.resetTurnUi) {
+      this._pendingRoomContext = { result, options };
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase
+      };
+    }
+
     const members = assignAvatarImages(result.members || this.data.members || []);
     const roomState = result.roomState || {};
     const player = resolveCurrentPlayerFromRoom(
@@ -1313,6 +1355,16 @@ Page({
       currentRound,
       force: roundChanged || sessionChanged
     });
+    if (sessionChanged) {
+      this._seenExpressIds = {};
+      this._expressReady = false;
+      this._expressMessagesAll = Array.isArray(expressMessages) ? expressMessages : [];
+      // 重新播种已见 id，避免 toast 风暴；列表按新 session 过滤后自然为空
+      (this._expressMessagesAll || []).forEach((msg) => {
+        if (msg && msg.id) this._seenExpressIds[msg.id] = true;
+      });
+      this._expressReady = true;
+    }
     const lastExpressId = expressMessages.length
       ? (expressMessages[expressMessages.length - 1].id || '')
       : '';
@@ -1393,12 +1445,27 @@ Page({
       ...timerPatch,
       displayRoundSummaries: paginationState.displayRoundSummaries,
       cardCount: paginationState.cardCount,
-      paginationDots: paginationState.paginationDots,
-      cardIndex: paginationState.cardIndex,
       selectedPlayerIndex: paginationState.selectedPlayerIndex,
       indicatorPlayerIndex: paginationState.indicatorPlayerIndex,
       isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
+    // 仅在回合/会话重置时回写 cardIndex；日常轮询不得改写，否则 controlled swiper 与手势互抢
+    const shouldSyncCardIndex = !!(
+      roundChanged
+      || sessionChanged
+      || options.resetTurnUi
+      || closingStepChanged
+      || (phaseChanged && isClosingPhase(roomPhase))
+    );
+    if (shouldSyncCardIndex) {
+      patch.cardIndex = paginationState.cardIndex;
+      patch.paginationDots = paginationState.paginationDots;
+    } else if (paginationState.cardCount !== this.data.cardCount) {
+      patch.paginationDots = buildPaginationDots(
+        this.data.cardIndex,
+        paginationState.cardCount
+      );
+    }
 
     // 出牌解释/疑问讨论取房间共享态；换轮时清空内联输入草稿
     if (roundChanged || sessionChanged) {
@@ -1428,6 +1495,8 @@ Page({
       patch.selectedScore = null;
       patch.canStartStatement = false;
       patch.scoredCount = 0;
+      patch.scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
+      this._scoreProgressFromSnapshot = false;
       patch.scorePanelExpanded = false;
       patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
       patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
@@ -1463,26 +1532,64 @@ Page({
       }
     }
 
-    // Phase 5：状态快照可带 progress；有则标记，关掉独立评分轮询
-    if (roomState.scoredCount != null || (roomState.progress && roomState.progress.scoredCount != null)) {
-      const scoredCount = roomState.progress && roomState.progress.scoredCount != null
-        ? roomState.progress.scoredCount
-        : roomState.scoredCount;
-      const totalRequired = roomState.progress && roomState.progress.requiredScoreCount != null
-        ? roomState.progress.requiredScoreCount
-        : (roomState.totalRequired != null ? roomState.totalRequired : this.data.totalRequired);
-      patch.scoredCount = scoredCount;
-      if (totalRequired != null) patch.totalRequired = totalRequired;
+    // 打分进度：以 getAddPlayerData 已过滤的 scoredCount/totalRequired 为准。
+    // 换人/换轮先清零，避免进页瞬间沿用上一回合满分。
+    const scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
+    const turnScoreReset = !!(playerChanged || roundChanged || sessionChanged || options.resetTurnUi);
+    if (turnScoreReset) {
+      patch.scoredCount = 0;
+      patch.canStartStatement = false;
+      patch.scoreTurnKey = scoreTurnKey;
+      this._scoreProgressFromSnapshot = false;
+    }
+    if (roomState.scoredCount != null || roomState.totalRequired != null
+      || (roomState.progress && roomState.progress.scoredCount != null)) {
+      const progress = roomState.progress || null;
+      const progressTurnId = progress && progress.turnId ? String(progress.turnId) : '';
+      // 必须 turnId 精确匹配；缺 turnId 的旧数据不可信
+      const progressFresh = progressTurnId === scoreTurnKey;
+      const fromMembers = Math.max(0, members.length - 1);
+      let nextScored = 0;
+      let nextRequired = fromMembers;
+      if (progressFresh) {
+        nextScored = roomState.scoredCount != null
+          ? Number(roomState.scoredCount) || 0
+          : (progress && progress.scoredCount != null ? Number(progress.scoredCount) || 0 : 0);
+        const fromProgress = progress && progress.requiredScoreCount != null
+          ? Number(progress.requiredScoreCount) || 0
+          : 0;
+        const fromRoom = roomState.totalRequired != null ? Number(roomState.totalRequired) || 0 : 0;
+        nextRequired = Math.max(fromMembers, fromProgress, fromRoom);
+      } else if (!turnScoreReset && roomState.scoredCount != null && roomState.totalRequired != null
+        && !progressTurnId) {
+        // 兼容无 turnId 的极旧快照：仅同回合轮询沿用顶层计数，换轮不用
+        nextScored = Number(roomState.scoredCount) || 0;
+        nextRequired = Math.max(fromMembers, Number(roomState.totalRequired) || 0);
+      }
+      patch.scoredCount = nextScored;
+      patch.totalRequired = nextRequired;
+      patch.scoreTurnKey = scoreTurnKey;
+      // 用服务端 myScore 同步「已打分/未打分」，避免本地 selectedScore 与进度脱节
+      if (Object.prototype.hasOwnProperty.call(roomState, 'myScore')) {
+        patch.selectedScore = roomState.myScore != null ? Number(roomState.myScore) : null;
+      }
       const phaseForScore = roomPhase || this.data.gamepagePhase;
       const hostFlag = patch.isHost != null ? patch.isHost : this.data.isHost;
-      const req = patch.totalRequired != null ? patch.totalRequired : totalRequired;
+      const iAmEligible = !player.isCurrentPlayer;
+      const iHaveScored = patch.selectedScore != null;
+      // 脏数据自救：本人是合格打分者却仍「未打分」，进度不可能已满
+      if (iAmEligible && !iHaveScored && nextRequired > 0 && nextScored >= nextRequired) {
+        nextScored = Math.max(0, nextRequired - 1);
+        patch.scoredCount = nextScored;
+      }
       patch.canStartStatement = hostFlag
         && !isDiscussionPhase(phaseForScore)
         && !isClosingPhase(phaseForScore)
-        && req > 0
-        && scoredCount >= req;
-      this._scoreProgressFromSnapshot = true;
+        && nextRequired > 0
+        && nextScored >= nextRequired;
+      this._scoreProgressFromSnapshot = progressFresh;
     }
+
 
     if (playerChanged || roundChanged || sessionChanged) {
       patch.specialMoveUsedThisTurn = false;
@@ -1559,7 +1666,7 @@ Page({
         && roomState.partnerClosingCreativePoints.blocks) || [])
         .map((b) => `${b.type}:${b.text || getAvatarStableKey(b.url) || ''}`).join('\u0001'),
       lastExpressId,
-      paginationState.cardIndex,
+      // 不含 cardIndex：用户滑动不应因指纹变化触发整页 setData
       paginationState.cardCount,
       !!patch.specialMoveUsedThisTurn,
       // Phase 5：评分进度变化也要刷 UI（原先指纹未覆盖 progress）
@@ -1664,17 +1771,15 @@ Page({
 
       this._startStatePolling();
       this.refreshScoreStatus();
-      if (!this._scoreProgressFromSnapshot) {
-        this._startScorePolling();
-      } else {
-        this._stopScorePolling();
-      }
+      this._startScorePolling();
       this._roomLoaded = true;
       // 房主重开并广播；其他端跟随同一时间戳显示倒计时
       await this._ensureSharedRoundTimerOnEnter();
       await this._syncRoundSpeech();
       await this._syncRoundContentToRoom();
       await this._refreshInspirationCount();
+      this._roomDataReady = true;
+      this.refreshScoreStatus();
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -1682,24 +1787,31 @@ Page({
   },
 
   async refreshScoreStatus() {
-    // 优先用状态快照里已写入的 progress（getAddPlayerData Phase 5）
-    const { scoredCount, totalRequired, isHost, gamepagePhase, roomId } = this.data;
-    if (
-      scoredCount != null
-      && totalRequired != null
-      && totalRequired > 0
-      && this._scoreProgressFromSnapshot
-    ) {
-      const canStartStatement = isHost
-        && !isDiscussionPhase(gamepagePhase)
-        && !isClosingPhase(gamepagePhase)
-        && scoredCount >= totalRequired;
-      if (canStartStatement !== this.data.canStartStatement) {
-        this.setData({ canStartStatement });
-      }
-      return;
-    }
+    const {
+      isHost,
+      gamepagePhase,
+      roomId,
+      members,
+      currentPlayerIndex,
+      currentRound,
+      scoreTurnKey
+    } = this.data;
     if (!roomId || isClosingPhase(gamepagePhase)) return;
+
+    const expectedKey = `turn_r${currentRound != null ? currentRound : 1}_s${currentPlayerIndex != null ? currentPlayerIndex : 0}`;
+    const membersRequired = Math.max(0, (members || []).length - 1);
+
+    // 本地回合 key 对不上：先清 UI，再拉房间权威进度
+    if (!scoreTurnKey || scoreTurnKey !== expectedKey) {
+      this._scoreProgressFromSnapshot = false;
+      this.setData({
+        scoredCount: 0,
+        totalRequired: Math.max(Number(this.data.totalRequired) || 0, membersRequired),
+        canStartStatement: false,
+        scoreTurnKey: expectedKey
+      });
+    }
+
     try {
       const res = await wx.cloud.callFunction({
         name: 'getGameScoreStatus',
@@ -1707,30 +1819,71 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
-      const nextScored = result.scoredCount || 0;
-      const nextRequired = result.totalRequired != null
-        ? result.totalRequired
-        : totalRequired;
+
+      // 房间权威座位/轮次必须与当前页一致；不一致说明页状态落后或超前，丢弃，避免脏亮按钮
+      if (
+        result.currentPlayerIndex != null
+        && Number(result.currentPlayerIndex) !== Number(this.data.currentPlayerIndex)
+      ) {
+        return;
+      }
+      if (
+        result.currentRound != null
+        && Number(result.currentRound) !== Number(this.data.currentRound)
+      ) {
+        return;
+      }
+
+      let nextScored = Number(result.scoredCount) || 0;
+      const nextRequired = Math.max(
+        result.totalRequired != null ? Number(result.totalRequired) || 0 : 0,
+        membersRequired
+      );
+      const myScore = Object.prototype.hasOwnProperty.call(result, 'myScore')
+        ? (result.myScore != null ? Number(result.myScore) : null)
+        : this.data.selectedScore;
+      // 本人是非出牌玩家且未打分时，进度不得显示已满（脏数据自救）
+      if (!this.data.isCurrentPlayer && myScore == null && nextRequired > 0 && nextScored >= nextRequired) {
+        nextScored = Math.max(0, nextRequired - 1);
+      }
       const canStartStatement = isHost
         && !isDiscussionPhase(gamepagePhase)
         && !isClosingPhase(gamepagePhase)
         && nextRequired > 0
         && nextScored >= nextRequired;
-      this.setData({
+      this._scoreProgressFromSnapshot = true;
+      const patch = {
         scoredCount: nextScored,
         totalRequired: nextRequired,
-        canStartStatement
-      });
+        canStartStatement,
+        scoreTurnKey: expectedKey
+      };
+      if (Object.prototype.hasOwnProperty.call(result, 'myScore')) {
+        patch.selectedScore = myScore;
+      }
+      this.setData(patch);
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
   },
 
   _startScorePolling() {
-    // 快照已带 progress 时不再双轮询；否则回退 3s getGameScoreStatus
     this._stopScorePolling();
-    if (this._scoreProgressFromSnapshot) return;
-    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
+    // 进度未达标时始终轮询；达标后再靠快照即可
+    this._scorePollTimer = setInterval(() => {
+      if (!this._roomDataReady) return;
+      const membersRequired = Math.max(0, (this.data.members || []).length - 1);
+      const req = Math.max(Number(this.data.totalRequired) || 0, membersRequired);
+      if (
+        this._scoreProgressFromSnapshot
+        && req > 0
+        && this.data.scoredCount >= req
+      ) {
+        this._stopScorePolling();
+        return;
+      }
+      this.refreshScoreStatus();
+    }, 2000);
   },
 
   _stopScorePolling() {
@@ -1784,8 +1937,14 @@ Page({
           ) {
             this.refreshScoreStatus();
           }
-          // 快照已含 progress 时关掉独立评分轮询
-          if (this._scoreProgressFromSnapshot) {
+          // 快照 progress 未达标时继续轮询 roomScores，避免「已打分但开始表态不亮」
+          const membersRequired = Math.max(0, (this.data.members || []).length - 1);
+          const scoreReq = Math.max(Number(this.data.totalRequired) || 0, membersRequired);
+          if (
+            this._scoreProgressFromSnapshot
+            && scoreReq > 0
+            && this.data.scoredCount >= scoreReq
+          ) {
             this._stopScorePolling();
           } else if (!this._scorePollTimer) {
             this._startScorePolling();
@@ -1899,7 +2058,27 @@ Page({
     }
   },
 
+  onCardSwiperTransition() {
+    this._cardSwipeBusy = true;
+  },
+
+  onCardSwiperAnimationFinish() {
+    if (this._cardSwipeBusyTimer) {
+      clearTimeout(this._cardSwipeBusyTimer);
+      this._cardSwipeBusyTimer = null;
+    }
+    this._cardSwipeBusy = false;
+    if (!this._pendingRoomContext) return;
+    const pending = this._pendingRoomContext;
+    this._pendingRoomContext = null;
+    this._applyRoomContext(pending.result, pending.options || {});
+  },
+
   onCardSwiperChange(e) {
+    const source = e.detail && e.detail.source;
+    if (source === 'touch') {
+      this._cardSwipeBusy = true;
+    }
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
     const maxIndex = (this.data.displayRoundSummaries || []).length;
     const cardIndex = Math.min(index, maxIndex);
@@ -1910,6 +2089,15 @@ Page({
     });
     // 历史纪要卡自带 play/discussionExpressChatList；页面级列表始终对应当前轮，
     // 切卡时不得改写，否则滑动预览当前卡会短暂串出上一轮聊天记录。
+    // 部分基础库无 animationfinish：短延迟后释放锁并冲刷排队的房间补丁
+    if (source === 'touch') {
+      if (this._cardSwipeBusyTimer) clearTimeout(this._cardSwipeBusyTimer);
+      this._cardSwipeBusyTimer = setTimeout(() => {
+        this._cardSwipeBusyTimer = null;
+        if (!this._cardSwipeBusy) return;
+        this.onCardSwiperAnimationFinish();
+      }, 420);
+    }
   },
 
   handleAvatarTap(e) {
@@ -2822,16 +3010,19 @@ Page({
         return;
       }
       const scoredCount = result.scoredCount || 0;
-      const totalRequired = result.totalRequired != null
-        ? result.totalRequired
-        : this.data.totalRequired;
+      const totalRequired = Math.max(
+        result.totalRequired != null ? Number(result.totalRequired) || 0 : 0,
+        Math.max(0, (this.data.members || []).length - 1)
+      );
       this.setData({
+        selectedScore: score,
         scoredCount,
         totalRequired,
         canStartStatement: this.data.isHost
           && !isDiscussionPhase(this.data.gamepagePhase)
           && totalRequired > 0
-          && scoredCount >= totalRequired
+          && scoredCount >= totalRequired,
+        scoreTurnKey: `turn_r${this.data.currentRound != null ? this.data.currentRound : 1}_s${currentPlayerIndex}`
       });
     } catch (err) {
       console.warn('submitGameScore', err);
@@ -3064,10 +3255,18 @@ Page({
     const currentRound = currentRoundOverride != null
       ? Number(currentRoundOverride)
       : (Number(this.data.currentRound) || 0);
+    const sessionSeq = Number(this.data.brainstormSessionSeq);
+    const hasSession = Number.isFinite(sessionSeq);
     return list.filter((msg) => {
       if (!msg || !msg.id) return false;
+      // 有 session 字段的消息必须匹配当前脑暴会话；无字段的旧消息仅在当前轮兜底
+      if (hasSession && msg.brainstormSessionSeq != null) {
+        if (Number(msg.brainstormSessionSeq) !== sessionSeq) return false;
+      } else if (hasSession && sessionSeq > 0 && msg.brainstormSessionSeq == null) {
+        // 再来一轮后：丢弃无 session 的历史消息，避免 round 复用串台
+        return false;
+      }
       if (msg.round == null || msg.round === '') {
-        // 旧数据无 round：仅挂在当前轮，避免历史卡串台
         return r === currentRound;
       }
       return Number(msg.round) === r;
@@ -3305,8 +3504,8 @@ Page({
       return;
     }
 
-    const { roomId, members, currentPlayerIndex } = this.data;
-    const { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
+    const { members, currentPlayerIndex } = this.data;
+    let { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
     const extra = {
       partnerGamePhase: PHASE_PLAY,
       partnerMasterMode: false,
@@ -3327,12 +3526,41 @@ Page({
     }
 
     let ok = false;
-    const cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
+    let cmd = null;
+    cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
       incrementRound: !!incrementRound,
       roundSummary: extra.roundSummary || null
     });
     if (cmd && cmd.ok === true) {
       ok = true;
+      const effects = cmd.effects || {};
+      if (effects.activeSeatNo != null) {
+        nextIndex = toPlayerIndex(effects.activeSeatNo, nextIndex);
+        const seatMember = (members || []).find(
+          (m) => m && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
+        );
+        nextName = (seatMember && (seatMember.nickName || seatMember.name)) || `玩家${nextIndex}`;
+      }
+      if (effects.incrementRound != null) {
+        incrementRound = !!effects.incrementRound;
+      }
+      // 协议过渡期双写：钉死 play phase + 抬 revision，避免仅依赖 roomCommand 读模型
+      await this._updateRoomState('gamepage', nextIndex, nextName, {
+        partnerGamePhase: PHASE_PLAY,
+        partnerMasterMode: false
+      });
+      const session = this._boundRoomSession || getActiveRoomSession();
+      if (session && typeof session.refresh === 'function') {
+        try {
+          await session.refresh({ force: true });
+          const snap = typeof session.getSnapshot === 'function' ? session.getSnapshot() : null;
+          if (snap && snap.ok === true && snap.raw) {
+            this._applyRoomContext(snap.raw, { resetTurnUi: true });
+          }
+        } catch (e) {
+          console.warn('endDiscussion force refresh', e);
+        }
+      }
     } else {
       ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
     }
@@ -3347,14 +3575,20 @@ Page({
     if (incrementRound) {
       this._roundContentSyncToken = (this._roundContentSyncToken || 0) + 1;
     }
+    const nextRound = incrementRound
+      ? (Number(this.data.currentRound) || 1) + 1
+      : (this.data.currentRound != null ? this.data.currentRound : 1);
+    this._scoreProgressFromSnapshot = false;
     this.setData({
       currentPlayerIndex: nextIndex,
       currentPlayerName: nextName,
+      currentRound: nextRound,
       gamepagePhase: PHASE_PLAY,
       isMasterMode: false,
       selectedScore: null,
       canStartStatement: false,
       scoredCount: 0,
+      scoreTurnKey: `turn_r${nextRound}_s${nextIndex}`,
       scorePanelExpanded: false,
       scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
       scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
@@ -3373,7 +3607,7 @@ Page({
     }, () => {
       if (incrementRound) {
         this._roundSpeech && this._roundSpeech.stop();
-        this._syncRoomContext().then(() => this._syncRoundSpeech());
+        this._syncRoundSpeech();
       } else {
         this.refreshScoreStatus();
         this._syncRoundSpeech();
@@ -3491,12 +3725,8 @@ Page({
   },
 
   _buildInspirationLiftStyle(keyboardHeight) {
-    const kh = Math.max(0, Number(keyboardHeight) || 0);
-    if (kh <= 0) return '';
-    // 栏在底栏上方：上移 (键盘高 - 底栏高) 后贴齐输入法顶边
-    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
-    const dy = Math.max(0, kh - footer);
-    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+    // 真机改走系统 adjust-position，不再用 fixed/transform（会被 overflow:hidden 裁切）
+    return '';
   },
 
   _resetInspirationKeyboardUi() {
@@ -3507,17 +3737,18 @@ Page({
   },
 
   _setInspirationKeyboardHeight(height) {
+    // 仅用于隐藏底栏，避免自定义抬升把输入栏推出可视区
     const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
-    const style = this._buildInspirationLiftStyle(next);
     if (
-      next === this.data.inspirationKeyboardHeight
-      && style === this.data.inspirationLiftStyle
+      next <= 0
+      && (this._inspirationNativeFocused || this.data.inspirationInputFocused)
     ) {
       return;
     }
+    if (next === this.data.inspirationKeyboardHeight) return;
     this.setData({
       inspirationKeyboardHeight: next,
-      inspirationLiftStyle: style
+      inspirationLiftStyle: ''
     });
   },
 
@@ -3570,22 +3801,18 @@ Page({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 仅用 input 的 bindkeyboardheightchange，避免与 wx.onKeyboardHeightChange 双通道抖动
   },
 
   _unbindInspirationKeyboard() {
-    if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
     if (
       typeof wx.offKeyboardHeightChange === 'function'
       && this._onInspirationKeyboardHeightChange
     ) {
       wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+      this._onInspirationKeyboardHeightChange = null;
     }
-    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {

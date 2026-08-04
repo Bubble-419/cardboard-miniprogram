@@ -76,21 +76,17 @@
     </view>
   </scroll-view>
 
-  <!-- 灵感输入：复用 gamepage 样式，无左侧小灯泡 -->
+  <!-- 灵感输入：系统顶起页面，勿绑定 focus 脉冲 -->
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused}}"
-    style="bottom: calc(180rpx + env(safe-area-inset-bottom) + {{inspirationKeyboardHeight}}px)"
-    catchtap="onInspirationDismissFocus"
+    style="bottom: calc(180rpx + env(safe-area-inset-bottom))"
+    catchtouchstart="onInspirationDismissFocus"
   ></view>
   <view
     class="inspiration-bar {{inspirationInputFocused ? 'inspiration-bar-focused' : ''}}"
-    style="margin-bottom: {{inspirationKeyboardHeight}}px"
   >
-    <view
-      class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}"
-      bindtap="onInspirationComposerTap"
-    >
+    <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
         class="inspiration-photo-strip"
@@ -123,7 +119,6 @@
         <textarea
           class="inspiration-textarea"
           value="{{inspirationDraftText}}"
-          focus="{{inspirationAutoFocus}}"
           hold-keyboard="{{inspirationHoldKeyboard}}"
           bindfocus="onInspirationFocus"
           bindblur="onInspirationBlur"
@@ -134,8 +129,8 @@
           maxlength="2000"
           auto-height
           show-confirm-bar="{{false}}"
-          adjust-position="{{false}}"
-          cursor-spacing="8"
+          adjust-position="{{true}}"
+          cursor-spacing="120"
         />
         <view
           class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

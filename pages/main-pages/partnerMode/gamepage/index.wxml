@@ -1,36 +1,34 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        />
-      </view>
-      <view class="navbar-title"></view>
-      <view class="navbar-right"></view>
-    </view>
-  </view>
-
   <view class="page-body">
-    <!-- 顶部：房间入口 + 设计问题 -->
-    <view class="top-bar" style="padding-right: {{topBarPaddingRight}}rpx;">
-      <view class="room-entry" bindtap="handleGoRoom">
-        <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
-      </view>
+    <!-- 顶部：房间入口 + 设计问题（与微信胶囊垂直齐平） -->
+    <view
+      class="top-bar"
+      style="padding-top: {{topBarPadTop}}px; padding-right: {{topBarPaddingRight}}px;"
+    >
       <view
-        class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
-        bindtap="handleViewSituation"
+        class="top-bar-inner"
+        style="height: {{topBarHeight}}px;"
       >
-        <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
-        <view class="problem-text-wrap">
-          <text
-            id="problemText"
-            class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}} {{problemExpanded ? 'problem-text-expanded' : ''}}"
-          >{{selectedProblemText || '暂无设计问题'}}</text>
-          <text wx:if="{{selectedProblemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{selectedProblemText}}</text>
+        <view
+          class="room-entry"
+          style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
+          bindtap="handleGoRoom"
+        >
+          <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
+        </view>
+        <view
+          class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
+          style="min-height: {{topBarIconSize}}px;"
+          bindtap="handleViewSituation"
+        >
+          <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
+          <view class="problem-text-wrap">
+            <text
+              id="problemText"
+              class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}} {{problemExpanded ? 'problem-text-expanded' : ''}}"
+            >{{selectedProblemText || '暂无设计问题'}}</text>
+            <text wx:if="{{selectedProblemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{selectedProblemText}}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -207,8 +205,8 @@
               placeholder-class="inspiration-placeholder"
               maxlength="2000"
               confirm-type="done"
-              adjust-position="{{false}}"
-              cursor-spacing="12"
+              adjust-position="{{true}}"
+              cursor-spacing="120"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -239,6 +237,8 @@
         class="card-swiper"
         current="{{cardIndex}}"
         bindchange="onCardSwiperChange"
+        bindtransition="onCardSwiperTransition"
+        bindanimationfinish="onCardSwiperAnimationFinish"
         previous-margin="56rpx"
         next-margin="56rpx"
         easing-function="easeOutCubic"
@@ -865,8 +865,8 @@
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
             confirm-type="done"
-            adjust-position="{{false}}"
-            cursor-spacing="12"
+            adjust-position="{{true}}"
+            cursor-spacing="120"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

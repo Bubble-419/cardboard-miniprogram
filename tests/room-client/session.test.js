@@ -36,6 +36,56 @@ describe('room-client RoomSession', () => {
     assert.equal(shouldApplySnapshot(newer, stale), false);
   });
 
+  it('rejects revision=0 snapshot after positive revision watermark', () => {
+    const keyed = normalizeLegacyResult({
+      ok: true,
+      revision: 11,
+      roomState: { currentPage: 'gamepage', partnerGamePhase: 'play', revision: 11 }
+    }, '1');
+    const unknown = normalizeLegacyResult({
+      ok: true,
+      roomState: { currentPage: 'gamepage', partnerGamePhase: 'discussion' }
+    }, '1');
+    assert.equal(keyed.revision, 11);
+    assert.equal(unknown.revision, 0);
+    assert.equal(shouldApplySnapshot(keyed, unknown), false);
+  });
+
+  it('patches ADVANCE_TURN effects into snapshot roomState and raw', () => {
+    const {
+      patchSnapshotFromCommand
+    } = require('@cardboard/room-client');
+    const prev = normalizeLegacyResult({
+      ok: true,
+      revision: 3,
+      members: [{ playerIndex: 1 }],
+      roomState: {
+        currentPage: 'gamepage',
+        partnerGamePhase: 'discussion',
+        currentPlayerIndex: 1,
+        revision: 3
+      }
+    }, 'room-x');
+    const next = patchSnapshotFromCommand(prev, {
+      ok: true,
+      appliedRevision: 4,
+      roomId: 'room-x',
+      effects: {
+        advancedTurn: true,
+        activeSeatNo: 2,
+        roundNo: 2,
+        legacyPage: 'gamepage'
+      }
+    });
+    assert.equal(next.revision, 4);
+    assert.equal(next.roomState.partnerGamePhase, 'play');
+    assert.equal(next.roomState.currentPlayerIndex, 2);
+    assert.equal(next.roomState.scoredCount, 0);
+    assert.equal(next.roomState.progress && next.roomState.progress.scoredCount, 0);
+    assert.equal(next.raw.roomState.partnerGamePhase, 'play');
+    assert.equal(next.raw.revision, 4);
+  });
+
   it('runs a single poll loop with in-flight guard', async () => {
     let calls = 0;
     let resolveFetch;
