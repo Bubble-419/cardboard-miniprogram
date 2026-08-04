@@ -124,6 +124,7 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     );
     assert.equal(stmt.ok, true, stmt.errMsg);
     assert.equal(stmt.effects.legacyPage, 'statement');
+    assert.equal(repo.rooms.get('30000001').currentPage, 'statement');
 
     const afterStmt = repo.rooms.get('30000001');
     const adv = await app.execute(
@@ -138,5 +139,8 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(adv.ok, true, adv.errMsg);
     assert.equal(adv.effects.activeSeatNo, 2);
     assert.equal(adv.head.progress.scoredCount, 0);
+    assert.equal(repo.rooms.get('30000001').currentPlayerIndex, 2);
+    assert.equal(repo.rooms.get('30000001').currentPage, 'gamepage');
+    assert.equal(repo.rooms.get('30000001').partnerGamePhase, 'play');
   });
 });

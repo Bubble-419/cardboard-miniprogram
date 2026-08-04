@@ -1847,6 +1847,48 @@ Page({
     }
   },
 
+  /**
+   * Partner 流程命令：优先 roomCommand；revision 冲突重试一次；失败回退 updateRoomState。
+   */
+  async _dispatchPartnerCommand(type, payload) {
+    const roomId = this.data.roomId || '';
+    if (!roomId || !type) return { ok: false, errMsg: '缺少房间或命令' };
+    const session = this._boundRoomSession || getActiveRoomSession();
+    const build = () => {
+      const expectedRevision = session && typeof session.getAppliedRevision === 'function'
+        ? Number(session.getAppliedRevision())
+        : 0;
+      return {
+        protocolVersion: 2,
+        commandId: `pg_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        roomId,
+        expectedRevision,
+        payload: payload || {},
+        clientSentAt: Date.now()
+      };
+    };
+    const run = async () => {
+      const command = build();
+      if (session && typeof session.dispatch === 'function') {
+        return session.dispatch(command);
+      }
+      const res = await wx.cloud.callFunction({ name: 'roomCommand', data: command });
+      return (res && res.result) || { ok: false };
+    };
+    try {
+      let result = await run();
+      if (!result.ok && result.errCode === 'REVISION_CONFLICT' && session && typeof session.refresh === 'function') {
+        await session.refresh();
+        result = await run();
+      }
+      return result || { ok: false };
+    } catch (e) {
+      console.warn('partner roomCommand', type, e);
+      return { ok: false, errMsg: (e && e.errMsg) || (e && e.message) || '命令失败' };
+    }
+  },
+
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
     const maxIndex = (this.data.displayRoundSummaries || []).length;
@@ -3228,12 +3270,19 @@ Page({
     await this._syncRoundContentToRoom();
 
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
-    const ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
-      partnerMasterMode: false
-    });
+    let ok = false;
+    const cmd = await this._dispatchPartnerCommand('START_STATEMENT', {});
+    if (cmd && cmd.ok === true) {
+      ok = true;
+    } else {
+      // 兼容回退：旧 updateRoomState
+      ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
+        partnerMasterMode: false
+      });
+    }
     if (!ok) {
       this._startStatePolling();
-      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
       return;
     }
 
@@ -3266,9 +3315,19 @@ Page({
           : (this.data.turnRecords || [])
       };
     }
-    const ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
+
+    let ok = false;
+    const cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
+      incrementRound: !!incrementRound,
+      roundSummary: extra.roundSummary || null
+    });
+    if (cmd && cmd.ok === true) {
+      ok = true;
+    } else {
+      ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
+    }
     if (!ok) {
-      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
       return;
     }
 

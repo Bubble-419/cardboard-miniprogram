@@ -1529,6 +1529,9 @@ var require_room_domain = __commonJS({
           ...room,
           lifecycle: LIFECYCLE.ACTIVE,
           status: "STARTED",
+          currentPage: "statement",
+          brainstormProgressPage: "statement",
+          partnerMasterMode: false,
           workflow,
           revision: room.revision + 1,
           domainRevisions: {
@@ -1550,12 +1553,55 @@ var require_room_domain = __commonJS({
         if (!isHost) return fail(ERR.HOST_REQUIRED);
         const seats = Object.keys(room.seatMap || {}).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
         if (!seats.length) return fail(ERR.INVALID_TRANSITION, "\u65E0\u6709\u6548\u5E2D\u4F4D");
-        const current = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : seats[0];
+        const current = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : seats[0];
         const idx = seats.indexOf(current);
         const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
         const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
-        const roundNo = (room.workflow && room.workflow.roundNo || 1) + (wrapped ? 1 : 0);
+        const forceIncrement = !!(payload && payload.incrementRound === true);
+        const shouldArchive = wrapped || forceIncrement;
+        const prevRoundNo = room.workflow && room.workflow.roundNo || (room.currentRound != null ? Number(room.currentRound) : 1);
+        const roundNo = prevRoundNo + (shouldArchive ? 1 : 0);
         const turnId = `turn_r${roundNo}_s${nextSeat}`;
+        const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
+        const nextMember = nextUserId && room.membersByUserId ? room.membersByUserId[nextUserId] : null;
+        const nextName = nextMember && nextMember.nickName || `\u73A9\u5BB6${nextSeat}`;
+        let partnerRoundSummaries = Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries.slice() : [];
+        let partnerCurrentRoundContent = room.partnerCurrentRoundContent || null;
+        let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
+        let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
+        if (shouldArchive) {
+          const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === "object" ? payload.roundSummary : null;
+          const serverContent = room.partnerCurrentRoundContent;
+          if (clientSummary || serverContent) {
+            partnerRoundSummaries.push({
+              round: currentRound,
+              ...clientSummary || {},
+              // 客户端未带齐时尽量保留服务端当前轮内容
+              playHistory: clientSummary && clientSummary.playHistory || serverContent && serverContent.playHistory || [],
+              discussionNotes: clientSummary && clientSummary.discussionNotes || serverContent && serverContent.discussionNotes || [],
+              playImages: clientSummary && clientSummary.playImages || serverContent && serverContent.playImages || [],
+              discussionImages: clientSummary && clientSummary.discussionImages || serverContent && serverContent.discussionImages || [],
+              playBlocks: clientSummary && clientSummary.playBlocks || serverContent && serverContent.playBlocks || [],
+              discussionBlocks: clientSummary && clientSummary.discussionBlocks || serverContent && serverContent.discussionBlocks || [],
+              voiceLines: clientSummary && clientSummary.voiceLines || serverContent && serverContent.voiceLines || [],
+              turnRecords: clientSummary && clientSummary.turnRecords || serverContent && serverContent.turnRecords || []
+            });
+          }
+          partnerCurrentRoundContent = {
+            playHistory: [],
+            discussionNotes: [],
+            playImages: [],
+            discussionImages: [],
+            playBlocks: [],
+            discussionBlocks: [],
+            images: [],
+            voiceLines: [],
+            turnRecords: [],
+            aiSummary: { status: "pending" }
+          };
+          currentRound += 1;
+          partnerRoundStartedAt = ts;
+        }
         const workflow = {
           ...room.workflow || {},
           mode: "PARTNER",
@@ -1574,6 +1620,16 @@ var require_room_domain = __commonJS({
         };
         const next = {
           ...room,
+          currentPage: "gamepage",
+          brainstormProgressPage: "gamepage",
+          currentPlayerIndex: nextSeat,
+          currentPlayerName: nextName,
+          currentRound,
+          partnerGamePhase: "play",
+          partnerMasterMode: false,
+          partnerRoundSummaries,
+          partnerCurrentRoundContent,
+          partnerRoundStartedAt,
           workflow,
           progress,
           revision: room.revision + 1,
@@ -1595,6 +1651,7 @@ var require_room_domain = __commonJS({
             activeSeatNo: nextSeat,
             roundNo,
             turnId,
+            incrementRound: shouldArchive,
             legacyPage: "gamepage"
           }
         });
@@ -2037,6 +2094,14 @@ var require_room_cloudbase_adapter = __commonJS({
           selectedModeId: roomDoc.selectedModeId || null,
           currentPage: roomDoc.currentPage || null,
           brainstormProgressPage: roomDoc.brainstormProgressPage || null,
+          currentPlayerIndex: roomDoc.currentPlayerIndex != null ? Number(roomDoc.currentPlayerIndex) : null,
+          currentPlayerName: roomDoc.currentPlayerName || null,
+          currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
+          partnerGamePhase: roomDoc.partnerGamePhase || null,
+          partnerMasterMode: roomDoc.partnerMasterMode === true,
+          partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries) ? roomDoc.partnerRoundSummaries : null,
+          partnerCurrentRoundContent: roomDoc.partnerCurrentRoundContent || null,
+          partnerRoundStartedAt: roomDoc.partnerRoundStartedAt || null,
           spyGame: roomDoc.spyGame || null,
           spyAssignments: roomDoc.spyAssignments || null,
           secretsByUserId: null,
@@ -2143,6 +2208,14 @@ var require_room_cloudbase_adapter = __commonJS({
           selectedModeId: room.selectedModeId || null,
           currentPage: room.currentPage || null,
           brainstormProgressPage: room.brainstormProgressPage || null,
+          currentPlayerIndex: room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null,
+          currentPlayerName: room.currentPlayerName || null,
+          currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
+          partnerGamePhase: room.partnerGamePhase || null,
+          partnerMasterMode: room.partnerMasterMode === true,
+          partnerRoundSummaries: room.partnerRoundSummaries || null,
+          partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
+          partnerRoundStartedAt: room.partnerRoundStartedAt || null,
           spyGame: room.spyGame || null,
           // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
           spyAssignments: room.spyAssignments || null,
@@ -2158,6 +2231,8 @@ var require_room_cloudbase_adapter = __commonJS({
             workflow: setOrValue(room.workflow),
             domainRevisions: setOrValue(room.domainRevisions),
             progress: setOrValue(room.progress),
+            partnerRoundSummaries: setOrValue(room.partnerRoundSummaries),
+            partnerCurrentRoundContent: setOrValue(room.partnerCurrentRoundContent),
             spyGame: setOrValue(room.spyGame),
             spyAssignments: setOrValue(room.spyAssignments)
           };

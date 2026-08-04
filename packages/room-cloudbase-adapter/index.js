@@ -83,6 +83,16 @@ function createCloudBaseRoomRepository(deps) {
       selectedModeId: roomDoc.selectedModeId || null,
       currentPage: roomDoc.currentPage || null,
       brainstormProgressPage: roomDoc.brainstormProgressPage || null,
+      currentPlayerIndex: roomDoc.currentPlayerIndex != null ? Number(roomDoc.currentPlayerIndex) : null,
+      currentPlayerName: roomDoc.currentPlayerName || null,
+      currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
+      partnerGamePhase: roomDoc.partnerGamePhase || null,
+      partnerMasterMode: roomDoc.partnerMasterMode === true,
+      partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries)
+        ? roomDoc.partnerRoundSummaries
+        : null,
+      partnerCurrentRoundContent: roomDoc.partnerCurrentRoundContent || null,
+      partnerRoundStartedAt: roomDoc.partnerRoundStartedAt || null,
       spyGame: roomDoc.spyGame || null,
       spyAssignments: roomDoc.spyAssignments || null,
       secretsByUserId: null,
@@ -202,6 +212,14 @@ function createCloudBaseRoomRepository(deps) {
       selectedModeId: room.selectedModeId || null,
       currentPage: room.currentPage || null,
       brainstormProgressPage: room.brainstormProgressPage || null,
+      currentPlayerIndex: room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null,
+      currentPlayerName: room.currentPlayerName || null,
+      currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
+      partnerGamePhase: room.partnerGamePhase || null,
+      partnerMasterMode: room.partnerMasterMode === true,
+      partnerRoundSummaries: room.partnerRoundSummaries || null,
+      partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
+      partnerRoundStartedAt: room.partnerRoundStartedAt || null,
       spyGame: room.spyGame || null,
       // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
       spyAssignments: room.spyAssignments || null,
@@ -218,6 +236,8 @@ function createCloudBaseRoomRepository(deps) {
         workflow: setOrValue(room.workflow),
         domainRevisions: setOrValue(room.domainRevisions),
         progress: setOrValue(room.progress),
+        partnerRoundSummaries: setOrValue(room.partnerRoundSummaries),
+        partnerCurrentRoundContent: setOrValue(room.partnerCurrentRoundContent),
         spyGame: setOrValue(room.spyGame),
         spyAssignments: setOrValue(room.spyAssignments)
       };

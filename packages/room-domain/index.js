@@ -640,6 +640,9 @@ function executeCommand({
       ...room,
       lifecycle: LIFECYCLE.ACTIVE,
       status: 'STARTED',
+      currentPage: 'statement',
+      brainstormProgressPage: 'statement',
+      partnerMasterMode: false,
       workflow,
       revision: room.revision + 1,
       domainRevisions: {
@@ -667,12 +670,81 @@ function executeCommand({
     if (!seats.length) return fail(ERR.INVALID_TRANSITION, '无有效席位');
     const current = room.workflow && room.workflow.activeSeatNo != null
       ? Number(room.workflow.activeSeatNo)
-      : seats[0];
+      : (room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : seats[0]);
     const idx = seats.indexOf(current);
     const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
     const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
-    const roundNo = ((room.workflow && room.workflow.roundNo) || 1) + (wrapped ? 1 : 0);
+    const forceIncrement = !!(payload && payload.incrementRound === true);
+    const shouldArchive = wrapped || forceIncrement;
+    const prevRoundNo = (room.workflow && room.workflow.roundNo)
+      || (room.currentRound != null ? Number(room.currentRound) : 1);
+    const roundNo = prevRoundNo + (shouldArchive ? 1 : 0);
     const turnId = `turn_r${roundNo}_s${nextSeat}`;
+    const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
+    const nextMember = nextUserId && room.membersByUserId
+      ? room.membersByUserId[nextUserId]
+      : null;
+    const nextName = (nextMember && nextMember.nickName) || `玩家${nextSeat}`;
+
+    let partnerRoundSummaries = Array.isArray(room.partnerRoundSummaries)
+      ? room.partnerRoundSummaries.slice()
+      : [];
+    let partnerCurrentRoundContent = room.partnerCurrentRoundContent || null;
+    let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
+    let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
+
+    if (shouldArchive) {
+      const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === 'object'
+        ? payload.roundSummary
+        : null;
+      const serverContent = room.partnerCurrentRoundContent;
+      if (clientSummary || serverContent) {
+        partnerRoundSummaries.push({
+          round: currentRound,
+          ...(clientSummary || {}),
+          // 客户端未带齐时尽量保留服务端当前轮内容
+          playHistory: (clientSummary && clientSummary.playHistory)
+            || (serverContent && serverContent.playHistory)
+            || [],
+          discussionNotes: (clientSummary && clientSummary.discussionNotes)
+            || (serverContent && serverContent.discussionNotes)
+            || [],
+          playImages: (clientSummary && clientSummary.playImages)
+            || (serverContent && serverContent.playImages)
+            || [],
+          discussionImages: (clientSummary && clientSummary.discussionImages)
+            || (serverContent && serverContent.discussionImages)
+            || [],
+          playBlocks: (clientSummary && clientSummary.playBlocks)
+            || (serverContent && serverContent.playBlocks)
+            || [],
+          discussionBlocks: (clientSummary && clientSummary.discussionBlocks)
+            || (serverContent && serverContent.discussionBlocks)
+            || [],
+          voiceLines: (clientSummary && clientSummary.voiceLines)
+            || (serverContent && serverContent.voiceLines)
+            || [],
+          turnRecords: (clientSummary && clientSummary.turnRecords)
+            || (serverContent && serverContent.turnRecords)
+            || []
+        });
+      }
+      partnerCurrentRoundContent = {
+        playHistory: [],
+        discussionNotes: [],
+        playImages: [],
+        discussionImages: [],
+        playBlocks: [],
+        discussionBlocks: [],
+        images: [],
+        voiceLines: [],
+        turnRecords: [],
+        aiSummary: { status: 'pending' }
+      };
+      currentRound += 1;
+      partnerRoundStartedAt = ts;
+    }
+
     const workflow = {
       ...(room.workflow || {}),
       mode: 'PARTNER',
@@ -691,6 +763,16 @@ function executeCommand({
     };
     const next = {
       ...room,
+      currentPage: 'gamepage',
+      brainstormProgressPage: 'gamepage',
+      currentPlayerIndex: nextSeat,
+      currentPlayerName: nextName,
+      currentRound,
+      partnerGamePhase: 'play',
+      partnerMasterMode: false,
+      partnerRoundSummaries,
+      partnerCurrentRoundContent,
+      partnerRoundStartedAt,
       workflow,
       progress,
       revision: room.revision + 1,
@@ -712,6 +794,7 @@ function executeCommand({
         activeSeatNo: nextSeat,
         roundNo,
         turnId,
+        incrementRound: shouldArchive,
         legacyPage: 'gamepage'
       }
     });
