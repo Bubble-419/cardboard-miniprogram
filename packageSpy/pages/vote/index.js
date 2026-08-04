@@ -8,7 +8,10 @@ const {
   startSpyCountdownTicker,
   withSpyRefreshGuard,
   samePlayerIndex,
-  playerIndexIncludes
+  playerIndexIncludes,
+  startSpyRoomPoll,
+  stopSpyRoomPoll,
+  bumpSpyRoomSession
 } = require('../../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
 const { followSpyRoomState } = require('../../../utils/spyFollow');
@@ -73,18 +76,14 @@ Page({
   },
 
   startPolling() {
-    this.stopPolling();
-    this._pollTimer = setInterval(() => {
-      if (this._pageAlive === false) return;
-      this.refresh();
-    }, 800);
+    startSpyRoomPoll(this, {
+      intervalMs: 800,
+      onPollResult: (result) => this.refresh(result)
+    });
   },
 
   stopPolling() {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    stopSpyRoomPoll(this);
   },
 
   stopTicker() {
@@ -105,12 +104,14 @@ Page({
     );
   },
 
-  async refresh() {
+  async refresh(prefetchedResult) {
     const roomId = this.data.roomId;
     if (!roomId) return;
     await withSpyRefreshGuard(this, async () => {
       try {
-        const result = await fetchRoomDataOrExit(roomId);
+        const result = (prefetchedResult && prefetchedResult.ok === true)
+          ? prefetchedResult
+          : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
 
         followSpyRoomState(result, roomId, {
@@ -191,6 +192,7 @@ Page({
         return;
       }
       this.setData({ hasVoted: true });
+      bumpSpyRoomSession();
       if (result.settled) {
         openUrl(buildSpyPageUrl('settle', this.data.roomId), {
           immediate: true,

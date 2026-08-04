@@ -9,7 +9,10 @@ const {
   MIN_PLAYERS,
   openUrl,
   withSpyRefreshGuard,
-  safePageSetData
+  safePageSetData,
+  startSpyRoomPoll,
+  stopSpyRoomPoll,
+  bumpSpyRoomSession
 } = require('../../../utils/spyMode');
 const { followSpyRoomState } = require('../../../utils/spyFollow');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
@@ -78,13 +81,15 @@ Page({
     this.stopPolling();
   },
 
-  async refreshRoom() {
+  async refreshRoom(prefetchedResult) {
     const roomId = this.data.roomId;
     if (!roomId || this._pageAlive === false) return;
     await withSpyRefreshGuard(this, async () => {
       try {
         if (this._pageAlive === false) return;
-        const result = await fetchRoomDataOrExit(roomId);
+        const result = (prefetchedResult && prefetchedResult.ok === true)
+          ? prefetchedResult
+          : await fetchRoomDataOrExit(roomId);
         if (this._pageAlive === false || !result || result.ok !== true) return;
 
         followSpyRoomState(result, roomId, {
@@ -119,18 +124,14 @@ Page({
   },
 
   startPolling() {
-    this.stopPolling();
-    this._pollTimer = setInterval(() => {
-      if (this._pageAlive === false) return;
-      this.refreshRoom();
-    }, 1000);
+    startSpyRoomPoll(this, {
+      intervalMs: 1000,
+      onPollResult: (result) => this.refreshRoom(result)
+    });
   },
 
   stopPolling() {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    stopSpyRoomPoll(this);
   },
 
   onOpenLibrary() {
@@ -163,6 +164,7 @@ Page({
         immediate: true,
         noReLaunch: true
       });
+      bumpSpyRoomSession();
       if (!navigated && this._pageAlive) {
         this.setData({ starting: false });
       }

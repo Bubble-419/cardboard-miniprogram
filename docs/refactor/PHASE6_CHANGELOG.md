@@ -2,34 +2,27 @@
 
 ## 本 slice 交付
 
-### 契约 / 领域 / 仓储
+### 客户端读路径（本步）
 
-- Spy 命令矩阵已进 RoomKernel（分牌、看牌、发言、投票、结算、重启）
-- 密牌集合 `roomSecrets`；过渡期双写 `spyAssignments`
-- 词库与现网一致：`packages/room-domain/spyWordPairs.js`
+- `utils/spyMode.js`：`startSpyRoomPoll` / `stopSpyRoomPoll` 挂 App 级 RoomSession
+- **首屏仍走页面自己的 `refresh()`**；轮询 `emitCurrent: false`，避免进页同步 setData 打布局
+- 同房只 `reconfigure` 间隔，不 dispose 重建
+- `packageSpy` 各局内页已切换；写路径仍是 `roomCommand`
+- Halli 未动
 
-### 客户端切换（本步）
+### 契约 / 领域 / 仓储（此前已交付）
 
-- `utils/spyMode.js` 的 `callSpyAction` **改为调用 `roomCommand`**
-- 兼容旧 action 名（`startAssign` / `getMyCard` / `startVote` / `submitVote` / …）
-- 需 revision 的命令会先读 `getAddPlayerData.revision`
-- Halli **未动**（按产品决定暂缓）
+- Spy 命令矩阵、`roomSecrets`、词库、`_.set` 落库修复
 
-### 测试
+## 真机检查清单（Spy 读路径）
 
-- `tests/room-domain/spy-assign.test.js`
+- [ ] 大厅人数刷新正常、头像横排
+- [ ] 开局 → 发言页词卡/头像正常
+- [ ] 房主开票 → 成员自动跟进投票页
+- [ ] 投票进度人数更新
+- [ ] 结算/结果页跟页与重启
+- [ ] 从大厅进 Spy 再回大厅，RoomSession 不异常
 
-## 上传提示（重要）
+## 上传提示
 
-本步改动后需 **重新上传** `roomCommand`（词库 + settled/tied 顶层字段已打进 bundle）。
-
-客户端：预览/真机加载含新 `utils/spyMode.js` 的版本即可；`spyGameAction` 可暂留作回滚。
-
-## 真机检查清单（Spy）
-
-- [ ] 3 人开局分牌 → 发言页
-- [ ] 各自看到自己的词
-- [ ] 房主「开始投票」→ 投票页
-- [ ] 全员投票 → 结果或结算
-- [ ] 重启回 intro
-- [ ] 头像横滑、卡片区域无空框错位
+本步主要是小程序端；云函数无需因读路径重传。

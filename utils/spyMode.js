@@ -256,6 +256,81 @@ async function withSpyRefreshGuard(page, refreshFn) {
   return true;
 }
 
+/**
+ * Spy 读路径：挂 App 级 RoomSession（同房 reconfigure，不 dispose）。
+ * - emitCurrent:false：进页不立刻同步回放，避免首屏布局被二次 setData 打坏
+ * - 首屏仍由页面自己 refresh()/fetch 完成
+ * - onPollResult 收到的是 getAddPlayerData 原始 result（snapshot.raw）
+ */
+function startSpyRoomPoll(page, options) {
+  if (!page) return Promise.resolve(null);
+  const intervalMs = (options && options.intervalMs) || 1000;
+  const onPollResult = options && options.onPollResult;
+
+  if (page._pollTimer) {
+    clearInterval(page._pollTimer);
+    page._pollTimer = null;
+  }
+
+  const {
+    bindPageToRoomSession
+  } = require('../modules/room-session/index');
+
+  return bindPageToRoomSession(page, {
+    getRoomId() {
+      return page.data && page.data.roomId;
+    },
+    intervalMs,
+    full: false,
+    emitCurrent: false,
+    followNavigation: false,
+    onSnapshot(snapshot) {
+      if (page._pageAlive === false) return;
+      if (!snapshot || snapshot.ok !== true) return;
+      const result = snapshot.raw;
+      if (!result || result.ok !== true) return;
+      const roomId = page.data && page.data.roomId;
+      if (!roomId) return;
+      if (handleRoomGoneFromResult(result, roomId)) return;
+      if (handleRoomLastEvent(result, roomId)) return;
+      if (typeof onPollResult === 'function') {
+        onPollResult.call(page, result);
+      }
+    }
+  }).catch((e) => {
+    console.warn('startSpyRoomPoll', e);
+    return null;
+  });
+}
+
+function stopSpyRoomPoll(page) {
+  if (!page) return;
+  if (page._pollTimer) {
+    clearInterval(page._pollTimer);
+    page._pollTimer = null;
+  }
+  try {
+    const { unbindPageFromRoomSession } = require('../modules/room-session/index');
+    unbindPageFromRoomSession(page);
+  } catch (e) {
+    // ignore
+  }
+}
+
+/** 写命令后主动拉一次会话，避免等下一轮 poll */
+function bumpSpyRoomSession() {
+  try {
+    const { getActiveRoomSession } = require('../modules/room-session/index');
+    const session = getActiveRoomSession();
+    if (session && typeof session.refresh === 'function') {
+      return session.refresh().catch(() => null);
+    }
+  } catch (e) {
+    // ignore
+  }
+  return Promise.resolve(null);
+}
+
 module.exports = {
   SPY_PAGE,
   SPEAK_ROUND_MS,
@@ -281,5 +356,8 @@ module.exports = {
   safePageSetData,
   samePlayerIndex,
   playerIndexIncludes,
-  withSpyRefreshGuard
+  withSpyRefreshGuard,
+  startSpyRoomPoll,
+  stopSpyRoomPoll,
+  bumpSpyRoomSession
 };

@@ -3,7 +3,9 @@ const {
   goRoomPage,
   buildSpyPageUrl,
   openUrl,
-  withSpyRefreshGuard
+  withSpyRefreshGuard,
+  startSpyRoomPoll,
+  stopSpyRoomPoll
 } = require('../../../utils/spyMode');
 const { followSpyRoomState } = require('../../../utils/spyFollow');
 
@@ -23,31 +25,38 @@ Page({
   onShow() {
     this._pageAlive = true;
     this.refresh();
-    this._pollTimer = setInterval(() => this.refresh(), 800);
+    this.startPolling();
   },
 
   onHide() {
     this._pageAlive = false;
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    this.stopPolling();
   },
 
   onUnload() {
     this._pageAlive = false;
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    this.stopPolling();
   },
 
-  async refresh() {
+  startPolling() {
+    startSpyRoomPoll(this, {
+      intervalMs: 800,
+      onPollResult: (result) => this.refresh(result)
+    });
+  },
+
+  stopPolling() {
+    stopSpyRoomPoll(this);
+  },
+
+  async refresh(prefetchedResult) {
     const roomId = this.data.roomId;
     if (!roomId) return;
     await withSpyRefreshGuard(this, async () => {
       try {
-        const result = await fetchRoomDataOrExit(roomId);
+        const result = (prefetchedResult && prefetchedResult.ok === true)
+          ? prefetchedResult
+          : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
         const followed = followSpyRoomState(result, roomId, { allowHost: true });
         if (!followed) {
@@ -61,7 +70,7 @@ Page({
 
   handleGoRoom() {
     this._pageAlive = false;
-    if (typeof this.stopPolling === 'function') this.stopPolling();
+    this.stopPolling();
     goRoomPage(this.data.roomId);
   }
 });
