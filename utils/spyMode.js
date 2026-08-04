@@ -286,15 +286,30 @@ function startSpyRoomPoll(page, options) {
     followNavigation: false,
     onSnapshot(snapshot) {
       if (page._pageAlive === false) return;
-      if (!snapshot || snapshot.ok !== true) return;
-      const result = snapshot.raw;
-      if (!result || result.ok !== true) return;
+      if (!snapshot) return;
       const roomId = page.data && page.data.roomId;
       if (!roomId) return;
-      if (handleRoomGoneFromResult(result, roomId)) return;
-      if (handleRoomLastEvent(result, roomId)) return;
+
+      // 解散/不在房间：ok:false，必须先处理回首页（不可因 ok 短路）
+      const raw = snapshot.raw;
+      if (raw && handleRoomGoneFromResult(raw, roomId)) return;
+      if (!snapshot.ok) {
+        if (handleRoomGoneFromResult({
+          ok: false,
+          errCode: snapshot.errCode,
+          errMsg: snapshot.errMsg,
+          roomDissolved: snapshot.errCode === 'ROOM_DISSOLVED'
+            || snapshot.errCode === 'ROOM_NOT_FOUND',
+          event: snapshot.errCode === 'ROOM_DISSOLVED' ? 'room_dissolved' : undefined
+        }, roomId)) {
+          return;
+        }
+        return;
+      }
+      if (!raw || raw.ok !== true) return;
+      if (handleRoomLastEvent(raw, roomId)) return;
       if (typeof onPollResult === 'function') {
-        onPollResult.call(page, result);
+        onPollResult.call(page, raw);
       }
     }
   }).catch((e) => {

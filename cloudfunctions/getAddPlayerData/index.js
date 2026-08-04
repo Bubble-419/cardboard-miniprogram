@@ -242,7 +242,7 @@ exports.main = async (event, context) => {
     }
 
     let room = roomRes.data[0];
-    if (room.status === 'DISSOLVED') {
+    if (room.status === 'DISSOLVED' || room.lifecycle === 'DISSOLVED') {
       return {
         ok: false,
         errCode: 'ROOM_DISSOLVED',

@@ -153,6 +153,38 @@ describe('room-client RoomSession', () => {
     }, '1');
     assert.equal(a.revision, 0);
   });
+
+  it('emits ok:false dissolve poll so pages can exit home', async () => {
+    const seen = [];
+    const session = createRoomSession({
+      roomId: 'room-gone',
+      intervalMs: 10000,
+      setIntervalFn: () => 1,
+      clearIntervalFn: () => {},
+      transport: {
+        async fetchSnapshot() {
+          return {
+            ok: false,
+            errCode: 'ROOM_DISSOLVED',
+            errMsg: '房间已解散',
+            roomDissolved: true,
+            event: 'room_dissolved',
+            roomId: 'room-gone'
+          };
+        }
+      }
+    });
+    session.subscribe((snap) => {
+      seen.push(snap);
+    }, { emitCurrent: false });
+    await session.open();
+    assert.equal(seen.length >= 1, true);
+    const last = seen[seen.length - 1];
+    assert.equal(last.ok, false);
+    assert.equal(last.errCode, 'ROOM_DISSOLVED');
+    assert.equal(last.raw && last.raw.roomDissolved, true);
+    session.dispose();
+  });
 });
 
 describe('room-navigation projector', () => {

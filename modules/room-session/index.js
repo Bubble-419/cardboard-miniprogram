@@ -139,7 +139,9 @@ async function bindPageToRoomSession(page, options) {
     if (typeof onSnapshot === 'function') {
       onSnapshot.call(page, snapshot);
     }
-    if (options.followNavigation && snapshot.ok && snapshot.raw) {
+    // 解散 / 踢出时 getAddPlayerData 返回 ok:false；原先要求 snapshot.ok
+    // 导致 followSubScreenRoomPoll 从不执行，成员页卡住不回首页
+    if (options.followNavigation && snapshot.raw) {
       followSubScreenRoomPoll(snapshot.raw, roomId, {
         beforeNavigate: options.beforeNavigate
           ? (result, pageKey) => options.beforeNavigate.call(page, result, pageKey)

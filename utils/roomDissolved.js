@@ -108,6 +108,14 @@ function clearRoomLocalState(roomId) {
     // ignore
   }
 
+  // 停止 App 级轮询，避免解散后继续打 getAddPlayerData
+  try {
+    const { disposeRoomSession } = require('../modules/room-session/index');
+    disposeRoomSession();
+  } catch (e) {
+    // ignore
+  }
+
   if (id) {
     clearLocalBrainstormProgress(id);
     clearPartnerSpecialMoveUsedFlag(id);
