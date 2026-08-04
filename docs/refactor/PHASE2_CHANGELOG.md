@@ -17,10 +17,18 @@
 ## 本地命令
 
 ```bash
-pnpm install
-pnpm test
-pnpm build:cloud
+# 链接 workspace 包（若 node_modules/@cardboard 缺失）
+mkdir -p node_modules/@cardboard
+ln -sfn ../../packages/room-contracts node_modules/@cardboard/room-contracts
+ln -sfn ../../packages/room-domain node_modules/@cardboard/room-domain
+ln -sfn ../../packages/room-application node_modules/@cardboard/room-application
+ln -sfn ../../packages/room-cloudbase-adapter node_modules/@cardboard/room-cloudbase-adapter
+
+node --require ./scripts/test-register.js --test tests/room-contract/*.test.js tests/room-domain/*.test.js
+node scripts/build-cloud-functions.js
 ```
+
+或：`npm test` / `npm run build:cloud`（勿依赖 pnpm 对 esbuild 的 approve-builds）。
 
 ## 上传
 
