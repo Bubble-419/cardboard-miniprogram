@@ -44,3 +44,4 @@
 | PHASE4_CHANGELOG.md | Phase 4 落地说明 |
 | PHASE5_CHANGELOG.md | Phase 5 落地说明 |
 | PHASE6_CHANGELOG.md | Phase 6 落地说明（Spy 竖切进行中） |
+| HALLI_STATE_TABLE.md | Halli 现网状态表与迁移前置缺口 |

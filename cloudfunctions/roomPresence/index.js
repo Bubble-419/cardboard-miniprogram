@@ -246,6 +246,29 @@ var require_spy = __commonJS({
       const i = Math.floor(rnd() * DEFAULT_WORD_PAIRS.length);
       return DEFAULT_WORD_PAIRS[i] || DEFAULT_WORD_PAIRS[0];
     }
+    function samePlayerIndex(a, b) {
+      if (a == null || b == null) return false;
+      return Number(a) === Number(b);
+    }
+    function indexIncludes(list, index) {
+      if (!Array.isArray(list) || index == null) return false;
+      const n = Number(index);
+      return list.some((item) => Number(item) === n);
+    }
+    function getAliveIndexSet(players) {
+      return new Set(
+        (players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true).map((p) => Number(p.playerIndex))
+      );
+    }
+    function findSpeakIndex(order, players, from) {
+      const alive = getAliveIndexSet(players);
+      const list = order || [];
+      let i = Math.max(0, Number(from) || 0);
+      while (i < list.length && !alive.has(Number(list[i]))) {
+        i += 1;
+      }
+      return i;
+    }
     function listPlayableMembers(room) {
       const seatMap = room.seatMap || {};
       const byUser = room.membersByUserId || {};
@@ -266,40 +289,86 @@ var require_spy = __commonJS({
     function emptyVoteStatus() {
       return {
         votedPlayerIndexes: [],
+        abstainPlayerIndexes: [],
         tally: {},
         ballots: {}
       };
     }
+    function assignmentsMap(room) {
+      if (room.spyAssignments && typeof room.spyAssignments === "object") {
+        return room.spyAssignments;
+      }
+      const secrets = room.secretsByUserId || {};
+      const out = {};
+      Object.keys(secrets).forEach((userId) => {
+        const row = secrets[userId];
+        if (!row) return;
+        const seat = row.playerIndex != null ? String(row.playerIndex) : null;
+        if (seat) out[seat] = { ...row, userId };
+      });
+      return out;
+    }
+    function resolveWinnerSide(players) {
+      const alive = (players || []).filter((p) => p && p.alive !== false);
+      const spies = alive.filter((p) => p.role === "spy");
+      const civilians = alive.filter((p) => p.role === "civilian");
+      if (spies.length === 0) return "civilian";
+      if (spies.length >= civilians.length) return "spy";
+      return null;
+    }
+    function buildRevealList(spyGame, assignments) {
+      return (spyGame.players || []).filter((p) => p && p.leftRoom !== true).map((p) => {
+        const card = assignments[String(p.playerIndex)] || {};
+        return {
+          playerIndex: p.playerIndex,
+          name: p.name || card.name || `\u73A9\u5BB6${p.playerIndex}`,
+          role: card.role || null,
+          word: card.word || null,
+          alive: p.alive !== false
+        };
+      });
+    }
     function beginSpeakPhase(spyGame, speakOrder, now) {
       const order = speakOrder || spyGame.speakOrder || [];
+      const first = findSpeakIndex(order, spyGame.players, 0);
       return {
         ...spyGame,
         phase: SPY_PHASE.SPEAK,
         speakOrder: order,
-        currentSpeakIndex: 0,
+        currentSpeakIndex: first,
         speakRoundStartedAt: now,
-        speakTurnStartedAt: now,
+        speakTurnStartedAt: first < order.length ? now : 0,
+        speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
         voteStartedAt: 0,
-        voteStatus: emptyVoteStatus(),
-        lastResult: null,
-        winnerSide: null,
-        tieBreak: false
+        voteStatus: emptyVoteStatus()
       };
     }
-    function publicSpyGame(spyGame) {
+    function beginVotePhase(spyGame, now) {
+      return {
+        ...spyGame,
+        phase: SPY_PHASE.VOTE,
+        voteStartedAt: now,
+        voteStatus: emptyVoteStatus(),
+        speakTurnStartedAt: 0
+      };
+    }
+    function publicSpyGame(spyGame, assignments) {
       if (!spyGame) return null;
       const phase = spyGame.phase;
+      const voteStatus = spyGame.voteStatus || {};
+      const aliveCount = (spyGame.players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true).length;
+      const votedCount = (voteStatus.votedPlayerIndexes || []).length;
       const revealWords = phase === SPY_PHASE.SETTLE;
-      return {
+      const base = {
         phase,
         spyCount: spyGame.spyCount,
         round: spyGame.round,
-        wordPairId: spyGame.wordPairId,
+        wordPairId: spyGame.wordPairId || null,
         civilianWord: revealWords ? spyGame.civilianWord : null,
         civilianBlurb: revealWords ? spyGame.civilianBlurb : null,
         spyWord: revealWords ? spyGame.spyWord : null,
         spyBlurb: revealWords ? spyGame.spyBlurb : null,
-        players: (spyGame.players || []).map((p) => ({
+        players: (spyGame.players || []).filter((p) => p && p.leftRoom !== true).map((p) => ({
           playerIndex: p.playerIndex,
           name: p.name,
           avatarUrl: p.avatarUrl || null,
@@ -308,7 +377,7 @@ var require_spy = __commonJS({
           leftRoom: p.leftRoom === true
         })),
         speakOrder: spyGame.speakOrder || [],
-        currentSpeakIndex: spyGame.currentSpeakIndex || 0,
+        currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
         speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
         speakTurnStartedAt: spyGame.speakTurnStartedAt || 0,
         voteStartedAt: spyGame.voteStartedAt || 0,
@@ -316,12 +385,156 @@ var require_spy = __commonJS({
         speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
         voteDeadlineMs: spyGame.voteDeadlineMs || VOTE_ROUND_MS,
         voteStatus: {
-          votedCount: spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes ? spyGame.voteStatus.votedPlayerIndexes.length : 0
+          votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes) ? voteStatus.votedPlayerIndexes : [],
+          abstainPlayerIndexes: [],
+          votedCount,
+          totalVoters: aliveCount
         },
         lastResult: spyGame.lastResult || null,
         winnerSide: spyGame.winnerSide || null,
         tieBreak: spyGame.tieBreak === true
       };
+      if (revealWords) {
+        const reveal = buildRevealList(spyGame, assignments || {});
+        base.reveal = reveal;
+        if (base.lastResult) {
+          base.lastResult = { ...base.lastResult, reveal };
+        }
+      }
+      return base;
+    }
+    function assertRevision(room, expectedRevision) {
+      if (expectedRevision != null && Number(expectedRevision) !== Number(room.revision)) {
+        return fail(ERR.REVISION_CONFLICT, null, { currentRevision: room.revision });
+      }
+      return null;
+    }
+    function actorSeatNo(room, actorUserId) {
+      const seat = Object.keys(room.seatMap || {}).find(
+        (s) => String(room.seatMap[s]) === String(actorUserId)
+      );
+      return seat != null ? Number(seat) : null;
+    }
+    function patchSpyRoom(room, spyGame, page, ts, extras) {
+      const domainRevisions = {
+        ...room.domainRevisions || {},
+        session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
+      };
+      const order = spyGame.speakOrder || [];
+      const cur = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
+      const activeSeatNo = cur < order.length ? Number(order[cur]) : null;
+      return {
+        ...room,
+        ...extras || {},
+        selectedModeId: room.selectedModeId || "spy",
+        currentPage: page,
+        brainstormProgressPage: page,
+        spyGame,
+        domainRevisions,
+        revision: room.revision + 1,
+        updatedAt: ts,
+        workflow: {
+          mode: "SPY",
+          step: `SPY_${String(spyGame.phase || "INTRO").toUpperCase()}`,
+          roundNo: spyGame.round || 1,
+          turnId: `spy_r${spyGame.round || 1}_s${activeSeatNo != null ? activeSeatNo : 0}`,
+          activeSeatNo,
+          deadlineAt: spyGame.phase === SPY_PHASE.SPEAK && spyGame.speakTurnStartedAt ? spyGame.speakTurnStartedAt + (spyGame.speakTurnMs || SPEAK_TURN_MS) : null
+        }
+      };
+    }
+    function okSpy(commandId, next, effects) {
+      const assignments = next.spyAssignments || assignmentsMap(next);
+      return okResult({
+        commandId,
+        appliedRevision: next.revision,
+        changedDomains: ["session"],
+        room: next,
+        effects: {
+          legacyPage: next.currentPage,
+          spyGame: publicSpyGame(next.spyGame, assignments),
+          ...effects || {}
+        }
+      });
+    }
+    function resolveVote(room, spyGame, ts, random) {
+      const assignments = assignmentsMap(room);
+      const tally = spyGame.voteStatus && spyGame.voteStatus.tally || {};
+      let maxVotes = 0;
+      let topIndexes = [];
+      Object.keys(tally).forEach((key) => {
+        const count = Number(tally[key]) || 0;
+        const idx = Number(key);
+        if (count > maxVotes) {
+          maxVotes = count;
+          topIndexes = [idx];
+        } else if (count === maxVotes && count > 0) {
+          topIndexes.push(idx);
+        }
+      });
+      const publicTallies = { ...tally };
+      if (maxVotes > 0 && topIndexes.length > 1) {
+        const tiedOrder = shuffle(topIndexes.slice(), random);
+        let nextGame2 = {
+          ...spyGame,
+          lastResult: {
+            eliminatedIndex: null,
+            eliminatedRole: null,
+            eliminatedName: "",
+            maxVotes,
+            tied: true,
+            tiedIndexes: topIndexes,
+            tallies: publicTallies,
+            winnerSide: null
+          },
+          tieBreak: true,
+          winnerSide: null
+        };
+        nextGame2 = beginSpeakPhase(nextGame2, tiedOrder, ts);
+        const page2 = pageForPhase(SPY_PHASE.SPEAK);
+        const next2 = patchSpyRoom(room, nextGame2, page2, ts);
+        return okSpy(null, next2, { tied: true, settled: false });
+      }
+      let eliminatedIndex = null;
+      let eliminatedRole = null;
+      let eliminatedName = "";
+      let nextGame = { ...spyGame };
+      if (maxVotes > 0 && topIndexes.length === 1) {
+        eliminatedIndex = topIndexes[0];
+        const card = assignments[String(eliminatedIndex)];
+        eliminatedRole = card ? card.role : null;
+        const snap = (nextGame.players || []).find((p) => samePlayerIndex(p.playerIndex, eliminatedIndex));
+        eliminatedName = snap && snap.name || card && card.name || `\u73A9\u5BB6${eliminatedIndex}`;
+        nextGame.players = (nextGame.players || []).map((p) => samePlayerIndex(p.playerIndex, eliminatedIndex) ? { ...p, alive: false } : p);
+      }
+      const rolePlayers = (nextGame.players || []).map((p) => {
+        const card = assignments[String(p.playerIndex)] || {};
+        return { role: card.role || "civilian", alive: p.alive !== false };
+      });
+      const winnerSide = resolveWinnerSide(rolePlayers);
+      nextGame.lastResult = {
+        eliminatedIndex,
+        eliminatedRole,
+        eliminatedName,
+        maxVotes,
+        tied: false,
+        tallies: publicTallies,
+        winnerSide
+      };
+      nextGame.winnerSide = winnerSide;
+      nextGame.tieBreak = false;
+      if (winnerSide) {
+        nextGame.phase = SPY_PHASE.SETTLE;
+        const reveal = buildRevealList(nextGame, assignments);
+        nextGame.lastResult = { ...nextGame.lastResult, reveal };
+        const page2 = pageForPhase(SPY_PHASE.SETTLE);
+        const next2 = patchSpyRoom(room, nextGame, page2, ts);
+        return okSpy(null, next2, { settled: true });
+      }
+      nextGame.phase = SPY_PHASE.RESULT;
+      const page = pageForPhase(SPY_PHASE.RESULT);
+      const next = patchSpyRoom(room, nextGame, page, ts);
+      return okSpy(null, next, { settled: false });
     }
     function executeSpyCommand(ctx) {
       const {
@@ -333,11 +546,9 @@ var require_spy = __commonJS({
         random
       } = ctx;
       const { type, commandId, expectedRevision, payload } = envelope;
+      const seatNo = actorSeatNo(room, actorUserId);
+      const isHost = String(room.hostUserId) === String(actorUserId);
       if (type === COMMAND_TYPES.SPY_GET_MY_CARD) {
-        const seatNo = Object.keys(room.seatMap || {}).find(
-          (s) => String(room.seatMap[s]) === String(actorUserId)
-        );
-        const isHost = String(room.hostUserId) === String(actorUserId);
         if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
         const secrets = room.secretsByUserId || {};
         const secret = secrets[actorUserId];
@@ -360,17 +571,14 @@ var require_spy = __commonJS({
               speakOrderRank: speakOrderRank > 0 ? speakOrderRank : null,
               speakOrderTotal: speakOrder.length
             },
-            spyGame: publicSpyGame(room.spyGame)
+            spyGame: publicSpyGame(room.spyGame, assignmentsMap(room))
           }
         });
       }
       if (type === COMMAND_TYPES.SPY_START_ASSIGN) {
-        if (String(room.hostUserId) !== String(actorUserId)) {
-          return fail(ERR.HOST_REQUIRED);
-        }
-        if (expectedRevision != null && Number(expectedRevision) !== Number(room.revision)) {
-          return fail(ERR.REVISION_CONFLICT, null, { currentRevision: room.revision });
-        }
+        if (!isHost) return fail(ERR.HOST_REQUIRED);
+        const revErr = assertRevision(room, expectedRevision);
+        if (revErr) return revErr;
         const players = listPlayableMembers(room);
         if (players.length < MIN_PLAYERS) {
           return fail(ERR.NOT_ENOUGH_PLAYERS, `\u81F3\u5C11\u9700\u8981 ${MIN_PLAYERS} \u540D\u73A9\u5BB6`);
@@ -432,28 +640,225 @@ var require_spy = __commonJS({
           tieBreak: false
         };
         spyGame = beginSpeakPhase(spyGame, speakOrder, ts);
-        const nextPage = pageForPhase(SPY_PHASE.SPEAK);
+        const page = pageForPhase(SPY_PHASE.SPEAK);
+        const next = patchSpyRoom(room, spyGame, page, ts, {
+          spyAssignments: assignmentsBySeat,
+          secretsByUserId,
+          selectedModeId: "spy"
+        });
+        const result = okSpy(commandId, next, {
+          spyStarted: true,
+          secretsUpsert: true,
+          combinedStartSpeak: true,
+          payloadNote: payload || null
+        });
+        result.commandId = commandId;
+        return result;
+      }
+      if (type === COMMAND_TYPES.SPY_START_SPEAK) {
+        if (!isHost) return fail(ERR.HOST_REQUIRED);
+        const revErr = assertRevision(room, expectedRevision);
+        if (revErr) return revErr;
+        if (room.spyGame && room.spyGame.phase === SPY_PHASE.SPEAK && payload && payload.forceVote) {
+          let spyGame = { ...room.spyGame };
+          const order = spyGame.speakOrder || [];
+          spyGame.currentSpeakIndex = order.length;
+          spyGame = beginVotePhase(spyGame, ts);
+          spyGame.tieBreak = false;
+          const page = pageForPhase(SPY_PHASE.VOTE);
+          const next = patchSpyRoom(room, spyGame, page, ts);
+          const result = okSpy(commandId, next, { autoVote: true, finished: true });
+          result.commandId = commandId;
+          return result;
+        }
+        if (room.spyGame && room.spyGame.phase === SPY_PHASE.SPEAK) {
+          return okResult({
+            commandId,
+            appliedRevision: room.revision,
+            changedDomains: [],
+            room,
+            effects: {
+              readOnly: true,
+              already: true,
+              spyGame: publicSpyGame(room.spyGame, assignmentsMap(room)),
+              legacyPage: pageForPhase(SPY_PHASE.SPEAK)
+            }
+          });
+        }
+        return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u5206\u724C\u5F00\u5C40");
+      }
+      if (type === COMMAND_TYPES.SPY_ADVANCE_SPEAKER) {
+        const revErr = assertRevision(room, expectedRevision);
+        if (revErr) return revErr;
+        let spyGame = room.spyGame ? { ...room.spyGame } : null;
+        if (!spyGame || spyGame.phase !== SPY_PHASE.SPEAK) {
+          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u4E0D\u5728\u53D1\u8A00\u9636\u6BB5");
+        }
+        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
+        const order = spyGame.speakOrder || [];
+        const curIdx = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
+        const currentPlayerIndex = curIdx < order.length ? order[curIdx] : null;
+        const isCurrentSpeaker = currentPlayerIndex != null && samePlayerIndex(seatNo, currentPlayerIndex);
+        if (payload && payload.forceVote) {
+          if (!isHost) return fail(ERR.HOST_REQUIRED);
+          spyGame.currentSpeakIndex = order.length;
+          spyGame = beginVotePhase(spyGame, ts);
+          spyGame.tieBreak = false;
+          const page = pageForPhase(SPY_PHASE.VOTE);
+          const next2 = patchSpyRoom(room, spyGame, page, ts);
+          const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
+          result2.commandId = commandId;
+          return result2;
+        }
+        if (!isCurrentSpeaker) {
+          return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u53D1\u8A00\u8005\u53EF\u7ED3\u675F\u53D1\u8A00");
+        }
+        const nextIdx = findSpeakIndex(order, spyGame.players, curIdx + 1);
+        if (nextIdx >= order.length) {
+          spyGame.currentSpeakIndex = order.length;
+          spyGame = beginVotePhase(spyGame, ts);
+          spyGame.tieBreak = false;
+          const page = pageForPhase(SPY_PHASE.VOTE);
+          const next2 = patchSpyRoom(room, spyGame, page, ts);
+          const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
+          result2.commandId = commandId;
+          return result2;
+        }
+        spyGame.currentSpeakIndex = nextIdx;
+        spyGame.speakTurnStartedAt = ts;
+        spyGame.speakTurnMs = spyGame.speakTurnMs || SPEAK_TURN_MS;
+        const next = patchSpyRoom(room, spyGame, pageForPhase(SPY_PHASE.SPEAK), ts);
+        const result = okSpy(commandId, next, { finished: false });
+        result.commandId = commandId;
+        return result;
+      }
+      if (type === COMMAND_TYPES.SPY_SUBMIT_VOTE) {
+        if (!seatNo) return fail(ERR.NOT_MEMBER);
+        let spyGame = room.spyGame ? { ...room.spyGame } : null;
+        if (!spyGame || spyGame.phase !== SPY_PHASE.VOTE) {
+          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u4E0D\u5728\u6295\u7968\u9636\u6BB5");
+        }
+        const mySnap = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, seatNo));
+        if (!mySnap || mySnap.alive === false) {
+          return fail(ERR.INVALID_TRANSITION, "\u5DF2\u51FA\u5C40\u65E0\u6CD5\u6295\u7968");
+        }
+        const voteStatus = {
+          votedPlayerIndexes: [...spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes || []],
+          abstainPlayerIndexes: [],
+          tally: { ...spyGame.voteStatus && spyGame.voteStatus.tally || {} },
+          ballots: { ...spyGame.voteStatus && spyGame.voteStatus.ballots || {} }
+        };
+        if (indexIncludes(voteStatus.votedPlayerIndexes, seatNo)) {
+          return fail(ERR.ALREADY_VOTED, "\u5DF2\u6295\u7968\uFF0C\u4E0D\u53EF\u4FEE\u6539");
+        }
+        const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
+        if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
+          return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6");
+        }
+        const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
+        if (!target || target.alive === false) {
+          return fail(ERR.INVALID_ARGUMENT, "\u76EE\u6807\u4E0D\u53EF\u6295\u7968");
+        }
+        const key = String(targetPlayerIndex);
+        voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
+        voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
+        voteStatus.votedPlayerIndexes.push(seatNo);
+        spyGame.voteStatus = voteStatus;
+        const aliveVoters = (spyGame.players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true);
+        const allVoted = aliveVoters.every((p) => indexIncludes(voteStatus.votedPlayerIndexes, p.playerIndex));
+        if (allVoted) {
+          const resolved = resolveVote(room, spyGame, ts, random);
+          resolved.commandId = commandId;
+          return resolved;
+        }
+        const next = patchSpyRoom(room, spyGame, pageForPhase(SPY_PHASE.VOTE), ts);
+        const result = okSpy(commandId, next, {});
+        result.commandId = commandId;
+        return result;
+      }
+      if (type === COMMAND_TYPES.SPY_CONFIRM_RESULT) {
+        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
+        return okResult({
+          commandId,
+          appliedRevision: room.revision,
+          changedDomains: [],
+          room,
+          effects: {
+            readOnly: true,
+            deprecated: true,
+            spyGame: publicSpyGame(room.spyGame, assignmentsMap(room)),
+            legacyPage: room.currentPage || pageForPhase(room.spyGame && room.spyGame.phase)
+          }
+        });
+      }
+      if (type === COMMAND_TYPES.SPY_NEXT_ROUND || type === COMMAND_TYPES.SPY_CONTINUE) {
+        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
+        const revErr = assertRevision(room, expectedRevision);
+        if (revErr) return revErr;
+        let spyGame = room.spyGame ? { ...room.spyGame } : null;
+        if (!spyGame) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u65E0\u6CD5\u8FDB\u5165\u4E0B\u4E00\u8F6E");
+        if (spyGame.phase === SPY_PHASE.SPEAK && !spyGame.tieBreak) {
+          return okResult({
+            commandId,
+            appliedRevision: room.revision,
+            changedDomains: [],
+            room,
+            effects: {
+              readOnly: true,
+              already: true,
+              spyGame: publicSpyGame(spyGame, assignmentsMap(room))
+            }
+          });
+        }
+        if (spyGame.phase !== SPY_PHASE.RESULT && spyGame.phase !== SPY_PHASE.NEXT_ROUND) {
+          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u65E0\u6CD5\u8FDB\u5165\u4E0B\u4E00\u8F6E");
+        }
+        const alive = (spyGame.players || []).filter((p) => p.alive !== false && p.leftRoom !== true).map((p) => Number(p.playerIndex));
+        if (alive.length < 2) {
+          return fail(ERR.INVALID_TRANSITION, "\u5B58\u6D3B\u4EBA\u6570\u4E0D\u8DB3");
+        }
+        let speakOrder = shuffle(alive, random);
+        const eliminated = spyGame.lastResult && spyGame.lastResult.eliminatedIndex;
+        if (eliminated != null) {
+          const oldOrder = spyGame.speakOrder || [];
+          const elimPos = oldOrder.findIndex((idx) => samePlayerIndex(idx, eliminated));
+          if (elimPos >= 0) {
+            const aliveSet = new Set(alive);
+            const rotated = [];
+            for (let i = 1; i <= oldOrder.length; i += 1) {
+              const idx = Number(oldOrder[(elimPos + i) % oldOrder.length]);
+              if (aliveSet.has(idx)) rotated.push(idx);
+            }
+            if (rotated.length) speakOrder = rotated;
+          }
+        }
+        spyGame.round = (spyGame.round || 1) + 1;
+        spyGame.tieBreak = false;
+        spyGame.winnerSide = null;
+        spyGame = beginSpeakPhase(spyGame, speakOrder, ts);
+        const page = pageForPhase(SPY_PHASE.SPEAK);
+        const next = patchSpyRoom(room, spyGame, page, ts);
+        const result = okSpy(commandId, next, {});
+        result.commandId = commandId;
+        return result;
+      }
+      if (type === COMMAND_TYPES.SPY_RESTART) {
+        if (!isHost) return fail(ERR.HOST_REQUIRED);
+        const revErr = assertRevision(room, expectedRevision);
+        if (revErr) return revErr;
+        const page = pageForPhase(SPY_PHASE.INTRO);
         const domainRevisions = {
           ...room.domainRevisions || {},
           session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
         };
         const next = {
           ...room,
-          selectedModeId: "spy",
-          currentPage: nextPage,
-          brainstormProgressPage: nextPage,
-          spyGame,
-          // legacy 兼容字段：adapter 可双写；领域以 secretsByUserId 为准
-          spyAssignments: assignmentsBySeat,
-          secretsByUserId,
-          workflow: {
-            mode: "SPY",
-            step: "SPY_SPEAK",
-            roundNo: 1,
-            turnId: `spy_r1_s${speakOrder[0] || 0}`,
-            activeSeatNo: speakOrder[0] != null ? Number(speakOrder[0]) : null,
-            deadlineAt: ts + SPEAK_TURN_MS
-          },
+          currentPage: page,
+          brainstormProgressPage: page,
+          spyGame: null,
+          spyAssignments: null,
+          secretsByUserId: null,
+          workflow: null,
           domainRevisions,
           revision: room.revision + 1,
           updatedAt: ts
@@ -464,13 +869,10 @@ var require_spy = __commonJS({
           changedDomains: ["session"],
           room: next,
           effects: {
-            spyStarted: true,
-            legacyPage: nextPage,
-            spyGame: publicSpyGame(spyGame),
-            secretsUpsert: true,
-            // 兼容现网：一步完成分牌+进发言（蓝图 SPY_START_SPEAK 边暂并入）
-            combinedStartSpeak: true,
-            payloadNote: payload || null
+            legacyPage: page,
+            spyGame: null,
+            secretsClear: true,
+            restarted: true
           }
         });
       }
@@ -484,6 +886,7 @@ var require_spy = __commonJS({
       publicSpyGame,
       pageForPhase,
       getDefaultSpyCount,
+      resolveWinnerSide,
       DEFAULT_WORD_PAIRS
     };
   }
@@ -1793,7 +2196,16 @@ var require_room_cloudbase_adapter = __commonJS({
             }
           }
         }
-        if (effects && effects.secretsUpsert && room.secretsByUserId) {
+        if (effects && effects.secretsClear) {
+          try {
+            const existing2 = await db2.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
+            for (const doc of existing2.data || []) {
+              await db2.collection(SECRETS).doc(doc._id).remove();
+            }
+          } catch (e) {
+            console.warn("clear roomSecrets failed", e);
+          }
+        } else if (effects && effects.secretsUpsert && room.secretsByUserId) {
           try {
             const existing2 = await db2.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
             for (const doc of existing2.data || []) {

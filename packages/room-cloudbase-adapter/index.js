@@ -330,7 +330,16 @@ function createCloudBaseRoomRepository(deps) {
     }
 
     // Spy 密牌：独立集合，不进公开快照
-    if (effects && effects.secretsUpsert && room.secretsByUserId) {
+    if (effects && effects.secretsClear) {
+      try {
+        const existing = await db.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
+        for (const doc of existing.data || []) {
+          await db.collection(SECRETS).doc(doc._id).remove();
+        }
+      } catch (e) {
+        console.warn('clear roomSecrets failed', e);
+      }
+    } else if (effects && effects.secretsUpsert && room.secretsByUserId) {
       try {
         const existing = await db.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
         for (const doc of existing.data || []) {

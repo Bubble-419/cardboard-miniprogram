@@ -162,4 +162,68 @@ describe('Spy SPY_START_ASSIGN / SPY_GET_MY_CARD', () => {
     assert.equal(missing.ok, false);
     assert.equal(missing.errCode, ERR.NOT_MEMBER);
   });
+
+  it('advances speak into vote and settles after all votes', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '60000001' });
+    const app = createRoomApplication(repo, {
+      wordPairPicker: () => FIXED_PAIR,
+      random: () => 0
+    });
+    await seedThreePlayers(app);
+    let room = repo.rooms.get('60000001');
+    await app.execute(
+      envelope({
+        commandId: 'spy-assign-flow',
+        type: COMMAND_TYPES.SPY_START_ASSIGN,
+        roomId: '60000001',
+        expectedRevision: room.revision,
+        payload: {}
+      }),
+      { userId: 'host' }
+    );
+
+    // random=0 → speakOrder [2,3,1]；依次由 p2/p3/host 结束发言
+    const speakers = ['p2', 'p3', 'host'];
+    for (let i = 0; i < speakers.length; i += 1) {
+      room = repo.rooms.get('60000001');
+      const adv = await app.execute(
+        envelope({
+          commandId: `spy-adv-${i}`,
+          type: COMMAND_TYPES.SPY_ADVANCE_SPEAKER,
+          roomId: '60000001',
+          expectedRevision: room.revision,
+          payload: {}
+        }),
+        { userId: speakers[i] }
+      );
+      assert.equal(adv.ok, true, adv.errMsg);
+    }
+    assert.equal(repo.rooms.get('60000001').spyGame.phase, 'vote');
+
+    // 全员投向 seat1(host 平民) → 未结束局；卧底 p2 仍存活
+    const voters = [
+      { userId: 'host', target: 2 },
+      { userId: 'p2', target: 1 },
+      { userId: 'p3', target: 1 }
+    ];
+    let last = null;
+    for (let i = 0; i < voters.length; i += 1) {
+      last = await app.execute(
+        envelope({
+          commandId: `spy-vote-${i}`,
+          type: COMMAND_TYPES.SPY_SUBMIT_VOTE,
+          roomId: '60000001',
+          payload: { targetPlayerIndex: voters[i].target }
+        }),
+        { userId: voters[i].userId }
+      );
+      assert.equal(last.ok, true, last.errMsg);
+    }
+    room = repo.rooms.get('60000001');
+    // 出局平民后存活 1 卧底 + 1 平民 → 卧底胜，进入 settle
+    assert.equal(room.spyGame.phase, 'settle');
+    assert.equal(room.spyGame.winnerSide, 'spy');
+    assert.equal(room.spyGame.lastResult.eliminatedIndex, 1);
+    assert.equal(room.spyGame.players.find((p) => p.playerIndex === 1).alive, false);
+  });
 });
