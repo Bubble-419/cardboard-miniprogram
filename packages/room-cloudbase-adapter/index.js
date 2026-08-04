@@ -175,7 +175,16 @@ function createCloudBaseRoomRepository(deps) {
 
   async function persistRoom(room, effects) {
     const now = room.updatedAt || Date.now();
-    const roomFields = {
+    const _ = db.command;
+    // 对象字段必须用 _.set 整段替换：CloudBase update 对 null→object 不能点路径写入
+    // （否则会报 Cannot create field 'x' in element {lastResult: null}）
+    function setOrValue(val) {
+      if (val === null || val === undefined) return _.remove();
+      if (val && typeof val === 'object') return _.set(val);
+      return val;
+    }
+
+    const plainFields = {
       roomId: room.roomId,
       schemaVersion: room.schemaVersion,
       protocolVersion: room.protocolVersion,
@@ -183,12 +192,12 @@ function createCloudBaseRoomRepository(deps) {
       status: room.status,
       hostUserId: room.hostUserId,
       creatorId: room.creatorId || room.hostUserId,
-      seatMap: room.seatMap,
-      activeSessionId: room.activeSessionId,
+      seatMap: room.seatMap || {},
+      activeSessionId: room.activeSessionId == null ? null : room.activeSessionId,
       revision: room.revision,
-      workflow: room.workflow,
-      domainRevisions: room.domainRevisions,
-      progress: room.progress,
+      workflow: room.workflow || null,
+      domainRevisions: room.domainRevisions || null,
+      progress: room.progress || null,
       workshopName: room.workshopName,
       selectedModeId: room.selectedModeId || null,
       currentPage: room.currentPage || null,
@@ -200,12 +209,23 @@ function createCloudBaseRoomRepository(deps) {
     };
 
     if (effects && effects.created) {
-      roomFields.createdAt = room.createdAt || now;
-      await db.collection(ROOMS).add({ data: roomFields });
-    } else if (room._id) {
-      await db.collection(ROOMS).doc(room._id).update({ data: roomFields });
+      plainFields.createdAt = room.createdAt || now;
+      await db.collection(ROOMS).add({ data: plainFields });
     } else {
-      await db.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
+      const roomFields = {
+        ...plainFields,
+        seatMap: setOrValue(room.seatMap),
+        workflow: setOrValue(room.workflow),
+        domainRevisions: setOrValue(room.domainRevisions),
+        progress: setOrValue(room.progress),
+        spyGame: setOrValue(room.spyGame),
+        spyAssignments: setOrValue(room.spyAssignments)
+      };
+      if (room._id) {
+        await db.collection(ROOMS).doc(room._id).update({ data: roomFields });
+      } else {
+        await db.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
+      }
     }
 
     if (effects && effects.dissolved) {

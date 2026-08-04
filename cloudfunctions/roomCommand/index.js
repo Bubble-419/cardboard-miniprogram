@@ -2119,7 +2119,13 @@ var require_room_cloudbase_adapter = __commonJS({
       }
       async function persistRoom(room, effects) {
         const now = room.updatedAt || Date.now();
-        const roomFields = {
+        const _ = db2.command;
+        function setOrValue(val) {
+          if (val === null || val === void 0) return _.remove();
+          if (val && typeof val === "object") return _.set(val);
+          return val;
+        }
+        const plainFields = {
           roomId: room.roomId,
           schemaVersion: room.schemaVersion,
           protocolVersion: room.protocolVersion,
@@ -2127,12 +2133,12 @@ var require_room_cloudbase_adapter = __commonJS({
           status: room.status,
           hostUserId: room.hostUserId,
           creatorId: room.creatorId || room.hostUserId,
-          seatMap: room.seatMap,
-          activeSessionId: room.activeSessionId,
+          seatMap: room.seatMap || {},
+          activeSessionId: room.activeSessionId == null ? null : room.activeSessionId,
           revision: room.revision,
-          workflow: room.workflow,
-          domainRevisions: room.domainRevisions,
-          progress: room.progress,
+          workflow: room.workflow || null,
+          domainRevisions: room.domainRevisions || null,
+          progress: room.progress || null,
           workshopName: room.workshopName,
           selectedModeId: room.selectedModeId || null,
           currentPage: room.currentPage || null,
@@ -2143,12 +2149,23 @@ var require_room_cloudbase_adapter = __commonJS({
           updatedAt: now
         };
         if (effects && effects.created) {
-          roomFields.createdAt = room.createdAt || now;
-          await db2.collection(ROOMS).add({ data: roomFields });
-        } else if (room._id) {
-          await db2.collection(ROOMS).doc(room._id).update({ data: roomFields });
+          plainFields.createdAt = room.createdAt || now;
+          await db2.collection(ROOMS).add({ data: plainFields });
         } else {
-          await db2.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
+          const roomFields = {
+            ...plainFields,
+            seatMap: setOrValue(room.seatMap),
+            workflow: setOrValue(room.workflow),
+            domainRevisions: setOrValue(room.domainRevisions),
+            progress: setOrValue(room.progress),
+            spyGame: setOrValue(room.spyGame),
+            spyAssignments: setOrValue(room.spyAssignments)
+          };
+          if (room._id) {
+            await db2.collection(ROOMS).doc(room._id).update({ data: roomFields });
+          } else {
+            await db2.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
+          }
         }
         if (effects && effects.dissolved) {
           const all = await db2.collection(MEMBERS).where({ roomId: room.roomId }).limit(20).get();
