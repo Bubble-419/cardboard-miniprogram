@@ -23,6 +23,10 @@ function createPartnerRoundSpeech(hooks = {}) {
   let phase = 'play';
   let segmentTimer = null;
   let uploadChain = Promise.resolve();
+  /** 并发 start() 共用同一 in-flight Promise，避免重复弹授权 */
+  let startInFlight = null;
+  /** 用户明确拒绝后，本页生命周期内不再反复弹窗 */
+  let permissionDenied = false;
 
   const onStopHandler = (res) => {
     recording = false;
@@ -114,6 +118,7 @@ function createPartnerRoundSpeech(hooks = {}) {
   }
 
   async function ensureRecordPermission() {
+    if (permissionDenied) return false;
     const setting = await wx.getSetting();
     if (setting.authSetting && setting.authSetting['scope.record']) {
       return true;
@@ -142,24 +147,39 @@ function createPartnerRoundSpeech(hooks = {}) {
           fail: () => resolve(false)
         });
       });
+      if (!ok) {
+        permissionDenied = true;
+      }
       return ok;
     }
+  }
+
+  async function doStart(options = {}) {
+    if (active) return true;
+    const nextRoomId = options.roomId || roomId;
+    if (!nextRoomId) return false;
+
+    const permitted = await ensureRecordPermission();
+    if (!permitted) return false;
+
+    // 授权等待期间可能被 stop/destroy，或并发已激活
+    if (active) return true;
+
+    roomId = nextRoomId;
+    phase = options.phase === 'discussion' ? 'discussion' : 'play';
+    active = true;
+    startSegmentRecording();
+    return true;
   }
 
   return {
     async start(options = {}) {
       if (active) return true;
-      const nextRoomId = options.roomId || roomId;
-      if (!nextRoomId) return false;
-
-      const permitted = await ensureRecordPermission();
-      if (!permitted) return false;
-
-      roomId = nextRoomId;
-      phase = options.phase === 'discussion' ? 'discussion' : 'play';
-      active = true;
-      startSegmentRecording();
-      return true;
+      if (startInFlight) return startInFlight;
+      startInFlight = doStart(options).finally(() => {
+        startInFlight = null;
+      });
+      return startInFlight;
     },
 
     stop() {
@@ -182,6 +202,8 @@ function createPartnerRoundSpeech(hooks = {}) {
     destroy() {
       this.stop();
       roomId = '';
+      permissionDenied = false;
+      startInFlight = null;
     },
 
     isActive() {

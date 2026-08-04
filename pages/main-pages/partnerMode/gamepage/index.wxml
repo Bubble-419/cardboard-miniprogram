@@ -21,8 +21,8 @@
         <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
       </view>
       <view
-        class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{problemTextOverflow || problemExpanded ? 'problem-chip-tappable' : ''}}"
-        bindtap="handleToggleProblemExpand"
+        class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
+        bindtap="handleViewSituation"
       >
         <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
         <view class="problem-text-wrap">
@@ -962,31 +962,20 @@
     </view>
   </view>
 
-  <!-- 房主首次进入：spotlight 引导「开始表态」需全员打分后才亮起 -->
+  <!-- 房主首次进入：轻量单行提示（透明热区，任意处可关） -->
   <view
-    class="host-statement-tip-mask {{hostStatementTipReady ? 'host-statement-tip-mask-ready' : ''}}"
+    class="host-statement-tip-layer"
     wx:if="{{showHostStatementTip}}"
     catchtouchmove="preventMove"
     catchtap="dismissHostStatementTip"
   >
-    <view
-      class="host-statement-spotlight"
-      wx:if="{{hostStatementTipReady}}"
-      style="{{hostStatementTipSpotStyle}}"
-    >
-      <view class="host-statement-spotlight-ring"></view>
-    </view>
     <view
       class="host-statement-tip-bubble"
       wx:if="{{hostStatementTipReady}}"
       style="{{hostStatementTipTextStyle}}"
       catchtap="dismissHostStatementTip"
     >
-      <view class="host-statement-tip-badge-wrap">
-        <text class="host-statement-tip-badge">提示</text>
-      </view>
-      <text class="host-statement-tip-text">只有所有人完成打分后，「开始表态」按钮才会亮起</text>
-      <text class="host-statement-tip-dismiss">点击任意处继续</text>
+      <text class="host-statement-tip-text">全员打分后，「开始表态」才会亮起</text>
       <view class="host-statement-tip-arrow"></view>
     </view>
   </view>

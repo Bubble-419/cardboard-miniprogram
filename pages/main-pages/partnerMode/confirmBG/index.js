@@ -19,15 +19,24 @@ Page({
     canConfirm: false,
     isHost: true,
     isWaiting: false,
+    /** 从 gamepage 回看情境：只读，底部为「返回游戏」 */
+    fromGameView: false,
     avatarList: []
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
+    const fromGameView = options && (options.from === 'game' || options.fromGame === '1');
 
     if (roomId) {
       getApp().globalData.roomId = roomId;
+    }
+
+    if (fromGameView) {
+      this.setData({ roomId, fromGameView: true });
+      this._initPage(roomId);
+      return;
     }
 
     if (isWaiting) {
@@ -76,6 +85,10 @@ Page({
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
       wx.showToast({ title: '请先选择情境', icon: 'none' });
       setTimeout(() => {
+        if (this.data.fromGameView) {
+          this.handleReturnToGame();
+          return;
+        }
         const id = roomId || getApp().globalData.roomId || '';
         if (id) {
           wx.redirectTo({
@@ -98,9 +111,14 @@ Page({
     this.setData({
       roomId,
       cards,
-      canConfirm,
+      canConfirm: this.data.fromGameView ? false : canConfirm,
       isWaiting: false
     });
+
+    if (this.data.fromGameView) {
+      this._syncAvatarList();
+      return;
+    }
 
     this._fetchHostStatus();
   },
@@ -212,7 +230,23 @@ Page({
     }
   },
 
+  handleReturnToGame() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    wx.navigateBack({
+      fail: () => {
+        if (roomId) {
+          wx.redirectTo({
+            url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+          });
+        } else {
+          wx.navigateBack();
+        }
+      }
+    });
+  },
+
   async handleConfirm() {
+    if (this.data.fromGameView) return;
     if (!this.data.isHost || !this.data.canConfirm) return;
 
     const bg = getApp().globalData.selectedBG;
@@ -265,6 +299,7 @@ Page({
   },
 
   handleCardTap(e) {
+    if (this.data.fromGameView) return;
     const index = parseInt(e.currentTarget.dataset.index || '0', 10);
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     let url = `/pages/main-pages/selectBG/index?mode=partner&step=${index}`;
@@ -273,6 +308,10 @@ Page({
   },
 
   handleGoBack() {
+    if (this.data.fromGameView) {
+      this.handleReturnToGame();
+      return;
+    }
     wx.navigateBack({
       fail: () => {
         const roomId = this.data.roomId || '';

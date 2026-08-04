@@ -297,7 +297,7 @@ Page({
     wx.showToast({ title, icon: 'none', duration: 2500 });
   },
 
-  /** 房主首次进入出牌页：蒙层提示「开始表态」需全员打分后才亮起 */
+  /** 房主首次进入出牌页：轻量提示「开始表态」需全员打分后才亮起 */
   _maybeShowHostStatementTip() {
     if (this.data.showHostStatementTip) return;
     if (!this.data.isHost) return;
@@ -326,11 +326,6 @@ Page({
           }
           return;
         }
-        const pad = 6;
-        const top = Math.max(0, rect.top - pad);
-        const left = Math.max(0, rect.left - pad);
-        const width = rect.width + pad * 2;
-        const height = rect.height + pad * 2;
         let windowHeight = 667;
         try {
           const sys = typeof wx.getWindowInfo === 'function'
@@ -340,13 +335,12 @@ Page({
         } catch (e) {
           // keep default
         }
-        const tipBottomGap = 20;
+        const tipBottomGap = 12;
         this.setData({
           hostStatementTipReady: true,
-          hostStatementTipSpotStyle:
-            `top:${top}px;left:${left}px;width:${width}px;height:${height}px;`,
+          hostStatementTipSpotStyle: '',
           hostStatementTipTextStyle:
-            `bottom:${Math.max(12, windowHeight - top + tipBottomGap)}px;`
+            `bottom:${Math.max(12, windowHeight - rect.top + tipBottomGap)}px;`
         });
       })
       .exec();
@@ -424,17 +418,33 @@ Page({
   onHide() {
     this._pageVisible = false;
     this._unbindInspirationKeyboard();
-    this.setData({
-      roundTimerVisible: false,
-      inspirationKeyboardHeight: 0,
-      inspirationLiftStyle: ''
-    });
+    // 离开时不改 roundTimerVisible：避免卡片框从 timer→idle 布局突变导致转场卡顿
+    if (this.data.inspirationKeyboardHeight || this.data.inspirationLiftStyle) {
+      this.setData({
+        inspirationKeyboardHeight: 0,
+        inspirationLiftStyle: ''
+      });
+    }
     this._stopRoundSpeech();
     this._stopScorePolling();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
-    this._syncRoundContentToRoom();
+    // 云同步延后，避免与页面转场抢同一帧
+    setTimeout(() => {
+      if (this._pageVisible) return;
+      this._syncRoundContentToRoom();
+    }, 0);
+  },
+
+  /** 主动跳转前静默停计时/轮询/录音，避免 onHide 叠加重活导致卡片框卡顿 */
+  _prepareLeavePage() {
+    this._pageVisible = false;
+    this._stopRoundSpeech();
+    this._stopStatePolling();
+    this._stopScorePolling();
+    this._stopRoundTimerBurstPoll();
+    this._stopRoundTimer();
   },
 
   onUnload() {
@@ -3372,7 +3382,29 @@ Page({
   },
 
   handleGoRoom() {
+    this._prepareLeavePage();
     goRoomPage(this.data.roomId);
+  },
+
+  /** 点击设计问题：回看情境（confirmBG），不推进房间状态 */
+  handleViewSituation() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    this._prepareLeavePage();
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`,
+      fail: () => {
+        this._pageVisible = true;
+        this._startStatePolling();
+        if (!this._scoreProgressFromSnapshot) {
+          this._startScorePolling();
+        }
+        this._syncRoundSpeech();
+      }
+    });
   },
 
   handleToggleProblemExpand() {
@@ -3975,6 +4007,7 @@ Page({
   },
 
   handleGoBack() {
+    this._prepareLeavePage();
     wx.navigateBack({
       fail: () => {
         const roomId = this.data.roomId || '';

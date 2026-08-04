@@ -6,20 +6,20 @@
     bind:goroom="handleGoRoom"
   />
 
-  <!-- 成员等待视图 -->
-  <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
+  <!-- 成员等待视图（从游戏回看情境时不展示） -->
+  <view class="wait-wrap" wx:if="{{!fromGameView && (!isHost || isWaiting)}}">
     <text class="wait-title">确认情境</text>
     <text class="wait-desc">等待房主确认情境…</text>
   </view>
   <page-footer
-    wx:if="{{!isHost || isWaiting}}"
+    wx:if="{{!fromGameView && (!isHost || isWaiting)}}"
     extClass="footer"
     showPrimary="{{false}}"
     bind:prev="handleGoBack"
   ></page-footer>
 
-  <!-- 房主确认视图 -->
-  <block wx:else>
+  <!-- 房主确认 / 游戏中回看情境 -->
+  <block wx:elif="{{fromGameView || (isHost && !isWaiting)}}">
     <!-- 卡片堆叠区 -->
     <view class="cards-area">
       <view class="cards-deck">
@@ -40,8 +40,8 @@
             <image class="deck-frame" src="/assets/bgCard/union-green.svg" mode="scaleToFill" />
             <image class="deck-watermark" src="/assets/bgCard/icon-center-confirm.svg" mode="aspectFit" />
             <text class="deck-value">{{item.value}}</text>
-            <!-- 点击提示角标 -->
-            <view class="deck-edit-hint">
+            <!-- 点击提示角标（游戏中回看只读，不显示修改） -->
+            <view class="deck-edit-hint" wx:if="{{!fromGameView}}">
               <text class="deck-edit-text">点击修改</text>
             </view>
           </view>
@@ -50,9 +50,21 @@
       </view>
     </view>
 
-    <!-- 确认按钮 -->
-    <page-footer extClass="footer" bind:prev="handleGoBack">
+    <!-- 确认 / 返回游戏 -->
+    <page-footer
+      extClass="footer"
+      showPrev="{{!fromGameView}}"
+      bind:prev="handleGoBack"
+    >
       <button
+        wx:if="{{fromGameView}}"
+        class="confirm-btn enabled"
+        bindtap="handleReturnToGame"
+      >
+        返回游戏
+      </button>
+      <button
+        wx:else
         class="confirm-btn {{canConfirm ? 'enabled' : ''}}"
         disabled="{{!canConfirm}}"
         bindtap="handleConfirm"

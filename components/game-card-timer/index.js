@@ -63,9 +63,9 @@ Component({
       this._restartLocalTimer();
     },
     hide() {
+      // 只停绘制，保持最后一帧视觉态，避免转场时卡片框布局突变
       this._stopLocalTimer();
       this._clearExpireTimer();
-      this._hideBorder();
     }
   },
 
