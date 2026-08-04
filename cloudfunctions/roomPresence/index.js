@@ -30,7 +30,17 @@ var require_room_contracts = __commonJS({
       ADVANCE_TURN: "ADVANCE_TURN",
       POST_MESSAGE: "POST_MESSAGE",
       SUBMIT_CLOSING_VOTE: "SUBMIT_CLOSING_VOTE",
-      APPEND_ARTIFACT: "APPEND_ARTIFACT"
+      APPEND_ARTIFACT: "APPEND_ARTIFACT",
+      // Spy（Phase 6）
+      SPY_START_ASSIGN: "SPY_START_ASSIGN",
+      SPY_GET_MY_CARD: "SPY_GET_MY_CARD",
+      SPY_START_SPEAK: "SPY_START_SPEAK",
+      SPY_ADVANCE_SPEAKER: "SPY_ADVANCE_SPEAKER",
+      SPY_SUBMIT_VOTE: "SPY_SUBMIT_VOTE",
+      SPY_CONFIRM_RESULT: "SPY_CONFIRM_RESULT",
+      SPY_NEXT_ROUND: "SPY_NEXT_ROUND",
+      SPY_CONTINUE: "SPY_CONTINUE",
+      SPY_RESTART: "SPY_RESTART"
     };
     var ERR = {
       INVALID_ARGUMENT: "INVALID_ARGUMENT",
@@ -50,7 +60,11 @@ var require_room_contracts = __commonJS({
       INTERNAL_ERROR: "INTERNAL_ERROR",
       ROOM_DISSOLVED: "ROOM_DISSOLVED",
       SELF_SCORE: "SELF_SCORE",
-      ALREADY_VOTED: "ALREADY_VOTED"
+      ALREADY_VOTED: "ALREADY_VOTED",
+      NOT_ENOUGH_PLAYERS: "NOT_ENOUGH_PLAYERS",
+      GAME_IN_PROGRESS: "GAME_IN_PROGRESS",
+      NO_CARD: "NO_CARD",
+      NO_WORD_PAIR: "NO_WORD_PAIR"
     };
     var ERR_MSG = {
       [ERR.INVALID_ARGUMENT]: "\u53C2\u6570\u4E0D\u5408\u6CD5",
@@ -70,7 +84,11 @@ var require_room_contracts = __commonJS({
       [ERR.INTERNAL_ERROR]: "\u670D\u52A1\u5F02\u5E38",
       [ERR.ROOM_DISSOLVED]: "\u623F\u95F4\u5DF2\u89E3\u6563",
       [ERR.SELF_SCORE]: "\u5F53\u524D\u51FA\u724C\u73A9\u5BB6\u65E0\u9700\u6253\u5206",
-      [ERR.ALREADY_VOTED]: "\u60A8\u5DF2\u8868\u6001"
+      [ERR.ALREADY_VOTED]: "\u60A8\u5DF2\u8868\u6001",
+      [ERR.NOT_ENOUGH_PLAYERS]: "\u4EBA\u6570\u4E0D\u8DB3",
+      [ERR.GAME_IN_PROGRESS]: "\u672C\u5C40\u5DF2\u5728\u8FDB\u884C\u4E2D",
+      [ERR.NO_CARD]: "\u5C1A\u672A\u5206\u914D\u8EAB\u4EFD",
+      [ERR.NO_WORD_PAIR]: "\u8BCD\u5E93\u4E3A\u7A7A"
     };
     function fail(errCode, errMsg, extra) {
       return {
@@ -108,7 +126,7 @@ var require_room_contracts = __commonJS({
       if (type !== COMMAND_TYPES.CREATE_ROOM && !isNonEmptyString(raw.roomId)) {
         return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
       }
-      const needsRevision = type !== COMMAND_TYPES.CREATE_ROOM && type !== COMMAND_TYPES.JOIN_ROOM && type !== COMMAND_TYPES.SUBMIT_SCORE && type !== COMMAND_TYPES.POST_MESSAGE && type !== COMMAND_TYPES.SUBMIT_CLOSING_VOTE && type !== COMMAND_TYPES.APPEND_ARTIFACT;
+      const needsRevision = type !== COMMAND_TYPES.CREATE_ROOM && type !== COMMAND_TYPES.JOIN_ROOM && type !== COMMAND_TYPES.SUBMIT_SCORE && type !== COMMAND_TYPES.POST_MESSAGE && type !== COMMAND_TYPES.SUBMIT_CLOSING_VOTE && type !== COMMAND_TYPES.APPEND_ARTIFACT && type !== COMMAND_TYPES.SPY_GET_MY_CARD && type !== COMMAND_TYPES.SPY_SUBMIT_VOTE;
       if (needsRevision) {
         if (raw.expectedRevision == null || !Number.isFinite(Number(raw.expectedRevision))) {
           return fail(ERR.INVALID_ARGUMENT, "expectedRevision \u5FC5\u586B");
@@ -155,6 +173,322 @@ var require_room_contracts = __commonJS({
   }
 });
 
+// packages/room-domain/spy.js
+var require_spy = __commonJS({
+  "packages/room-domain/spy.js"(exports2, module2) {
+    "use strict";
+    var {
+      COMMAND_TYPES,
+      ERR,
+      fail,
+      okResult
+    } = require_room_contracts();
+    var SPY_PHASE = {
+      INTRO: "intro",
+      ASSIGN: "assign",
+      SPEAK: "speak",
+      VOTE: "vote",
+      RESULT: "result",
+      NEXT_ROUND: "nextRound",
+      SETTLE: "settle"
+    };
+    var SPY_PAGE = {
+      intro: "spymodeindex",
+      assign: "spyassign",
+      speak: "spyspeak",
+      vote: "spyvote",
+      result: "spyresult",
+      nextRound: "spynextround",
+      settle: "spysettle"
+    };
+    var MIN_PLAYERS = 3;
+    var SPEAK_ROUND_MS = 5 * 60 * 1e3;
+    var SPEAK_TURN_MS = 60 * 1e3;
+    var VOTE_ROUND_MS = 2 * 60 * 1e3;
+    var DEFAULT_WORD_PAIRS = [
+      {
+        id: "pair_switch_click",
+        civilianWord: "\u5F00\u5173",
+        civilianBlurb: "\u63A7\u4EF6 0/1 \u72B6\u6001\u76F4\u63A5\u5BF9\u5E94\u7269\u4EF6\u72B6\u6001\u3002",
+        spyWord: "\u5355\u51FB",
+        spyBlurb: "\u9700\u5B8C\u6210\u6309\u4E0B\u518D\u62AC\u8D77\u624D\u89E6\u53D1\u4E00\u6B21\u3002"
+      },
+      {
+        id: "pair_drag_fling",
+        civilianWord: "\u62D6\u62FD",
+        civilianBlurb: "\u4EC5\u7531\u4F4D\u7F6E\u9A71\u52A8\uFF0C\u5B9E\u65F6\u8DDF\u968F\u3002",
+        spyWord: "\u7529\u52A8",
+        spyBlurb: "\u4F4D\u7F6E\u52A0\u91CA\u653E\u901F\u5EA6\u9A71\u52A8\uFF0C\u91CA\u653E\u540E\u60EF\u6027\u6ED1\u884C\u3002"
+      }
+    ];
+    function pageForPhase(phase) {
+      return SPY_PAGE[phase] || SPY_PAGE.intro;
+    }
+    function getDefaultSpyCount(playerCount) {
+      const n = Number(playerCount) || 0;
+      if (n < 3) return 0;
+      if (n <= 6) return 1;
+      return 2;
+    }
+    function shuffle(list, random) {
+      const rnd = typeof random === "function" ? random : Math.random;
+      const arr = list.slice();
+      for (let i = arr.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rnd() * (i + 1));
+        const tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+      }
+      return arr;
+    }
+    function pickDefaultWordPair(random) {
+      const rnd = typeof random === "function" ? random : Math.random;
+      const i = Math.floor(rnd() * DEFAULT_WORD_PAIRS.length);
+      return DEFAULT_WORD_PAIRS[i] || DEFAULT_WORD_PAIRS[0];
+    }
+    function listPlayableMembers(room) {
+      const seatMap = room.seatMap || {};
+      const byUser = room.membersByUserId || {};
+      return Object.keys(seatMap).map((seat) => {
+        const userId = seatMap[seat];
+        const m = byUser[userId];
+        if (!userId || !m) return null;
+        return {
+          userId,
+          seatNo: Number(seat),
+          playerIndex: Number(seat),
+          nickName: m.nickName || `\u73A9\u5BB6${seat}`,
+          avatarUrl: m.avatarUrl || null,
+          avatarIndex: m.avatarIndex != null ? m.avatarIndex : null
+        };
+      }).filter(Boolean).sort((a, b) => a.seatNo - b.seatNo);
+    }
+    function emptyVoteStatus() {
+      return {
+        votedPlayerIndexes: [],
+        tally: {},
+        ballots: {}
+      };
+    }
+    function beginSpeakPhase(spyGame, speakOrder, now) {
+      const order = speakOrder || spyGame.speakOrder || [];
+      return {
+        ...spyGame,
+        phase: SPY_PHASE.SPEAK,
+        speakOrder: order,
+        currentSpeakIndex: 0,
+        speakRoundStartedAt: now,
+        speakTurnStartedAt: now,
+        voteStartedAt: 0,
+        voteStatus: emptyVoteStatus(),
+        lastResult: null,
+        winnerSide: null,
+        tieBreak: false
+      };
+    }
+    function publicSpyGame(spyGame) {
+      if (!spyGame) return null;
+      const phase = spyGame.phase;
+      const revealWords = phase === SPY_PHASE.SETTLE;
+      return {
+        phase,
+        spyCount: spyGame.spyCount,
+        round: spyGame.round,
+        wordPairId: spyGame.wordPairId,
+        civilianWord: revealWords ? spyGame.civilianWord : null,
+        civilianBlurb: revealWords ? spyGame.civilianBlurb : null,
+        spyWord: revealWords ? spyGame.spyWord : null,
+        spyBlurb: revealWords ? spyGame.spyBlurb : null,
+        players: (spyGame.players || []).map((p) => ({
+          playerIndex: p.playerIndex,
+          name: p.name,
+          avatarUrl: p.avatarUrl || null,
+          avatarIndex: p.avatarIndex != null ? p.avatarIndex : null,
+          alive: p.alive !== false,
+          leftRoom: p.leftRoom === true
+        })),
+        speakOrder: spyGame.speakOrder || [],
+        currentSpeakIndex: spyGame.currentSpeakIndex || 0,
+        speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
+        speakTurnStartedAt: spyGame.speakTurnStartedAt || 0,
+        voteStartedAt: spyGame.voteStartedAt || 0,
+        speakRoundMs: spyGame.speakRoundMs || SPEAK_ROUND_MS,
+        speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
+        voteDeadlineMs: spyGame.voteDeadlineMs || VOTE_ROUND_MS,
+        voteStatus: {
+          votedCount: spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes ? spyGame.voteStatus.votedPlayerIndexes.length : 0
+        },
+        lastResult: spyGame.lastResult || null,
+        winnerSide: spyGame.winnerSide || null,
+        tieBreak: spyGame.tieBreak === true
+      };
+    }
+    function executeSpyCommand(ctx) {
+      const {
+        room,
+        envelope,
+        actorUserId,
+        ts,
+        wordPairPicker,
+        random
+      } = ctx;
+      const { type, commandId, expectedRevision, payload } = envelope;
+      if (type === COMMAND_TYPES.SPY_GET_MY_CARD) {
+        const seatNo = Object.keys(room.seatMap || {}).find(
+          (s) => String(room.seatMap[s]) === String(actorUserId)
+        );
+        const isHost = String(room.hostUserId) === String(actorUserId);
+        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
+        const secrets = room.secretsByUserId || {};
+        const secret = secrets[actorUserId];
+        if (!secret) return fail(ERR.NO_CARD);
+        const speakOrder = room.spyGame && room.spyGame.speakOrder || [];
+        const playerIndex = secret.playerIndex != null ? Number(secret.playerIndex) : Number(seatNo);
+        const speakOrderRank = speakOrder.findIndex((idx) => Number(idx) === playerIndex) + 1;
+        return okResult({
+          commandId,
+          appliedRevision: room.revision,
+          changedDomains: [],
+          room,
+          effects: {
+            readOnly: true,
+            card: {
+              playerIndex,
+              role: secret.role,
+              word: secret.word,
+              blurb: secret.blurb,
+              speakOrderRank: speakOrderRank > 0 ? speakOrderRank : null,
+              speakOrderTotal: speakOrder.length
+            },
+            spyGame: publicSpyGame(room.spyGame)
+          }
+        });
+      }
+      if (type === COMMAND_TYPES.SPY_START_ASSIGN) {
+        if (String(room.hostUserId) !== String(actorUserId)) {
+          return fail(ERR.HOST_REQUIRED);
+        }
+        if (expectedRevision != null && Number(expectedRevision) !== Number(room.revision)) {
+          return fail(ERR.REVISION_CONFLICT, null, { currentRevision: room.revision });
+        }
+        const players = listPlayableMembers(room);
+        if (players.length < MIN_PLAYERS) {
+          return fail(ERR.NOT_ENOUGH_PLAYERS, `\u81F3\u5C11\u9700\u8981 ${MIN_PLAYERS} \u540D\u73A9\u5BB6`);
+        }
+        const phase = room.spyGame && room.spyGame.phase;
+        if (phase && phase !== SPY_PHASE.INTRO && phase !== SPY_PHASE.SETTLE) {
+          return fail(ERR.GAME_IN_PROGRESS);
+        }
+        const pair = typeof wordPairPicker === "function" ? wordPairPicker() : pickDefaultWordPair(random);
+        if (!pair || !pair.civilianWord || !pair.spyWord) {
+          return fail(ERR.NO_WORD_PAIR);
+        }
+        const spyCount = getDefaultSpyCount(players.length);
+        const shuffled = shuffle(players, random);
+        const secretsByUserId = {};
+        const assignmentsBySeat = {};
+        shuffled.forEach((m, index) => {
+          const isSpy = index < spyCount;
+          const row = {
+            playerIndex: m.playerIndex,
+            userId: m.userId,
+            role: isSpy ? "spy" : "civilian",
+            word: isSpy ? pair.spyWord : pair.civilianWord,
+            blurb: isSpy ? pair.spyBlurb || "" : pair.civilianBlurb || "",
+            name: m.nickName
+          };
+          secretsByUserId[m.userId] = row;
+          assignmentsBySeat[String(m.playerIndex)] = row;
+        });
+        const speakOrder = shuffle(players.map((m) => m.playerIndex), random);
+        const playerSnaps = players.map((m) => ({
+          playerIndex: m.playerIndex,
+          name: m.nickName,
+          avatarUrl: m.avatarUrl,
+          avatarIndex: m.avatarIndex,
+          alive: true
+        }));
+        let spyGame = {
+          phase: SPY_PHASE.SPEAK,
+          spyCount,
+          round: 1,
+          wordPairId: pair.id || null,
+          civilianWord: pair.civilianWord,
+          civilianBlurb: pair.civilianBlurb || "",
+          spyWord: pair.spyWord,
+          spyBlurb: pair.spyBlurb || "",
+          players: playerSnaps,
+          speakOrder,
+          currentSpeakIndex: 0,
+          speakRoundStartedAt: 0,
+          speakTurnStartedAt: 0,
+          voteStartedAt: 0,
+          speakRoundMs: SPEAK_ROUND_MS,
+          speakTurnMs: SPEAK_TURN_MS,
+          voteDeadlineMs: VOTE_ROUND_MS,
+          voteStatus: emptyVoteStatus(),
+          lastResult: null,
+          winnerSide: null,
+          tieBreak: false
+        };
+        spyGame = beginSpeakPhase(spyGame, speakOrder, ts);
+        const nextPage = pageForPhase(SPY_PHASE.SPEAK);
+        const domainRevisions = {
+          ...room.domainRevisions || {},
+          session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
+        };
+        const next = {
+          ...room,
+          selectedModeId: "spy",
+          currentPage: nextPage,
+          brainstormProgressPage: nextPage,
+          spyGame,
+          // legacy 兼容字段：adapter 可双写；领域以 secretsByUserId 为准
+          spyAssignments: assignmentsBySeat,
+          secretsByUserId,
+          workflow: {
+            mode: "SPY",
+            step: "SPY_SPEAK",
+            roundNo: 1,
+            turnId: `spy_r1_s${speakOrder[0] || 0}`,
+            activeSeatNo: speakOrder[0] != null ? Number(speakOrder[0]) : null,
+            deadlineAt: ts + SPEAK_TURN_MS
+          },
+          domainRevisions,
+          revision: room.revision + 1,
+          updatedAt: ts
+        };
+        return okResult({
+          commandId,
+          appliedRevision: next.revision,
+          changedDomains: ["session"],
+          room: next,
+          effects: {
+            spyStarted: true,
+            legacyPage: nextPage,
+            spyGame: publicSpyGame(spyGame),
+            secretsUpsert: true,
+            // 兼容现网：一步完成分牌+进发言（蓝图 SPY_START_SPEAK 边暂并入）
+            combinedStartSpeak: true,
+            payloadNote: payload || null
+          }
+        });
+      }
+      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Spy \u547D\u4EE4: ${type}`);
+    }
+    module2.exports = {
+      SPY_PHASE,
+      SPY_PAGE,
+      MIN_PLAYERS,
+      executeSpyCommand,
+      publicSpyGame,
+      pageForPhase,
+      getDefaultSpyCount,
+      DEFAULT_WORD_PAIRS
+    };
+  }
+});
+
 // packages/room-domain/index.js
 var require_room_domain = __commonJS({
   "packages/room-domain/index.js"(exports2, module2) {
@@ -171,6 +505,7 @@ var require_room_domain = __commonJS({
       emptyDomainRevisions,
       isNonEmptyString
     } = require_room_contracts();
+    var { executeSpyCommand } = require_spy();
     var AVATAR_COLORS = [
       "#5EC159",
       "#4A90E2",
@@ -383,7 +718,15 @@ var require_room_domain = __commonJS({
         updatedAt: now
       };
     }
-    function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
+    function executeCommand({
+      room,
+      envelope,
+      actorUserId,
+      roomIdFactory,
+      now,
+      wordPairPicker,
+      random
+    }) {
       const authErr = assertActor(actorUserId);
       if (authErr) return authErr;
       const ts = now || Date.now();
@@ -677,6 +1020,21 @@ var require_room_domain = __commonJS({
           }
         }
       }
+      if (String(type).indexOf("SPY_") === 0) {
+        const spyResult = executeSpyCommand({
+          room,
+          envelope,
+          actorUserId,
+          ts,
+          wordPairPicker,
+          random
+        });
+        if (!spyResult.ok) return spyResult;
+        return okResult({
+          ...spyResult,
+          head: spyResult.effects && spyResult.effects.readOnly ? buildHead(room, actorUserId) : buildHead(spyResult.room, actorUserId)
+        });
+      }
       const actorSeat = findSeatNo(room.seatMap, actorUserId);
       const isHost = String(room.hostUserId) === String(actorUserId);
       if (!actorSeat && !isHost) {
@@ -945,10 +1303,11 @@ var require_room_application = __commonJS({
       projectSnapshot,
       authorizeRoomRead
     } = require_room_domain();
-    function createRoomApplication2(repo) {
+    function createRoomApplication2(repo, options) {
       if (!repo || typeof repo.loadRoom !== "function") {
         throw new Error("RoomRepository required");
       }
+      const appOptions = options || {};
       async function execute(rawEnvelope, actorContext) {
         const actorUserId = actorContext && actorContext.userId;
         if (!actorUserId) {
@@ -973,7 +1332,9 @@ var require_room_application = __commonJS({
           envelope,
           actorUserId,
           roomIdFactory: repo.generateRoomId ? () => repo.generateRoomId() : void 0,
-          now: Date.now()
+          now: appOptions.now || Date.now(),
+          wordPairPicker: appOptions.wordPairPicker,
+          random: appOptions.random
         });
         if (!domainResult.ok) {
           return {
@@ -981,7 +1342,9 @@ var require_room_application = __commonJS({
             commandId: envelope.commandId
           };
         }
-        await repo.persistRoom(domainResult.room, domainResult.effects || {});
+        if (!(domainResult.effects && domainResult.effects.readOnly)) {
+          await repo.persistRoom(domainResult.room, domainResult.effects || {});
+        }
         const success = okResult({
           commandId: envelope.commandId,
           appliedRevision: domainResult.appliedRevision,
@@ -990,6 +1353,15 @@ var require_room_application = __commonJS({
           effects: domainResult.effects || {},
           roomId: domainResult.room.roomId
         });
+        if (domainResult.effects && domainResult.effects.card) {
+          success.card = domainResult.effects.card;
+        }
+        if (domainResult.effects && domainResult.effects.spyGame) {
+          success.spyGame = domainResult.effects.spyGame;
+        }
+        if (domainResult.effects && domainResult.effects.legacyPage) {
+          success.currentPage = domainResult.effects.legacyPage;
+        }
         await repo.saveCommandResult({
           commandId: envelope.commandId,
           actorUserId,
@@ -1134,6 +1506,7 @@ var require_room_cloudbase_adapter = __commonJS({
     var MESSAGES = "roomMessages";
     var VOTES = "roomVotes";
     var ARTIFACTS = "roomArtifacts";
+    var SECRETS = "roomSecrets";
     function createCloudBaseRoomRepository2(deps) {
       const db2 = deps.db;
       if (!db2) throw new Error("db required");
@@ -1190,16 +1563,66 @@ var require_room_cloudbase_adapter = __commonJS({
           progress: roomDoc.progress || null,
           workshopName: roomDoc.workshopName || "\u8111\u66B4\u5DE5\u4F5C\u574A",
           membersByUserId,
+          selectedModeId: roomDoc.selectedModeId || null,
+          currentPage: roomDoc.currentPage || null,
+          brainstormProgressPage: roomDoc.brainstormProgressPage || null,
+          spyGame: roomDoc.spyGame || null,
+          spyAssignments: roomDoc.spyAssignments || null,
+          secretsByUserId: null,
           createdAt: roomDoc.createdAt,
           updatedAt: roomDoc.updatedAt
         };
+      }
+      function secretsFromLegacyAssignments(spyAssignments) {
+        const map = {};
+        if (!spyAssignments || typeof spyAssignments !== "object") return map;
+        Object.keys(spyAssignments).forEach((seat) => {
+          const row = spyAssignments[seat];
+          if (!row || !row.userId) return;
+          map[row.userId] = {
+            playerIndex: row.playerIndex != null ? Number(row.playerIndex) : Number(seat),
+            userId: row.userId,
+            role: row.role,
+            word: row.word,
+            blurb: row.blurb || "",
+            name: row.name || ""
+          };
+        });
+        return map;
+      }
+      async function loadSecretsByUserId(roomId) {
+        try {
+          const res = await db2.collection(SECRETS).where({ roomId }).limit(MAX_SEATS).get();
+          const map = {};
+          (res.data || []).forEach((doc) => {
+            if (!doc || !doc.userId) return;
+            map[doc.userId] = {
+              playerIndex: doc.playerIndex != null ? Number(doc.playerIndex) : null,
+              userId: doc.userId,
+              role: doc.role,
+              word: doc.word,
+              blurb: doc.blurb || "",
+              name: doc.name || ""
+            };
+          });
+          return map;
+        } catch (e) {
+          console.warn("load roomSecrets failed", e);
+          return {};
+        }
       }
       async function loadRoom(roomId) {
         const roomRes = await db2.collection(ROOMS).where({ roomId }).limit(1).get();
         if (!roomRes.data || !roomRes.data.length) return null;
         const roomDoc = roomRes.data[0];
         const membersRes = await db2.collection(MEMBERS).where({ roomId }).limit(MAX_SEATS).get();
-        return toAggregate(roomDoc, membersRes.data || []);
+        const agg = toAggregate(roomDoc, membersRes.data || []);
+        let secretsByUserId = await loadSecretsByUserId(roomId);
+        if (!Object.keys(secretsByUserId).length) {
+          secretsByUserId = secretsFromLegacyAssignments(roomDoc.spyAssignments);
+        }
+        agg.secretsByUserId = Object.keys(secretsByUserId).length ? secretsByUserId : null;
+        return agg;
       }
       async function loadCommand(commandId) {
         try {
@@ -1240,6 +1663,12 @@ var require_room_cloudbase_adapter = __commonJS({
           domainRevisions: room.domainRevisions,
           progress: room.progress,
           workshopName: room.workshopName,
+          selectedModeId: room.selectedModeId || null,
+          currentPage: room.currentPage || null,
+          brainstormProgressPage: room.brainstormProgressPage || null,
+          spyGame: room.spyGame || null,
+          // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
+          spyAssignments: room.spyAssignments || null,
           updatedAt: now
         };
         if (effects && effects.created) {
@@ -1361,6 +1790,37 @@ var require_room_cloudbase_adapter = __commonJS({
               });
             } catch (e) {
               console.warn("persist artifact failed", e);
+            }
+          }
+        }
+        if (effects && effects.secretsUpsert && room.secretsByUserId) {
+          try {
+            const existing2 = await db2.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
+            for (const doc of existing2.data || []) {
+              await db2.collection(SECRETS).doc(doc._id).remove();
+            }
+          } catch (e) {
+            console.warn("clear roomSecrets failed", e);
+          }
+          for (const userId of Object.keys(room.secretsByUserId)) {
+            const row = room.secretsByUserId[userId];
+            if (!row) continue;
+            const docId = `${room.roomId}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
+            try {
+              await db2.collection(SECRETS).doc(docId).set({
+                data: {
+                  roomId: room.roomId,
+                  userId,
+                  playerIndex: row.playerIndex != null ? Number(row.playerIndex) : null,
+                  role: row.role,
+                  word: row.word,
+                  blurb: row.blurb || "",
+                  name: row.name || "",
+                  updatedAt: now
+                }
+              });
+            } catch (e) {
+              console.warn("persist roomSecret failed", e);
             }
           }
         }

@@ -12,6 +12,7 @@ const {
   emptyDomainRevisions,
   isNonEmptyString
 } = require('@cardboard/room-contracts');
+const { executeSpyCommand } = require('./spy');
 
 const AVATAR_COLORS = [
   '#5EC159', '#4A90E2', '#E24A4A', '#E2B84A',
@@ -268,7 +269,15 @@ function createRoomAggregate({ roomId, actorUserId, payload, now }) {
  * 纯领域执行：输入当前房间聚合（可为 null）与命令，输出下一状态或错误。
  * 不访问数据库；幂等由 application 层处理。
  */
-function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
+function executeCommand({
+  room,
+  envelope,
+  actorUserId,
+  roomIdFactory,
+  now,
+  wordPairPicker,
+  random
+}) {
   const authErr = assertActor(actorUserId);
   if (authErr) return authErr;
 
@@ -580,6 +589,25 @@ function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
         });
       }
     }
+  }
+
+  // Spy 命令矩阵（Phase 6）：在通用 revision 闸门前分流（含只读 GET_MY_CARD）
+  if (String(type).indexOf('SPY_') === 0) {
+    const spyResult = executeSpyCommand({
+      room,
+      envelope,
+      actorUserId,
+      ts,
+      wordPairPicker,
+      random
+    });
+    if (!spyResult.ok) return spyResult;
+    return okResult({
+      ...spyResult,
+      head: spyResult.effects && spyResult.effects.readOnly
+        ? buildHead(room, actorUserId)
+        : buildHead(spyResult.room, actorUserId)
+    });
   }
 
   // 以下命令需要成员身份与 expectedRevision

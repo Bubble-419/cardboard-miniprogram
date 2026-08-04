@@ -10,6 +10,7 @@ const SCORES = 'roomScores';
 const MESSAGES = 'roomMessages';
 const VOTES = 'roomVotes';
 const ARTIFACTS = 'roomArtifacts';
+const SECRETS = 'roomSecrets';
 
 /**
  * CloudBase 仓储：将领域聚合映射到 rooms + roomMembers + roomCommands
@@ -79,9 +80,55 @@ function createCloudBaseRoomRepository(deps) {
       progress: roomDoc.progress || null,
       workshopName: roomDoc.workshopName || '脑暴工作坊',
       membersByUserId,
+      selectedModeId: roomDoc.selectedModeId || null,
+      currentPage: roomDoc.currentPage || null,
+      brainstormProgressPage: roomDoc.brainstormProgressPage || null,
+      spyGame: roomDoc.spyGame || null,
+      spyAssignments: roomDoc.spyAssignments || null,
+      secretsByUserId: null,
       createdAt: roomDoc.createdAt,
       updatedAt: roomDoc.updatedAt
     };
+  }
+
+  function secretsFromLegacyAssignments(spyAssignments) {
+    const map = {};
+    if (!spyAssignments || typeof spyAssignments !== 'object') return map;
+    Object.keys(spyAssignments).forEach((seat) => {
+      const row = spyAssignments[seat];
+      if (!row || !row.userId) return;
+      map[row.userId] = {
+        playerIndex: row.playerIndex != null ? Number(row.playerIndex) : Number(seat),
+        userId: row.userId,
+        role: row.role,
+        word: row.word,
+        blurb: row.blurb || '',
+        name: row.name || ''
+      };
+    });
+    return map;
+  }
+
+  async function loadSecretsByUserId(roomId) {
+    try {
+      const res = await db.collection(SECRETS).where({ roomId }).limit(MAX_SEATS).get();
+      const map = {};
+      (res.data || []).forEach((doc) => {
+        if (!doc || !doc.userId) return;
+        map[doc.userId] = {
+          playerIndex: doc.playerIndex != null ? Number(doc.playerIndex) : null,
+          userId: doc.userId,
+          role: doc.role,
+          word: doc.word,
+          blurb: doc.blurb || '',
+          name: doc.name || ''
+        };
+      });
+      return map;
+    } catch (e) {
+      console.warn('load roomSecrets failed', e);
+      return {};
+    }
   }
 
   async function loadRoom(roomId) {
@@ -93,7 +140,13 @@ function createCloudBaseRoomRepository(deps) {
       .where({ roomId })
       .limit(MAX_SEATS)
       .get();
-    return toAggregate(roomDoc, membersRes.data || []);
+    const agg = toAggregate(roomDoc, membersRes.data || []);
+    let secretsByUserId = await loadSecretsByUserId(roomId);
+    if (!Object.keys(secretsByUserId).length) {
+      secretsByUserId = secretsFromLegacyAssignments(roomDoc.spyAssignments);
+    }
+    agg.secretsByUserId = Object.keys(secretsByUserId).length ? secretsByUserId : null;
+    return agg;
   }
 
   async function loadCommand(commandId) {
@@ -137,6 +190,12 @@ function createCloudBaseRoomRepository(deps) {
       domainRevisions: room.domainRevisions,
       progress: room.progress,
       workshopName: room.workshopName,
+      selectedModeId: room.selectedModeId || null,
+      currentPage: room.currentPage || null,
+      brainstormProgressPage: room.brainstormProgressPage || null,
+      spyGame: room.spyGame || null,
+      // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
+      spyAssignments: room.spyAssignments || null,
       updatedAt: now
     };
 
@@ -266,6 +325,39 @@ function createCloudBaseRoomRepository(deps) {
           });
         } catch (e) {
           console.warn('persist artifact failed', e);
+        }
+      }
+    }
+
+    // Spy 密牌：独立集合，不进公开快照
+    if (effects && effects.secretsUpsert && room.secretsByUserId) {
+      try {
+        const existing = await db.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
+        for (const doc of existing.data || []) {
+          await db.collection(SECRETS).doc(doc._id).remove();
+        }
+      } catch (e) {
+        console.warn('clear roomSecrets failed', e);
+      }
+      for (const userId of Object.keys(room.secretsByUserId)) {
+        const row = room.secretsByUserId[userId];
+        if (!row) continue;
+        const docId = `${room.roomId}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+        try {
+          await db.collection(SECRETS).doc(docId).set({
+            data: {
+              roomId: room.roomId,
+              userId,
+              playerIndex: row.playerIndex != null ? Number(row.playerIndex) : null,
+              role: row.role,
+              word: row.word,
+              blurb: row.blurb || '',
+              name: row.name || '',
+              updatedAt: now
+            }
+          });
+        } catch (e) {
+          console.warn('persist roomSecret failed', e);
         }
       }
     }

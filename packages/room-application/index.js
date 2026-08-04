@@ -27,10 +27,11 @@ const {
  * @property {(roomId: string) => Promise<object[]>} [listPresence]
  */
 
-function createRoomApplication(repo) {
+function createRoomApplication(repo, options) {
   if (!repo || typeof repo.loadRoom !== 'function') {
     throw new Error('RoomRepository required');
   }
+  const appOptions = options || {};
 
   async function execute(rawEnvelope, actorContext) {
     const actorUserId = actorContext && actorContext.userId;
@@ -65,7 +66,9 @@ function createRoomApplication(repo) {
       roomIdFactory: repo.generateRoomId
         ? () => repo.generateRoomId()
         : undefined,
-      now: Date.now()
+      now: appOptions.now || Date.now(),
+      wordPairPicker: appOptions.wordPairPicker,
+      random: appOptions.random
     });
 
     if (!domainResult.ok) {
@@ -75,7 +78,9 @@ function createRoomApplication(repo) {
       };
     }
 
-    await repo.persistRoom(domainResult.room, domainResult.effects || {});
+    if (!(domainResult.effects && domainResult.effects.readOnly)) {
+      await repo.persistRoom(domainResult.room, domainResult.effects || {});
+    }
 
     const success = okResult({
       commandId: envelope.commandId,
@@ -85,6 +90,15 @@ function createRoomApplication(repo) {
       effects: domainResult.effects || {},
       roomId: domainResult.room.roomId
     });
+    if (domainResult.effects && domainResult.effects.card) {
+      success.card = domainResult.effects.card;
+    }
+    if (domainResult.effects && domainResult.effects.spyGame) {
+      success.spyGame = domainResult.effects.spyGame;
+    }
+    if (domainResult.effects && domainResult.effects.legacyPage) {
+      success.currentPage = domainResult.effects.legacyPage;
+    }
 
     await repo.saveCommandResult({
       commandId: envelope.commandId,

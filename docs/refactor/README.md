@@ -13,6 +13,7 @@
 - Phase 3：见 [PHASE3_CHANGELOG.md](./PHASE3_CHANGELOG.md)
 - Phase 4：见 [PHASE4_CHANGELOG.md](./PHASE4_CHANGELOG.md)
 - Phase 5：见 [PHASE5_CHANGELOG.md](./PHASE5_CHANGELOG.md)
+- Phase 6（进行中）：见 [PHASE6_CHANGELOG.md](./PHASE6_CHANGELOG.md)
 
 ## 冻结规则（Phase 0）
 
@@ -42,3 +43,4 @@
 | PHASE3_CHANGELOG.md | Phase 3 落地说明 |
 | PHASE4_CHANGELOG.md | Phase 4 落地说明 |
 | PHASE5_CHANGELOG.md | Phase 5 落地说明 |
+| PHASE6_CHANGELOG.md | Phase 6 落地说明（Spy 竖切进行中） |
