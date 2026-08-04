@@ -63,12 +63,19 @@ function buildCapabilities(room, actorUserId) {
       reason: isHost ? null : 'HOST_ONLY'
     },
     submitScore: {
-      allowed: false,
-      reason: 'NOT_IN_PHASE'
+      allowed: isMember && !(room.workflow && room.workflow.activeSeatNo != null && Number(seatNo) === Number(room.workflow.activeSeatNo)),
+      reason: !isMember
+        ? 'NOT_MEMBER'
+        : (room.workflow && Number(seatNo) === Number(room.workflow.activeSeatNo) ? 'SELF_SCORE' : null)
     },
     startStatement: {
-      allowed: false,
-      reason: 'HOST_ONLY'
+      allowed: isHost
+        && room.progress
+        && room.progress.requiredScoreCount > 0
+        && room.progress.scoredCount >= room.progress.requiredScoreCount,
+      reason: !isHost
+        ? 'HOST_ONLY'
+        : 'SCORES_INCOMPLETE'
     }
   };
 }
@@ -374,6 +381,207 @@ function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
     });
   }
 
+  // 并发事实命令：需成员，不要求全局 revision CAS（独立文档幂等）
+  {
+    const factTypes = [
+      COMMAND_TYPES.SUBMIT_SCORE,
+      COMMAND_TYPES.POST_MESSAGE,
+      COMMAND_TYPES.SUBMIT_CLOSING_VOTE,
+      COMMAND_TYPES.APPEND_ARTIFACT
+    ];
+    if (factTypes.includes(type)) {
+      const actorSeat = findSeatNo(room.seatMap, actorUserId);
+      const isHost = String(room.hostUserId) === String(actorUserId);
+      if (!actorSeat && !isHost) {
+        return fail(ERR.NOT_MEMBER);
+      }
+
+      if (type === COMMAND_TYPES.SUBMIT_SCORE) {
+        const score = parseInt(payload.score, 10);
+        if (!Number.isFinite(score) || score < 0 || score > 5) {
+          return fail(ERR.INVALID_ARGUMENT, 'score 需为 0～5');
+        }
+        const activeSeatNo = room.workflow && room.workflow.activeSeatNo != null
+          ? Number(room.workflow.activeSeatNo)
+          : (payload.activeSeatNo != null ? Number(payload.activeSeatNo) : null);
+        if (activeSeatNo != null && Number(actorSeat) === Number(activeSeatNo)) {
+          return fail(ERR.SELF_SCORE);
+        }
+        const turnId = (room.workflow && room.workflow.turnId)
+          || payload.turnId
+          || `turn_r${(room.workflow && room.workflow.roundNo) || 1}_s${activeSeatNo || 0}`;
+        const scores = { ...(room.scoresByKey || {}) };
+        const key = `${turnId}:${actorUserId}`;
+        scores[key] = {
+          turnId,
+          scorerUserId: actorUserId,
+          activeSeatNo,
+          score,
+          updatedAt: ts
+        };
+        const required = Math.max(0, memberCount(room.seatMap) - 1);
+        const scoredUserIds = new Set();
+        Object.keys(scores).forEach((k) => {
+          const row = scores[k];
+          if (row && row.turnId === turnId) scoredUserIds.add(row.scorerUserId);
+        });
+        const progress = {
+          scoredCount: scoredUserIds.size,
+          requiredScoreCount: required,
+          votedCount: (room.progress && room.progress.votedCount) || 0,
+          requiredVoteCount: (room.progress && room.progress.requiredVoteCount) || 0,
+          turnId
+        };
+        const domainRevisions = {
+          ...(room.domainRevisions || emptyDomainRevisions()),
+          scores: (room.domainRevisions && room.domainRevisions.scores || 0) + 1
+        };
+        const next = {
+          ...room,
+          scoresByKey: scores,
+          progress,
+          domainRevisions,
+          revision: room.revision + 1,
+          updatedAt: ts
+        };
+        return okResult({
+          commandId,
+          appliedRevision: next.revision,
+          changedDomains: ['scores'],
+          room: next,
+          head: buildHead(next, actorUserId),
+          effects: {
+            scoreUpsert: true,
+            scoreKey: key,
+            scoredCount: progress.scoredCount,
+            totalRequired: required
+          }
+        });
+      }
+
+      if (type === COMMAND_TYPES.POST_MESSAGE) {
+        const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+        if (!text) return fail(ERR.INVALID_ARGUMENT, '内容不能为空');
+        if (text.length > 40) return fail(ERR.INVALID_ARGUMENT, '最多 40 字');
+        const messageId = payload.messageId || `msg_${commandId}`;
+        const messages = Array.isArray(room.messages) ? room.messages.slice() : [];
+        if (!messages.some((m) => m && m.id === messageId)) {
+          messages.push({
+            id: messageId,
+            text,
+            at: ts,
+            round: payload.round != null ? Number(payload.round) : 0,
+            phase: payload.phase === 'discussion' ? 'discussion' : 'play',
+            anonKey: payload.anonKey || null
+          });
+        }
+        const trimmed = messages.slice(-40);
+        const domainRevisions = {
+          ...(room.domainRevisions || emptyDomainRevisions()),
+          messages: (room.domainRevisions && room.domainRevisions.messages || 0) + 1
+        };
+        const next = {
+          ...room,
+          messages: trimmed,
+          domainRevisions,
+          revision: room.revision + 1,
+          updatedAt: ts
+        };
+        return okResult({
+          commandId,
+          appliedRevision: next.revision,
+          changedDomains: ['messages'],
+          room: next,
+          head: buildHead(next, actorUserId),
+          effects: { messageAppended: true, messageId }
+        });
+      }
+
+      if (type === COMMAND_TYPES.SUBMIT_CLOSING_VOTE) {
+        const vote = String(payload.vote || '');
+        if (vote !== 'pass' && vote !== 'question') {
+          return fail(ERR.INVALID_ARGUMENT, 'vote 需为 pass 或 question');
+        }
+        const voteSessionId = (room.workflow && room.workflow.voteSessionId)
+          || payload.voteSessionId
+          || `vote_${room.roomId}`;
+        const votes = { ...(room.votesByKey || {}) };
+        const key = `${voteSessionId}:${actorUserId}`;
+        if (votes[key]) {
+          return fail(ERR.ALREADY_VOTED);
+        }
+        votes[key] = {
+          voteSessionId,
+          voterUserId: actorUserId,
+          seatNo: actorSeat,
+          vote,
+          at: ts
+        };
+        const required = memberCount(room.seatMap);
+        const votedCount = Object.keys(votes).filter((k) => votes[k].voteSessionId === voteSessionId).length;
+        const progress = {
+          ...(room.progress || {}),
+          votedCount,
+          requiredVoteCount: required
+        };
+        const domainRevisions = {
+          ...(room.domainRevisions || emptyDomainRevisions()),
+          votes: (room.domainRevisions && room.domainRevisions.votes || 0) + 1
+        };
+        const next = {
+          ...room,
+          votesByKey: votes,
+          progress,
+          domainRevisions,
+          revision: room.revision + 1,
+          updatedAt: ts
+        };
+        return okResult({
+          commandId,
+          appliedRevision: next.revision,
+          changedDomains: ['votes'],
+          room: next,
+          head: buildHead(next, actorUserId),
+          effects: { voteUpsert: true, voteKey: key, votedCount, totalMembers: required }
+        });
+      }
+
+      if (type === COMMAND_TYPES.APPEND_ARTIFACT) {
+        const operationId = payload.operationId || commandId;
+        const artifacts = Array.isArray(room.artifacts) ? room.artifacts.slice() : [];
+        if (!artifacts.some((a) => a && a.operationId === operationId)) {
+          artifacts.push({
+            operationId,
+            kind: payload.kind || 'text',
+            turnId: payload.turnId || null,
+            stage: payload.stage || 'play',
+            body: payload.body || null,
+            at: ts
+          });
+        }
+        const domainRevisions = {
+          ...(room.domainRevisions || emptyDomainRevisions()),
+          artifacts: (room.domainRevisions && room.domainRevisions.artifacts || 0) + 1
+        };
+        const next = {
+          ...room,
+          artifacts,
+          domainRevisions,
+          revision: room.revision + 1,
+          updatedAt: ts
+        };
+        return okResult({
+          commandId,
+          appliedRevision: next.revision,
+          changedDomains: ['artifacts'],
+          room: next,
+          head: buildHead(next, actorUserId),
+          effects: { artifactAppended: true, operationId }
+        });
+      }
+    }
+  }
+
   // 以下命令需要成员身份与 expectedRevision
   const actorSeat = findSeatNo(room.seatMap, actorUserId);
   const isHost = String(room.hostUserId) === String(actorUserId);
@@ -383,6 +591,101 @@ function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
   if (expectedRevision == null || Number(expectedRevision) !== Number(room.revision)) {
     return fail(ERR.REVISION_CONFLICT, undefined, {
       latestHead: buildHead(room, actorUserId)
+    });
+  }
+
+  if (type === COMMAND_TYPES.START_STATEMENT) {
+    if (!isHost) return fail(ERR.HOST_REQUIRED);
+    const progress = room.progress || {};
+    const scored = progress.scoredCount || 0;
+    const required = progress.requiredScoreCount || 0;
+    if (required <= 0 || scored < required) {
+      return fail(ERR.INVALID_TRANSITION, '评分未完成');
+    }
+    const workflow = {
+      ...(room.workflow || {}),
+      mode: 'PARTNER',
+      step: 'STATEMENT',
+      legacyPage: 'statement'
+    };
+    const next = {
+      ...room,
+      lifecycle: LIFECYCLE.ACTIVE,
+      status: 'STARTED',
+      workflow,
+      revision: room.revision + 1,
+      domainRevisions: {
+        ...(room.domainRevisions || emptyDomainRevisions()),
+        session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
+      },
+      updatedAt: ts
+    };
+    return okResult({
+      commandId,
+      appliedRevision: next.revision,
+      changedDomains: ['session'],
+      room: next,
+      head: buildHead(next, actorUserId),
+      effects: { startedStatement: true, legacyPage: 'statement' }
+    });
+  }
+
+  if (type === COMMAND_TYPES.ADVANCE_TURN) {
+    if (!isHost) return fail(ERR.HOST_REQUIRED);
+    const seats = Object.keys(room.seatMap || {})
+      .map((k) => parseInt(k, 10))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    if (!seats.length) return fail(ERR.INVALID_TRANSITION, '无有效席位');
+    const current = room.workflow && room.workflow.activeSeatNo != null
+      ? Number(room.workflow.activeSeatNo)
+      : seats[0];
+    const idx = seats.indexOf(current);
+    const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
+    const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
+    const roundNo = ((room.workflow && room.workflow.roundNo) || 1) + (wrapped ? 1 : 0);
+    const turnId = `turn_r${roundNo}_s${nextSeat}`;
+    const workflow = {
+      ...(room.workflow || {}),
+      mode: 'PARTNER',
+      step: 'TURN_ACTIVE',
+      activeSeatNo: nextSeat,
+      roundNo,
+      turnId,
+      legacyPage: 'gamepage'
+    };
+    const progress = {
+      scoredCount: 0,
+      requiredScoreCount: Math.max(0, seats.length - 1),
+      votedCount: 0,
+      requiredVoteCount: 0,
+      turnId
+    };
+    const next = {
+      ...room,
+      workflow,
+      progress,
+      revision: room.revision + 1,
+      domainRevisions: {
+        ...(room.domainRevisions || emptyDomainRevisions()),
+        session: (room.domainRevisions && room.domainRevisions.session || 0) + 1,
+        scores: (room.domainRevisions && room.domainRevisions.scores || 0) + 1
+      },
+      updatedAt: ts
+    };
+    return okResult({
+      commandId,
+      appliedRevision: next.revision,
+      changedDomains: ['session', 'scores'],
+      room: next,
+      head: buildHead(next, actorUserId),
+      effects: {
+        advancedTurn: true,
+        activeSeatNo: nextSeat,
+        roundNo,
+        turnId,
+        legacyPage: 'gamepage'
+      }
     });
   }
 

@@ -16,7 +16,14 @@ const COMMAND_TYPES = {
   LEAVE_ROOM: 'LEAVE_ROOM',
   REORDER_SEATS: 'REORDER_SEATS',
   DISSOLVE_ROOM: 'DISSOLVE_ROOM',
-  UPDATE_MEMBER_PROFILE: 'UPDATE_MEMBER_PROFILE'
+  UPDATE_MEMBER_PROFILE: 'UPDATE_MEMBER_PROFILE',
+  // Partner
+  SUBMIT_SCORE: 'SUBMIT_SCORE',
+  START_STATEMENT: 'START_STATEMENT',
+  ADVANCE_TURN: 'ADVANCE_TURN',
+  POST_MESSAGE: 'POST_MESSAGE',
+  SUBMIT_CLOSING_VOTE: 'SUBMIT_CLOSING_VOTE',
+  APPEND_ARTIFACT: 'APPEND_ARTIFACT'
 };
 
 const ERR = {
@@ -35,7 +42,9 @@ const ERR = {
   RATE_LIMITED: 'RATE_LIMITED',
   DEPENDENCY_UNAVAILABLE: 'DEPENDENCY_UNAVAILABLE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
-  ROOM_DISSOLVED: 'ROOM_DISSOLVED'
+  ROOM_DISSOLVED: 'ROOM_DISSOLVED',
+  SELF_SCORE: 'SELF_SCORE',
+  ALREADY_VOTED: 'ALREADY_VOTED'
 };
 
 const ERR_MSG = {
@@ -54,7 +63,9 @@ const ERR_MSG = {
   [ERR.RATE_LIMITED]: '请求过于频繁',
   [ERR.DEPENDENCY_UNAVAILABLE]: '依赖暂时不可用',
   [ERR.INTERNAL_ERROR]: '服务异常',
-  [ERR.ROOM_DISSOLVED]: '房间已解散'
+  [ERR.ROOM_DISSOLVED]: '房间已解散',
+  [ERR.SELF_SCORE]: '当前出牌玩家无需打分',
+  [ERR.ALREADY_VOTED]: '您已表态'
 };
 
 function fail(errCode, errMsg, extra) {
@@ -103,7 +114,12 @@ function validateCommandEnvelope(raw) {
   }
 
   const needsRevision =
-    type !== COMMAND_TYPES.CREATE_ROOM && type !== COMMAND_TYPES.JOIN_ROOM;
+    type !== COMMAND_TYPES.CREATE_ROOM
+    && type !== COMMAND_TYPES.JOIN_ROOM
+    && type !== COMMAND_TYPES.SUBMIT_SCORE
+    && type !== COMMAND_TYPES.POST_MESSAGE
+    && type !== COMMAND_TYPES.SUBMIT_CLOSING_VOTE
+    && type !== COMMAND_TYPES.APPEND_ARTIFACT;
   if (needsRevision) {
     if (raw.expectedRevision == null || !Number.isFinite(Number(raw.expectedRevision))) {
       return fail(ERR.INVALID_ARGUMENT, 'expectedRevision 必填');

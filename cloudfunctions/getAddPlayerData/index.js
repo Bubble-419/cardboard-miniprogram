@@ -8,6 +8,7 @@ cloud.init({
 const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
+const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /** 未刷新超过该时长视为离线（仅标记，不删除成员、不释放席位） */
 const PRESENCE_TIMEOUT_MS = 90 * 1000;
@@ -71,6 +72,50 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
     });
   }
   return base;
+}
+
+function countValidScores(scoreRows, actingUserId) {
+  const seen = new Set();
+  let scoredCount = 0;
+  for (const row of scoreRows || []) {
+    if (!row || !row.userId) continue;
+    if (actingUserId && row.userId === actingUserId) continue;
+    if (seen.has(row.userId)) continue;
+    seen.add(row.userId);
+    scoredCount += 1;
+  }
+  return scoredCount;
+}
+
+async function loadScoreProgress(room, members) {
+  if (room.progress && room.progress.requiredScoreCount != null) {
+    return {
+      scoredCount: room.progress.scoredCount || 0,
+      totalRequired: room.progress.requiredScoreCount || 0,
+      turnId: room.progress.turnId || null
+    };
+  }
+  const actingPlayerIndex = room.currentPlayerIndex != null
+    ? parseInt(room.currentPlayerIndex, 10)
+    : 1;
+  const currentRound = room.currentRound != null ? room.currentRound : 1;
+  const actingMember = (members || []).find((m) => m.playerIndex === actingPlayerIndex);
+  const actingUserId = actingMember && actingMember.userId;
+  const totalRequired = Math.max(0, (members || []).length - 1);
+  try {
+    const scoresRes = await db
+      .collection(ROOM_SCORES_COLLECTION)
+      .where({ roomId: room.roomId, currentPlayerIndex: actingPlayerIndex, round: currentRound })
+      .get();
+    return {
+      scoredCount: countValidScores(scoresRes.data, actingUserId),
+      totalRequired,
+      turnId: null
+    };
+  } catch (e) {
+    console.warn('loadScoreProgress failed', e);
+    return { scoredCount: 0, totalRequired, turnId: null };
+  }
 }
 
 function isMemberOnline(member, now, hostUserId) {
@@ -272,6 +317,7 @@ exports.main = async (event, context) => {
         sessionId: 0
       };
     const includeFullPartnerContent = event && event.full === true;
+    const scoreProgress = await loadScoreProgress(room, rawMembers);
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -296,7 +342,17 @@ exports.main = async (event, context) => {
       partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
       // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
       partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null,
-      spyGame: buildPublicSpyGame(room.spyGame, isHost, room.spyAssignments)
+      spyGame: buildPublicSpyGame(room.spyGame, isHost, room.spyAssignments),
+      // Phase 5：评分进度并入状态快照，消除 gamepage 独立 3s 评分轮询
+      scoredCount: scoreProgress.scoredCount,
+      totalRequired: scoreProgress.totalRequired,
+      progress: {
+        scoredCount: scoreProgress.scoredCount,
+        requiredScoreCount: scoreProgress.totalRequired,
+        turnId: scoreProgress.turnId
+      },
+      revision: room.revision != null ? room.revision : null,
+      protocolVersion: room.protocolVersion != null ? room.protocolVersion : 1
     };
 
     // 默认不返回大体积脑暴内容，避免各页轮询拖垮测试性能；gamepage 传 full:true

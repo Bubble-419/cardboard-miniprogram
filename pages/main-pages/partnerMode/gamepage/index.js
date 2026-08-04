@@ -11,7 +11,11 @@ const {
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
 const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  getActiveRoomSession
+} = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
   PHASE_PLAY,
@@ -370,7 +374,6 @@ Page({
     this._applyPendingSpecialMoveUsed();
     if (this.data.roomId) {
       this._startStatePolling();
-      this._startScorePolling();
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
@@ -378,7 +381,6 @@ Page({
     this._ensureSharedRoundTimerOnEnter().then(() => {
       this._applyPendingSpecialMoveUsed();
       this._applyAdoptDeckHint();
-      this.refreshScoreStatus();
       this._syncRoundSpeech();
       this._refreshInspirationCount();
       this._measureInspirationFooterClearance();
@@ -742,7 +744,7 @@ Page({
   },
 
   /**
-   * 倒计时到期后加速拉取服务器 startedAt，缩短非房主刷新延迟
+   * 倒计时到期后加速校准 RoomSession，缩短非房主刷新延迟（不再直打 getAddPlayerData）
    */
   _startRoundTimerBurstPoll() {
     this._stopRoundTimerBurstPoll();
@@ -754,13 +756,22 @@ Page({
         return;
       }
       try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId: this.data.roomId }
-        });
-        const result = (res && res.result) || {};
-        const next = result.roomState && result.roomState.partnerRoundStartedAt != null
-          ? Number(result.roomState.partnerRoundStartedAt)
+        const session = this._boundRoomSession || getActiveRoomSession();
+        let roomState = null;
+        if (session && typeof session.refresh === 'function') {
+          const snap = await session.refresh();
+          roomState = snap && snap.ok && snap.raw && snap.raw.roomState
+            ? snap.raw.roomState
+            : null;
+        } else {
+          const res = await wx.cloud.callFunction({
+            name: 'getAddPlayerData',
+            data: { roomId: this.data.roomId }
+          });
+          roomState = ((res && res.result) || {}).roomState || null;
+        }
+        const next = roomState && roomState.partnerRoundStartedAt != null
+          ? Number(roomState.partnerRoundStartedAt)
           : 0;
         // 非房主：仅在服务端戳更新且不被本地防回滚拒绝时应用
         if (
@@ -1436,6 +1447,26 @@ Page({
       }
     }
 
+    // Phase 5：评分进度来自状态快照 progress，去掉独立 3s 评分轮询
+    if (roomState.scoredCount != null || (roomState.progress && roomState.progress.scoredCount != null)) {
+      const scoredCount = roomState.progress && roomState.progress.scoredCount != null
+        ? roomState.progress.scoredCount
+        : roomState.scoredCount;
+      const totalRequired = roomState.progress && roomState.progress.requiredScoreCount != null
+        ? roomState.progress.requiredScoreCount
+        : (roomState.totalRequired != null ? roomState.totalRequired : this.data.totalRequired);
+      patch.scoredCount = scoredCount;
+      if (totalRequired != null) patch.totalRequired = totalRequired;
+      const phaseForScore = roomPhase || this.data.gamepagePhase;
+      const hostFlag = patch.isHost != null ? patch.isHost : this.data.isHost;
+      const req = patch.totalRequired != null ? patch.totalRequired : totalRequired;
+      patch.canStartStatement = hostFlag
+        && !isDiscussionPhase(phaseForScore)
+        && !isClosingPhase(phaseForScore)
+        && req > 0
+        && scoredCount >= req;
+    }
+
     if (playerChanged || roundChanged || sessionChanged) {
       patch.specialMoveUsedThisTurn = false;
       clearPartnerSpecialMoveUsedFlag(this.data.roomId);
@@ -1608,7 +1639,6 @@ Page({
 
       this._startStatePolling();
       this.refreshScoreStatus();
-      this._startScorePolling();
       this._roomLoaded = true;
       // 房主重开并广播；其他端跟随同一时间戳显示倒计时
       await this._ensureSharedRoundTimerOnEnter();
@@ -1622,6 +1652,26 @@ Page({
   },
 
   async refreshScoreStatus() {
+    // 兼容旧调用点：优先用最近 RoomSession / 状态快照中的 progress
+    const snap = this._boundRoomSession && this._boundRoomSession.getSnapshot
+      ? this._boundRoomSession.getSnapshot()
+      : null;
+    const state = (snap && snap.ok && snap.raw && snap.raw.roomState) || null;
+    if (state && (state.scoredCount != null || (state.progress && state.progress.scoredCount != null))) {
+      const scoredCount = state.progress && state.progress.scoredCount != null
+        ? state.progress.scoredCount
+        : state.scoredCount;
+      const totalRequired = state.progress && state.progress.requiredScoreCount != null
+        ? state.progress.requiredScoreCount
+        : (state.totalRequired != null ? state.totalRequired : this.data.totalRequired);
+      const canStartStatement = this.data.isHost
+        && !isDiscussionPhase(this.data.gamepagePhase)
+        && !isClosingPhase(this.data.gamepagePhase)
+        && totalRequired > 0
+        && scoredCount >= totalRequired;
+      this.setData({ scoredCount, totalRequired, canStartStatement });
+      return;
+    }
     const { roomId, isHost, gamepagePhase } = this.data;
     if (!roomId || isClosingPhase(gamepagePhase)) return;
     try {
@@ -1631,7 +1681,6 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
-
       const scoredCount = result.scoredCount || 0;
       const totalRequired = result.totalRequired != null
         ? result.totalRequired
@@ -1641,20 +1690,15 @@ Page({
         && !isClosingPhase(gamepagePhase)
         && totalRequired > 0
         && scoredCount >= totalRequired;
-
-      this.setData({
-        scoredCount,
-        totalRequired,
-        canStartStatement
-      });
+      this.setData({ scoredCount, totalRequired, canStartStatement });
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
   },
 
   _startScorePolling() {
+    // Phase 5：评分进度已并入状态轮询，不再启动独立 3s 轮询
     this._stopScorePolling();
-    this._scorePollTimer = setInterval(() => this.refreshScoreStatus(), 3000);
   },
 
   _stopScorePolling() {
@@ -1666,90 +1710,56 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
-    this._statePollInFlight = false;
-    this._statePollSeq = 0;
-    this._statePollAppliedSeq = 0;
-    const poll = async () => {
-      const roomId = this.data.roomId || '';
-      if (!roomId) return;
-      if (this._statePollInFlight) return;
-      this._statePollInFlight = true;
-      const seq = ++this._statePollSeq;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId, full: true }
-        });
-        if (seq < this._statePollAppliedSeq) return;
-        this._statePollAppliedSeq = seq;
-        const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            const state = pollResult.roomState || {};
-            // 房主/副屏：收尾相关页必须主动跳转（followSubScreenRoomPoll 对房主不会 navigate）
-            if (page === 'closingstatement') {
-              safeOpenUrl(buildClosingStatementUrl(roomId, {
-                closingVoteSessionId: state.closingVoteSessionId || '',
-                _t: Date.now()
-              }), { immediate: true });
-              return true;
-            }
-            if (page === 'closingend') {
-              safeOpenUrl(buildClosingEndUrl(roomId), { immediate: true });
-              return true;
-            }
-            if (page === 'gamepage') {
-              // 灵感输入聚焦时跳过整页 setData，避免键盘顶起 + 轮询互相拉扯卡死
-              if (
-                this.data.inspirationInputFocused
-                || this.data.inspirationHoldKeyboard
-                || this._inspirationNativeFocused
-              ) {
-                return true;
-              }
-              const prevMaster = this.data.isMasterMode;
-              const prevClosingStep = this.data.closingStep;
-              const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
-              // 倒计时已由 _applyRoomContext 统一处理，避免二次 apply 造成回滚
-              if (
-                playerChanged
-                || phaseChanged
-                || roundChanged
-                || prevMaster !== this.data.isMasterMode
-                || prevClosingStep !== this.data.closingStep
-              ) {
-                this.refreshScoreStatus();
-              }
-              return true;
-            }
-            if (page === 'statement') {
-              const idx = state.currentPlayerIndex != null
-                ? state.currentPlayerIndex
-                : this.data.currentPlayerIndex;
-              const playerName = state.currentPlayerName || this.data.currentPlayerName;
-              // 仅主屏进选择页；副屏进等待表态页
-              const isHost = pollResult.isHost === true || this.data.isHost === true;
-              safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
-                isSubScreen: !isHost,
-                isWaiting: !isHost
-              }), { immediate: true });
-              return true;
-            }
-            return false;
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || '',
+      intervalMs: 800,
+      full: true,
+      followNavigation: true,
+      beforeNavigate(pollResult, page) {
+        const state = pollResult.roomState || {};
+        if (page === 'closingstatement') {
+          safeOpenUrl(buildClosingStatementUrl(roomId, {
+            closingVoteSessionId: state.closingVoteSessionId || '',
+            _t: Date.now()
+          }), { immediate: true });
+          return true;
+        }
+        if (page === 'closingend') {
+          safeOpenUrl(buildClosingEndUrl(roomId), { immediate: true });
+          return true;
+        }
+        if (page === 'gamepage') {
+          if (
+            this.data.inspirationInputFocused
+            || this.data.inspirationHoldKeyboard
+            || this._inspirationNativeFocused
+          ) {
+            return true;
           }
-        });
-      } catch (e) {
-        console.warn('partner gamepage state poll', e);
-      } finally {
-        this._statePollInFlight = false;
+          this._applyRoomContext(pollResult);
+          return true;
+        }
+        if (page === 'statement') {
+          const idx = state.currentPlayerIndex != null
+            ? state.currentPlayerIndex
+            : this.data.currentPlayerIndex;
+          const playerName = state.currentPlayerName || this.data.currentPlayerName;
+          const isHost = pollResult.isHost === true || this.data.isHost === true;
+          safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
+            isSubScreen: !isHost,
+            isWaiting: !isHost
+          }), { immediate: true });
+          return true;
+        }
+        return false;
       }
-    };
-    poll();
-    // 缩短间隔，让非房主更快跟上新一轮 startedAt（到期后另有 burst poll）
-    this._statePollTimer = setInterval(poll, 800);
+    }).catch((e) => console.warn('partner gamepage roomSession', e));
   },
 
   _stopStatePolling() {
+    unbindPageFromRoomSession(this);
     if (this._statePollTimer) {
       clearInterval(this._statePollTimer);
       this._statePollTimer = null;

@@ -3,12 +3,13 @@
 const { createRoomSession } = require('../../packages/room-client/index');
 const { followSubScreenRoomPoll } = require('../../utils/subScreenRoomPoll');
 
-function createLegacyTransport(roomId) {
+function createLegacyTransport(roomId, options) {
+  const defaultFull = !!(options && options.full);
   return {
     async fetchSnapshot({ full }) {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId, full: full === true }
+        data: { roomId, full: full === true || defaultFull }
       });
       return (res && res.result) || {};
     },
@@ -49,8 +50,12 @@ async function openRoomSession(roomId, options) {
   app.globalData = app.globalData || {};
   const existing = app.globalData.roomSession;
   if (existing && existing.roomId === roomId) {
-    if (options && options.intervalMs && existing._intervalMs !== options.intervalMs) {
-      // 间隔变化时重建，避免大厅/流程页互相拖慢
+    const nextInterval = (options && options.intervalMs) || existing._intervalMs;
+    const nextFull = !!(options && options.full);
+    if (
+      (options && options.intervalMs && existing._intervalMs !== nextInterval)
+      || (options && options.full != null && existing._full !== nextFull)
+    ) {
       existing.dispose();
       app.globalData.roomSession = null;
     } else {
@@ -63,12 +68,14 @@ async function openRoomSession(roomId, options) {
   }
 
   const intervalMs = (options && options.intervalMs) || 2000;
+  const full = !!(options && options.full);
   const session = createRoomSession({
     roomId,
     intervalMs,
-    transport: createLegacyTransport(roomId)
+    transport: createLegacyTransport(roomId, { full })
   });
   session._intervalMs = intervalMs;
+  session._full = full;
   app.globalData.roomSession = session;
   app.globalData.roomId = roomId;
   await session.open();
@@ -109,7 +116,8 @@ async function bindPageToRoomSession(page, options) {
   if (!roomId) return null;
 
   const session = await openRoomSession(roomId, {
-    intervalMs: options.intervalMs || 2000
+    intervalMs: options.intervalMs || 2000,
+    full: options.full === true
   });
 
   if (page._roomSessionUnsub) {

@@ -7,6 +7,9 @@ const MEMBERS = 'roomMembers';
 const COMMANDS = 'roomCommands';
 const PRESENCE = 'roomPresence';
 const SCORES = 'roomScores';
+const MESSAGES = 'roomMessages';
+const VOTES = 'roomVotes';
+const ARTIFACTS = 'roomArtifacts';
 
 /**
  * CloudBase 仓储：将领域聚合映射到 rooms + roomMembers + roomCommands
@@ -186,6 +189,84 @@ function createCloudBaseRoomRepository(deps) {
         await db.collection(MEMBERS).doc(byUser[userId]._id).update({ data });
       } else {
         await db.collection(MEMBERS).add({ data });
+      }
+    }
+
+    // Partner 独立事实：评分 / 消息 / 投票 / 素材
+    if (effects && effects.scoreUpsert && room.scoresByKey && effects.scoreKey) {
+      const row = room.scoresByKey[effects.scoreKey];
+      if (row) {
+        const docId = `${room.roomId}_${row.turnId}_${row.scorerUserId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+        try {
+          await db.collection(SCORES).doc(docId).set({
+            data: {
+              roomId: room.roomId,
+              turnId: row.turnId,
+              userId: row.scorerUserId,
+              currentPlayerIndex: row.activeSeatNo,
+              score: row.score,
+              updatedAt: row.updatedAt,
+              createdAt: row.updatedAt
+            }
+          });
+        } catch (e) {
+          console.warn('persist score failed', e);
+        }
+      }
+    }
+    if (effects && effects.messageAppended && Array.isArray(room.messages)) {
+      const msg = room.messages.find((m) => m && m.id === effects.messageId);
+      if (msg) {
+        try {
+          await db.collection(MESSAGES).add({
+            data: {
+              roomId: room.roomId,
+              messageId: msg.id,
+              text: msg.text,
+              at: msg.at,
+              round: msg.round,
+              phase: msg.phase,
+              anonKey: msg.anonKey
+            }
+          });
+        } catch (e) {
+          console.warn('persist message failed', e);
+        }
+      }
+    }
+    if (effects && effects.voteUpsert && room.votesByKey && effects.voteKey) {
+      const row = room.votesByKey[effects.voteKey];
+      if (row) {
+        const docId = `${row.voteSessionId}_${row.voterUserId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+        try {
+          await db.collection(VOTES).doc(docId).set({
+            data: {
+              roomId: room.roomId,
+              voteSessionId: row.voteSessionId,
+              userId: row.voterUserId,
+              seatNo: row.seatNo,
+              vote: row.vote,
+              at: row.at
+            }
+          });
+        } catch (e) {
+          console.warn('persist vote failed', e);
+        }
+      }
+    }
+    if (effects && effects.artifactAppended && Array.isArray(room.artifacts)) {
+      const art = room.artifacts.find((a) => a && a.operationId === effects.operationId);
+      if (art) {
+        try {
+          await db.collection(ARTIFACTS).add({
+            data: {
+              roomId: room.roomId,
+              ...art
+            }
+          });
+        } catch (e) {
+          console.warn('persist artifact failed', e);
+        }
       }
     }
   }
