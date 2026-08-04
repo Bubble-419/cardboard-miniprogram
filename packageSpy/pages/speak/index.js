@@ -238,7 +238,7 @@ Page({
       const result = await callSpyAction('startVote', { roomId: this.data.roomId });
       if (result.ok !== true) {
         const hint = result.errCode === 'DEPRECATED'
-          ? '请重新上传云函数 spyGameAction 后再试'
+          ? '请重新上传云函数 roomCommand 后再试'
           : (result.errMsg || '操作失败');
         wx.showToast({ title: hint, icon: 'none', duration: 2500 });
         return;

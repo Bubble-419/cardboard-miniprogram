@@ -173,6 +173,82 @@ var require_room_contracts = __commonJS({
   }
 });
 
+// packages/room-domain/spyWordPairs.js
+var require_spyWordPairs = __commonJS({
+  "packages/room-domain/spyWordPairs.js"(exports2, module2) {
+    var WORD_ENTRIES = [
+      { word: "\u5F00\u5173", blurb: "\u63A7\u4EF6 0/1 \u72B6\u6001\u76F4\u63A5\u5BF9\u5E94\u7269\u4EF6\u72B6\u6001\uFF0C\u72B6\u6001\u4E0D\u53D8\u5219\u7269\u4EF6\u4E0D\u53D8\uFF0C\u4E0D\u5173\u5FC3\u52A8\u4F5C\u8FC7\u7A0B\u3002" },
+      { word: "\u5355\u51FB", blurb: "\u9700\u5B8C\u6210\u6309\u4E0B\u518D\u62AC\u8D77\uFF080\u21921\u21920\uFF09\u624D\u89E6\u53D1\u4E00\u6B21\uFF0C\u4E0D\u7559\u5B58\u72B6\u6001\uFF0C\u62AC\u8D77\u65F6\u751F\u6548\u3002" },
+      { word: "\u6309\u4E0B", blurb: "\u6355\u6349\u4ECE 0\u21921 \u7684\u77AC\u65F6\u53D8\u5316\u5373\u89E6\u53D1\uFF0C\u4E0D\u8981\u6C42\u62AC\u8D77\uFF0C\u4E5F\u4E0D\u7559\u5B58\u72B6\u6001\u3002" },
+      { word: "\u6ED1\u52A8\u5207\u6362", blurb: "\u4F4D\u79FB\u8FBE\u5230\u9608\u503C\u7ACB\u523B\u8DF3\u8F6C\u72B6\u6001\uFF0C\u65E0\u9700\u91CA\u653E\uFF0C\u5BF9\u8C61\u4E0D\u5168\u7A0B\u5B9E\u65F6\u8DDF\u968F\u3002" },
+      { word: "\u8F7B\u626B\u5207\u6362", blurb: "\u4F4D\u79FB\u8FBE\u6807\u4E14\u677E\u624B\u91CA\u653E\u540E\u624D\u5207\u6362\uFF0C\u652F\u6301\u4E2D\u9014\u53CD\u5411\u53D6\u6D88\uFF0C\u5F3A\u8C03\u786E\u8BA4\u4E0E\u5BB9\u9519\u3002" },
+      { word: "\u8D8A\u754C\u5207\u6362", blurb: "\u4EE5\u7A7F\u8FC7\u8FB9\u754C\u7EBF\u4E3A\u552F\u4E00\u5224\u5B9A\uFF0C\u5212\u8FC7\u77AC\u95F4\u89E6\u53D1\uFF0C\u4E0D\u770B\u603B\u4F4D\u79FB\u3001\u4E0D\u9700\u8981\u91CA\u653E\u3002" },
+      { word: "\u5FEB\u51FB", blurb: "\u8C03\u548C\u5355\u51FB\u4E0E\u957F\u6309\uFF1A\u5FEB\u901F\u6309\u4E0B\u5E76\u62AC\u8D77\u5224\u5355\u51FB\uFF0C\u6309\u4F4F\u8FC7\u4E45\u5219\u5224\u957F\u6309\u3002" },
+      { word: "\u70B9\u51FB\u7F13\u51B2", blurb: "\u8C03\u548C\u5355\u51FB\u4E0E\u53CC\u51FB\uFF1A\u9996\u6B21\u70B9\u51FB\u540E\u5EF6\u8FDF\u7B49\u5F85\uFF0C\u7A97\u53E3\u5185\u6709\u7B2C\u4E8C\u51FB\u5219\u53CC\u51FB\uFF0C\u5426\u5219\u5355\u51FB\u3002" },
+      { word: "\u62D6\u62FD", blurb: "\u4EC5\u7531\u4F4D\u7F6E\u9A71\u52A8\uFF0C\u5B9E\u65F6\u8DDF\u968F\u3001\u65E0\u60EF\u6027\u3001\u65E0\u951A\u70B9\u5F52\u4F4D\uFF0C\u677E\u624B\u5373\u505C\u3002" },
+      { word: "\u7529\u52A8", blurb: "\u4F4D\u7F6E\u52A0\u91CA\u653E\u901F\u5EA6\u9A71\u52A8\uFF0C\u91CA\u653E\u540E\u60EF\u6027\u6ED1\u884C\uFF0C\u7EC8\u70B9\u4E0D\u56FA\u5B9A\u3002" },
+      { word: "\u7FFB\u52A8", blurb: "\u4F4D\u79FB\u53EF\u8DDF\u968F\uFF0C\u91CA\u653E\u540E\u5F3A\u5236\u5438\u9644\u5230\u9884\u8BBE\u951A\u70B9\uFF0C\u5F3A\u8C03\u7ED3\u679C\u786E\u5B9A\u3002" },
+      { word: "\u6301\u7EED\u89E6\u53D1", blurb: "\u6309\u4F4F\u5373\u5F00\u59CB\uFF0C\u4EE5\u56FA\u5B9A\u95F4\u9694\u5300\u901F\u8FDE\u53D1\uFF0C\u65E0\u5EF6\u65F6\u95E8\u69DB\u3002" },
+      { word: "\u957F\u6309", blurb: "\u6309\u4F4F\u8D85\u8FC7\u65F6\u95F4\u9608\u503C\u624D\u89E6\u53D1\u4E00\u6B21\uFF0C\u4E0D\u8FDE\u53D1\uFF0C\u7528\u5EF6\u8FDF\u964D\u4F4E\u8BEF\u89E6\u3002" },
+      { word: "\u7F13\u51B2\u8FDE\u53D1", blurb: "\u6309\u4E0B\u5148\u7ACB\u5373\u89E6\u53D1\u4E00\u6B21\uFF0C\u7F13\u51B2\u7B49\u5F85\u540E\u518D\u8FDB\u5165\u8FDE\u7EED\u8FDE\u53D1\u3002" },
+      { word: "\u591A\u70B9\u6709\u5E8F\u70B9\u51FB", blurb: "\u6309\u9884\u8BBE\u5148\u540E\u987A\u5E8F\u70B9\u51FB\u591A\u4E2A\u70B9\u4F4D\u5373\u53EF\uFF0C\u4E0D\u5F3A\u8C03\u70B9\u4F4D\u76F8\u5BF9\u65B9\u4F4D\u3002" },
+      { word: "\u5F02\u4F4D\u8FDE\u89E6", blurb: "\u4EE5\u524D\u4E00\u70B9\u4E3A\u951A\uFF0C\u540E\u4E00\u70B9\u7684\u76F8\u5BF9\u65B9\u4F4D/\u8DDD\u79BB\u51B3\u5B9A\u8BED\u4E49\uFF0C\u987A\u5E8F\u4E0E\u7A7A\u95F4\u5171\u540C\u7EA6\u675F\u3002" }
+    ];
+    var PAIR_GROUPS = [
+      ["\u5F00\u5173", "\u5355\u51FB", "\u6309\u4E0B"],
+      ["\u6ED1\u52A8\u5207\u6362", "\u8F7B\u626B\u5207\u6362", "\u8D8A\u754C\u5207\u6362"],
+      ["\u5FEB\u51FB", "\u70B9\u51FB\u7F13\u51B2"],
+      ["\u62D6\u62FD", "\u7529\u52A8", "\u7FFB\u52A8"],
+      ["\u6301\u7EED\u89E6\u53D1", "\u957F\u6309", "\u7F13\u51B2\u8FDE\u53D1"],
+      ["\u591A\u70B9\u6709\u5E8F\u70B9\u51FB", "\u5F02\u4F4D\u8FDE\u89E6"]
+    ];
+    var ENTRY_MAP = WORD_ENTRIES.reduce((acc, item) => {
+      acc[item.word] = item;
+      return acc;
+    }, {});
+    function buildPairsFromGroups() {
+      const pairs = [];
+      let id = 1;
+      PAIR_GROUPS.forEach((group) => {
+        for (let i = 0; i < group.length; i += 1) {
+          for (let j = i + 1; j < group.length; j += 1) {
+            const a = ENTRY_MAP[group[i]];
+            const b = ENTRY_MAP[group[j]];
+            if (!a || !b) continue;
+            pairs.push({
+              id: `ixdl-${id}`,
+              wordA: a.word,
+              blurbA: a.blurb,
+              wordB: b.word,
+              blurbB: b.blurb
+            });
+            id += 1;
+          }
+        }
+      });
+      return pairs;
+    }
+    var SPY_WORD_PAIRS = buildPairsFromGroups();
+    function pickRandomWordPair() {
+      if (!SPY_WORD_PAIRS.length) return null;
+      const pair = SPY_WORD_PAIRS[Math.floor(Math.random() * SPY_WORD_PAIRS.length)];
+      const swap = Math.random() < 0.5;
+      return {
+        id: pair.id,
+        civilianWord: swap ? pair.wordB : pair.wordA,
+        civilianBlurb: swap ? pair.blurbB : pair.blurbA,
+        spyWord: swap ? pair.wordA : pair.wordB,
+        spyBlurb: swap ? pair.blurbA : pair.blurbB
+      };
+    }
+    module2.exports = {
+      SPY_WORD_PAIRS,
+      pickRandomWordPair,
+      WORD_ENTRIES
+    };
+  }
+});
+
 // packages/room-domain/spy.js
 var require_spy = __commonJS({
   "packages/room-domain/spy.js"(exports2, module2) {
@@ -183,6 +259,7 @@ var require_spy = __commonJS({
       fail,
       okResult
     } = require_room_contracts();
+    var { pickRandomWordPair: pickLibraryWordPair } = require_spyWordPairs();
     var SPY_PHASE = {
       INTRO: "intro",
       ASSIGN: "assign",
@@ -205,22 +282,7 @@ var require_spy = __commonJS({
     var SPEAK_ROUND_MS = 5 * 60 * 1e3;
     var SPEAK_TURN_MS = 60 * 1e3;
     var VOTE_ROUND_MS = 2 * 60 * 1e3;
-    var DEFAULT_WORD_PAIRS = [
-      {
-        id: "pair_switch_click",
-        civilianWord: "\u5F00\u5173",
-        civilianBlurb: "\u63A7\u4EF6 0/1 \u72B6\u6001\u76F4\u63A5\u5BF9\u5E94\u7269\u4EF6\u72B6\u6001\u3002",
-        spyWord: "\u5355\u51FB",
-        spyBlurb: "\u9700\u5B8C\u6210\u6309\u4E0B\u518D\u62AC\u8D77\u624D\u89E6\u53D1\u4E00\u6B21\u3002"
-      },
-      {
-        id: "pair_drag_fling",
-        civilianWord: "\u62D6\u62FD",
-        civilianBlurb: "\u4EC5\u7531\u4F4D\u7F6E\u9A71\u52A8\uFF0C\u5B9E\u65F6\u8DDF\u968F\u3002",
-        spyWord: "\u7529\u52A8",
-        spyBlurb: "\u4F4D\u7F6E\u52A0\u91CA\u653E\u901F\u5EA6\u9A71\u52A8\uFF0C\u91CA\u653E\u540E\u60EF\u6027\u6ED1\u884C\u3002"
-      }
-    ];
+    var DEFAULT_WORD_PAIRS = null;
     function pageForPhase(phase) {
       return SPY_PAGE[phase] || SPY_PAGE.intro;
     }
@@ -241,10 +303,11 @@ var require_spy = __commonJS({
       }
       return arr;
     }
-    function pickDefaultWordPair(random) {
-      const rnd = typeof random === "function" ? random : Math.random;
-      const i = Math.floor(rnd() * DEFAULT_WORD_PAIRS.length);
-      return DEFAULT_WORD_PAIRS[i] || DEFAULT_WORD_PAIRS[0];
+    function pickDefaultWordPair() {
+      if (typeof pickLibraryWordPair === "function") {
+        return pickLibraryWordPair();
+      }
+      return null;
     }
     function samePlayerIndex(a, b) {
       if (a == null || b == null) return false;
@@ -1765,6 +1828,11 @@ var require_room_application = __commonJS({
         if (domainResult.effects && domainResult.effects.legacyPage) {
           success.currentPage = domainResult.effects.legacyPage;
         }
+        ["settled", "tied", "finished", "autoVote", "already", "restarted"].forEach((key) => {
+          if (domainResult.effects && domainResult.effects[key] != null) {
+            success[key] = domainResult.effects[key];
+          }
+        });
         await repo.saveCommandResult({
           commandId: envelope.commandId,
           actorUserId,

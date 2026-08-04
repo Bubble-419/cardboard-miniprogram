@@ -2,39 +2,34 @@
 
 ## 本 slice 交付
 
-### 契约
+### 契约 / 领域 / 仓储
 
-- Spy 命令类型：`SPY_START_ASSIGN` / `SPY_GET_MY_CARD` / `SPY_START_SPEAK` / `SPY_ADVANCE_SPEAKER` / `SPY_SUBMIT_VOTE` / `SPY_CONFIRM_RESULT` / `SPY_NEXT_ROUND` / `SPY_CONTINUE` / `SPY_RESTART`
-- 错误码：`NOT_ENOUGH_PLAYERS` / `GAME_IN_PROGRESS` / `NO_CARD` / `NO_WORD_PAIR`
-- `SPY_GET_MY_CARD`、`SPY_SUBMIT_VOTE` 不要求全局 `expectedRevision`
+- Spy 命令矩阵已进 RoomKernel（分牌、看牌、发言、投票、结算、重启）
+- 密牌集合 `roomSecrets`；过渡期双写 `spyAssignments`
+- 词库与现网一致：`packages/room-domain/spyWordPairs.js`
 
-### 领域
+### 客户端切换（本步）
 
-- `packages/room-domain/spy.js`：与现网 `spyGameAction` 对齐的命令矩阵
-  - 已实现：分牌开局、看牌、发言推进、投票结算（含平票重述）、下一轮、重启
-  - `SPY_START_ASSIGN` 兼容现网一步进 SPEAK；`SPY_CONFIRM_RESULT` 幂等废弃兼容
-- 公开态 `spyGame`（结算前不含密词）；密牌 `secretsByUserId`
-
-### 仓储
-
-- CloudBase：`rooms` 写 `spyGame` + 过渡期双写 `spyAssignments`；密牌写入独立集合 `roomSecrets`
-- `loadRoom` 优先读 `roomSecrets`，否则从 legacy `spyAssignments` 回填
-- `secretsClear` 支持重启清密牌
-- 应用层对 `effects.readOnly` 跳过 `persistRoom`
+- `utils/spyMode.js` 的 `callSpyAction` **改为调用 `roomCommand`**
+- 兼容旧 action 名（`startAssign` / `getMyCard` / `startVote` / `submitVote` / …）
+- 需 revision 的命令会先读 `getAddPlayerData.revision`
+- Halli **未动**（按产品决定暂缓）
 
 ### 测试
 
-- `tests/room-domain/spy-assign.test.js`（分牌 / 看牌 / 发言→投票→结算）
+- `tests/room-domain/spy-assign.test.js`
 
-### Halli 前置文档
+## 上传提示（重要）
 
-- [HALLI_STATE_TABLE.md](./HALLI_STATE_TABLE.md)：现网状态表与缺口（**未迁写路径**）
+本步改动后需 **重新上传** `roomCommand`（词库 + settled/tied 顶层字段已打进 bundle）。
 
-## 刻意未做
+客户端：预览/真机加载含新 `utils/spyMode.js` 的版本即可；`spyGameAction` 可暂留作回滚。
 
-- 未切换 `packageSpy` 页面到 RoomSession / `roomCommand`（现网仍走 `spyGameAction`）
-- Halli 写路径仍走 `updateRoomState`；产品规则补齐前不迁 RoomKernel
+## 真机检查清单（Spy）
 
-## 上传提示
-
-试用 V2 Spy 命令前：重建上传 `roomCommand`；新建集合 `roomSecrets`（权限仅云函数可读写）。
+- [ ] 3 人开局分牌 → 发言页
+- [ ] 各自看到自己的词
+- [ ] 房主「开始投票」→ 投票页
+- [ ] 全员投票 → 结果或结算
+- [ ] 重启回 intro
+- [ ] 头像横滑、卡片区域无空框错位

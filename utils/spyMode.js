@@ -67,9 +67,126 @@ function parseIsHostOption(options) {
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
+const SPY_PROTOCOL_VERSION = 2;
+
+function makeSpyCommandId(action) {
+  return `spy_${action}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function fetchRoomRevision(roomId) {
+  const res = await callCloudFunction('getAddPlayerData', { roomId });
+  const result = (res && res.result) || {};
+  if (result.revision != null && Number.isFinite(Number(result.revision))) {
+    return Number(result.revision);
+  }
+  const rs = result.roomState || {};
+  if (rs.revision != null && Number.isFinite(Number(rs.revision))) {
+    return Number(rs.revision);
+  }
+  return 0;
+}
+
+function normalizeSpyCommandResult(result) {
+  if (!result) return { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
+  if (result.ok !== true) return result;
+  const effects = result.effects || {};
+  return {
+    ...result,
+    spyGame: result.spyGame != null ? result.spyGame : effects.spyGame,
+    currentPage: result.currentPage != null ? result.currentPage : effects.legacyPage,
+    card: result.card != null ? result.card : effects.card,
+    settled: result.settled != null ? result.settled : effects.settled,
+    tied: result.tied != null ? result.tied : effects.tied,
+    finished: result.finished != null ? result.finished : effects.finished,
+    autoVote: result.autoVote != null ? result.autoVote : effects.autoVote,
+    already: result.already != null ? result.already : effects.already
+  };
+}
+
+/**
+ * Spy 写操作：经 roomCommand（V2）。兼容旧 action 名。
+ * 需要 revision 的命令会先拉一次 getAddPlayerData。
+ */
 async function callSpyAction(action, data = {}) {
-  const res = await callCloudFunction('spyGameAction', { action, ...data });
-  return (res && res.result) || {};
+  const roomId = data && data.roomId;
+  if (!action || !roomId) {
+    return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'action 与 roomId 必填' };
+  }
+
+  const needsRevision = !(
+    action === 'getMyCard'
+    || action === 'submitVote'
+  );
+
+  let expectedRevision = data.expectedRevision;
+  if (needsRevision && expectedRevision == null) {
+    try {
+      expectedRevision = await fetchRoomRevision(roomId);
+    } catch (e) {
+      return {
+        ok: false,
+        errCode: 'DEPENDENCY_UNAVAILABLE',
+        errMsg: '读取房间版本失败，请重试'
+      };
+    }
+  }
+
+  let type = null;
+  let payload = {};
+
+  switch (action) {
+    case 'startAssign':
+    case 'startGame':
+      type = 'SPY_START_ASSIGN';
+      break;
+    case 'getMyCard':
+      type = 'SPY_GET_MY_CARD';
+      break;
+    case 'advanceSpeak':
+    case 'finishSpeak':
+      type = 'SPY_ADVANCE_SPEAKER';
+      break;
+    case 'startVote':
+      type = 'SPY_ADVANCE_SPEAKER';
+      payload = { forceVote: true };
+      break;
+    case 'submitVote':
+      type = 'SPY_SUBMIT_VOTE';
+      payload = { targetPlayerIndex: data.targetPlayerIndex };
+      break;
+    case 'nextRound':
+    case 'continueRound':
+      type = 'SPY_NEXT_ROUND';
+      break;
+    case 'restart':
+      type = 'SPY_RESTART';
+      break;
+    default:
+      return { ok: false, errCode: 'UNKNOWN_ACTION', errMsg: `未知 action: ${action}` };
+  }
+
+  const envelope = {
+    protocolVersion: SPY_PROTOCOL_VERSION,
+    commandId: data.commandId || makeSpyCommandId(action),
+    type,
+    roomId: String(roomId),
+    payload,
+    clientSentAt: Date.now()
+  };
+  if (needsRevision) {
+    envelope.expectedRevision = Number(expectedRevision);
+  }
+
+  try {
+    const res = await callCloudFunction('roomCommand', envelope);
+    return normalizeSpyCommandResult((res && res.result) || {});
+  } catch (e) {
+    return {
+      ok: false,
+      errCode: (e && e.errCode) || 'ROOM_COMMAND_ERROR',
+      errMsg: (e && e.errMsg) || (e && e.message) || 'roomCommand 调用失败'
+    };
+  }
 }
 
 function startSpyCountdownTicker(page, getStartedAt, durationMs, dataKey = 'countdownText') {

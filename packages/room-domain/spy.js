@@ -11,6 +11,7 @@ const {
   fail,
   okResult
 } = require('@cardboard/room-contracts');
+const { pickRandomWordPair: pickLibraryWordPair } = require('./spyWordPairs');
 
 const SPY_PHASE = {
   INTRO: 'intro',
@@ -37,22 +38,7 @@ const SPEAK_ROUND_MS = 5 * 60 * 1000;
 const SPEAK_TURN_MS = 60 * 1000;
 const VOTE_ROUND_MS = 2 * 60 * 1000;
 
-const DEFAULT_WORD_PAIRS = [
-  {
-    id: 'pair_switch_click',
-    civilianWord: '开关',
-    civilianBlurb: '控件 0/1 状态直接对应物件状态。',
-    spyWord: '单击',
-    spyBlurb: '需完成按下再抬起才触发一次。'
-  },
-  {
-    id: 'pair_drag_fling',
-    civilianWord: '拖拽',
-    civilianBlurb: '仅由位置驱动，实时跟随。',
-    spyWord: '甩动',
-    spyBlurb: '位置加释放速度驱动，释放后惯性滑行。'
-  }
-];
+const DEFAULT_WORD_PAIRS = null; // 词库见 spyWordPairs.js；测试用 wordPairPicker 注入
 
 function pageForPhase(phase) {
   return SPY_PAGE[phase] || SPY_PAGE.intro;
@@ -77,10 +63,11 @@ function shuffle(list, random) {
   return arr;
 }
 
-function pickDefaultWordPair(random) {
-  const rnd = typeof random === 'function' ? random : Math.random;
-  const i = Math.floor(rnd() * DEFAULT_WORD_PAIRS.length);
-  return DEFAULT_WORD_PAIRS[i] || DEFAULT_WORD_PAIRS[0];
+function pickDefaultWordPair() {
+  if (typeof pickLibraryWordPair === 'function') {
+    return pickLibraryWordPair();
+  }
+  return null;
 }
 
 function samePlayerIndex(a, b) {

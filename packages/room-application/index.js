@@ -99,6 +99,11 @@ function createRoomApplication(repo, options) {
     if (domainResult.effects && domainResult.effects.legacyPage) {
       success.currentPage = domainResult.effects.legacyPage;
     }
+    ['settled', 'tied', 'finished', 'autoVote', 'already', 'restarted'].forEach((key) => {
+      if (domainResult.effects && domainResult.effects[key] != null) {
+        success[key] = domainResult.effects[key];
+      }
+    });
 
     await repo.saveCommandResult({
       commandId: envelope.commandId,
