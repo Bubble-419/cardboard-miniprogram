@@ -1,6 +1,5 @@
 const cloud = require('wx-server-sdk');
 const { resolveActiveClosingVotes } = require('./closingVoteState');
-const { syncRoomAfterMemberRemoved } = require('./memberSync');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -10,7 +9,7 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
-/** 未轮询刷新超过该时长视为断线，移出房间（毫秒） */
+/** 未刷新超过该时长视为离线（仅标记，不删除成员、不释放席位） */
 const PRESENCE_TIMEOUT_MS = 90 * 1000;
 
 const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement'];
@@ -74,15 +73,22 @@ function buildPublicSpyGame(spyGame, isHost, assignments) {
   return base;
 }
 
+function isMemberOnline(member, now, hostUserId) {
+  if (!member) return false;
+  if (hostUserId && String(member.userId) === String(hostUserId)) return true;
+  if (member.lastSeenAt == null || member.lastSeenAt === '') return true;
+  return now - Number(member.lastSeenAt) <= PRESENCE_TIMEOUT_MS;
+}
+
 /**
- * 触摸当前用户在线心跳；清理超时未刷新的非房主成员，并写入 lastEvent
+ * 仅刷新当前用户心跳；不对其他成员执行删除或副作用写。
+ * 离线状态由 lastSeenAt 在响应中派生。
  * @returns {{ members: Array, room: object, lastEvent: object|null }}
  */
-async function touchPresenceAndPrune(room, roomId, currentUserId, members) {
+async function touchOwnPresence(room, currentUserId, members) {
   const now = Date.now();
-  let list = Array.isArray(members) ? members.slice() : [];
-  let lastEvent = room.lastEvent || null;
-  let liveRoom = room;
+  const list = Array.isArray(members) ? members.slice() : [];
+  const lastEvent = room.lastEvent || null;
 
   const myMember = list.find((m) => m && String(m.userId) === String(currentUserId)) || null;
   if (myMember && myMember._id) {
@@ -96,61 +102,7 @@ async function touchPresenceAndPrune(room, roomId, currentUserId, members) {
     }
   }
 
-  const hostUserId = room.creatorId;
-  const stale = list.filter((m) => {
-    if (!m || !m._id) return false;
-    if (hostUserId && String(m.userId) === String(hostUserId)) return false;
-    if (String(m.userId) === String(currentUserId)) return false;
-    // 仅清理已建立心跳的成员，避免旧数据无 lastSeenAt 被误踢
-    if (m.lastSeenAt == null || m.lastSeenAt === '') return false;
-    return now - Number(m.lastSeenAt) > PRESENCE_TIMEOUT_MS;
-  });
-
-  if (!stale.length) {
-    return { members: list, room: liveRoom, lastEvent };
-  }
-
-  for (let i = 0; i < stale.length; i += 1) {
-    try {
-      await db.collection(ROOM_MEMBERS_COLLECTION).doc(stale[i]._id).remove();
-    } catch (e) {
-      console.warn('prune stale member failed', e);
-    }
-  }
-
-  const remainRes = await db
-    .collection(ROOM_MEMBERS_COLLECTION)
-    .where({ roomId })
-    .orderBy('playerIndex', 'asc')
-    .get();
-  list = remainRes.data || [];
-
-  const lastRemoved = stale[stale.length - 1];
-  try {
-    const sync = await syncRoomAfterMemberRemoved(
-      db,
-      liveRoom,
-      roomId,
-      { userId: lastRemoved.userId, playerIndex: lastRemoved.playerIndex },
-      list
-    );
-    lastEvent = sync.event || lastEvent;
-  } catch (e) {
-    console.error('sync after prune failed', e);
-  }
-
-  // 重新读取房间（sync 可能已回退局况）
-  try {
-    const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
-    if (roomRes.data && roomRes.data[0]) {
-      liveRoom = roomRes.data[0];
-      if (liveRoom.lastEvent) lastEvent = liveRoom.lastEvent;
-    }
-  } catch (e) {
-    // ignore
-  }
-
-  return { members: list, room: liveRoom, lastEvent };
+  return { members: list, room, lastEvent };
 }
 
 function isLocalTempAvatar(url) {
@@ -272,23 +224,13 @@ exports.main = async (event, context) => {
       };
     }
 
-    // 在线心跳 + 断线超时移出（90s）；可能写 lastEvent / 回退局况
-    const presence = await touchPresenceAndPrune(room, roomId, currentUserId, rawMembers);
+    // 仅刷新本人心跳；超时只在响应中标 offline，不删除成员、不回退局况
+    const presence = await touchOwnPresence(room, currentUserId, rawMembers);
     room = presence.room || room;
     rawMembers = presence.members || rawMembers;
     myMember = rawMembers.find((m) => m.userId === currentUserId) || null;
     const lastEvent = presence.lastEvent || room.lastEvent || null;
-
-    if (room.status === 'DISSOLVED') {
-      return {
-        ok: false,
-        errCode: 'ROOM_DISSOLVED',
-        errMsg: '房间已解散',
-        roomDissolved: true,
-        event: 'room_dissolved',
-        roomId
-      };
-    }
+    const presenceNow = Date.now();
 
     isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
     if (!isHost && !myMember) {
@@ -388,7 +330,9 @@ exports.main = async (event, context) => {
         avatarUrl: m.avatarUrl || null,
         isMe: m.userId === currentUserId,
         userId: m.userId || null,
-        role: m.role || 'PLAYER'
+        role: m.role || 'PLAYER',
+        online: isMemberOnline(m, presenceNow, room.creatorId),
+        lastSeenAt: m.lastSeenAt != null ? m.lastSeenAt : null
       };
       // 始终带回 avatarIndex，便于 avatarUrl 不可用时客户端回退随机头像
       if (m.avatarIndex != null) out.avatarIndex = m.avatarIndex;

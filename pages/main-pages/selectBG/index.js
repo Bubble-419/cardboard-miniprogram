@@ -58,14 +58,17 @@ Page({
 
   async _updateRoomState(currentPage) {
     const roomId = getApp().globalData.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return false;
     try {
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data: { roomId, currentPage }
       });
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('updateRoomState', e);
+      return false;
     }
   },
 
@@ -114,6 +117,7 @@ Page({
 
   async confirmBG() {
     if (!this.data.canConfirm) return;
+    if (this._confirmPending) return;
     const app = getApp();
     app.globalData = app.globalData || {};
     const bg = { ...this.data.bg };
@@ -124,35 +128,46 @@ Page({
     app.globalData.selectedBGSource = 'custom';
 
     const roomId = app.globalData.roomId || '';
-    if (roomId) {
-      try {
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: {
-            roomId,
-            currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
-            selectedBG: bg
+    this._confirmPending = true;
+    try {
+      if (roomId) {
+        try {
+          const res = await wx.cloud.callFunction({
+            name: 'updateRoomState',
+            data: {
+              roomId,
+              currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
+              selectedBG: bg
+            }
+          });
+          const result = (res && res.result) || {};
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
+            return;
           }
-        });
-      } catch (e) {
-        console.warn('updateRoomState selectedBG', e);
+        } catch (e) {
+          console.warn('updateRoomState selectedBG', e);
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
       }
-    }
 
-    if (this.data.includePlatform) {
-      const query = roomId
-        ? `?roomId=${encodeURIComponent(roomId)}`
-        : '';
-      wx.redirectTo({
-        url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
-      });
-      return;
-    }
+      if (this.data.includePlatform) {
+        const query = roomId
+          ? `?roomId=${encodeURIComponent(roomId)}`
+          : '';
+        wx.redirectTo({
+          url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
+        });
+        return;
+      }
 
-    const url = roomId
-      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/selectPlayer/index';
-    this._updateRoomState('selectPlayer');
-    wx.redirectTo({ url });
+      const url = roomId
+        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/selectPlayer/index';
+      wx.redirectTo({ url });
+    } finally {
+      this._confirmPending = false;
+    }
   }
 });

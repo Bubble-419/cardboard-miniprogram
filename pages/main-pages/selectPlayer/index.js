@@ -93,17 +93,20 @@ Page({
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return false;
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data
       });
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('updateRoomState', e);
+      return false;
     }
   },
 
@@ -425,7 +428,7 @@ Page({
     });
   },
 
-  navigateToConfirmFirstPlayer(roomId, currentPlayerIndex) {
+  async navigateToConfirmFirstPlayer(roomId, currentPlayerIndex) {
     if (!roomId) {
       roomId = getApp().globalData.roomId || '';
     }
@@ -433,6 +436,8 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    if (this._navPending) return;
+    this._navPending = true;
     const members = this.data.members || [];
     const current = members.find((m) => m.playerIndex === currentPlayerIndex);
     const currentPlayerName = current
@@ -442,13 +447,21 @@ Page({
       currentPlayerIndex,
       currentPlayerName
     };
-    this._updateRoomState('confirmFirstPlayer', currentPlayerIndex, currentPlayerName);
-    wx.redirectTo({
-      url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    try {
+      const ok = await this._updateRoomState('confirmFirstPlayer', currentPlayerIndex, currentPlayerName);
+      if (!ok) {
+        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        return;
+      }
+      wx.redirectTo({
+        url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      });
+    } finally {
+      this._navPending = false;
+    }
   },
 
-  navigateToGamepage(roomId, currentPlayerIndex) {
+  async navigateToGamepage(roomId, currentPlayerIndex) {
     if (!roomId) {
       roomId = getApp().globalData.roomId || '';
     }
@@ -456,13 +469,23 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    if (this._navPending) return;
+    this._navPending = true;
     const members = this.data.members || [];
     const current = members.find(m => m.playerIndex === currentPlayerIndex);
     const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
-    this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
-    wx.redirectTo({
-      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
-    });
+    try {
+      const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
+      if (!ok) {
+        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        return;
+      }
+      wx.redirectTo({
+        url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
+      });
+    } finally {
+      this._navPending = false;
+    }
   },
 
   // 添加玩家

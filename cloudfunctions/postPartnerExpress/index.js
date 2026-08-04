@@ -70,14 +70,14 @@ exports.main = async (event) => {
       anonKey
     };
 
-    const existing = Array.isArray(room.partnerExpressMessages)
-      ? room.partnerExpressMessages
-      : [];
-    const next = existing.concat([msg]).slice(-MAX_MESSAGES);
-
+    // 原子追加，避免读改写整数组导致并发丢消息；读侧仍 slice(-MAX_MESSAGES)
+    const _ = db.command;
     await db.collection(ROOMS_COLLECTION).doc(room._id).update({
       data: {
-        partnerExpressMessages: next,
+        partnerExpressMessages: _.push({
+          each: [msg],
+          slice: -MAX_MESSAGES
+        }),
         updateTime: Date.now()
       }
     });

@@ -41,6 +41,9 @@ exports.main = async (event) => {
 
   const wxContext = cloud.getWXContext();
   const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  if (!currentUserId) {
+    return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
+  }
 
   try {
     const hostCheck = await assertHost(roomId, currentUserId);

@@ -1,9 +1,9 @@
 const cloud = require('wx-server-sdk');
+const { getCallerOpenId, assertRoomMember } = require('./roomAuth');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
-const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
@@ -30,18 +30,16 @@ exports.main = async (event, context) => {
     };
   }
 
-  const wxContext = cloud.getWXContext();
-  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  const currentUserId = getCallerOpenId(cloud);
   if (!currentUserId) {
     return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
   }
 
   try {
-    const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
-    const room = roomRes.data && roomRes.data[0];
-    if (!room) {
-      return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
-    }
+    const memberCheck = await assertRoomMember(db, roomId, currentUserId);
+    if (!memberCheck.ok) return memberCheck;
+    const room = memberCheck.room;
+
     const currentRound = room.currentRound != null ? room.currentRound : 1;
     const actingPlayerIndex = room.currentPlayerIndex != null
       ? parseInt(room.currentPlayerIndex, 10)
@@ -62,35 +60,37 @@ exports.main = async (event, context) => {
       };
     }
 
-    const existing = await db
-      .collection(ROOM_SCORES_COLLECTION)
-      .where({
-        roomId,
-        currentPlayerIndex: actingPlayerIndex,
-        round: currentRound,
-        userId: currentUserId
-      })
-      .limit(1)
-      .get();
-
     const now = Date.now();
-    if (existing.data && existing.data.length > 0) {
-      await db.collection(ROOM_SCORES_COLLECTION).doc(existing.data[0]._id).update({
-        data: { score: s, updatedAt: now }
-      });
-    } else {
-      await db.collection(ROOM_SCORES_COLLECTION).add({
-        data: {
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction
+        .collection(ROOM_SCORES_COLLECTION)
+        .where({
           roomId,
           currentPlayerIndex: actingPlayerIndex,
           round: currentRound,
-          userId: currentUserId,
-          score: s,
-          createdAt: now,
-          updatedAt: now
-        }
-      });
-    }
+          userId: currentUserId
+        })
+        .limit(1)
+        .get();
+
+      if (existing.data && existing.data.length > 0) {
+        await transaction.collection(ROOM_SCORES_COLLECTION).doc(existing.data[0]._id).update({
+          data: { score: s, updatedAt: now }
+        });
+      } else {
+        await transaction.collection(ROOM_SCORES_COLLECTION).add({
+          data: {
+            roomId,
+            currentPlayerIndex: actingPlayerIndex,
+            round: currentRound,
+            userId: currentUserId,
+            score: s,
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+      }
+    });
 
     const countRes = await db
       .collection(ROOM_SCORES_COLLECTION)

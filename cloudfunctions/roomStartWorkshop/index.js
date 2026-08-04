@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { getCallerOpenId, assertHost } = require('./roomAuth');
 
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
@@ -18,26 +19,19 @@ exports.main = async (event, context) => {
     };
   }
 
+  const currentUserId = getCallerOpenId(cloud);
+  if (!currentUserId) {
+    return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
+  }
+
   const name = ((workshopName || '脑暴工作坊') + '').trim() || '脑暴工作坊';
   const now = Date.now();
 
   try {
-    // 找到当前房间记录
-    const roomRes = await db
-      .collection(ROOMS_COLLECTION)
-      .where({ roomId })
-      .limit(1)
-      .get();
+    const hostCheck = await assertHost(db, roomId, currentUserId);
+    if (!hostCheck.ok) return hostCheck;
 
-    if (!roomRes.data || roomRes.data.length === 0) {
-      return {
-        ok: false,
-        errCode: 'ROOM_NOT_FOUND',
-        errMsg: 'room not found'
-      };
-    }
-
-    const docId = roomRes.data[0]._id;
+    const docId = hostCheck.room._id;
 
     await db.collection(ROOMS_COLLECTION).doc(docId).update({
       data: {
@@ -61,4 +55,3 @@ exports.main = async (event, context) => {
     };
   }
 };
-

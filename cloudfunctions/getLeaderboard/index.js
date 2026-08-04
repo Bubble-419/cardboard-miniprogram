@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { getCallerOpenId, assertRoomMember } = require('./roomAuth');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -8,7 +9,6 @@ const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /**
  * 获取房间排行榜：每个玩家的平均分
- * roomScores 中 currentPlayerIndex 表示被评分的玩家，每条记录是某人对该玩家的打分
  */
 exports.main = async (event, context) => {
   const { roomId } = event || {};
@@ -21,7 +21,15 @@ exports.main = async (event, context) => {
     };
   }
 
+  const currentUserId = getCallerOpenId(cloud);
+  if (!currentUserId) {
+    return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
+  }
+
   try {
+    const memberCheck = await assertRoomMember(db, roomId, currentUserId);
+    if (!memberCheck.ok) return memberCheck;
+
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId })

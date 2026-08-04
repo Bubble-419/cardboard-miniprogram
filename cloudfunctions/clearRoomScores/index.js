@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk');
+const { getCallerOpenId, assertHost } = require('./roomAuth');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -7,6 +8,7 @@ const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /**
  * 清除指定房间的所有评分记录（再来一局时使用）
+ * 仅房主可调用
  */
 exports.main = async (event, context) => {
   const { roomId } = event || {};
@@ -19,7 +21,15 @@ exports.main = async (event, context) => {
     };
   }
 
+  const currentUserId = getCallerOpenId(cloud);
+  if (!currentUserId) {
+    return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
+  }
+
   try {
+    const hostCheck = await assertHost(db, roomId, currentUserId);
+    if (!hostCheck.ok) return hostCheck;
+
     const MAX_BATCH = 100;
     let deleted = 0;
     let hasMore = true;

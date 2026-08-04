@@ -144,17 +144,20 @@ Page({
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return false;
     try {
       const data = { roomId, currentPage };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data
       });
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('updateRoomState', e);
+      return false;
     }
   },
 
@@ -221,6 +224,7 @@ Page({
 
   async handleConfirm() {
     if (!this.data.isHost || !this.data.canConfirm) return;
+    if (this._confirmPending) return;
 
     const { roomId, selectedPlayerIndex, selectedPlayerName } = this.data;
     if (selectedPlayerIndex == null) {
@@ -228,16 +232,23 @@ Page({
       return;
     }
 
+    this._confirmPending = true;
     wx.showLoading({ title: '开始脑暴…' });
     try {
-      await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
+      const ok = await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
       wx.hideLoading();
+      if (!ok) {
+        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        return;
+      }
       wx.redirectTo({
         url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
       });
     } catch (e) {
       wx.hideLoading();
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
+    } finally {
+      this._confirmPending = false;
     }
   },
 

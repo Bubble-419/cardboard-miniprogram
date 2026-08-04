@@ -149,16 +149,19 @@ Page({
 
   async _updateRoomState(currentPage, selectedBG) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return false;
     try {
       const data = { roomId, currentPage };
       if (selectedBG) data.selectedBG = selectedBG;
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
         data
       });
+      const result = (res && res.result) || {};
+      return result.ok === true;
     } catch (e) {
       console.warn('updateRoomState', e);
+      return false;
     }
   },
 
@@ -225,12 +228,18 @@ Page({
     this._goAddScenario();
   },
 
-  _goAddScenario() {
+  async _goAddScenario() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
     getApp().globalData.gameMode = mode;
     getApp().globalData.selectedBGSource = 'custom';
-    this._updateRoomState('selectBG');
+    if (roomId) {
+      const ok = await this._updateRoomState('selectBG');
+      if (!ok) {
+        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        return;
+      }
+    }
     const query = roomId
       ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
       : `?mode=${mode}`;
@@ -239,12 +248,13 @@ Page({
     });
   },
 
-  _confirmSelectedScenario() {
+  async _confirmSelectedScenario() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    if (this._navPending) return;
     const scenario = (this.data.scenarios || []).find(
       (item) => item.id === this.data.selectedScenarioId
     );
@@ -257,45 +267,62 @@ Page({
     app.globalData = app.globalData || {};
     app.globalData.selectedBGSource = scenario.type || 'case';
     const roomIdEnc = encodeURIComponent(roomId);
+    this._navPending = true;
 
-    // 线下情境：跳过情境填写，直接进入选玩家
-    if (scenario.isOffline || scenario.id === 'offline') {
-      const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
-      app.globalData.gameMode = offlineMode;
-      this._updateRoomState('selectPlayer');
+    try {
+      // 线下情境：跳过情境填写，直接进入选玩家
+      if (scenario.isOffline || scenario.id === 'offline') {
+        const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+        app.globalData.gameMode = offlineMode;
+        const ok = await this._updateRoomState('selectPlayer');
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        wx.redirectTo({
+          url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
+        });
+        return;
+      }
+
+      if (!scenario.bg) {
+        wx.showToast({ title: '情境数据无效', icon: 'none' });
+        return;
+      }
+
+      // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
+      if (this.data.modeId === 'partner') {
+        app.globalData.selectedBG = { ...scenario.bg };
+        app.globalData.gameMode = 'partner';
+        const ok = await this._updateRoomState('confirmBG', app.globalData.selectedBG);
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        wx.navigateTo({
+          url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
+        });
+        return;
+      }
+
+      // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
+      const bg = { ...scenario.bg };
+      if (this.data.modeId === 'halliGalli') {
+        delete bg.platform;
+      }
+      app.globalData.selectedBG = bg;
+      app.globalData.gameMode = this.data.modeId;
+      const ok = await this._updateRoomState('selectPlayer', bg);
+      if (!ok) {
+        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        return;
+      }
       wx.redirectTo({
         url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
       });
-      return;
+    } finally {
+      this._navPending = false;
     }
-
-    if (!scenario.bg) {
-      wx.showToast({ title: '情境数据无效', icon: 'none' });
-      return;
-    }
-
-    // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
-    if (this.data.modeId === 'partner') {
-      app.globalData.selectedBG = { ...scenario.bg };
-      app.globalData.gameMode = 'partner';
-      this._updateRoomState('confirmBG', app.globalData.selectedBG);
-      wx.navigateTo({
-        url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
-      });
-      return;
-    }
-
-    // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
-    const bg = { ...scenario.bg };
-    if (this.data.modeId === 'halliGalli') {
-      delete bg.platform;
-    }
-    app.globalData.selectedBG = bg;
-    app.globalData.gameMode = this.data.modeId;
-    this._updateRoomState('selectPlayer', bg);
-    wx.redirectTo({
-      url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
-    });
   },
 
   handleGoBack() {

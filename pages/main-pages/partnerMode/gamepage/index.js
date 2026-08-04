@@ -693,16 +693,13 @@ Page({
   _syncTimerFromStartedAt() {
     const { partnerRoundStartedAt, gamepagePhase } = this.data;
     if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) {
-      if (this.data.roundTimerElapsedRatio !== 0) {
-        this.setData({ roundTimerElapsedRatio: 0 });
-      }
+      this._roundTimerRemainingSec = 0;
+      this._roundTimerElapsedRatio = 0;
       return;
     }
     const timerState = getRoundTimerState(partnerRoundStartedAt);
-    this.setData({
-      roundTimerElapsedRatio: timerState.elapsedRatio,
-      roundTimerRemainingSec: timerState.remainingSec
-    });
+    this._roundTimerElapsedRatio = timerState.elapsedRatio;
+    this._roundTimerRemainingSec = timerState.remainingSec;
   },
 
   _restartRoundTimer() {
@@ -711,7 +708,7 @@ Page({
     if (isClosingPhase(gamepagePhase) || !partnerRoundStartedAt) return;
 
     const tick = () => {
-      // 输入灵感时避免高频 setData 顶布局/卡死
+      // 输入灵感时避免高频逻辑干扰
       if (
         this.data.inspirationInputFocused
         || this.data.inspirationHoldKeyboard
@@ -720,11 +717,9 @@ Page({
       const startedAt = this.data.partnerRoundStartedAt;
       if (!startedAt) return;
       const timerState = getRoundTimerState(startedAt);
-      this.setData({
-        roundTimerElapsedRatio: timerState.elapsedRatio,
-        roundTimerRemainingSec: timerState.remainingSec
-      });
-      // 房主兜底：本地到期立刻开下一轮，避免只靠组件事件导致全员卡住
+      // WXML 未绑定这两个字段；头像倒计时由组件 canvas 绘制，禁止 Page 级 250ms setData
+      this._roundTimerElapsedRatio = timerState.elapsedRatio;
+      this._roundTimerRemainingSec = timerState.remainingSec;
       if (timerState.remainingSec <= 0) {
         if (this.data.isHost === true && !this._rollingRoundCountdown) {
           this._rollRoundCountdown();
@@ -1671,14 +1666,22 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
+    this._statePollInFlight = false;
+    this._statePollSeq = 0;
+    this._statePollAppliedSeq = 0;
     const poll = async () => {
       const roomId = this.data.roomId || '';
       if (!roomId) return;
+      if (this._statePollInFlight) return;
+      this._statePollInFlight = true;
+      const seq = ++this._statePollSeq;
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
           data: { roomId, full: true }
         });
+        if (seq < this._statePollAppliedSeq) return;
+        this._statePollAppliedSeq = seq;
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
@@ -1737,6 +1740,8 @@ Page({
         });
       } catch (e) {
         console.warn('partner gamepage state poll', e);
+      } finally {
+        this._statePollInFlight = false;
       }
     };
     poll();

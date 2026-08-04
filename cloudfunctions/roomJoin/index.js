@@ -8,6 +8,7 @@ const db = cloud.database();
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
+const MAX_SEATS = 6;
 const AVATAR_COLORS = ['#5EC159', '#4A90E2', '#E24A4A', '#E2B84A', '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB'];
 const AVATAR_INDEX_MAX = 8;
 
@@ -26,7 +27,6 @@ function isLocalTempAvatar(url) {
 function normalizeShareableAvatarUrl(avatarUrl) {
   if (typeof avatarUrl !== 'string' || !avatarUrl.trim()) return null;
   const trimmed = avatarUrl.trim();
-  // 拒绝本机临时路径，避免其他成员无法加载
   if (isLocalTempAvatar(trimmed)) return null;
   return trimmed;
 }
@@ -51,6 +51,19 @@ function getUsedAvatarIndices(members) {
     .map(m => m.avatarIndex);
 }
 
+/** 从 1..6 中分配最小空闲席位；已满则返回 null */
+function allocateSeatNo(members) {
+  const used = new Set(
+    (members || [])
+      .map((m) => parseInt(m && m.playerIndex, 10))
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= MAX_SEATS)
+  );
+  for (let seat = 1; seat <= MAX_SEATS; seat += 1) {
+    if (!used.has(seat)) return seat;
+  }
+  return null;
+}
+
 exports.main = async (event, context) => {
   const { roomId, avatarUrl, nickName: clientNickName } = event || {};
   const normalizedAvatarUrl = normalizeShareableAvatarUrl(avatarUrl);
@@ -67,19 +80,13 @@ exports.main = async (event, context) => {
   }
 
   const wxContext = cloud.getWXContext();
-  // 跨账号共享时调用方用户需用 FROM_OPENID
   const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  if (!currentUserId) {
+    return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
+  }
 
   try {
-    const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
-    if (!roomRes.data || roomRes.data.length === 0) {
-      return {
-        ok: false,
-        errCode: 'ROOM_NOT_FOUND',
-        errMsg: '房间不存在'
-      };
-    }
-
+    // 幂等：已在房间则只刷新资料，不占新席位
     const existing = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId, userId: currentUserId })
@@ -88,16 +95,14 @@ exports.main = async (event, context) => {
 
     if (existing.data && existing.data.length > 0) {
       const m = existing.data[0];
-      const updateData = {};
+      const updateData = { lastSeenAt: Date.now() };
       if (normalizedAvatarUrl && normalizedAvatarUrl !== m.avatarUrl) {
         updateData.avatarUrl = normalizedAvatarUrl;
       }
       if (normalizedNickName && normalizedNickName !== m.nickName) {
         updateData.nickName = normalizedNickName;
       }
-      if (Object.keys(updateData).length > 0) {
-        await db.collection(ROOM_MEMBERS_COLLECTION).doc(m._id).update({ data: updateData });
-      }
+      await db.collection(ROOM_MEMBERS_COLLECTION).doc(m._id).update({ data: updateData });
       return {
         ok: true,
         playerIndex: m.playerIndex,
@@ -109,45 +114,106 @@ exports.main = async (event, context) => {
       };
     }
 
-    const membersRes = await db
-      .collection(ROOM_MEMBERS_COLLECTION)
-      .where({ roomId })
-      .orderBy('playerIndex', 'asc')
-      .get();
-
-    const members = membersRes.data || [];
-    const usedColors = members.map(m => m.avatarColor).filter(Boolean);
-    const nextIndex = members.length + 1;
-    const avatarColor = pickAvatarColor(usedColors);
-    const nickName = normalizedNickName || `玩家${nextIndex}`;
-    const avatarIndex = normalizedAvatarUrl
-      ? null
-      : pickAvatarIndex(getUsedAvatarIndices(members));
-    const now = Date.now();
-
-    await db.collection(ROOM_MEMBERS_COLLECTION).add({
-      data: {
-        roomId,
-        userId: currentUserId,
-        role: 'PLAYER',
-        nickName,
-        avatarUrl: normalizedAvatarUrl,
-        avatarColor,
-        avatarIndex,
-        joinedAt: now,
-        lastSeenAt: now,
-        playerIndex: nextIndex
+    const joinResult = await db.runTransaction(async (transaction) => {
+      const roomRes = await transaction
+        .collection(ROOMS_COLLECTION)
+        .where({ roomId })
+        .limit(1)
+        .get();
+      if (!roomRes.data || roomRes.data.length === 0) {
+        const err = new Error('房间不存在');
+        err.errCode = 'ROOM_NOT_FOUND';
+        throw err;
       }
+      const room = roomRes.data[0];
+      if (room.status === 'DISSOLVED') {
+        const err = new Error('房间已解散');
+        err.errCode = 'ROOM_DISSOLVED';
+        throw err;
+      }
+
+      const again = await transaction
+        .collection(ROOM_MEMBERS_COLLECTION)
+        .where({ roomId, userId: currentUserId })
+        .limit(1)
+        .get();
+      if (again.data && again.data.length > 0) {
+        return { already: true, member: again.data[0] };
+      }
+
+      const membersRes = await transaction
+        .collection(ROOM_MEMBERS_COLLECTION)
+        .where({ roomId })
+        .get();
+      const members = membersRes.data || [];
+      if (members.length >= MAX_SEATS) {
+        const err = new Error('房间已满');
+        err.errCode = 'ROOM_FULL';
+        throw err;
+      }
+
+      const nextIndex = allocateSeatNo(members);
+      if (nextIndex == null) {
+        const err = new Error('房间已满');
+        err.errCode = 'ROOM_FULL';
+        throw err;
+      }
+
+      const usedColors = members.map(m => m.avatarColor).filter(Boolean);
+      const avatarColor = pickAvatarColor(usedColors);
+      const nickName = normalizedNickName || `玩家${nextIndex}`;
+      const avatarIndex = normalizedAvatarUrl
+        ? null
+        : pickAvatarIndex(getUsedAvatarIndices(members));
+      const now = Date.now();
+
+      await transaction.collection(ROOM_MEMBERS_COLLECTION).add({
+        data: {
+          roomId,
+          userId: currentUserId,
+          role: 'PLAYER',
+          nickName,
+          avatarUrl: normalizedAvatarUrl,
+          avatarColor,
+          avatarIndex,
+          joinedAt: now,
+          lastSeenAt: now,
+          playerIndex: nextIndex
+        }
+      });
+
+      return {
+        already: false,
+        playerIndex: nextIndex,
+        nickName,
+        avatarColor,
+        avatarUrl: normalizedAvatarUrl,
+        avatarIndex,
+        role: 'PLAYER'
+      };
     });
+
+    if (joinResult.already && joinResult.member) {
+      const m = joinResult.member;
+      return {
+        ok: true,
+        playerIndex: m.playerIndex,
+        nickName: m.nickName || `玩家${m.playerIndex}`,
+        avatarColor: m.avatarColor || AVATAR_COLORS[0],
+        avatarUrl: m.avatarUrl || null,
+        avatarIndex: m.avatarIndex != null ? m.avatarIndex : null,
+        role: m.role
+      };
+    }
 
     return {
       ok: true,
-      playerIndex: nextIndex,
-      nickName,
-      avatarColor,
-      avatarUrl: normalizedAvatarUrl,
-      avatarIndex,
-      role: 'PLAYER'
+      playerIndex: joinResult.playerIndex,
+      nickName: joinResult.nickName,
+      avatarColor: joinResult.avatarColor,
+      avatarUrl: joinResult.avatarUrl,
+      avatarIndex: joinResult.avatarIndex,
+      role: joinResult.role
     };
   } catch (e) {
     console.error('roomJoin error', e);
