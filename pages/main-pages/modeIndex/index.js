@@ -7,6 +7,10 @@ const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
 const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession
+} = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarList } = require('../../../utils/avatars');
@@ -68,6 +72,13 @@ Page({
     if (this.data.isHost && !this.data.isWaiting) {
       this._loadScenarios();
     }
+    if (this.data.isWaiting || this.data.isHost === false) {
+      this._startStatePolling();
+    }
+  },
+
+  onHide() {
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -167,30 +178,20 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        this._syncMembersFromResult(result);
-        followSubScreenRoomPoll(result, roomId);
-      } catch (e) {
-        console.warn('modeIndex state poll', e);
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
+      intervalMs: 2000,
+      followNavigation: true,
+      onSnapshot(snapshot) {
+        if (snapshot && snapshot.ok && snapshot.raw) {
+          this._syncMembersFromResult(snapshot.raw);
+        }
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('modeIndex roomSession', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   onTapScenario(e) {

@@ -28,6 +28,11 @@ const {
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
 const { buildGamepageUrl, buildStatementUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  disposeRoomSession
+} = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
 const { assignAvatarImages, resolveCloudAvatarUrls, getMemberAvatarFingerprint } = require('../../../utils/avatars');
@@ -252,8 +257,8 @@ Page({
     this.setData({ navFreeze: false });
     consumePendingGameReturnedToast();
     if (this.data.roomId) {
+      // App 级 RoomSession 单循环；首屏仍由 onLoad 的 loadRoomData 填充
       this._startMemberPolling();
-      this.loadRoomData(this.data.roomId, { silent: true });
     }
   },
 
@@ -309,6 +314,7 @@ Page({
   },
 
   _handleMembershipLost(reason = 'left') {
+    disposeRoomSession();
     if (reason === 'dissolved') {
       handleRoomGoneFromResult(
         { ok: false, errCode: 'ROOM_DISSOLVED', roomDissolved: true, event: 'room_dissolved' },
@@ -403,27 +409,26 @@ Page({
 
   _startMemberPolling() {
     this._stopMemberPolling();
-    const poll = async () => {
-      if (!this._pageAlive || this._memberPollInFlight || this._navigatingToBrainstorm) return;
-      const roomId = this.data.roomId || getApp().globalData.roomId;
-      if (!roomId) return;
-      this._memberPollInFlight = true;
-      try {
-        const result = await this.loadRoomData(roomId, { silent: true });
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || getApp().globalData.roomId,
+      intervalMs: this.data.isHost ? 4000 : 2500,
+      onSnapshot(snapshot) {
         if (!this._pageAlive || this._navigatingToBrainstorm) return;
-        if (!this.data.isHost && result) {
-          this._followRoomPageFromResult(result, roomId);
-        }
-      } finally {
-        this._memberPollInFlight = false;
+        const roomId = this.data.roomId || getApp().globalData.roomId;
+        if (!roomId || !snapshot) return;
+        const raw = snapshot.raw || snapshot;
+        this.loadRoomData(roomId, { silent: true, cachedResult: raw }).then((result) => {
+          if (!this._pageAlive || this._navigatingToBrainstorm) return;
+          if (!this.data.isHost && result) {
+            this._followRoomPageFromResult(result, roomId);
+          }
+        });
       }
-    };
-    this._statePollFn = poll;
-    poll();
-    this._memberPollTimer = setInterval(poll, this.data.isHost ? 4000 : 2500);
+    }).catch((e) => console.warn('addPlayer roomSession', e));
   },
 
   _stopMemberPolling() {
+    unbindPageFromRoomSession(this);
     if (this._memberPollTimer) {
       clearInterval(this._memberPollTimer);
       this._memberPollTimer = null;
@@ -579,11 +584,14 @@ Page({
     }
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      let result = opts.cachedResult || null;
+      if (!result) {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        result = (res && res.result) || {};
+      }
       if (!silent) wx.hideLoading();
 
       if (result.ok !== true) {
@@ -1880,6 +1888,7 @@ Page({
             wx.showToast({ title: result.errMsg || '解散失败', icon: 'none' });
             return;
           }
+          disposeRoomSession();
           // 全房间事件：清本地态 + 回首页提示「房间已解散」（成员靠轮询同步）
           exitRoomGone(
             { ...result, event: 'room_dissolved', roomDissolved: true },
@@ -1913,6 +1922,7 @@ Page({
             wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
             return;
           }
+          disposeRoomSession();
           try {
             wx.removeStorageSync('joinedRoomId');
           } catch (e) {

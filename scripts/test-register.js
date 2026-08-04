@@ -8,7 +8,8 @@ const map = {
   '@cardboard/room-contracts': path.join(root, 'room-contracts'),
   '@cardboard/room-domain': path.join(root, 'room-domain'),
   '@cardboard/room-application': path.join(root, 'room-application'),
-  '@cardboard/room-cloudbase-adapter': path.join(root, 'room-cloudbase-adapter')
+  '@cardboard/room-cloudbase-adapter': path.join(root, 'room-cloudbase-adapter'),
+  '@cardboard/room-client': path.join(root, 'room-client')
 };
 
 const orig = Module._resolveFilename;

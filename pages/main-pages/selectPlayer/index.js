@@ -1,4 +1,8 @@
 const { navigateByRoomState, openSubAwait } = require('../../../utils/subAwaitRoutes');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession
+} = require('../../../modules/room-session/index');
 
 Page({
   data: {
@@ -84,6 +88,16 @@ Page({
     }
   },
 
+  onShow() {
+    if (this.data.isWaiting && !this.data.isHost) {
+      this._startStatePolling();
+    }
+  },
+
+  onHide() {
+    this._stopStatePolling();
+  },
+
   onUnload() {
     this._stopStatePolling();
     if (this.countdownTimer) clearInterval(this.countdownTimer);
@@ -112,31 +126,21 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        if (result.ok !== true || !result.roomState) return;
-        const page = (result.roomState.currentPage || '').toLowerCase();
-        navigateByRoomState(page, result.roomState, roomId);
-      } catch (e) {
-        console.warn('state poll', e);
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
+      intervalMs: 2000,
+      followNavigation: false,
+      onSnapshot(snapshot) {
+        if (!snapshot || !snapshot.ok || !snapshot.raw || !snapshot.raw.roomState) return;
+        const roomId = this.data.roomId || getApp().globalData.roomId || '';
+        const page = (snapshot.raw.roomState.currentPage || '').toLowerCase();
+        navigateByRoomState(page, snapshot.raw.roomState, roomId);
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('selectPlayer roomSession', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   async loadMembers(roomId) {

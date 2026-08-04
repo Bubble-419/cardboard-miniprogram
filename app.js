@@ -71,9 +71,29 @@ App({
       this.globalData.cloud = wx.cloud;
     }
   },
+
+  onShow() {
+    try {
+      const { resumeRoomSession } = require('./modules/room-session/index');
+      resumeRoomSession();
+    } catch (e) {
+      // ignore
+    }
+  },
+
+  onHide() {
+    try {
+      const { pauseRoomSession } = require('./modules/room-session/index');
+      pauseRoomSession();
+    } catch (e) {
+      // ignore
+    }
+  },
+
   globalData: {
     cloudReady: null,
     cloud: null,
+    roomSession: null,
     userRole: null,
     roomId: null,
     selectedProblem: null,

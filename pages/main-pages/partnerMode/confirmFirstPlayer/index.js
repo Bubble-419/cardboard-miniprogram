@@ -7,6 +7,10 @@ const {
 const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession
+} = require('../../../../modules/room-session/index');
 
 Page({
   data: {
@@ -49,6 +53,16 @@ Page({
     }
 
     this._fetchHostStatus();
+  },
+
+  onShow() {
+    if (this.data.isWaiting || this.data.isHost === false) {
+      this._startStatePolling();
+    }
+  },
+
+  onHide() {
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -163,42 +177,28 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            if (page === 'gamepage') {
-              const idx = pollResult.roomState.currentPlayerIndex != null
-                ? pollResult.roomState.currentPlayerIndex
-                : 1;
-              wx.redirectTo({
-                url: buildGamepageUrl(roomId, idx, 'partner')
-              });
-              return true;
-            }
-            return false;
-          }
-        });
-      } catch (e) {
-        console.warn('confirmFirstPlayer state poll', e);
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
+      intervalMs: 2000,
+      followNavigation: true,
+      beforeNavigate(pollResult, page) {
+        if (page === 'gamepage') {
+          const idx = pollResult.roomState.currentPlayerIndex != null
+            ? pollResult.roomState.currentPlayerIndex
+            : 1;
+          wx.redirectTo({
+            url: buildGamepageUrl(roomId, idx, 'partner')
+          });
+          return true;
+        }
+        return false;
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('confirmFirstPlayer roomSession', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   onSlotTap(e) {

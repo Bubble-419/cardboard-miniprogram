@@ -11,6 +11,7 @@
 - Phase 0/1：见 [PHASE1_CHANGELOG.md](./PHASE1_CHANGELOG.md)
 - Phase 2：见 [PHASE2_CHANGELOG.md](./PHASE2_CHANGELOG.md)
 - Phase 3：见 [PHASE3_CHANGELOG.md](./PHASE3_CHANGELOG.md)
+- Phase 4：见 [PHASE4_CHANGELOG.md](./PHASE4_CHANGELOG.md)
 
 ## 冻结规则（Phase 0）
 
@@ -38,3 +39,4 @@
 | PHASE1_CHANGELOG.md | Phase 1 落地说明 |
 | PHASE2_CHANGELOG.md | Phase 2 落地说明 |
 | PHASE3_CHANGELOG.md | Phase 3 落地说明 |
+| PHASE4_CHANGELOG.md | Phase 4 落地说明 |
