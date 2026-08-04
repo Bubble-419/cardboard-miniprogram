@@ -81,24 +81,26 @@ function isMemberOnline(member, now, hostUserId) {
 }
 
 /**
- * 仅刷新当前用户心跳；不对其他成员执行删除或副作用写。
- * 离线状态由 lastSeenAt 在响应中派生。
- * @returns {{ members: Array, room: object, lastEvent: object|null }}
+ * Presence 只读投影辅助：不写库。
+ * V1 兼容路径仍可选择刷新本人心跳；V2（protocolVersion===2）禁止查询写副作用。
  */
-async function touchOwnPresence(room, currentUserId, members) {
+async function applyPresenceView(room, currentUserId, members, options) {
   const now = Date.now();
   const list = Array.isArray(members) ? members.slice() : [];
   const lastEvent = room.lastEvent || null;
+  const allowWrite = !(options && options.noSideEffects);
 
-  const myMember = list.find((m) => m && String(m.userId) === String(currentUserId)) || null;
-  if (myMember && myMember._id) {
-    try {
-      await db.collection(ROOM_MEMBERS_COLLECTION).doc(myMember._id).update({
-        data: { lastSeenAt: now }
-      });
-      myMember.lastSeenAt = now;
-    } catch (e) {
-      console.warn('touch lastSeenAt failed', e);
+  if (allowWrite) {
+    const myMember = list.find((m) => m && String(m.userId) === String(currentUserId)) || null;
+    if (myMember && myMember._id) {
+      try {
+        await db.collection(ROOM_MEMBERS_COLLECTION).doc(myMember._id).update({
+          data: { lastSeenAt: now }
+        });
+        myMember.lastSeenAt = now;
+      } catch (e) {
+        console.warn('touch lastSeenAt failed', e);
+      }
     }
   }
 
@@ -224,8 +226,11 @@ exports.main = async (event, context) => {
       };
     }
 
-    // 仅刷新本人心跳；超时只在响应中标 offline，不删除成员、不回退局况
-    const presence = await touchOwnPresence(room, currentUserId, rawMembers);
+    // V2 房间：查询无写副作用（心跳走 roomPresence）；V1 仍刷新本人 lastSeenAt
+    const isV2 = Number(room.protocolVersion) === 2 || Number(room.schemaVersion) === 2;
+    const presence = await applyPresenceView(room, currentUserId, rawMembers, {
+      noSideEffects: isV2 || event.noSideEffects === true
+    });
     room = presence.room || room;
     rawMembers = presence.members || rawMembers;
     myMember = rawMembers.find((m) => m.userId === currentUserId) || null;

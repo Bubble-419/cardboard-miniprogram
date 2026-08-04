@@ -1,0 +1,9 @@
+{
+  "name": "roomQuery",
+  "version": "1.0.0",
+  "description": "V2 房间只读查询（head/snapshot）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "2.6.3"
+  }
+}

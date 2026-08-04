@@ -10,6 +10,7 @@
 
 - Phase 0/1：见 [PHASE1_CHANGELOG.md](./PHASE1_CHANGELOG.md)
 - Phase 2：见 [PHASE2_CHANGELOG.md](./PHASE2_CHANGELOG.md)
+- Phase 3：见 [PHASE3_CHANGELOG.md](./PHASE3_CHANGELOG.md)
 
 ## 冻结规则（Phase 0）
 
@@ -36,3 +37,4 @@
 | REFACTORING_BLUEPRINT_2026-08-01.md | 分阶段实施方案 |
 | PHASE1_CHANGELOG.md | Phase 1 落地说明 |
 | PHASE2_CHANGELOG.md | Phase 2 落地说明 |
+| PHASE3_CHANGELOG.md | Phase 3 落地说明 |

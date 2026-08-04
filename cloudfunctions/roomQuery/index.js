@@ -1051,7 +1051,7 @@ var require_room_cloudbase_adapter = __commonJS({
   }
 });
 
-// cloudfunctions/roomCommand/src/entry.js
+// cloudfunctions/roomQuery/src/entry.js
 var cloud = require("wx-server-sdk");
 var { createRoomApplication } = require_room_application();
 var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
@@ -1061,16 +1061,22 @@ var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
-  const envelope = event && event.type ? event : event && event.command || event || {};
+  const roomId = event && event.roomId;
+  const action = event && event.action || "head";
   try {
-    return await app.execute(envelope, { userId });
+    if (action === "snapshot") {
+      return await app.readSnapshot(roomId, { userId }, {
+        domains: event.domains,
+        domainRevisions: event.domainRevisions
+      });
+    }
+    return await app.readHead(roomId, { userId });
   } catch (e) {
-    console.error("roomCommand error", e);
+    console.error("roomQuery error", e);
     return {
       ok: false,
       errCode: e.errCode || e.code || "INTERNAL_ERROR",
-      errMsg: e.errMsg || e.message || "roomCommand failed",
-      retryable: false
+      errMsg: e.errMsg || e.message || "roomQuery failed"
     };
   }
 };

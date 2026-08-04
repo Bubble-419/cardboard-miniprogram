@@ -9,6 +9,14 @@ const TARGETS = {
   roomCommand: {
     entry: path.join(ROOT, 'cloudfunctions/roomCommand/src/entry.js'),
     outfile: path.join(ROOT, 'cloudfunctions/roomCommand/index.js')
+  },
+  roomQuery: {
+    entry: path.join(ROOT, 'cloudfunctions/roomQuery/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/roomQuery/index.js')
+  },
+  roomPresence: {
+    entry: path.join(ROOT, 'cloudfunctions/roomPresence/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/roomPresence/index.js')
   }
 };
 

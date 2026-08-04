@@ -5,6 +5,8 @@ const { MAX_SEATS } = require('@cardboard/room-contracts');
 const ROOMS = 'rooms';
 const MEMBERS = 'roomMembers';
 const COMMANDS = 'roomCommands';
+const PRESENCE = 'roomPresence';
+const SCORES = 'roomScores';
 
 /**
  * CloudBase 仓储：将领域聚合映射到 rooms + roomMembers + roomCommands
@@ -188,12 +190,54 @@ function createCloudBaseRoomRepository(deps) {
     }
   }
 
+  async function loadDomainData(roomId, domains) {
+    const out = {};
+    const wanted = domains || [];
+    if (wanted.includes('scores')) {
+      try {
+        const res = await db.collection(SCORES).where({ roomId }).limit(200).get();
+        out.scores = res.data || [];
+      } catch (e) {
+        out.scores = [];
+      }
+    }
+    return out;
+  }
+
+  async function upsertPresence({ roomId, userId, deviceSessionId }) {
+    const device = deviceSessionId || 'default';
+    const docId = `${roomId}_${userId}_${device}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+    const now = Date.now();
+    const data = {
+      roomId,
+      userId,
+      deviceSessionId: device,
+      lastSeenAt: now,
+      online: true,
+      updatedAt: now
+    };
+    try {
+      await db.collection(PRESENCE).doc(docId).set({ data });
+    } catch (e) {
+      await db.collection(PRESENCE).add({ data: { ...data, _fallbackId: docId } });
+    }
+    return data;
+  }
+
+  async function listPresence(roomId) {
+    const res = await db.collection(PRESENCE).where({ roomId }).limit(50).get();
+    return res.data || [];
+  }
+
   return {
     generateRoomId,
     loadRoom,
     loadCommand,
     saveCommandResult,
-    persistRoom
+    persistRoom,
+    loadDomainData,
+    upsertPresence,
+    listPresence
   };
 }
 

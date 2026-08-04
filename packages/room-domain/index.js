@@ -40,11 +40,44 @@ function pickAvatarColor(seatMap, membersByUserId) {
   return available.length ? available[0] : AVATAR_COLORS[0];
 }
 
+function buildCapabilities(room, actorUserId) {
+  const seatNo = findSeatNo(room.seatMap, actorUserId);
+  const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
+  const isMember = !!(seatNo || isHost);
+  const inLobby = room.lifecycle === LIFECYCLE.LOBBY;
+  return {
+    joinRoom: {
+      allowed: room.lifecycle !== LIFECYCLE.DISSOLVED && memberCount(room.seatMap) < MAX_SEATS,
+      reason: room.lifecycle === LIFECYCLE.DISSOLVED ? 'ROOM_DISSOLVED' : (memberCount(room.seatMap) >= MAX_SEATS ? 'ROOM_FULL' : null)
+    },
+    leaveRoom: {
+      allowed: isMember && !isHost,
+      reason: !isMember ? 'NOT_MEMBER' : (isHost ? 'HOST_CANNOT_LEAVE' : null)
+    },
+    reorderSeats: {
+      allowed: isHost && inLobby,
+      reason: !isHost ? 'HOST_ONLY' : (!inLobby ? 'INVALID_TRANSITION' : null)
+    },
+    dissolveRoom: {
+      allowed: isHost,
+      reason: isHost ? null : 'HOST_ONLY'
+    },
+    submitScore: {
+      allowed: false,
+      reason: 'NOT_IN_PHASE'
+    },
+    startStatement: {
+      allowed: false,
+      reason: 'HOST_ONLY'
+    }
+  };
+}
+
 function buildHead(room, actorUserId) {
   const seatNo = findSeatNo(room.seatMap, actorUserId);
   const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
   return {
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: room.protocolVersion || PROTOCOL_VERSION,
     roomId: room.roomId,
     schemaVersion: room.schemaVersion || SCHEMA_VERSION,
     revision: room.revision,
@@ -62,8 +95,99 @@ function buildHead(room, actorUserId) {
       role: isHost ? 'HOST' : (seatNo ? 'PLAYER' : 'NONE'),
       seatNo: seatNo || null
     },
+    capabilities: buildCapabilities(room, actorUserId),
     serverTime: Date.now()
   };
+}
+
+function projectMembersDomain(room, actorUserId) {
+  const list = [];
+  const seatMap = room.seatMap || {};
+  Object.keys(seatMap)
+    .map((k) => parseInt(k, 10))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b)
+    .forEach((seatNo) => {
+      const userId = seatMap[String(seatNo)];
+      const m = (room.membersByUserId && room.membersByUserId[userId]) || {};
+      list.push({
+        seatNo,
+        nickName: m.nickName || `玩家${seatNo}`,
+        avatarColor: m.avatarColor || '#5EC159',
+        avatarUrl: m.avatarUrl || null,
+        avatarIndex: m.avatarIndex != null ? m.avatarIndex : null,
+        role: m.role === 'HOST' || seatNo === 1 ? 'HOST' : 'PLAYER',
+        isMe: String(userId) === String(actorUserId),
+        online: m.online !== false
+        // 不返回 userId / openid
+      });
+    });
+  return list;
+}
+
+/**
+ * 按域投影快照；仅返回 clientDomainRevisions 落后或缺失的域。
+ * @param {object} room
+ * @param {object} options
+ * @param {string} options.actorUserId
+ * @param {string[]} [options.domains]
+ * @param {object} [options.clientDomainRevisions]
+ * @param {object} [options.extraDomainData] 仓储预加载的域数据 { scores, messages, ... }
+ */
+function projectSnapshot(room, options) {
+  const actorUserId = options && options.actorUserId;
+  const requested = (options && options.domains && options.domains.length)
+    ? options.domains
+    : ['members'];
+  const clientRevs = (options && options.clientDomainRevisions) || {};
+  const serverRevs = room.domainRevisions || emptyDomainRevisions();
+  const extra = (options && options.extraDomainData) || {};
+
+  const domains = {};
+  requested.forEach((name) => {
+    const serverRev = serverRevs[name] != null ? serverRevs[name] : 0;
+    const clientRev = clientRevs[name] != null ? clientRevs[name] : -1;
+    if (clientRev >= serverRev && clientRev >= 0) {
+      return;
+    }
+    let data = null;
+    if (name === 'members') {
+      data = projectMembersDomain(room, actorUserId);
+    } else if (Object.prototype.hasOwnProperty.call(extra, name)) {
+      data = extra[name];
+    } else {
+      data = name === 'scores' || name === 'votes' ? {} : [];
+    }
+    domains[name] = { revision: serverRev, data };
+  });
+
+  return {
+    roomId: room.roomId,
+    revision: room.revision,
+    domains,
+    serverTime: Date.now()
+  };
+}
+
+/**
+ * 查询侧授权：成员或房主可读；解散房仅房主可读 head。
+ */
+function authorizeRoomRead(room, actorUserId) {
+  if (!isNonEmptyString(actorUserId)) {
+    return fail(ERR.UNAUTHENTICATED);
+  }
+  if (!room) {
+    return fail(ERR.ROOM_NOT_FOUND);
+  }
+  if (room.lifecycle === LIFECYCLE.DISSOLVED || room.status === 'DISSOLVED') {
+    return fail(ERR.ROOM_DISSOLVED);
+  }
+  const seatNo = findSeatNo(room.seatMap, actorUserId);
+  const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
+  if (!seatNo && !isHost) {
+    return fail(ERR.NOT_MEMBER);
+  }
+  return okResult({ room });
 }
 
 function findSeatNo(seatMap, userId) {
@@ -410,6 +534,10 @@ function executeCommand({ room, envelope, actorUserId, roomIdFactory, now }) {
 module.exports = {
   executeCommand,
   buildHead,
+  buildCapabilities,
+  projectSnapshot,
+  projectMembersDomain,
+  authorizeRoomRead,
   allocateSeatNo,
   findSeatNo,
   createRoomAggregate
