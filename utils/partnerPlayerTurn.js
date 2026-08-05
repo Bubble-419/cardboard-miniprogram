@@ -6,9 +6,21 @@ function toPlayerIndex(value, fallback) {
   return 1;
 }
 
+function listSeatNos(members) {
+  const seats = (Array.isArray(members) ? members : [])
+    .map((m) => toPlayerIndex(m && m.playerIndex, 0))
+    .filter((n) => n > 0)
+    .sort((a, b) => a - b);
+  const uniq = [];
+  seats.forEach((n) => {
+    if (uniq[uniq.length - 1] !== n) uniq.push(n);
+  });
+  return uniq;
+}
+
 function getNextPlayerTurn(members, currentPlayerIndex) {
-  const count = Array.isArray(members) ? members.length : 0;
-  if (!count) {
+  const seats = listSeatNos(members);
+  if (!seats.length) {
     const safe = toPlayerIndex(currentPlayerIndex, 1);
     return {
       nextIndex: safe,
@@ -16,13 +28,14 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
       incrementRound: false
     };
   }
-  const safeCurrent = toPlayerIndex(currentPlayerIndex, 1);
-  const nextIndex = (safeCurrent % count) + 1;
+  const safeCurrent = toPlayerIndex(currentPlayerIndex, seats[0]);
+  const idx = seats.indexOf(safeCurrent);
+  const nextIndex = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
   const nextMember = (members || []).find(
     (m) => toPlayerIndex(m && m.playerIndex, 0) === nextIndex
   );
   const nextName = nextMember
-    ? (nextMember.nickName || `玩家${nextIndex}`)
+    ? (nextMember.nickName || nextMember.name || `玩家${nextIndex}`)
     : `玩家${nextIndex}`;
   return {
     nextIndex,
@@ -66,6 +79,7 @@ function resolveCurrentPlayerFromRoom(members, roomState, fallbackIndex) {
 
 module.exports = {
   toPlayerIndex,
+  listSeatNos,
   getNextPlayerTurn,
   buildPartnerAvatarList,
   resolveCurrentPlayerFromRoom

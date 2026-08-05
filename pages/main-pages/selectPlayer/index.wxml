@@ -94,14 +94,14 @@
   <page-footer
     wx:elif="{{selectionAnimationDone && selectedPlayerIndex}}"
     extClass="footer"
-    bind:prev="goBack"
+    showPrev="{{false}}"
   >
     <button class="reselect-btn" bindtap="reselectSelection">重新选择</button>
     <button class="confirm-btn" bindtap="confirmSelection">确认</button>
   </page-footer>
 
-  <!-- 添加玩家按钮 -->
-  <view class="add-player-btn" bindtap="addPlayer">
+  <!-- 添加玩家：仅抽取前显示，确认/重选阶段隐藏 -->
+  <view class="add-player-btn" wx:if="{{!selectedPlayerIndex}}" bindtap="addPlayer">
     <image class="add-player-icon" src="/assets/icons/passenger.png" mode="aspectFit"></image>
   </view>
   </block>

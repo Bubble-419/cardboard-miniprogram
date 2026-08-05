@@ -1572,7 +1572,9 @@ var require_room_domain = __commonJS({
         if (!isHost) return fail(ERR.HOST_REQUIRED);
         const seats = Object.keys(room.seatMap || {}).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
         if (!seats.length) return fail(ERR.INVALID_TRANSITION, "\u65E0\u6709\u6548\u5E2D\u4F4D");
-        const current = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : seats[0];
+        const fromPage = room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : NaN;
+        const fromWorkflow = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : NaN;
+        const current = Number.isFinite(fromPage) && fromPage > 0 ? fromPage : Number.isFinite(fromWorkflow) && fromWorkflow > 0 ? fromWorkflow : seats[0];
         const idx = seats.indexOf(current);
         const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
         const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
@@ -1624,6 +1626,8 @@ var require_room_domain = __commonJS({
           currentRound += 1;
           partnerRoundStartedAt = ts;
         }
+        partnerRoundStartedAt = ts;
+        const partnerTurnStartedAt = ts;
         const workflow = {
           ...room.workflow || {},
           mode: "PARTNER",
@@ -1652,6 +1656,7 @@ var require_room_domain = __commonJS({
           partnerRoundSummaries,
           partnerCurrentRoundContent,
           partnerRoundStartedAt,
+          partnerTurnStartedAt,
           workflow,
           progress,
           scoresByKey: {},

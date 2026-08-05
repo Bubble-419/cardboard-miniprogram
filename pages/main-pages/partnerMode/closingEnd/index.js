@@ -3,7 +3,6 @@ const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll
 Page({
   data: {
     roomId: '',
-    countdown: 5,
     isHost: false
   },
 
@@ -19,11 +18,9 @@ Page({
     clearLocalBrainstormProgress(roomId);
     this.setData({ roomId });
     this._loadHostStatus();
-    this._startCountdown();
   },
 
   onUnload() {
-    this._clearCountdown();
     this._stopFollowPoll();
   },
 
@@ -62,7 +59,6 @@ Page({
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
             if (page === 'addplayer' || pollResult.roomState.brainstormSessionEnded === true) {
-              this._clearCountdown();
               this._stopFollowPoll();
               this._reLaunchRoom();
               return true;
@@ -85,28 +81,6 @@ Page({
     }
   },
 
-  _startCountdown() {
-    this._clearCountdown();
-    let remaining = 5;
-    this.setData({ countdown: remaining });
-    this._countdownTimer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        this._clearCountdown();
-        this._goToRoom();
-        return;
-      }
-      this.setData({ countdown: remaining });
-    }, 1000);
-  },
-
-  _clearCountdown() {
-    if (this._countdownTimer) {
-      clearInterval(this._countdownTimer);
-      this._countdownTimer = null;
-    }
-  },
-
   _reLaunchRoom() {
     const roomId = this.data.roomId || '';
     if (!roomId) return;
@@ -115,6 +89,10 @@ Page({
     wx.reLaunch({
       url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
     });
+  },
+
+  onBackToRoom() {
+    this._goToRoom();
   },
 
   async _goToRoom() {
@@ -126,7 +104,6 @@ Page({
     const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
     clearLocalBrainstormProgress(roomId);
 
-    // 任意端进入 closingEnd 后都应落盘 ended，避免房主卡住导致「再来一轮」永不出现
     try {
       await wx.cloud.callFunction({
         name: 'updateRoomState',

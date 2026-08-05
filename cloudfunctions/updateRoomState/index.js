@@ -441,6 +441,29 @@ exports.main = async (event, context) => {
     }
     if (currentPlayerIndex != null) updateData.currentPlayerIndex = currentPlayerIndex;
     if (currentPlayerName != null) updateData.currentPlayerName = currentPlayerName;
+    // 换人时同步 workflow.activeSeatNo，避免后续 ADVANCE_TURN 读到滞后座位
+    if (currentPlayerIndex != null) {
+      const seat = Number(currentPlayerIndex);
+      if (Number.isFinite(seat) && seat > 0) {
+        const prevSeat = room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : NaN;
+        const wfSeat = room.workflow && room.workflow.activeSeatNo != null
+          ? Number(room.workflow.activeSeatNo)
+          : NaN;
+        const playerChanging = Number.isFinite(prevSeat) && prevSeat !== seat;
+        const workflowLagging = !Number.isFinite(wfSeat) || wfSeat !== seat;
+        if (playerChanging || workflowLagging || incrementRound === true) {
+          updateData.workflow = {
+            ...(room.workflow && typeof room.workflow === 'object' ? room.workflow : {}),
+            mode: (room.workflow && room.workflow.mode) || 'PARTNER',
+            step: 'TURN_ACTIVE',
+            activeSeatNo: seat,
+            roundNo: currentRound,
+            turnId: `turn_r${currentRound}_s${seat}`,
+            legacyPage: updateData.currentPage || 'gamepage'
+          };
+        }
+      }
+    }
     // 换人/换轮进入 gamepage：必须清零评分进度，否则上一回合满分会让「开始表态」误亮
     {
       const pageKey = (currentPage || updateData.currentPage || '').toLowerCase();

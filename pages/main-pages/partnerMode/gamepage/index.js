@@ -1491,6 +1491,21 @@ Page({
         : null;
     }
 
+    // 换人但服务端仍返回同一计时戳：视为脏半程，丢弃并待进页重开
+    if (playerChanged || options.resetTurnUi) {
+      const prevTs = Number(this.data.partnerRoundStartedAt) || 0;
+      const nextTs = Number(
+        patch.partnerRoundStartedAt != null
+          ? patch.partnerRoundStartedAt
+          : partnerRoundStartedAt
+      ) || 0;
+      if (nextTs > 0 && prevTs > 0 && nextTs === prevTs) {
+        patch.partnerRoundStartedAt = null;
+        patch.roundTimerElapsedRatio = 0;
+        patch.roundTimerVisible = false;
+      }
+    }
+
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
       patch.canStartStatement = false;
@@ -1569,9 +1584,15 @@ Page({
       patch.scoredCount = nextScored;
       patch.totalRequired = nextRequired;
       patch.scoreTurnKey = scoreTurnKey;
-      // 用服务端 myScore 同步「已打分/未打分」，避免本地 selectedScore 与进度脱节
+      // 用服务端 myScore 同步「已打分/未打分」；乐观提交中勿被 null 快照打回未打分
       if (Object.prototype.hasOwnProperty.call(roomState, 'myScore')) {
-        patch.selectedScore = roomState.myScore != null ? Number(roomState.myScore) : null;
+        if (roomState.myScore != null) {
+          patch.selectedScore = Number(roomState.myScore);
+          this._pendingScore = null;
+        } else if (this._pendingScore == null) {
+          // 无本地待提交分时，才接受服务端「未打分」
+          patch.selectedScore = null;
+        }
       }
       const phaseForScore = roomPhase || this.data.gamepagePhase;
       const hostFlag = patch.isHost != null ? patch.isHost : this.data.isHost;
@@ -1722,6 +1743,13 @@ Page({
         }
       } else if (isClosingPhase(roomPhase)) {
         this._applySharedRoundTimer(null, { force: true });
+      } else if (
+        (playerChanged || roundChanged || sessionChanged || options.resetTurnUi)
+        && this.data.isHost
+        && !patch.partnerRoundStartedAt
+      ) {
+        // 换人后服务端半程戳已丢弃：房主立即开新一轮计时
+        this._ensureSharedRoundTimerOnEnter();
       } else {
         this._restartRoundTimer();
         this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
@@ -1842,8 +1870,13 @@ Page({
       const myScore = Object.prototype.hasOwnProperty.call(result, 'myScore')
         ? (result.myScore != null ? Number(result.myScore) : null)
         : this.data.selectedScore;
+      // 乐观打分未落地前，不要用 null myScore 盖掉本地已选分
+      const effectiveMyScore = (myScore == null && this._pendingScore != null)
+        ? this._pendingScore
+        : myScore;
+      if (myScore != null) this._pendingScore = null;
       // 本人是非出牌玩家且未打分时，进度不得显示已满（脏数据自救）
-      if (!this.data.isCurrentPlayer && myScore == null && nextRequired > 0 && nextScored >= nextRequired) {
+      if (!this.data.isCurrentPlayer && effectiveMyScore == null && nextRequired > 0 && nextScored >= nextRequired) {
         nextScored = Math.max(0, nextRequired - 1);
       }
       const canStartStatement = isHost
@@ -1859,7 +1892,9 @@ Page({
         scoreTurnKey: expectedKey
       };
       if (Object.prototype.hasOwnProperty.call(result, 'myScore')) {
-        patch.selectedScore = myScore;
+        if (myScore != null || this._pendingScore == null) {
+          patch.selectedScore = effectiveMyScore;
+        }
       }
       this.setData(patch);
     } catch (e) {
@@ -2996,6 +3031,7 @@ Page({
       return;
     }
 
+    this._pendingScore = score;
     this.setData({ selectedScore: score });
 
     const { roomId, currentPlayerIndex } = this.data;
@@ -3006,9 +3042,12 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) {
+        this._pendingScore = null;
+        this.setData({ selectedScore: null });
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
         return;
       }
+      // 保持 _pendingScore 直到轮询/快照带回 myScore，避免真机短暂读到 null 回闪未打分
       const scoredCount = result.scoredCount || 0;
       const totalRequired = Math.max(
         result.totalRequired != null ? Number(result.totalRequired) || 0 : 0,
@@ -3026,6 +3065,8 @@ Page({
       });
     } catch (err) {
       console.warn('submitGameScore', err);
+      this._pendingScore = null;
+      this.setData({ selectedScore: null });
       wx.showToast({ title: '提交失败', icon: 'none' });
     }
   },
@@ -3503,116 +3544,141 @@ Page({
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
     }
+    if (this._endingDiscussion) return;
+    this._endingDiscussion = true;
 
-    const { members, currentPlayerIndex } = this.data;
-    let { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
-    const extra = {
-      partnerGamePhase: PHASE_PLAY,
-      partnerMasterMode: false,
-      incrementRound
-    };
-    if (incrementRound) {
-      const ctx = await this._syncRoomContext();
-      const roundContent = ctx && ctx.roundContent;
-      extra.roundSummary = {
-        ...this._buildRoundSummaryPayload(),
-        voiceLines: (roundContent && roundContent.voiceLines.length)
-          ? roundContent.voiceLines
-          : (this.data.voiceLines || []),
-        turnRecords: (roundContent && roundContent.turnRecords.length)
-          ? roundContent.turnRecords
-          : (this.data.turnRecords || [])
-      };
-    }
-
-    let ok = false;
-    let cmd = null;
-    cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
-      incrementRound: !!incrementRound,
-      roundSummary: extra.roundSummary || null
-    });
-    if (cmd && cmd.ok === true) {
-      ok = true;
-      const effects = cmd.effects || {};
-      if (effects.activeSeatNo != null) {
-        nextIndex = toPlayerIndex(effects.activeSeatNo, nextIndex);
-        const seatMember = (members || []).find(
-          (m) => m && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
-        );
-        nextName = (seatMember && (seatMember.nickName || seatMember.name)) || `玩家${nextIndex}`;
-      }
-      if (effects.incrementRound != null) {
-        incrementRound = !!effects.incrementRound;
-      }
-      // 协议过渡期双写：钉死 play phase + 抬 revision，避免仅依赖 roomCommand 读模型
-      await this._updateRoomState('gamepage', nextIndex, nextName, {
+    try {
+      const { members, currentPlayerIndex } = this.data;
+      let { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
+      const extra = {
         partnerGamePhase: PHASE_PLAY,
-        partnerMasterMode: false
+        partnerMasterMode: false,
+        incrementRound
+      };
+      if (incrementRound) {
+        const ctx = await this._syncRoomContext();
+        const roundContent = ctx && ctx.roundContent;
+        extra.roundSummary = {
+          ...this._buildRoundSummaryPayload(),
+          voiceLines: (roundContent && roundContent.voiceLines.length)
+            ? roundContent.voiceLines
+            : (this.data.voiceLines || []),
+          turnRecords: (roundContent && roundContent.turnRecords.length)
+            ? roundContent.turnRecords
+            : (this.data.turnRecords || [])
+        };
+      }
+
+      let ok = false;
+      let cmd = null;
+      cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
+        incrementRound: !!incrementRound,
+        roundSummary: extra.roundSummary || null
       });
+      if (cmd && cmd.ok === true) {
+        ok = true;
+        const effects = cmd.effects || {};
+        if (effects.activeSeatNo != null) {
+          nextIndex = toPlayerIndex(effects.activeSeatNo, nextIndex);
+          const seatMember = (members || []).find(
+            (m) => m && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
+          );
+          nextName = (seatMember && (seatMember.nickName || seatMember.name)) || `玩家${nextIndex}`;
+        }
+        if (effects.incrementRound != null) {
+          incrementRound = !!effects.incrementRound;
+        }
+        // 协议过渡期双写：钉死 play phase + 抬 revision，避免仅依赖 roomCommand 读模型
+        const timerNow = Date.now();
+        await this._updateRoomState('gamepage', nextIndex, nextName, {
+          partnerGamePhase: PHASE_PLAY,
+          partnerMasterMode: false,
+          partnerRoundStartedAt: timerNow,
+          syncPartnerTurnTimer: true,
+          incrementRound: false
+        });
+      } else {
+        ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
+      }
+      if (!ok) {
+        wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
+        return;
+      }
+
+      // 作废进行中的内容同步，防止旧轮纪要/旧座位写回
+      this._roundContentSyncToken = (this._roundContentSyncToken || 0) + 1;
+
+      const amCurrentAfterPass = !!(members.find(
+        (m) => m && m.isMe && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
+      ));
+      const nextRound = incrementRound
+        ? (Number(this.data.currentRound) || 1) + 1
+        : (this.data.currentRound != null ? this.data.currentRound : 1);
+      this._scoreProgressFromSnapshot = false;
+      this.setData({
+        currentPlayerIndex: nextIndex,
+        currentPlayerName: nextName,
+        currentRound: nextRound,
+        gamepagePhase: PHASE_PLAY,
+        isMasterMode: false,
+        selectedScore: null,
+        canStartStatement: false,
+        scoredCount: 0,
+        scoreTurnKey: `turn_r${nextRound}_s${nextIndex}`,
+        scorePanelExpanded: false,
+        scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
+        scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
+        scoreSheetAnimating: false,
+        specialMoveUsedThisTurn: false,
+        isCurrentPlayer: amCurrentAfterPass,
+        showSpecialMoveBtn: amCurrentAfterPass,
+        playHistory: incrementRound ? [] : this.data.playHistory,
+        discussionNotes: incrementRound ? [] : this.data.discussionNotes,
+        playImages: incrementRound ? [] : this.data.playImages,
+        discussionImages: incrementRound ? [] : this.data.discussionImages,
+        playBlocks: incrementRound ? [] : this.data.playBlocks,
+        discussionBlocks: incrementRound ? [] : this.data.discussionBlocks,
+        voiceLines: incrementRound ? [] : this.data.voiceLines,
+        turnRecords: incrementRound ? [] : this.data.turnRecords
+      }, () => {
+        if (incrementRound) {
+          this._roundSpeech && this._roundSpeech.stop();
+          this._syncRoundSpeech();
+        } else {
+          this.refreshScoreStatus();
+          this._syncRoundSpeech();
+        }
+        // 换人后由房主重开共享计时
+        if (this.data.isHost) {
+          this._ensureSharedRoundTimerOnEnter();
+        }
+      });
+
+      // 后台拉齐快照；若读到滞后座位则忽略，避免把 UI 打回讨论中的当前玩家
       const session = this._boundRoomSession || getActiveRoomSession();
       if (session && typeof session.refresh === 'function') {
         try {
           await session.refresh({ force: true });
           const snap = typeof session.getSnapshot === 'function' ? session.getSnapshot() : null;
-          if (snap && snap.ok === true && snap.raw) {
+          const snapIdx = snap && snap.raw && snap.raw.roomState
+            ? toPlayerIndex(snap.raw.roomState.currentPlayerIndex, 0)
+            : 0;
+          if (
+            snap
+            && snap.ok === true
+            && snap.raw
+            && snapIdx > 0
+            && snapIdx === toPlayerIndex(nextIndex, 0)
+          ) {
             this._applyRoomContext(snap.raw, { resetTurnUi: true });
           }
         } catch (e) {
           console.warn('endDiscussion force refresh', e);
         }
       }
-    } else {
-      ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
+    } finally {
+      this._endingDiscussion = false;
     }
-    if (!ok) {
-      wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
-      return;
-    }
-
-    const amCurrentAfterPass = !!(members.find(
-      (m) => m && m.isMe && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
-    ));
-    if (incrementRound) {
-      this._roundContentSyncToken = (this._roundContentSyncToken || 0) + 1;
-    }
-    const nextRound = incrementRound
-      ? (Number(this.data.currentRound) || 1) + 1
-      : (this.data.currentRound != null ? this.data.currentRound : 1);
-    this._scoreProgressFromSnapshot = false;
-    this.setData({
-      currentPlayerIndex: nextIndex,
-      currentPlayerName: nextName,
-      currentRound: nextRound,
-      gamepagePhase: PHASE_PLAY,
-      isMasterMode: false,
-      selectedScore: null,
-      canStartStatement: false,
-      scoredCount: 0,
-      scoreTurnKey: `turn_r${nextRound}_s${nextIndex}`,
-      scorePanelExpanded: false,
-      scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
-      scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
-      scoreSheetAnimating: false,
-      specialMoveUsedThisTurn: false,
-      isCurrentPlayer: amCurrentAfterPass,
-      showSpecialMoveBtn: amCurrentAfterPass,
-      playHistory: incrementRound ? [] : this.data.playHistory,
-      discussionNotes: incrementRound ? [] : this.data.discussionNotes,
-      playImages: incrementRound ? [] : this.data.playImages,
-      discussionImages: incrementRound ? [] : this.data.discussionImages,
-      playBlocks: incrementRound ? [] : this.data.playBlocks,
-      discussionBlocks: incrementRound ? [] : this.data.discussionBlocks,
-      voiceLines: incrementRound ? [] : this.data.voiceLines,
-      turnRecords: incrementRound ? [] : this.data.turnRecords
-    }, () => {
-      if (incrementRound) {
-        this._roundSpeech && this._roundSpeech.stop();
-        this._syncRoundSpeech();
-      } else {
-        this.refreshScoreStatus();
-        this._syncRoundSpeech();
-      }
-    });
   },
 
   handleGoRoom() {

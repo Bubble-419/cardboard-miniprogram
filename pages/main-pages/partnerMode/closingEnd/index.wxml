@@ -6,6 +6,12 @@
     <text class="end-title">本次脑暴已结束</text>
     <text class="end-subtitle">感谢各位的创意贡献</text>
     <view class="end-divider"></view>
-    <text class="end-hint">{{countdown}} 秒后返回房间</text>
   </view>
+
+  <page-footer
+    extClass="footer"
+    showPrev="{{false}}"
+  >
+    <button class="confirm-btn enabled" bindtap="onBackToRoom">返回房间</button>
+  </page-footer>
 </view>

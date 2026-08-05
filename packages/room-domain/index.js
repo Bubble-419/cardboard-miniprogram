@@ -700,9 +700,15 @@ function executeCommand({
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b);
     if (!seats.length) return fail(ERR.INVALID_TRANSITION, '无有效席位');
-    const current = room.workflow && room.workflow.activeSeatNo != null
+    // 以 currentPlayerIndex 为准：legacy updateRoomState 换人后 workflow.activeSeatNo 常滞后，
+    // 若仍信 workflow，会「前进」到已是当前的座位，表现为结束讨论不换人。
+    const fromPage = room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : NaN;
+    const fromWorkflow = room.workflow && room.workflow.activeSeatNo != null
       ? Number(room.workflow.activeSeatNo)
-      : (room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : seats[0]);
+      : NaN;
+    const current = (Number.isFinite(fromPage) && fromPage > 0)
+      ? fromPage
+      : ((Number.isFinite(fromWorkflow) && fromWorkflow > 0) ? fromWorkflow : seats[0]);
     const idx = seats.indexOf(current);
     const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
     const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
@@ -780,6 +786,10 @@ function executeCommand({
       partnerRoundStartedAt = ts;
     }
 
+    // 每次换人（含同轮换座）都必须重开计时，否则会沿用上一玩家半程戳
+    partnerRoundStartedAt = ts;
+    const partnerTurnStartedAt = ts;
+
     const workflow = {
       ...(room.workflow || {}),
       mode: 'PARTNER',
@@ -808,6 +818,7 @@ function executeCommand({
       partnerRoundSummaries,
       partnerCurrentRoundContent,
       partnerRoundStartedAt,
+      partnerTurnStartedAt,
       workflow,
       progress,
       scoresByKey: {},

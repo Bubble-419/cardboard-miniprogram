@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48rpx;
+  padding: 48rpx 48rpx calc(160rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -53,10 +53,47 @@
   height: 4rpx;
   background: #e9f5e9;
   border-radius: 2rpx;
-  margin-bottom: 40rpx;
+  margin-bottom: 0;
 }
 
-.end-hint {
-  font-size: 28rpx;
-  color: #9a9a9a;
+.footer {
+  z-index: 100;
+  padding: 24rpx 54rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(to top,
+    rgba(240, 250, 240, 0.98) 55%,
+    rgba(240, 250, 240, 0) 100%);
+}
+
+.confirm-btn {
+  width: 100%;
+  height: 96rpx;
+  background-color: #c8e6c8;
+  color: #8cbf8c;
+  border-radius: 24rpx;
+  font-size: 40rpx;
+  font-weight: 500;
+  border: none;
+  letter-spacing: 4rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  line-height: normal;
+  box-sizing: border-box;
+}
+
+.confirm-btn::after {
+  border: none;
+}
+
+.confirm-btn.enabled {
+  background: linear-gradient(135deg, #5ec159, #4db84a);
+  color: #ffffff;
+  box-shadow: 0 8rpx 28rpx rgba(94, 193, 89, 0.38);
+}
+
+.confirm-btn.enabled:active {
+  opacity: 0.9;
 }

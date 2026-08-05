@@ -144,6 +144,74 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(repo.rooms.get('30000001').partnerGamePhase, 'play');
   });
 
+  it('ADVANCE_TURN refreshes round timer even when round does not increment', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    const staleTs = Date.now() - 30_000;
+    room.partnerRoundStartedAt = staleTs;
+    room.partnerTurnStartedAt = staleTs;
+    room.currentPlayerIndex = 1;
+    room.revision = (room.revision || 1) + 1;
+    repo.rooms.set('30000001', room);
+
+    const before = Date.now();
+    const adv = await app.execute(
+      envelope({
+        commandId: 'p5-adv-timer',
+        type: COMMAND_TYPES.ADVANCE_TURN,
+        roomId: '30000001',
+        expectedRevision: room.revision
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(adv.ok, true, adv.errMsg);
+    const next = repo.rooms.get('30000001');
+    assert.equal(next.currentPlayerIndex, 2);
+    assert.notEqual(next.partnerRoundStartedAt, staleTs);
+    assert.ok(Number(next.partnerRoundStartedAt) >= before);
+    assert.equal(next.partnerTurnStartedAt, next.partnerRoundStartedAt);
+  });
+
+  it('ADVANCE_TURN prefers currentPlayerIndex when workflow.activeSeatNo lags', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    // 模拟表态后 legacy 已把出牌人写成 2，但 workflow 仍停在座位 1
+    room.currentPlayerIndex = 2;
+    room.currentPlayerName = '玩家2';
+    room.partnerGamePhase = 'discussion';
+    room.workflow = {
+      mode: 'PARTNER',
+      step: 'STATEMENT',
+      roundNo: 1,
+      activeSeatNo: 1,
+      turnId: 'turn_r1_s1',
+      legacyPage: 'statement'
+    };
+    room.revision = (room.revision || 1) + 1;
+    repo.rooms.set('30000001', room);
+
+    const adv = await app.execute(
+      envelope({
+        commandId: 'p5-adv-lag',
+        type: COMMAND_TYPES.ADVANCE_TURN,
+        roomId: '30000001',
+        expectedRevision: room.revision,
+        payload: { incrementRound: true }
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(adv.ok, true, adv.errMsg);
+    const next = repo.rooms.get('30000001');
+    // 应从 2 前进到 1（两人房绕圈），而不是从滞后的 1「前进」到已是当前的 2
+    assert.equal(next.currentPlayerIndex, 1);
+    assert.equal(next.workflow.activeSeatNo, 1);
+    assert.equal(next.partnerGamePhase, 'play');
+  });
+
   it('rejects START_STATEMENT when progress belongs to previous turn', async () => {
     const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
     const app = createRoomApplication(repo);
