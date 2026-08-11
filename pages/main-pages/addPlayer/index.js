@@ -1401,12 +1401,10 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({
-          url: '/pages/main-pages/aaa/index'
-        });
-      }
+    const { safeNavigateBack } = require('../../../utils/pageNavigate');
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/aaa/index',
+      fallbackUrl: '/pages/main-pages/aaa/index'
     });
   },
 

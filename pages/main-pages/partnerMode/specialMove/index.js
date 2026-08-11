@@ -153,21 +153,24 @@ Page({
   },
 
   _returnToGamepage(markUsed = true) {
-    const pages = getCurrentPages();
-    const prev = pages.length > 1 ? pages[pages.length - 2] : null;
-    const prevRoute = prev ? (prev.route || '') : '';
-    if (prevRoute === 'pages/main-pages/partnerMode/gamepage/index') {
-      wx.navigateBack();
-      return;
-    }
     const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
     const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
-    safeOpenUrl(buildGamepageUrl(
+    const target = buildGamepageUrl(
       roomId,
       idx,
       'partner',
       markUsed ? { specialMoveUsed: true } : {}
-    ));
+    );
+    const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+    // 未标记已使用时可安全 pop；带 specialMoveUsed query 时必须 openUrl
+    if (!markUsed) {
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+        fallbackUrl: target
+      });
+      return;
+    }
+    safeOpenUrl(target);
   },
 
   formatSilentTime(sec) {

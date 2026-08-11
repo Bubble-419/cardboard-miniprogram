@@ -4,6 +4,7 @@ const scenarioCategories = require('../../../utils/scenarioCategories');
 const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 const {
   DEFAULT_CATEGORIES,
@@ -217,7 +218,16 @@ Page({
   },
 
   goBack() {
-    wx.navigateBack();
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/selectProblem/index',
+        'pages/main-pages/modeIndex/index'
+      ],
+      fallbackUrl: roomId
+        ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/selectProblem/index'
+    });
   },
 
   handleGoRoom() {

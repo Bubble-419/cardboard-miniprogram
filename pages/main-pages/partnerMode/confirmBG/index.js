@@ -233,16 +233,11 @@ Page({
 
   handleReturnToGame() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    wx.navigateBack({
-      fail: () => {
-        if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
-          });
-        } else {
-          wx.navigateBack();
-        }
-      }
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+      fallbackUrl: roomId
+        ? `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+        : ''
     });
   },
 

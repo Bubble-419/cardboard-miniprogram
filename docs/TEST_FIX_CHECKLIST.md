@@ -374,3 +374,4 @@
 | 2026-08-10 | 修订：卡片边框归属、查看全部仅 gamepage、回首页按页补齐、返回栈全局审、选玩家/说明书应禁滚、排行榜复用已有页、图片不显示升为全局 |
 | 2026-08-11 | 导出 MD，并为每条补全处理优先级（P0 / P1 / P2） |
 | 2026-08-11 | **第 0 部分 P0 已修**：WebP 去 ICCP + 德心 PNG 回退；头像 sticky 过期刷新 + 统一 prepareMembersForDisplay + user-list binderror；`safeNavigateBack` 全链路关键页接入。云函数 `getAddPlayerData` 转换失败不再抹空 `cloud://`（需重新上传云函数） |
+| 2026-08-11 | 补齐 0.3 剩余返回页：playSuccess/Fail、creativeInput/Summary、closingStatement、selectMode、addPlayer、confirmBG 回游戏、specialMove 回对局 |
