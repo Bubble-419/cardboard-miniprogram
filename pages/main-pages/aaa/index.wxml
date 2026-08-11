@@ -197,4 +197,34 @@
       </view>
     </view>
   </scroll-view>
+
+  <!-- 首次进入：授权头像 + 用户名 -->
+  <view class="profile-auth-mask" wx:if="{{showProfileAuth}}" catchtouchmove="true">
+    <view class="profile-auth-dialog">
+      <text class="profile-auth-title">完善你的资料</text>
+      <text class="profile-auth-desc">授权微信头像和昵称，方便同伴在房间里认出你</text>
+
+      <button
+        class="profile-auth-avatar-btn"
+        open-type="chooseAvatar"
+        bindtap="onProfileAuthAvatarTap"
+        bindchooseavatar="onProfileAuthChooseAvatar"
+      >
+        <image class="profile-auth-avatar" src="{{authDraftAvatar}}" mode="aspectFill" />
+        <text class="profile-auth-avatar-tip">点击选择头像</text>
+      </button>
+
+      <input
+        class="profile-auth-nick"
+        type="nickname"
+        value="{{authDraftNick}}"
+        placeholder="点击填写微信昵称"
+        bindinput="onProfileAuthNickInput"
+        bindblur="onProfileAuthNickInput"
+      />
+
+      <view class="profile-auth-confirm" bindtap="onConfirmProfileAuth">完成</view>
+      <text class="profile-auth-skip" bindtap="onSkipProfileAuth">稍后设置</text>
+    </view>
+  </view>
 </view>

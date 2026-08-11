@@ -602,3 +602,102 @@
   border: none;
 }
 /* DEV_TEST_END */
+
+.profile-auth-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.profile-auth-dialog {
+  width: 600rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  padding: 48rpx 40rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.profile-auth-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12rpx;
+}
+
+.profile-auth-desc {
+  font-size: 26rpx;
+  color: #6b7280;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 36rpx;
+}
+
+.profile-auth-avatar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  padding: 0;
+  margin: 0 0 28rpx;
+  border: none;
+  background: transparent;
+  line-height: 1.2;
+}
+
+.profile-auth-avatar-btn::after {
+  border: none;
+}
+
+.profile-auth-avatar {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 9999rpx;
+  background: #e5e7eb;
+}
+
+.profile-auth-avatar-tip {
+  font-size: 24rpx;
+  color: #5ec159;
+}
+
+.profile-auth-nick {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+  border-radius: 16rpx;
+  background: #f3f4f6;
+  font-size: 30rpx;
+  color: #111827;
+  margin-bottom: 28rpx;
+}
+
+.profile-auth-confirm {
+  width: 100%;
+  height: 88rpx;
+  border-radius: 16rpx;
+  background: #5ec159;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16rpx;
+}
+
+.profile-auth-skip {
+  font-size: 26rpx;
+  color: #9ca3af;
+  padding: 8rpx 16rpx;
+}

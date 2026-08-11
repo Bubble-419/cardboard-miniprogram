@@ -1,4 +1,5 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
+const HOME_PROFILE_AUTH_KEY = 'homeProfileAuthPrompted';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
 const { getDevJoinPageData } = require('../../../utils/devJoinRoomById');
 const {
@@ -25,6 +26,14 @@ const {
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
 
+function _hasCompleteLocalProfile(stored) {
+  if (!stored) return false;
+  const nick = (stored.nickName || '').trim();
+  const hasNick = !!nick && nick !== '微信用户';
+  const hasAvatar = !!(stored.avatarUrl || stored.avatarFileID);
+  return hasNick && hasAvatar;
+}
+
 Page({
   data: {
     headerPaddingTop: 24,
@@ -40,7 +49,10 @@ Page({
     timeLabel: '创建/加入时间',
     loading: false,
     debugRoomIdInput: '',
-    historyWorkshops: []
+    historyWorkshops: [],
+    showProfileAuth: false,
+    authDraftNick: '',
+    authDraftAvatar: DEFAULT_AVATAR
   },
 
   onLoad() {
@@ -54,6 +66,7 @@ Page({
     this.setData({ headerPaddingTop, ...getDevJoinPageData() });
     this._restoreUserProfile();
     this.loadJoinedRoomState();
+    this._maybeShowFirstProfileAuth();
   },
 
   onShow() {
@@ -218,11 +231,96 @@ Page({
 
   _restoreUserProfile() {
     const stored = getStoredProfile();
-    if (!stored || !stored.avatarUrl) return;
+    if (!stored) return;
     this.setData({
-      userAvatarUrl: stored.avatarUrl,
+      userAvatarUrl: stored.avatarUrl || this.data.userAvatarUrl || DEFAULT_AVATAR,
       userNickName: stored.nickName || this.data.userNickName || '微信用户'
     });
+  },
+
+  _markHomeProfileAuthPrompted() {
+    try {
+      wx.setStorageSync(HOME_PROFILE_AUTH_KEY, true);
+    } catch (e) {
+      // ignore
+    }
+  },
+
+  _maybeShowFirstProfileAuth() {
+    let prompted = false;
+    try {
+      prompted = wx.getStorageSync(HOME_PROFILE_AUTH_KEY) === true;
+    } catch (e) {
+      prompted = false;
+    }
+    const stored = getStoredProfile();
+    if (prompted || _hasCompleteLocalProfile(stored)) {
+      if (_hasCompleteLocalProfile(stored)) this._markHomeProfileAuthPrompted();
+      return;
+    }
+
+    beginUserAuthFlow();
+    this.setData({
+      showProfileAuth: true,
+      authDraftNick: (stored && stored.nickName) || '',
+      authDraftAvatar: (stored && stored.avatarUrl) || DEFAULT_AVATAR
+    });
+  },
+
+  onProfileAuthAvatarTap() {
+    clearTimeout(this._authReleaseTimer);
+    beginUserAuthFlow();
+  },
+
+  onProfileAuthChooseAvatar(e) {
+    clearTimeout(this._authReleaseTimer);
+    try {
+      const profile = applyChooseAvatarEvent(e && e.detail);
+      if (!profile) return;
+      this.setData({
+        authDraftAvatar: profile.avatarUrl,
+        userAvatarUrl: profile.avatarUrl,
+        userNickName: profile.nickName || this.data.authDraftNick || this.data.userNickName || '微信用户',
+        authDraftNick: profile.nickName || this.data.authDraftNick || ''
+      });
+    } finally {
+      // 弹层仍开着，保持闸门；完成/跳过时再 end
+      if (!this.data.showProfileAuth) endUserAuthFlow();
+    }
+  },
+
+  onProfileAuthNickInput(e) {
+    const nickName = (e.detail && e.detail.value) || '';
+    this.setData({ authDraftNick: nickName });
+  },
+
+  onConfirmProfileAuth() {
+    clearTimeout(this._authReleaseTimer);
+    const nickName = (this.data.authDraftNick || '').trim();
+    const avatarUrl = this.data.authDraftAvatar || this.data.userAvatarUrl || '';
+    const stored = getStoredProfile() || {};
+    const next = {
+      ...stored,
+      nickName: nickName || stored.nickName || '微信用户',
+      avatarUrl: avatarUrl && avatarUrl !== DEFAULT_AVATAR ? avatarUrl : (stored.avatarUrl || '')
+    };
+    if (next.avatarUrl || next.nickName) {
+      saveStoredProfile(next);
+    }
+    this._markHomeProfileAuthPrompted();
+    this.setData({
+      showProfileAuth: false,
+      userNickName: next.nickName || '微信用户',
+      userAvatarUrl: next.avatarUrl || DEFAULT_AVATAR
+    });
+    forceEndUserAuthFlow();
+  },
+
+  onSkipProfileAuth() {
+    clearTimeout(this._authReleaseTimer);
+    this._markHomeProfileAuthPrompted();
+    this.setData({ showProfileAuth: false });
+    forceEndUserAuthFlow();
   },
 
   onAvatarAuthTap() {
