@@ -663,15 +663,14 @@ Page({
           }
           return null;
         }
-        if (this.data.membershipConfirmed) {
-          if (result.errCode === 'ROOM_DISSOLVED' || result.roomDissolved === true) {
-            this._handleMembershipLost('dissolved');
-            return null;
-          }
-          if (result.errCode === 'NOT_IN_ROOM') {
-            this._handleMembershipLost('left');
-            return null;
-          }
+        // 主机退出/解散/踢出：不依赖 membershipConfirmed（偶发场景下该值未及时更新）
+        if (result.errCode === 'ROOM_DISSOLVED' || result.roomDissolved === true) {
+          this._handleMembershipLost('dissolved');
+          return null;
+        }
+        if (result.errCode === 'NOT_IN_ROOM') {
+          this._handleMembershipLost('left');
+          return null;
         }
         if (!silent) {
           this.setData({
