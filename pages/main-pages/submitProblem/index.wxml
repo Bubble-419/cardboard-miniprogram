@@ -1,21 +1,19 @@
 <view class="container">
-  <scroll-view
-    class="main-scroll"
-    scroll-y="{{!inputFocused}}"
-    show-scrollbar="{{false}}"
-  >
+  <!-- 顶部区：TopBar + 情境格（固定在滚动区之外，避免随内容滚走） -->
+  <view class="header-section">
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      bind:goroom="handleGoRoom"
+    />
 
-    <!-- 顶部区：TopBar + 情境格 -->
-    <view class="header-section">
-      <player-top-bar
-        avatarList="{{avatarList}}"
-        maxVisible="{{5}}"
-        bind:goroom="handleGoRoom"
-      />
-
-      <!-- 情境展示 -->
-      <context-display items="{{categories}}" />
+    <!-- 情境展示：点击跳转确认情境页（只读回看） -->
+    <view class="context-entry" hover-class="context-entry-hover">
+      <context-display items="{{categories}}" bind:opentap="handleViewContext" />
     </view>
+  </view>
+
+  <view class="main-body" catchtouchmove="preventTouchMove">
 
     <!-- 主内容区（未提交状态） -->
     <view class="content-section" wx:if="{{!hasSubmitted}}">
@@ -40,7 +38,7 @@
         </view>
 
         <!-- 输入框 + 字数计数 + 提交图标 -->
-        <view class="form-input-wrap" catchtouchmove="preventTouchMove">
+        <view class="form-input-wrap">
           <view class="textarea-box">
             <textarea
               class="problem-input"
@@ -78,7 +76,7 @@
       <text class="wait-empty-text">等待所有玩家提交设计问题...</text>
     </view>
 
-  </scroll-view>
+  </view>
 
   <!-- 固定底部按钮 -->
   <page-footer

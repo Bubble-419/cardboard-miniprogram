@@ -132,7 +132,7 @@
       <view class="history-grid" wx:else>
         <view class="history-column">
           <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 0}}">
-            <view class="history-card">
+            <view class="history-card" data-room-id="{{item.roomId}}" bindtap="onTapHistoryCard">
               <view class="history-card-header">
                 <view class="history-card-title-wrap">
                   <text class="history-card-name">{{item.name}}</text>
@@ -161,7 +161,7 @@
         </view>
         <view class="history-column">
           <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 1}}">
-            <view class="history-card">
+            <view class="history-card" data-room-id="{{item.roomId}}" bindtap="onTapHistoryCard">
               <view class="history-card-header">
                 <view class="history-card-title-wrap">
                   <text class="history-card-name">{{item.name}}</text>

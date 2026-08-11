@@ -401,8 +401,8 @@ Page({
 
   onInspirationAddPhoto() {
     const photos = this.data.inspirationDraftPhotos || [];
-    if (photos.length >= 9) {
-      wx.showToast({ title: '最多 9 张图片', icon: 'none' });
+    if (photos.length >= 1) {
+      wx.showToast({ title: '最多上传1张图片', icon: 'none' });
       return;
     }
     this.setData({ inspirationHoldKeyboard: true });
@@ -411,7 +411,7 @@ Page({
       success: (res) => {
         const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
         wx.chooseImage({
-          count: 9 - photos.length,
+          count: 1 - photos.length,
           sizeType: ['compressed'],
           sourceType,
           success: (chooseRes) => {

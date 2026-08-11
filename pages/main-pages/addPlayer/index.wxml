@@ -86,7 +86,7 @@
       </view>
       <text class="info-meta-text muted" wx:else>等待房主选择游戏</text>
     </view>
-    <text class="info-hint" wx:if="{{isHost}}">长按拖动可调序；长按头像可踢出</text>
+    <text class="info-hint" wx:if="{{isHost}}">长按头像拖动排序；拖到底部可踢出成员</text>
     <text class="info-hint" wx:else>等待房主选择游戏</text>
   </view>
 
@@ -232,8 +232,18 @@
     ></view>
   </view>
 
-  <!-- 底部：绿色主按钮 + 小号文字（房主解散 / 成员退出） -->
-  <view class="footer-wrap">
+  <!-- 拖拽踢出区：拖动头像至此松手可踢出该成员（拖自己无效） -->
+  <view
+    id="kickZone"
+    wx:if="{{isDragging && isHost}}"
+    class="kick-zone {{overKickZone ? 'kick-zone-active' : ''}}"
+  >
+    <text class="kick-zone-icon">🗑</text>
+    <text class="kick-zone-text">{{overKickZone ? (draggingMember && draggingMember.isMe ? '松手取消' : '松手踢出成员') : '拖到此处踢出成员'}}</text>
+  </view>
+
+  <!-- 底部：绿色主按钮 + 小号文字（房主解散 / 成员退出）；拖拽时降低透明度，避免与踢出区抢视觉 -->
+  <view class="footer-wrap {{isDragging ? 'footer-wrap-dragging' : ''}}">
     <view class="footer">
       <button
         class="primary-btn {{primaryBtnDisabled ? 'primary-btn-disabled' : ''}}"

@@ -54,6 +54,12 @@
   flex-shrink: 0;
 }
 
+/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+.header-section > player-top-bar {
+  margin-left: -48rpx;
+  width: calc(100% + 48rpx);
+}
+
 /* 工作坊名称: Figma 18px Medium #45AD59 → 36rpx */
 .workshop-name {
   font-size: 36rpx;
@@ -292,12 +298,14 @@
 }
 
 .section-add-btn {
-  width: 56rpx;
-  height: 56rpx;
+  width: 80rpx;
+  height: 80rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  z-index: 5;
 }
 
 .section-add-btn:active {

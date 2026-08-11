@@ -102,6 +102,8 @@ Page({
     dropTargetIndex: null,
     // 进入可拖拽态的短暂动画标记（用于视觉反馈）
     dragEnterAnimating: false,
+    // 拖拽悬停在底部踢出区
+    overKickZone: false,
     showQRCodeModal: false,
     showAvatarAuth: false,
     pendingJoinRoomId: '',
@@ -238,10 +240,11 @@ Page({
         if (!this._pageAlive || !result) return;
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
-          this._startMemberPolling();
         } else {
-          this._startMemberPolling();
+          // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
+          this._followRoomPageFromResult(result, roomId);
         }
+        this._startMemberPolling();
         this._preloadBrainstormMode();
       });
     }
@@ -569,6 +572,9 @@ Page({
         if (!this._pageAlive || !result) return;
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
+        } else {
+          // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
+          this._followRoomPageFromResult(result, roomId);
         }
         this._startMemberPolling();
         this._ensureMyAvatarSynced(roomId, result);
@@ -788,9 +794,9 @@ Page({
       });
       this._ensureMyAvatarSynced(roomId, result);
       return {
-        isHost: result.isHost,
-        hasSelectedMode: result.hasSelectedMode === true,
-        members: result.members
+        ...result,
+        roomState: resolvedState,
+        hasSelectedMode
       };
     } catch (err) {
       if (!silent) {
@@ -987,13 +993,8 @@ Page({
     this._clearLongPressTimer();
     this._longPressTimer = setTimeout(() => {
       this._longPressTimer = null;
-      // 长按其他成员（非自己）且为房主时 → 显示踢出确认
-      if (this.data.isHost && slot.member && !slot.member.isMe) {
-        this._showKickConfirm(slot.member);
-        return;
-      }
-      // 长按自己（房主） → 进入拖拽模式
-      if (this.data.isHost && slot.member && slot.member.isMe) {
+      // 长按任意已占用槽位（自己或他人）且为房主 → 进入拖拽：拖到座位调序，拖到底部踢出区可踢出他人
+      if (this.data.isHost && slot.member) {
         this._enterDragMode(index, slot);
       }
     }, LONG_PRESS_ENTER_DRAG_MS);
@@ -1107,6 +1108,8 @@ Page({
         }
       }, 180);
       this._armDragWatchdog();
+      // 踢出区在进入拖拽后才渲染，需等下一帧再查询其几何信息
+      wx.nextTick(() => this._preloadKickZoneRect());
     };
 
     if (this._circleRect) {
@@ -1129,6 +1132,19 @@ Page({
       this._circleRect = res && res[0];
       if (typeof cb === 'function') cb(this._circleRect);
     });
+  },
+
+  _preloadKickZoneRect() {
+    const q = wx.createSelectorQuery().in(this);
+    q.select('#kickZone').boundingClientRect();
+    q.exec((res) => {
+      this._kickZoneRect = res && res[0];
+    });
+  },
+
+  _isPointInRect(x, y, rect) {
+    if (!rect || x == null || y == null) return false;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
   },
 
   onSlotTouchMove(e) {
@@ -1200,6 +1216,11 @@ Page({
     if (this.data.draggingSlotIndex == null) return;
     this._armDragWatchdog();
 
+    const overKickZone = this._isPointInRect(clientX, clientY, this._kickZoneRect);
+    if (overKickZone !== this.data.overKickZone) {
+      this.setData({ overKickZone });
+    }
+
     // 位置节流：变化不足 1px 时跳过，减少无意义的跨线程通信
     if (
       Math.abs(clientX - this.data.dragPosX) < 1 &&
@@ -1269,6 +1290,12 @@ Page({
     const dragFromIndex = this.data.dragFromIndex;
     let dropTargetIndex = this.data.dropTargetIndex;
     const lastTouch = this._lastTouch;
+    const draggingMember = this.data.draggingMember;
+    const droppedOnKickZone = this._isPointInRect(
+      lastTouch && (lastTouch.clientX != null ? lastTouch.clientX : lastTouch.pageX),
+      lastTouch && (lastTouch.clientY != null ? lastTouch.clientY : lastTouch.pageY),
+      this._kickZoneRect
+    );
     if (lastTouch && this._circleRect) {
       const x = lastTouch.clientX != null ? lastTouch.clientX : lastTouch.pageX;
       const y = lastTouch.clientY != null ? lastTouch.clientY : lastTouch.pageY;
@@ -1284,13 +1311,29 @@ Page({
       draggingMemberId: null,
       dragFromIndex: null,
       dropTargetIndex: null,
-      dragEnterAnimating: false
+      dragEnterAnimating: false,
+      overKickZone: false
     };
+
+    // 拖到底部踢出区：非自己 → 弹出踢出确认；自己 → 视为取消操作，不做任何变更
+    if (droppedOnKickZone) {
+      this.setData(updates);
+      this._circleRect = null;
+      this._kickZoneRect = null;
+      this._lastTouch = null;
+      this._slotTouchStart = null;
+      this._dragBaseMembers = null;
+      this._clearDragWatchdog();
+      this._clearDragEnterAnimTimer();
+      if (draggingMember && !draggingMember.isMe) {
+        this._showKickConfirm(draggingMember);
+      }
+      return;
+    }
 
     // 仅在松手时一次性提交重排，避免拖动中 slots 反复变化导致“卡住”
     if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
       const base = this._dragBaseMembers;
-      const draggingMember = this.data.draggingMember;
       if (base && draggingMember) {
         const arr = base.slice();
         arr.splice(dropTargetIndex, 0, draggingMember);
@@ -1302,6 +1345,7 @@ Page({
 
     this.setData(updates);
     this._circleRect = null;
+    this._kickZoneRect = null;
     this._lastTouch = null;
     this._slotTouchStart = null;
     this._dragBaseMembers = null; // 释放快照，避免内存残留
@@ -1322,13 +1366,15 @@ Page({
       draggingMemberId: null,
       dragFromIndex: null,
       dropTargetIndex: null,
-      dragEnterAnimating: false
+      dragEnterAnimating: false,
+      overKickZone: false
     };
     if (restoreLayout) {
       updates.memberSlots = this.buildMemberSlots(this.data.members || []);
     }
     this.setData(updates);
     this._circleRect = null;
+    this._kickZoneRect = null;
     this._lastTouch = null;
     this._slotTouchStart = null;
     this._dragBaseMembers = null; // 释放快照，避免内存残留
@@ -1819,8 +1865,20 @@ Page({
     safeOpenUrl(target.path);
   },
 
+  /** 左上角出口：回到小程序首页（保留房间，可从历史工作坊再进） */
   handleExitBrainstorm() {
-    this.confirmExitMode();
+    this._stopMemberPolling();
+    this._stopStatePolling();
+    try {
+      const { setSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
+      const { clearPendingNavigation } = require('../../../utils/pageNavigate');
+      if (this.data.roomId) setSpyLobbyStay(this.data.roomId);
+      clearSpyFollowLock();
+      clearPendingNavigation();
+    } catch (e) {
+      // ignore
+    }
+    wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
   },
 
   onTapModePill() {

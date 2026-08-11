@@ -1,19 +1,21 @@
 <view class="container">
 
+  <!-- 顶部：TopBar + 情境格（固定在滚动区之外，避免随内容滚走） -->
+  <view class="header-section" id="selectProblemHeader">
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      bind:goroom="handleGoRoom"
+    />
+
+    <!-- 情境展示：点击可回看完整情境（只读） -->
+    <view bindtap="handleViewContext">
+      <context-display items="{{categories}}" />
+    </view>
+  </view>
+
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}" style="height: {{scrollHeight}}px">
     <view class="main-content">
-
-      <!-- 顶部：TopBar + 情境格 -->
-      <view class="header-section">
-        <player-top-bar
-          avatarList="{{avatarList}}"
-          maxVisible="{{5}}"
-          bind:goroom="handleGoRoom"
-        />
-
-        <!-- 情境展示 -->
-        <context-display items="{{categories}}" />
-      </view>
 
       <!-- 标题区 -->
       <view class="title-section">
@@ -26,7 +28,7 @@
       <!-- 设计问题列表 -->
       <view class="problem-list">
         <view
-          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id ? 'editing' : ''}} {{!isHost ? 'readonly' : ''}}"
+          class="problem-item {{item.selected ? 'selected' : ''}} {{editingProblemId === item.id || remoteEditingProblemId === item.id ? 'editing' : ''}} {{!isHost ? 'readonly' : ''}}"
           wx:for="{{problems}}"
           wx:key="id"
           data-id="{{item.id}}"
@@ -45,12 +47,19 @@
                 auto-height="{{false}}"
                 style="height: {{textareaHeights[item.id]}}px;"
                 data-id="{{item.id}}"
+                focus="{{editingProblemId === item.id}}"
+                cursor="{{editingCursor}}"
+                selection-start="{{editingCursor}}"
+                selection-end="{{editingCursor}}"
                 catchtap="stopPropagation"
                 bindinput="onProblemInput"
                 bindblur="onProblemBlur"
               />
             </block>
-            <text wx:else class="problem-text" id="problem-text-{{item.id}}">{{item.text}}</text>
+            <block wx:else>
+              <text class="problem-text" id="problem-text-{{item.id}}">{{item.text}}</text>
+              <text class="problem-editing-hint" wx:if="{{!isHost && remoteEditingProblemId === item.id}}">房主编辑中…</text>
+            </block>
           </view>
 
           <!-- 右侧图标：仅房主可编辑 -->

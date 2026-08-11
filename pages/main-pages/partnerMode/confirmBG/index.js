@@ -4,6 +4,8 @@ const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwait
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { buildAvatarList } = require('../../../../utils/avatars');
+const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
+const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -19,22 +21,85 @@ Page({
     canConfirm: false,
     isHost: true,
     isWaiting: false,
-    /** 从 gamepage 回看情境：只读，底部为「返回游戏」 */
+    /** 从 gamepage / submitProblem 回看情境：只读 */
     fromGameView: false,
-    avatarList: []
+    /** 游戏页点设计问题进入：缩小叠卡 + 完整问题，一屏不滚 */
+    isGameDetail: false,
+    /** 缩小叠卡叠距（rpx） */
+    deckStepRpx: 118,
+    /** 底部主按钮文案 */
+    returnBtnText: '返回游戏',
+    avatarList: [],
+    fullProblemText: '',
+    categories: []
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
-    const fromGameView = options && (options.from === 'game' || options.fromGame === '1');
+    const from = (options && options.from) || '';
+    // game：游戏页回看；submit：提交设计问题页回看 —— 均为只读确认情境
+    const fromGameView = from === 'game' || from === 'submit'
+      || options.fromGame === '1'
+      || options.fromGame === true;
+    const isGameDetail = from === 'game' || options.fromGame === '1' || options.fromGame === true;
+    const returnBtnText = from === 'submit' ? '返回' : '返回游戏';
+    // 游戏页传入的最终选定设计问题（URL / eventChannel / globalData）
+    let passedProblemText = '';
+    try {
+      passedProblemText = options && options.problemText
+        ? decodeURIComponent(options.problemText)
+        : '';
+    } catch (e) {
+      passedProblemText = (options && options.problemText) || '';
+    }
+    this._passedProblemText = String(passedProblemText || '').trim();
+    this._fromSource = from || (fromGameView ? 'game' : '');
 
     if (roomId) {
       getApp().globalData.roomId = roomId;
     }
 
+    // eventChannel 可传长文案，避免 URL 编码丢失
+    try {
+      const ec = this.getOpenerEventChannel && this.getOpenerEventChannel();
+      if (ec && typeof ec.on === 'function') {
+        ec.on('initGameDetail', (payload) => {
+          const text = payload && payload.problemText
+            ? String(payload.problemText).trim()
+            : '';
+          if (text) {
+            this._passedProblemText = text;
+            if (getApp().globalData) {
+              getApp().globalData.selectedProblem = {
+                id: (payload && payload.problemId) || '',
+                text
+              };
+            }
+            if (this.data.isGameDetail && text !== this.data.fullProblemText) {
+              this.setData({ fullProblemText: text });
+            }
+          }
+          if (payload && payload.selectedBG && isValidPartnerBG(payload.selectedBG, { requirePlatform: true })) {
+            getApp().globalData.selectedBG = payload.selectedBG;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('confirmBG eventChannel', e);
+    }
+
     if (fromGameView) {
-      this.setData({ roomId, fromGameView: true });
+      this.setData({
+        roomId,
+        fromGameView: true,
+        isGameDetail,
+        returnBtnText,
+        // 先用已传入文案占位，避免等云端时空白
+        fullProblemText: this._passedProblemText
+          || ((getApp().globalData.selectedProblem
+            && getApp().globalData.selectedProblem.text) || '')
+      });
       this._initPage(roomId);
       return;
     }
@@ -73,13 +138,29 @@ Page({
     }
   },
 
+  _buildCardsAndFullText(bg, selectedProblemText) {
+    const cards = PARTNER_CARD_DEFS.map((item) => ({
+      ...item,
+      value: (bg && bg[item.type] || '').trim()
+    })).filter((item) => item.value);
+
+    // 完整设计问题 = 本轮最终选定的设计问题全文（非情境四项拼接）
+    const fullProblemText = String(selectedProblemText || '').trim();
+    const categories = buildCategoriesFromBG(normalizeBG(bg));
+    return { cards, fullProblemText, categories };
+  },
+
   async _initPage(roomId) {
     let bg = getApp().globalData.selectedBG;
+    let roomResult = null;
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
-      bg = await this._fetchSelectedBGFromRoom(roomId);
+      roomResult = await this._fetchRoomFull(roomId);
+      bg = (roomResult && roomResult.selectedBG) || null;
       if (bg) {
         getApp().globalData.selectedBG = bg;
       }
+    } else if (this.data.fromGameView) {
+      roomResult = await this._fetchRoomFull(roomId);
     }
 
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
@@ -101,43 +182,62 @@ Page({
       return;
     }
 
-    const cards = PARTNER_CARD_DEFS.map((item) => ({
-      ...item,
-      value: (bg[item.type] || '').trim()
-    })).filter((item) => item.value);
+    if (roomResult) {
+      this._syncAvatarListFromResult(roomResult);
+    }
 
+    const selectedProblem = resolveSelectedDesignProblem(getApp(), roomResult || {});
+    const selectedProblemText = this._passedProblemText
+      || (selectedProblem && selectedProblem.text)
+      || (roomResult && roomResult.selectedDesignProblem && roomResult.selectedDesignProblem.text)
+      || (getApp().globalData.selectedProblem && getApp().globalData.selectedProblem.text)
+      || '';
+    if (selectedProblemText && getApp().globalData) {
+      getApp().globalData.selectedProblem = {
+        id: (selectedProblem && selectedProblem.id)
+          || (roomResult && roomResult.selectedDesignProblem && roomResult.selectedDesignProblem.id)
+          || '',
+        text: selectedProblemText
+      };
+    }
+    const { cards, fullProblemText, categories } = this._buildCardsAndFullText(bg, selectedProblemText);
     const canConfirm = cards.length === PARTNER_CARD_DEFS.length;
 
     this.setData({
       roomId,
       cards,
+      categories,
+      fullProblemText,
       canConfirm: this.data.fromGameView ? false : canConfirm,
       isWaiting: false
     });
 
     if (this.data.fromGameView) {
-      this._syncAvatarList();
+      if (!roomResult) this._syncAvatarList();
       return;
     }
 
     this._fetchHostStatus();
   },
 
-  async _fetchSelectedBGFromRoom(roomId) {
+  async _fetchRoomFull(roomId) {
     if (!roomId) return null;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
-      if (result.ok === true && result.selectedBG) {
-        return result.selectedBG;
-      }
+      if (result.ok === true) return result;
     } catch (e) {
-      console.warn('fetchSelectedBGFromRoom', e);
+      console.warn('confirmBG fetchRoomFull', e);
     }
     return null;
+  },
+
+  async _fetchSelectedBGFromRoom(roomId) {
+    const result = await this._fetchRoomFull(roomId);
+    return (result && result.selectedBG) || null;
   },
 
   onUnload() {
@@ -230,16 +330,21 @@ Page({
     }
   },
 
+  /** 返回游戏：navigateBack 保留 gamepage 实例与进度，禁止 redirect 重开 */
   handleReturnToGame() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
     wx.navigateBack({
+      delta: 1,
       fail: () => {
+        // 栈异常时再兜底；正常从 gamepage navigateTo 进入不会走到这里
+        const roomId = this.data.roomId || getApp().globalData.roomId || '';
         if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+          wx.navigateBack({
+            fail: () => {
+              wx.redirectTo({
+                url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+              });
+            }
           });
-        } else {
-          wx.navigateBack();
         }
       }
     });
@@ -327,6 +432,11 @@ Page({
   },
 
   handleGoRoom() {
+    if (this.data.fromGameView) {
+      // 回看情境时点房间入口：先回到游戏再进大厅，避免弄丢游戏页栈
+      this.handleReturnToGame();
+      return;
+    }
     goRoomPage(this.data.roomId);
   }
 });

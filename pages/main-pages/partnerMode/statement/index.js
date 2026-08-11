@@ -16,7 +16,9 @@ Page({
     members: [],
     isHost: false,
     isWaiting: false,
-    isSubmitting: false
+    isSubmitting: false,
+    passCount: null,
+    memberCount: 0
   },
 
   onLoad(options) {
@@ -57,15 +59,19 @@ Page({
   onShow() {
     if (this.data.isWaiting && this.data.roomId) {
       this._startStatePolling();
+    } else if (this.data.isHost && this.data.roomId) {
+      this._startHostProgressPolling();
     }
   },
 
   onHide() {
     this._stopStatePolling();
+    this._stopHostProgressPolling();
   },
 
   onUnload() {
     this._stopStatePolling();
+    this._stopHostProgressPolling();
   },
 
   /**
@@ -92,6 +98,7 @@ Page({
             currentPlayerName: state.currentPlayerName || this.data.currentPlayerName
           });
         }
+        this._applyStatementProgress(state, result);
       }
     } catch (e) {
       console.warn('statement _bootstrapRole', e);
@@ -113,6 +120,39 @@ Page({
     );
     if (!this.data.members.length) {
       this._loadMembers(roomId);
+    }
+    this._startHostProgressPolling();
+  },
+
+  /**
+   * 房主端轻量轮询：持续刷新「已表态：X/Y」，不触发页面跳转
+   */
+  _startHostProgressPolling() {
+    this._stopHostProgressPolling();
+    const poll = async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return;
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'getAddPlayerData',
+          data: { roomId }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok === true) {
+          this._applyStatementProgress(result.roomState || {}, result);
+        }
+      } catch (e) {
+        console.warn('statement host progress poll', e);
+      }
+    };
+    poll();
+    this._hostProgressPollTimer = setInterval(poll, 1500);
+  },
+
+  _stopHostProgressPolling() {
+    if (this._hostProgressPollTimer) {
+      clearInterval(this._hostProgressPollTimer);
+      this._hostProgressPollTimer = null;
     }
   },
 
@@ -144,6 +184,17 @@ Page({
       console.warn('updateRoomState', e);
       return false;
     }
+  },
+
+  /**
+   * 房主端「已表态：X/Y」：X 取云端 passCount，Y 取 memberCount
+   */
+  _applyStatementProgress(state, result) {
+    const memberCount = (state && state.memberCount != null)
+      ? state.memberCount
+      : (result && result.memberCount != null ? result.memberCount : this.data.memberCount);
+    const passCount = (state && state.passCount != null) ? state.passCount : this.data.passCount;
+    this.setData({ passCount, memberCount });
   },
 
   async _loadMembers(roomId) {
@@ -192,6 +243,10 @@ Page({
         // 副屏等待中若身份被纠正为主屏，不在此页开放选择（避免误操作）
         if (result.ok === true && result.isHost === true && this.data.isWaiting) {
           // 保持等待并由主屏设备上的主屏页操作；此处仅跟随房间态
+        }
+
+        if (result.ok === true) {
+          this._applyStatementProgress(result.roomState || {}, result);
         }
 
         followSubScreenRoomPoll(result, roomId, {

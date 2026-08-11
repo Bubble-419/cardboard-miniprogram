@@ -36,7 +36,7 @@
   <view class="card-info">
     <view class="info-header">
       <text class="info-define-label">{{typeInfo.title}}</text>
-      <view class="next-btn" wx:if="{{!isLast}}" bindtap="onNext">
+      <view class="next-btn" wx:if="{{!isLast}}" catchtap="onNext">
         <text class="next-btn-text">下一步</text>
       </view>
     </view>

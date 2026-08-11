@@ -1,8 +1,10 @@
 {
   "navigationBarTitleText": "确认情境",
   "navigationStyle": "custom",
+  "disableScroll": true,
   "usingComponents": {
     "player-top-bar": "/components/player-top-bar/index",
-    "page-footer": "/components/page-footer/index"
+    "page-footer": "/components/page-footer/index",
+    "context-display": "/components/context-display/index"
   }
 }

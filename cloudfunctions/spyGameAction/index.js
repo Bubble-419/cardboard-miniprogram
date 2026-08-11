@@ -134,7 +134,9 @@ function publicSpyGame(spyGame, assignments) {
       votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes)
         ? voteStatus.votedPlayerIndexes
         : [],
-      abstainPlayerIndexes: [],
+      abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes)
+        ? voteStatus.abstainPlayerIndexes
+        : [],
       votedCount,
       totalVoters: aliveCount
     },
@@ -244,7 +246,7 @@ async function actionStartVote(roomId, userId) {
   const order = spyGame.speakOrder || [];
   spyGame.currentSpeakIndex = order.length;
   spyGame = beginVotePhase(spyGame);
-  spyGame.tieBreak = false;
+  // 保留 tieBreak：若本轮为平票加时陈述后开票，投票页需继续展示平票提示
 
   await saveSpyRoom(room, {
     currentPage: pageForPhase(SPY_PHASE.VOTE),
@@ -410,7 +412,7 @@ async function actionAdvanceSpeak(roomId, userId) {
     // 全员发言结束 → 自动进入匿名投票
     spyGame.currentSpeakIndex = order.length;
     spyGame = beginVotePhase(spyGame);
-    spyGame.tieBreak = false;
+    // 保留 tieBreak：平票加时陈述结束进入投票时，投票页需继续展示平票提示
     await saveSpyRoom(room, {
       currentPage: pageForPhase(SPY_PHASE.VOTE),
       brainstormProgressPage: pageForPhase(SPY_PHASE.VOTE),
@@ -570,7 +572,7 @@ async function actionSubmitVote(roomId, userId, event) {
 
   const voteStatus = {
     votedPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes) || [])],
-    abstainPlayerIndexes: [],
+    abstainPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes) || [])],
     tally: { ...((spyGame.voteStatus && spyGame.voteStatus.tally) || {}) },
     ballots: { ...((spyGame.voteStatus && spyGame.voteStatus.ballots) || {}) }
   };
@@ -579,22 +581,33 @@ async function actionSubmitVote(roomId, userId, event) {
     return { ok: false, errCode: 'ALREADY_VOTED', errMsg: '已投票，不可修改' };
   }
 
-  const targetPlayerIndex = Number(event && event.targetPlayerIndex);
-  if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, me.playerIndex)) {
-    return { ok: false, errCode: 'INVALID_TARGET', errMsg: '请选择一名其他玩家' };
-  }
-  const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
-  if (!target || target.alive === false) {
-    return { ok: false, errCode: 'INVALID_TARGET', errMsg: '目标不可投票' };
-  }
+  const isAbstain = !!(event && event.abstain);
+  if (isAbstain) {
+    // 弃票：记为已提交，但不计入任何人的得票
+    voteStatus.abstainPlayerIndexes = [...(voteStatus.abstainPlayerIndexes || []), me.playerIndex];
+    voteStatus.ballots[String(me.playerIndex)] = {
+      abstain: true,
+      targetPlayerIndex: null
+    };
+    voteStatus.votedPlayerIndexes.push(me.playerIndex);
+  } else {
+    const targetPlayerIndex = Number(event && event.targetPlayerIndex);
+    if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, me.playerIndex)) {
+      return { ok: false, errCode: 'INVALID_TARGET', errMsg: '请选择一名其他玩家' };
+    }
+    const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
+    if (!target || target.alive === false) {
+      return { ok: false, errCode: 'INVALID_TARGET', errMsg: '目标不可投票' };
+    }
 
-  const key = String(targetPlayerIndex);
-  voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
-  voteStatus.ballots[String(me.playerIndex)] = {
-    abstain: false,
-    targetPlayerIndex
-  };
-  voteStatus.votedPlayerIndexes.push(me.playerIndex);
+    const key = String(targetPlayerIndex);
+    voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
+    voteStatus.ballots[String(me.playerIndex)] = {
+      abstain: false,
+      targetPlayerIndex
+    };
+    voteStatus.votedPlayerIndexes.push(me.playerIndex);
+  }
   spyGame.voteStatus = voteStatus;
 
   const aliveVoters = (spyGame.players || [])

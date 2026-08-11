@@ -7,12 +7,14 @@ Page({
     isSubScreen: false,
     leaderboard: [],
     loading: true,
-    error: ''
+    error: '',
+    from: ''
   },
 
   onLoad(options) {
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isSubScreen = (options && options.isSubScreen) === '1' || (options && options.isSubScreen) === 'true';
+    const from = (options && options.from) || '';
     if (!roomId) {
       this.setData({
         loading: false,
@@ -20,7 +22,7 @@ Page({
       });
       return;
     }
-    this.setData({ roomId, isSubScreen });
+    this.setData({ roomId, isSubScreen, from });
     this.loadLeaderboard(roomId);
     if (isSubScreen) {
       this._startStatePolling();
@@ -91,10 +93,27 @@ Page({
   },
 
   handleBack() {
+    // 从合伙人模式收尾页进入时，返回应回到房间，而非德国心脏病模式选择页
+    if (this.data.from === 'closingEnd') {
+      this._backToRoom();
+      return;
+    }
     wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
   },
 
+  _backToRoom() {
+    const roomId = this.data.roomId || '';
+    wx.reLaunch({
+      url: `/pages/main-pages/addPlayer/index${roomId ? `?roomId=${encodeURIComponent(roomId)}` : ''}`
+    });
+  },
+
   async handleNewGame() {
+    // 从合伙人模式收尾页进入时，「再来一局」应回到房间，不应走德国心脏病的清分/新局逻辑
+    if (this.data.from === 'closingEnd') {
+      this._backToRoom();
+      return;
+    }
     const { roomId } = this.data;
     if (roomId) {
       wx.showLoading({ title: '加载中…' });

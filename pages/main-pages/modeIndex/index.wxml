@@ -72,7 +72,7 @@
               <view class="section-indicator"></view>
               <text class="section-title">脑暴情境</text>
             </view>
-            <view class="section-add-btn" bindtap="handleAddScenario">
+            <view class="section-add-btn" catchtap="handleAddScenario">
               <image class="section-add-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
             </view>
           </view>

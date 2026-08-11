@@ -72,6 +72,12 @@ const {
 } = require('../../../../utils/partnerInspirationSession');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
+const {
+  buildReviewSnapshot,
+  saveReviewSnapshot,
+  getReviewSnapshot,
+  getHistoryWorkshopByRoomId
+} = require('../../../../utils/historyWorkshops');
 
 /** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
 const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
@@ -93,6 +99,8 @@ Page({
     problemExpanded: false,
     problemTextOverflow: false,
     gamepagePhase: PHASE_PLAY,
+    /** 历史工作坊回顾模式：只看纪要卡片、可记灵感，不推进游戏/轮询 */
+    isHistoryReview: false,
     cardIndex: 0,
     playImages: [],
     discussionImages: [],
@@ -251,6 +259,8 @@ Page({
       ? CLOSING_STEP_REVIEW
       : CLOSING_STEP_RUNE;
     const specialMoveUsedFromUrl = options && (options.specialMoveUsed === '1' || options.specialMoveUsed === 1);
+    const isHistoryReview = !!(options && (options.mode === 'review' || options.from === 'history'));
+    this._isHistoryReview = isHistoryReview;
 
     this.setData({
       roomId,
@@ -258,7 +268,8 @@ Page({
       gamepagePhase: initialPhase,
       closingStep: initialClosingStep,
       cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
-      specialMoveUsedThisTurn: !!specialMoveUsedFromUrl
+      specialMoveUsedThisTurn: !!specialMoveUsedFromUrl,
+      isHistoryReview
     });
 
     this._applyTopBarSafeInset();
@@ -388,6 +399,11 @@ Page({
   onShow() {
     this._pageVisible = true;
     this._bindInspirationKeyboard();
+    if (this.data.isHistoryReview) {
+      // 历史回顾：只刷新灵感角标，不轮询房间状态/计时器
+      this._refreshInspirationCount();
+      return;
+    }
     this._applyPendingSpecialMoveUsed();
     if (this.data.roomId) {
       this._startStatePolling();
@@ -441,6 +457,7 @@ Page({
   onHide() {
     this._pageVisible = false;
     this._unbindInspirationKeyboard();
+    this._persistHistoryReviewSnapshot(true);
     // 离开时不改 roundTimerVisible：避免卡片框从 timer→idle 布局突变导致转场卡顿
     if (this.data.inspirationKeyboardHeight || this.data.inspirationLiftStyle) {
       this.setData({
@@ -471,6 +488,7 @@ Page({
   },
 
   onUnload() {
+    this._persistHistoryReviewSnapshot(true);
     this._unbindInspirationKeyboard();
     this._stopRoundSpeech();
     if (this._roundSpeech) {
@@ -561,6 +579,7 @@ Page({
     return this.data.isHost
       && this._pageVisible
       && this._roomLoaded
+      && !this.data.isHistoryReview
       && !isClosingPhase(this.data.gamepagePhase)
       && !!this.data.roomId;
   },
@@ -603,7 +622,8 @@ Page({
       currentPlayerIndex,
       preferredCardIndex,
       roomId,
-      brainstormSessionSeq
+      brainstormSessionSeq,
+      historyReview
     } = options || {};
 
     const filterActive = isPlayerFilterActive === true;
@@ -619,11 +639,18 @@ Page({
     );
     const displayRoundSummaries = summaries;
     const summaryCount = displayRoundSummaries.length;
-    const cardCount = Math.max(1, summaryCount + 1);
+    const isReview = historyReview === true
+      || this.data.isHistoryReview
+      || this._isHistoryReview;
+    // 历史回顾：只展示纪要卡，不含当前出牌卡
+    const cardCount = isReview
+      ? Math.max(1, summaryCount)
+      : Math.max(1, summaryCount + 1);
     const actionCardIndex = summaryCount;
+    const defaultIndex = isReview ? 0 : actionCardIndex;
     const cardIndex = preferredCardIndex != null
       ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
-      : actionCardIndex;
+      : defaultIndex;
     const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
       ? displayRoundSummaries[cardIndex].playerIndex
       : currentPlayerIndex;
@@ -639,6 +666,105 @@ Page({
         : currentPlayerIndex,
       indicatorPlayerIndex
     };
+  },
+
+  /** 把当前设计问题 / 头像 / 轮次纪要写入本地历史，供回顾页使用 */
+  _persistHistoryReviewSnapshot(force) {
+    if (this.data.isHistoryReview || this._isHistoryReview) return;
+    const roomId = this.data.roomId;
+    if (!roomId) return;
+    const summaries = this.data.roundSummaries || [];
+    // 尚无纪要时也至少落一版（设计问题+头像），方便空房也能回看结构
+    if (!force && !summaries.length && !(this.data.selectedProblemText || '').trim()) {
+      return;
+    }
+    const now = Date.now();
+    if (!force && this._lastHistorySnapshotAt && now - this._lastHistorySnapshotAt < 2500) {
+      return;
+    }
+    this._lastHistorySnapshotAt = now;
+    try {
+      const app = getApp();
+      const snapshot = buildReviewSnapshot({
+        selectedProblemText: this.data.selectedProblemText,
+        selectedDesignProblem: (app.globalData && app.globalData.selectedProblem)
+          || { text: this.data.selectedProblemText },
+        members: this.data.members,
+        roundSummaries: summaries,
+        expressMessages: this._expressMessagesAll || [],
+        currentRound: this.data.currentRound,
+        brainstormSessionSeq: this.data.brainstormSessionSeq,
+        currentPlayerIndex: this.data.currentPlayerIndex,
+        isMasterMode: this.data.isMasterMode,
+        workshopName: (app.globalData && app.globalData.workshopName) || ''
+      });
+      saveReviewSnapshot(roomId, snapshot, {
+        name: snapshot.workshopName
+      });
+    } catch (e) {
+      console.warn('persist history review snapshot', e);
+    }
+  },
+
+  _buildFakeRoomResultFromSnapshot(snapshot) {
+    if (!snapshot) return null;
+    const members = Array.isArray(snapshot.members) ? snapshot.members.slice() : [];
+    if (!members.length) return null;
+    // 回顾态不强调「我是谁」，统一关掉 isMe / 出牌态
+    const normalizedMembers = members.map((m) => ({
+      ...m,
+      isMe: false
+    }));
+    const roomState = Object.assign({}, snapshot.roomState || {}, {
+      partnerGamePhase: PHASE_PLAY,
+      currentPlayerIndex: 0
+    });
+    return {
+      ok: true,
+      members: assignAvatarImages(normalizedMembers),
+      isHost: false,
+      selectedDesignProblem: snapshot.selectedDesignProblem
+        || (snapshot.selectedProblemText
+          ? { id: '', text: snapshot.selectedProblemText }
+          : null),
+      roomState
+    };
+  },
+
+  _finalizeHistoryReviewUi(selectedProblemText) {
+    this._roomLoaded = true;
+    this._roomDataReady = true;
+    const summaryCount = (this.data.displayRoundSummaries || []).length;
+    const cardCount = Math.max(1, summaryCount);
+    this.setData({
+      isHost: false,
+      isCurrentPlayer: false,
+      showSpecialMoveBtn: false,
+      selectedProblemText: selectedProblemText || this.data.selectedProblemText || '',
+      problemExpanded: false,
+      problemTextOverflow: false,
+      gamepagePhase: PHASE_PLAY,
+      closingStep: CLOSING_STEP_RUNE,
+      roundTimerVisible: false,
+      roundTimerReady: false,
+      partnerRoundStartedAt: null,
+      avatarRoundStartedAt: null,
+      cardIndex: 0,
+      cardCount,
+      paginationDots: buildPaginationDots(0, cardCount),
+      indicatorPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
+        ? this.data.displayRoundSummaries[0].playerIndex
+        : 0,
+      selectedPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
+        ? this.data.displayRoundSummaries[0].playerIndex
+        : 0
+    }, () => {
+      this._checkProblemTextOverflow();
+    });
+    this._refreshInspirationCount();
+    if (!summaryCount) {
+      wx.showToast({ title: '暂无纪要卡片', icon: 'none' });
+    }
   },
 
   /** 收尾复盘：优先房间共享纪要，回退本机旧私有笔记 */
@@ -1105,6 +1231,7 @@ Page({
    * 进入 gamepage：有活跃服务端计时则跟随；否则仅房主开新一轮并广播
    */
   async _ensureSharedRoundTimerOnEnter() {
+    if (this.data.isHistoryReview) return;
     if (isClosingPhase(this.data.gamepagePhase)) {
       this._pendingRoundStartedAt = 0;
       this._applySharedRoundTimer(null, { force: true });
@@ -1333,9 +1460,15 @@ Page({
       ? roomState.partnerExpressMessages
       : [];
     this._expressMessagesAll = expressMessages;
-    const roundSummaries = (Array.isArray(roomState.partnerRoundSummaries)
+    // 服务端 partnerRoundSummaries 为 null/undefined（字段缺失）时不代表纪要被清空，
+    // 保留上一次已知的原始纪要，避免部分用户刷新/轮询后纪要卡瞬间消失
+    if (Array.isArray(roomState.partnerRoundSummaries)) {
+      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
+    }
+    const rawRoundSummaries = roomState.partnerRoundSummaries != null
       ? roomState.partnerRoundSummaries
-      : [])
+      : (this._lastRawRoundSummaries || []);
+    const roundSummaries = (Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [])
       .slice()
       .sort((a, b) => (a.round || 0) - (b.round || 0))
       .map((item) => {
@@ -1725,6 +1858,8 @@ Page({
       if (isClosingPhase(roomPhase)) this._avatarTimerTurnKey = '';
     }
     this.setData(patch, () => {
+      if (this.data.isHistoryReview) return;
+      this._persistHistoryReviewSnapshot(false);
       if (!isClosingPhase(roomPhase) && patch.partnerRoundStartedAt) {
         // 卡片时间戳变化：绝不 syncTurnAvatar（头像锚点已在 patch 中按回合锁定）
         if (nextStartedAt !== prevStartedAt) {
@@ -1765,17 +1900,57 @@ Page({
 
   async loadRoomData() {
     const roomId = this.data.roomId;
+    const isHistoryReview = this.data.isHistoryReview || this._isHistoryReview;
+    let result = null;
+
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
         data: { roomId, full: true }
       });
-      const result = (res && res.result) || {};
-      if (result.ok !== true || !result.members || !result.members.length) {
-        wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
+      result = (res && res.result) || {};
+    } catch (e) {
+      console.error('partner gamepage loadRoomData', e);
+      result = null;
+    }
+
+    if (!result || result.ok !== true || !result.members || !result.members.length) {
+      if (isHistoryReview) {
+        const snap = getReviewSnapshot(roomId);
+        const fake = this._buildFakeRoomResultFromSnapshot(snap);
+        if (fake) {
+          const app = getApp();
+          const selectedProblem = resolveSelectedDesignProblem(app, fake)
+            || (snap && snap.selectedDesignProblem)
+            || null;
+          const selectedProblemText = (selectedProblem && selectedProblem.text)
+            || (snap && snap.selectedProblemText)
+            || '';
+          if (selectedProblem && app.globalData) {
+            app.globalData.selectedProblem = {
+              id: selectedProblem.id || '',
+              text: selectedProblem.text
+            };
+          }
+          this._applyRoomContext(fake, {
+            fallbackPlayerIndex: 0,
+            resetTurnUi: true
+          });
+          this._finalizeHistoryReviewUi(selectedProblemText);
+          return;
+        }
+        const meta = getHistoryWorkshopByRoomId(roomId);
+        wx.showToast({
+          title: (result && result.errMsg) || (meta ? '暂无纪要快照' : '加载失败'),
+          icon: 'none'
+        });
         return;
       }
+      wx.showToast({ title: (result && result.errMsg) || '加载失败', icon: 'none' });
+      return;
+    }
 
+    try {
       const app = getApp();
       const selectedProblem = resolveSelectedDesignProblem(app, result);
       const selectedProblemText = selectedProblem && selectedProblem.text
@@ -1787,6 +1962,31 @@ Page({
         resetTurnUi: true
       });
 
+      if (isHistoryReview) {
+        this._lastHistorySnapshotAt = 0;
+        try {
+          const snapshot = buildReviewSnapshot({
+            selectedProblemText,
+            selectedDesignProblem: selectedProblem || { text: selectedProblemText },
+            members: result.members,
+            roundSummaries: this.data.roundSummaries,
+            expressMessages: this._expressMessagesAll || [],
+            currentRound: this.data.currentRound,
+            brainstormSessionSeq: this.data.brainstormSessionSeq,
+            currentPlayerIndex: this.data.currentPlayerIndex,
+            isMasterMode: this.data.isMasterMode,
+            workshopName: (app.globalData && app.globalData.workshopName) || ''
+          });
+          saveReviewSnapshot(roomId, snapshot, {
+            name: snapshot.workshopName
+          });
+        } catch (e) {
+          console.warn('history review refresh snapshot', e);
+        }
+        this._finalizeHistoryReviewUi(selectedProblemText);
+        return;
+      }
+
       this.setData({
         isHost: result.isHost === true,
         selectedProblemText,
@@ -1797,11 +1997,12 @@ Page({
         this._maybeShowHostStatementTip();
       });
 
+      this._persistHistoryReviewSnapshot(true);
+
       this._startStatePolling();
       this.refreshScoreStatus();
       this._startScorePolling();
       this._roomLoaded = true;
-      // 房主重开并广播；其他端跟随同一时间戳显示倒计时
       await this._ensureSharedRoundTimerOnEnter();
       await this._syncRoundSpeech();
       await this._syncRoundContentToRoom();
@@ -1809,7 +2010,16 @@ Page({
       this._roomDataReady = true;
       this.refreshScoreStatus();
     } catch (e) {
-      console.error('partner gamepage loadRoomData', e);
+      console.error('partner gamepage loadRoomData apply', e);
+      if (isHistoryReview) {
+        const snap = getReviewSnapshot(roomId);
+        const fake = this._buildFakeRoomResultFromSnapshot(snap);
+        if (fake) {
+          this._applyRoomContext(fake, { fallbackPlayerIndex: 0, resetTurnUi: true });
+          this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '');
+          return;
+        }
+      }
       wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
@@ -1904,6 +2114,7 @@ Page({
 
   _startScorePolling() {
     this._stopScorePolling();
+    if (this.data.isHistoryReview) return;
     // 进度未达标时始终轮询；达标后再靠快照即可
     this._scorePollTimer = setInterval(() => {
       if (!this._roomDataReady) return;
@@ -1930,6 +2141,7 @@ Page({
 
   _startStatePolling() {
     this._stopStatePolling();
+    if (this.data.isHistoryReview) return;
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     // emitCurrent:false —— 首屏由 loadRoomData 负责；禁止订阅瞬间同步 setData
@@ -1938,7 +2150,7 @@ Page({
       intervalMs: 800,
       full: true,
       emitCurrent: false,
-      followNavigation: true,
+      followNavigation: !this.data.isHistoryReview,
       beforeNavigate(pollResult, page) {
         const state = pollResult.roomState || {};
         if (page === 'closingstatement') {
@@ -3076,6 +3288,8 @@ Page({
       wx.showToast({ title: '当前阶段不可表达', icon: 'none' });
       return;
     }
+    // 打开瞬间 input focus 可能立刻触发 blur，短暂忽略以免看起来“没反应”
+    this._expressComposerIgnoreBlurUntil = Date.now() + 400;
     this.setData({
       expressComposerOpen: true,
       expressDraftText: '',
@@ -3093,8 +3307,8 @@ Page({
   },
 
   onExpressComposerBlur() {
-    // 无内容时失焦收起，避免挡聊天区
     if (this.data.expressSending) return;
+    if (Date.now() < (this._expressComposerIgnoreBlurUntil || 0)) return;
     if ((this.data.expressDraftText || '').trim()) return;
     this.setData({ expressComposerOpen: false });
   },
@@ -3683,19 +3897,51 @@ Page({
 
   handleGoRoom() {
     this._prepareLeavePage();
+    if (this.data.isHistoryReview) {
+      wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+      return;
+    }
     goRoomPage(this.data.roomId);
   },
 
-  /** 点击设计问题：回看情境（confirmBG），不推进房间状态 */
+  /** 点击设计问题：回看情境详情（confirmBG），navigateTo 保留本页实例与进度 */
   handleViewSituation() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    // 仅暂停本页轮询/本地计时展示；房间锚点 partnerRoundStartedAt 保留，返回后 onShow 续上
     this._prepareLeavePage();
+    const problemText = (this.data.selectedProblemText || '').trim();
+    const app = getApp();
+    if (problemText && app.globalData) {
+      const prev = app.globalData.selectedProblem || {};
+      app.globalData.selectedProblem = {
+        id: prev.id || '',
+        text: problemText
+      };
+    }
+    let url = `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`;
+    if (problemText) {
+      url += `&problemText=${encodeURIComponent(problemText)}`;
+    }
     wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`,
+      url,
+      success: (res) => {
+        try {
+          const ec = res && res.eventChannel;
+          if (ec && typeof ec.emit === 'function') {
+            ec.emit('initGameDetail', {
+              problemText,
+              problemId: (app.globalData.selectedProblem && app.globalData.selectedProblem.id) || '',
+              selectedBG: app.globalData.selectedBG || null
+            });
+          }
+        } catch (e) {
+          console.warn('emit initGameDetail', e);
+        }
+      },
       fail: () => {
         this._pageVisible = true;
         this._startStatePolling();
@@ -3791,7 +4037,23 @@ Page({
   },
 
   _buildInspirationLiftStyle(keyboardHeight) {
-    // 真机改走系统 adjust-position，不再用 fixed/transform（会被 overflow:hidden 裁切）
+    const h = Math.max(0, Number(keyboardHeight) || 0);
+    if (h <= 0) return '';
+    // 历史回顾无底部操作栏：用 fixed 贴在键盘上方，避免 overflow:hidden 裁切
+    if (this.data.isHistoryReview || this._isHistoryReview) {
+      return [
+        'position:fixed',
+        'left:0',
+        'right:0',
+        `bottom:${h}px`,
+        'margin:0',
+        'padding:18rpx 30rpx 18rpx',
+        'z-index:80',
+        'background:#fafafa',
+        'box-sizing:border-box'
+      ].join(';');
+    }
+    // 正常对局仍走系统 adjust-position + 隐藏底栏
     return '';
   },
 
@@ -3803,7 +4065,6 @@ Page({
   },
 
   _setInspirationKeyboardHeight(height) {
-    // 仅用于隐藏底栏，避免自定义抬升把输入栏推出可视区
     const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
     if (
       next <= 0
@@ -3811,10 +4072,16 @@ Page({
     ) {
       return;
     }
-    if (next === this.data.inspirationKeyboardHeight) return;
+    const lift = this._buildInspirationLiftStyle(next);
+    if (
+      next === this.data.inspirationKeyboardHeight
+      && lift === (this.data.inspirationLiftStyle || '')
+    ) {
+      return;
+    }
     this.setData({
       inspirationKeyboardHeight: next,
-      inspirationLiftStyle: ''
+      inspirationLiftStyle: lift
     });
   },
 
@@ -4119,10 +4386,13 @@ Page({
   },
 
   onClosingCreativeFocus() {
+    // 创意点复盘仅房主可写；非房主 textarea 已 disabled，此处兜底
+    if (!this.data.isHost) return;
     this.setData({ closingCreativeEditFocus: true });
   },
 
   onClosingCreativeInput(e) {
+    if (!this.data.isHost) return;
     this.setData({
       closingCreativeEditText: (e.detail && e.detail.value) || ''
     });
@@ -4162,6 +4432,8 @@ Page({
   },
 
   onClosingCreativeAddImage() {
+    // 创意点复盘拍照仅房主可操作，非房主只读
+    if (!this.data.isHost) return;
     if (this.data.gamepagePhase !== PHASE_CLOSING
       || this.data.closingStep !== CLOSING_STEP_REVIEW) {
       return;
@@ -4201,7 +4473,7 @@ Page({
     });
   },
 
-  onClosingCreativePreview(e) {
+  async onClosingCreativePreview(e) {
     const url = e.currentTarget && e.currentTarget.dataset
       ? e.currentTarget.dataset.url
       : '';
@@ -4209,7 +4481,32 @@ Page({
     const urls = (this.data.closingCreativeBlocks || [])
       .filter((b) => b && b.type === 'image' && b.url)
       .map((b) => b.url);
-    wx.previewImage({ current: url, urls: urls.length ? urls : [url] });
+    const list = urls.length ? urls : [url];
+    // wx.previewImage 不支持 cloud:// fileID，需先换成可访问的临时链
+    const { list: resolvedList, current: resolvedCurrent } = await this._resolveClosingCreativePreviewUrls(list, url);
+    wx.previewImage({ current: resolvedCurrent, urls: resolvedList });
+  },
+
+  async _resolveClosingCreativePreviewUrls(list, current) {
+    const cloudUrls = list.filter((u) => typeof u === 'string' && u.indexOf('cloud://') === 0);
+    if (!cloudUrls.length) {
+      return { list, current };
+    }
+    try {
+      const res = await wx.cloud.getTempFileURL({ fileList: cloudUrls });
+      const map = {};
+      ((res && res.fileList) || []).forEach((item) => {
+        if (item && item.fileID && item.tempFileURL) {
+          map[item.fileID] = item.tempFileURL;
+        }
+      });
+      const resolvedList = list.map((u) => map[u] || u);
+      const resolvedCurrent = map[current] || current;
+      return { list: resolvedList, current: resolvedCurrent };
+    } catch (e) {
+      console.warn('_resolveClosingCreativePreviewUrls', e);
+      return { list, current };
+    }
   },
 
   async _uploadClosingCreativePhotos(paths) {

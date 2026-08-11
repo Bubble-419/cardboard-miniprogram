@@ -358,7 +358,7 @@ Page({
       });
     }
 
-    const SELECTION_ANIMATION_DURATION = 3000;
+    const SELECTION_ANIMATION_DURATION = 500;
     if (selectedPosition) {
       this.animationDoneTimer = setTimeout(() => {
         this.setData({ selectionAnimationDone: true });

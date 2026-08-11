@@ -66,6 +66,18 @@
   text-align: center;
 }
 
+.statement-progress {
+  width: 100%;
+  text-align: center;
+  padding-bottom: 16rpx;
+}
+
+.statement-progress-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #909090;
+}
+
 .result-stack {
   flex: 1;
   width: 100%;

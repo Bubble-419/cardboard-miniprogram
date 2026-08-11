@@ -2,6 +2,7 @@
  * 翻牌组件（三态循环）
  * 默认：背面 back → 词语 assignedWord → 词语1 word1 → 背面 …
  * skipBack：跳过背面，词语 → 词语1 → 词语 …（牌库浏览用）
+ * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1（发言页"我的词语卡"用）
  */
 Component({
   properties: {
@@ -13,7 +14,9 @@ Component({
     word1Src: { type: String, value: '' },
     word1FallbackSrc: { type: String, value: '' },
     /** 为 true 时不展示背面，直接从词语开始 */
-    skipBack: { type: Boolean, value: false }
+    skipBack: { type: Boolean, value: false },
+    /** 为 true 时仅背面 ↔ 词语两态翻转，跳过词语1（第三态） */
+    twoFaceOnly: { type: Boolean, value: false }
   },
 
   data: {
@@ -93,8 +96,11 @@ Component({
       });
     },
 
-    /** 背面 → 词语 → 词语1 → 背面 …；skipBack 时词语 ↔ 词语1 */
+    /** 背面 → 词语 → 词语1 → 背面 …；skipBack 时词语 ↔ 词语1；twoFaceOnly 时背面 ↔ 词语 */
     _nextState(cur) {
+      if (this.data.twoFaceOnly) {
+        return cur === 'back' ? 'assignedWord' : 'back';
+      }
       if (cur === 'back') return 'assignedWord';
       if (cur === 'assignedWord') return 'word1';
       if (cur === 'word1') {

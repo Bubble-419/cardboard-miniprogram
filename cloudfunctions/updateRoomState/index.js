@@ -230,7 +230,8 @@ exports.main = async (event, context) => {
     roundSummary,
     partnerCurrentRoundContent,
     partnerClosingCreativePoints,
-    partnerRoundStartedAt
+    partnerRoundStartedAt,
+    editingProblemId
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -348,8 +349,14 @@ exports.main = async (event, context) => {
       currentRound = 1;
     }
 
+    // 仅当客户端明确传入 currentPage 时才覆盖；否则保持房间原 currentPage
+    // 否则像“仅同步编辑态 editingProblemId”这类请求会把页面误置回 addPlayer，导致成员端跳转抖动
+    const resolvedCurrentPage = currentPage != null
+      ? String(currentPage || 'addPlayer').toLowerCase()
+      : (room.currentPage || 'addPlayer').toLowerCase();
+
     const updateData = {
-      currentPage: (currentPage || 'addPlayer').toLowerCase(),
+      currentPage: resolvedCurrentPage,
       currentRound,
       updatedAt: Date.now(),
       ...roundPatch
@@ -530,6 +537,18 @@ exports.main = async (event, context) => {
         };
       }
     }
+    // 选择设计问题页：房主编辑态同步给成员（空字符串表示退出编辑）
+    if (editingProblemId !== undefined) {
+      if (!isCreator) {
+        return {
+          ok: false,
+          errCode: 'NO_PERMISSION',
+          errMsg: '仅房主可同步编辑态'
+        };
+      }
+      const eid = editingProblemId == null ? '' : String(editingProblemId);
+      updateData.editingProblemId = eid;
+    }
     if (partnerGamePhase != null && partnerGamePhase !== '') {
       const phase = String(partnerGamePhase);
       if (phase === 'closing') {
@@ -570,12 +589,12 @@ exports.main = async (event, context) => {
       updateData.closingQuestionPlayers = closingQuestionPlayers;
     }
     if (partnerClosingCreativePoints && typeof partnerClosingCreativePoints === 'object') {
-      // 收尾创意点：房内成员均可追加（与灵感类似的协作记录）
-      if (!isCreator && !isMember) {
+      // 收尾创意点复盘：仅房主可写（文字/拍照），其他成员只读
+      if (!isCreator) {
         return {
           ok: false,
           errCode: 'NO_PERMISSION',
-          errMsg: '仅房间成员可编辑创意点'
+          errMsg: '仅房主可编辑创意点复盘'
         };
       }
       const incoming = partnerClosingCreativePoints;

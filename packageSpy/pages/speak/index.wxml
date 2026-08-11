@@ -19,6 +19,7 @@
           <flip-word-card
             wx:if="{{cardReady}}"
             word="{{myWord}}"
+            twoFaceOnly="{{true}}"
             backSrc="{{cardBackSrc}}"
             assignedWordSrc="{{assignedWordSrc}}"
             assignedWordFallbackSrc="{{assignedWordFallbackSrc}}"

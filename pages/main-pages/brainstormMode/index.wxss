@@ -10,6 +10,12 @@
   padding: 0 48rpx 32rpx;
 }
 
+/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+.header-section > player-top-bar {
+  margin-left: -48rpx;
+  width: calc(100% + 48rpx);
+}
+
 .topbar {
   display: flex;
   flex-direction: row;

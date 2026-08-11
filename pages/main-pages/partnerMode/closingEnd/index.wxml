@@ -6,6 +6,7 @@
     <text class="end-title">本次脑暴已结束</text>
     <text class="end-subtitle">感谢各位的创意贡献</text>
     <view class="end-divider"></view>
+    <button class="leaderboard-entry-btn" bindtap="onViewLeaderboard">查看排行榜</button>
   </view>
 
   <page-footer

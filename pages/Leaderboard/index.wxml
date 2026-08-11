@@ -46,8 +46,8 @@
     </view>
   </view>
 
-  <!-- 底部再来一局按钮（副屏不显示） -->
+  <!-- 底部再来一局/返回房间按钮（副屏不显示） -->
   <view class="footer" wx:if="{{!loading && !error && !isSubScreen}}">
-    <button class="new-game-btn" bindtap="handleNewGame">再来一局</button>
+    <button class="new-game-btn" bindtap="handleNewGame">{{from === 'closingEnd' ? '返回房间' : '再来一局'}}</button>
   </view>
 </view>

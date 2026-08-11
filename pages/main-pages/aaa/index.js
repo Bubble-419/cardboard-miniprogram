@@ -20,6 +20,11 @@ const {
   endUserAuthFlow,
   isUserAuthInProgress
 } = require('../../../utils/userAuthSession');
+const {
+  getHistoryWorkshops,
+  upsertHistoryWorkshop,
+  formatTime: formatHistoryTime
+} = require('../../../utils/historyWorkshops');
 
 Page({
   data: {
@@ -50,6 +55,7 @@ Page({
     this.setData({ headerPaddingTop, ...getDevJoinPageData() });
     this._restoreUserProfile();
     this.loadJoinedRoomState();
+    this._loadHistoryWorkshops();
   },
 
   onShow() {
@@ -62,6 +68,20 @@ Page({
     consumePendingRoomGoneToast();
     this._restoreUserProfile();
     this.loadJoinedRoomState();
+    this._loadHistoryWorkshops();
+  },
+
+  _loadHistoryWorkshops() {
+    this.setData({ historyWorkshops: getHistoryWorkshops() });
+  },
+
+  onTapHistoryCard(e) {
+    const roomId = e.currentTarget.dataset.roomId;
+    if (!roomId) return;
+    getApp().globalData.roomId = roomId;
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+    });
   },
 
   handleViewRoom() {
@@ -304,6 +324,12 @@ Page({
         return;
       }
 
+      upsertHistoryWorkshop({
+        roomId,
+        name: this.data.roomName || '脑暴工作坊',
+        creator: this.data.userNickName,
+        time: formatHistoryTime(Date.now())
+      });
       this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
@@ -577,6 +603,12 @@ Page({
     if (!roomId) return;
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    upsertHistoryWorkshop({
+      roomId,
+      name: this.data.roomName || '脑暴工作坊',
+      creator: this.data.userNickName,
+      time: formatHistoryTime(Date.now())
+    });
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
     wx.redirectTo({
       url,
@@ -603,6 +635,12 @@ Page({
         return;
       }
 
+      upsertHistoryWorkshop({
+        roomId,
+        name: result.workshopName || '脑暴工作坊',
+        creator: this.data.userNickName,
+        time: formatHistoryTime(Date.now())
+      });
       this._goToRoomPage(roomId);
     } catch (err) {
       wx.hideLoading();

@@ -95,6 +95,7 @@ Page({
           })
           .sort((a, b) => b.votes - a.votes);
 
+        const tied = !!last.tied;
         this.setData({
           avatarList: buildAvatarList(result.members || []),
           round: spyGame.round || 1,
@@ -103,13 +104,31 @@ Page({
           eliminatedRole: last.eliminatedRole || '',
           eliminatedRoleLabel: roleLabel(last.eliminatedRole),
           maxVotes: last.maxVotes || 0,
-          tied: !!last.tied,
+          tied,
           tallyList,
+          // 出局玩家仍需看到在场玩家列表，不做隐藏
           alivePlayers: players.filter((p) => p.alive !== false)
         });
+        this._maybeShowTieModal(tied);
       } catch (e) {
         console.warn('spy result refresh', e);
       }
+    });
+  },
+
+  /** 平票时只弹一次提示，避免轮询重复刷出弹窗 */
+  _maybeShowTieModal(tied) {
+    if (!tied) {
+      this._tieModalShown = false;
+      return;
+    }
+    if (this._tieModalShown) return;
+    this._tieModalShown = true;
+    wx.showModal({
+      title: '本轮平票',
+      content: '最高票数并列，将进入加时陈述后重新投票。',
+      showCancel: false,
+      confirmText: '知道了'
     });
   },
 

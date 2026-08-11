@@ -90,6 +90,10 @@ exports.main = async (event, context) => {
     if (selectedModeId === 'spy') {
       updateData.currentPage = 'spymodeindex';
       updateData.brainstormProgressPage = 'spymodeindex';
+    } else {
+      // 非卧底模式：同样写入 currentPage，避免成员端仍停在 addPlayer 需手动点「继续游戏」
+      updateData.currentPage = 'auth';
+      updateData.brainstormProgressPage = 'auth';
     }
 
     // 避免留下 null：后续整对象写入数字键会失败

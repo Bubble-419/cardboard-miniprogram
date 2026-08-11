@@ -223,6 +223,22 @@ Page({
     goRoomPage(this.data.roomId);
   },
 
+  /** 点击情境格：只读回看确认情境页，不推进房间状态 */
+  handleViewContext() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '缺少房间信息', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=submit`,
+      fail: (err) => {
+        console.warn('submitProblem viewContext', err);
+        wx.showToast({ title: '打开失败', icon: 'none' });
+      }
+    });
+  },
+
   selectCategory(e) {
     const categoryId = e.currentTarget.dataset.id;
     const categories = this.data.categories.map((item) => ({
