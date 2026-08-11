@@ -66,14 +66,28 @@
     </block>
     <view class="info-meta-row">
       <text class="info-meta-text {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}/{{maxMembers}}人</text>
-      <text class="info-meta-dot" wx:if="{{hasSelectedMode && selectedModeTitle}}"> · </text>
-      <view class="mode-pill" wx:if="{{hasSelectedMode && selectedModeTitle}}">
+      <text class="info-meta-dot"> · </text>
+      <!-- 有模式：房主可点切换；无模式：房主可点选择；成员只看提示 -->
+      <view
+        class="mode-pill {{isHost ? 'mode-pill-clickable' : ''}}"
+        wx:if="{{hasSelectedMode && selectedModeTitle}}"
+        catchtap="onTapModePill"
+      >
         <text class="mode-pill-text">{{selectedModeTitle}}</text>
+        <text class="mode-pill-action" wx:if="{{isHost}}">切换 ›</text>
       </view>
-      <text class="info-meta-text muted" wx:elif="{{!hasSelectedMode}}"> · 待选模式</text>
+      <view
+        class="mode-pill mode-pill-empty {{isHost ? 'mode-pill-clickable' : ''}}"
+        wx:elif="{{isHost}}"
+        catchtap="onTapModePill"
+      >
+        <text class="mode-pill-text">暂未选择游戏</text>
+        <text class="mode-pill-action">选择 ›</text>
+      </view>
+      <text class="info-meta-text muted" wx:else>等待房主选择游戏</text>
     </view>
     <text class="info-hint" wx:if="{{isHost}}">长按拖动可调序；长按头像可踢出</text>
-    <text class="info-hint" wx:else>等待房主选择脑暴模式</text>
+    <text class="info-hint" wx:else>等待房主选择游戏</text>
   </view>
 
   <!-- DEV_TEST_START: 显示房间号（测试用，不参与布局占位依赖） -->
@@ -231,6 +245,42 @@
         class="exit-text-btn {{exitTextDanger ? 'exit-text-btn-danger' : ''}}"
         catchtap="onTapExitText"
       >{{exitTextLabel}}</text>
+    </view>
+  </view>
+</view>
+
+<!-- 模式管理：底部操作面板 -->
+<view
+  class="mode-sheet-mask"
+  wx:if="{{showModeActionSheet}}"
+  catchtouchmove="noop"
+  catchtap="closeModeActionSheet"
+>
+  <view class="mode-sheet" catchtap="noop">
+    <view class="mode-sheet-handle"></view>
+    <text class="mode-sheet-title">当前游戏模式</text>
+    <view class="mode-sheet-current">
+      <text class="mode-sheet-current-label">当前模式</text>
+      <text class="mode-sheet-current-value">{{selectedModeTitle || '暂未选择'}}</text>
+    </view>
+    <view class="mode-sheet-exit" catchtap="onTapExitModeFromSheet">退出当前模式</view>
+    <view class="mode-sheet-cancel" catchtap="closeModeActionSheet">取消</view>
+  </view>
+</view>
+
+<!-- 退出模式确认 -->
+<view
+  class="mode-confirm-mask"
+  wx:if="{{showExitModeConfirm}}"
+  catchtouchmove="noop"
+  catchtap="closeExitModeConfirm"
+>
+  <view class="mode-confirm-dialog" catchtap="noop">
+    <text class="mode-confirm-title">退出当前游戏模式？</text>
+    <text class="mode-confirm-desc">退出后，本局游戏进度将被清除，所有玩家仍会保留在当前房间中，房主可以重新选择游戏。</text>
+    <view class="mode-confirm-actions">
+      <view class="mode-confirm-btn mode-confirm-cancel" catchtap="closeExitModeConfirm">取消</view>
+      <view class="mode-confirm-btn mode-confirm-ok" catchtap="confirmExitMode">确认退出</view>
     </view>
   </view>
 </view>

@@ -33,13 +33,14 @@ function shouldShowLibrary(spyGame) {
 Page({
   data: {
     roomId: '',
-    avatarList: [],
+    isHost: false,
     playerAvatarList: [],
     playerCount: 0,
     minPlayers: MIN_PLAYERS,
     spyCountHint: '',
     canStart: false,
     statusText: '等待玩家到齐后开始',
+    waitFooterText: '等待更多玩家加入…',
     starting: false,
     showLibraryEntry: true,
     libraryGroupCount: 0,
@@ -103,18 +104,26 @@ Page({
         const players = filterPlayerMembers(members);
         const playerCount = players.length;
         const spyCount = getDefaultSpyCount(playerCount);
-        const canStart = playerCount >= MIN_PLAYERS;
+        const isHost = result.isHost === true;
+        const canStart = isHost && playerCount >= MIN_PLAYERS;
         const spyGame = result.roomState && result.roomState.spyGame;
+        let statusText = '等待更多玩家加入…';
+        let waitFooterText = '等待更多玩家加入…';
+        if (playerCount >= MIN_PLAYERS) {
+          statusText = isHost ? '人数已齐，可开始游戏' : '人数已齐，等待房主开始游戏';
+          waitFooterText = '等待房主开始游戏…';
+        }
 
         safePageSetData(this, {
-          avatarList: buildAvatarList(members),
+          isHost,
           playerAvatarList: buildAvatarList(players),
           playerCount,
           canStart,
-          spyCountHint: canStart
+          spyCountHint: playerCount >= MIN_PLAYERS
             ? `当前 ${playerCount} 名玩家，本局将自动分配 ${spyCount} 名卧底`
             : `当前 ${playerCount} 名玩家，人数不足`,
-          statusText: canStart ? '人数已齐，任意玩家可开始游戏' : '等待更多玩家加入…',
+          statusText,
+          waitFooterText,
           showLibraryEntry: shouldShowLibrary(spyGame)
         });
       } catch (e) {
@@ -149,6 +158,10 @@ Page({
   },
 
   async onStartGame() {
+    if (!this.data.isHost) {
+      wx.showToast({ title: '仅房主可开始游戏', icon: 'none' });
+      return;
+    }
     if (!this.data.canStart || this.data.starting) return;
     this.setData({ starting: true, showLibraryEntry: false });
     wx.showLoading({ title: '分配词语中…' });

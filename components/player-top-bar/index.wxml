@@ -15,7 +15,7 @@
       >
         <image class="room-entry-icon" src="{{roomIcon}}" mode="aspectFit" />
       </view>
-      <view class="avatar-group">
+      <view class="avatar-group" wx:if="{{showAvatars}}">
         <user-list
           avatarList="{{avatarList}}"
           maxVisible="{{maxVisible}}"

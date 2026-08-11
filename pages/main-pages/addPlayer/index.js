@@ -112,7 +112,9 @@ Page({
     showExitText: false,
     exitTextLabel: '退出房间',
     exitTextAction: 'leave',
-    exitTextDanger: false
+    exitTextDanger: false,
+    showModeActionSheet: false,
+    showExitModeConfirm: false
   },
 
   _computeFooterActions(patch = {}) {
@@ -125,7 +127,7 @@ Page({
       : this.data.brainstormSessionEnded;
     const memberCount = patch.memberCount != null ? patch.memberCount : this.data.memberCount;
 
-    let primaryBtnText = '开始游戏';
+    let primaryBtnText = '选择游戏';
     let primaryBtnDisabled = false;
     let primaryBtnAction = 'selectMode';
     // 底部次级文案：房主恒为「解散房间」，成员恒为「退出房间」
@@ -137,17 +139,19 @@ Page({
     if (hasSelectedMode && !brainstormSessionEnded) {
       primaryBtnText = '继续游戏';
       primaryBtnAction = 'continue';
+      primaryBtnDisabled = false;
     } else if (brainstormSessionEnded && hasSelectedMode) {
       // 上一局结束且模式仍在：同模式再开一局
-      primaryBtnText = '开始游戏';
+      primaryBtnText = '选择游戏';
       primaryBtnAction = 'anotherRound';
+      primaryBtnDisabled = false;
     } else if (isHost) {
-      // 未选模式 / 回大厅已清模式：开始游戏应进选模式页，不能走 anotherRound
-      primaryBtnText = memberCount < 2 ? '等待成员加入' : '开始游戏';
+      // 未选模式 / 回大厅已清模式：应进选模式页，不能走 anotherRound
+      primaryBtnText = memberCount < 2 ? '等待成员加入' : '选择游戏';
       primaryBtnDisabled = memberCount < 2;
       primaryBtnAction = 'selectMode';
     } else {
-      primaryBtnText = '等待房主开始';
+      primaryBtnText = '等待房主选择游戏';
       primaryBtnDisabled = true;
       primaryBtnAction = '';
     }
@@ -1816,34 +1820,72 @@ Page({
   },
 
   handleExitBrainstorm() {
-    wx.showModal({
-      title: '退出脑暴',
-      content: '退出后将清除当前已选脑暴模式，成员需重新等待房主选择。',
-      confirmText: '退出',
-      success: async (res) => {
-        if (!res.confirm) return;
-        wx.showLoading({ title: '处理中…' });
-        try {
-          const callRes = await wx.cloud.callFunction({
-            name: 'roomClearBrainstormMode',
-            data: { roomId: this.data.roomId }
-          });
-          const result = (callRes && callRes.result) || {};
-          wx.hideLoading();
-          if (result.ok !== true) {
-            wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
-            return;
-          }
-          clearLocalBrainstormProgress(this.data.roomId);
-          clearPartnerSpecialMoveUsedFlag(this.data.roomId);
-          wx.showToast({ title: '已退出脑暴', icon: 'success' });
-          this.loadRoomData(this.data.roomId, { silent: true });
-        } catch (err) {
-          wx.hideLoading();
-          wx.showToast({ title: err.errMsg || '操作失败', icon: 'none' });
-        }
-      }
+    this.confirmExitMode();
+  },
+
+  onTapModePill() {
+    if (!this.data.isHost) {
+      wx.showToast({ title: '仅房主可以更换游戏模式', icon: 'none' });
+      return;
+    }
+    if (!this.data.hasSelectedMode) {
+      this.handleGoBrainstormMode();
+      return;
+    }
+    this.setData({ showModeActionSheet: true });
+  },
+
+  closeModeActionSheet() {
+    this.setData({ showModeActionSheet: false });
+  },
+
+  onTapExitModeFromSheet() {
+    this.setData({
+      showModeActionSheet: false,
+      showExitModeConfirm: true
     });
+  },
+
+  closeExitModeConfirm() {
+    this.setData({ showExitModeConfirm: false });
+  },
+
+  async confirmExitMode() {
+    if (!this.data.isHost || this._exitingMode) return;
+    this._exitingMode = true;
+    this.setData({ showExitModeConfirm: false, showModeActionSheet: false });
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      const callRes = await wx.cloud.callFunction({
+        name: 'roomClearBrainstormMode',
+        data: { roomId: this.data.roomId }
+      });
+      const result = (callRes && callRes.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
+        return;
+      }
+      clearLocalBrainstormProgress(this.data.roomId);
+      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
+      try {
+        const app = getApp();
+        if (app.globalData) {
+          app.globalData.gameMode = '';
+          app.globalData.selectedMode = null;
+          app.globalData.selectedBG = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+      wx.showToast({ title: '已退出当前模式', icon: 'success' });
+      await this.loadRoomData(this.data.roomId, { silent: true });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.errMsg) || '操作失败', icon: 'none' });
+    } finally {
+      this._exitingMode = false;
+    }
   },
 
   onTapPrimaryAction() {

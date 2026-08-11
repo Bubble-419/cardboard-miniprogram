@@ -109,6 +109,28 @@ function resolveSpyTargetPage(roomState) {
  */
 function followSpyRoomState(result, roomId, options = {}) {
   if (!result || result.ok !== true) return false;
+
+  // 房主已退出游戏模式：全员（含房主）回到房间等待页
+  if (result.hasSelectedMode !== true) {
+    const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
+    if (!id) return false;
+    const currentRoute = getCurrentRoute();
+    if (currentRoute === 'pages/main-pages/addPlayer/index') return false;
+    if (currentRoute === 'pages/main-pages/brainstormMode/index') return false;
+    try {
+      const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
+      const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
+      clearLocalBrainstormProgress(id);
+      clearPartnerSpecialMoveUsedFlag(id);
+    } catch (e) {
+      // ignore
+    }
+    return openUrl(`/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(id)}`, {
+      immediate: true,
+      noReLaunch: true
+    });
+  }
+
   if (result.isHost === true && options.allowHost !== true) return false;
 
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';

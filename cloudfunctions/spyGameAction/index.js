@@ -270,6 +270,10 @@ async function actionStartAssign(roomId, userId) {
   const me = assertMember(members, userId);
   if (!me) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
 
+  if (!room.creatorId || String(room.creatorId) !== String(userId)) {
+    return { ok: false, errCode: 'NO_PERMISSION', errMsg: '仅房主可开始游戏' };
+  }
+
   const players = getPlayerMembers(members);
   if (players.length < MIN_PLAYERS) {
     return {

@@ -47,7 +47,7 @@
         enableSelectedFrame="{{gamepagePhase !== 'closing'}}"
         enableAvatarTap="{{gamepagePhase !== 'closing'}}"
         roundStartedAt="{{avatarRoundStartedAt}}"
-        roundTimerActive="{{roundTimerVisible}}"
+        roundTimerActive="{{roundTimerVisible && roundTimerReady}}"
         roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
         suppressTimerCanvas="{{showHostStatementTip}}"
         bindavatartap="handleAvatarTap"
@@ -409,7 +409,8 @@
         <swiper-item class="card-swiper-item">
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible}}"
+            timerActive="{{roundTimerVisible && roundTimerReady}}"
+            durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
             bind:timerexpire="handleRoundTimerExpire"
@@ -554,7 +555,8 @@
 
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible}}"
+            timerActive="{{roundTimerVisible && roundTimerReady}}"
+            durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
             bind:timerexpire="handleRoundTimerExpire"
@@ -571,13 +573,11 @@
               >
                 <view class="action-card-inner {{expressChatPanelVisible ? 'action-card-inner-express' : ''}}">
                   <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
-                    <view class="action-title-main {{isMasterMode ? 'action-title-main-master' : ''}}">
-                      <view class="action-title-row" wx:if="{{isMasterMode}}">
-                        <view class="master-mode-badge">MASTER模式</view>
-                        <text class="action-title action-title-master">请进行卡牌行动并解释</text>
-                      </view>
-                      <text class="action-title" wx:else>出牌并解释</text>
+                    <view class="action-title-row" wx:if="{{isMasterMode}}">
+                      <view class="master-mode-badge">MASTER模式</view>
+                      <text class="action-title action-title-master">请进行卡牌行动并解释</text>
                     </view>
+                    <text class="action-title" wx:else>出牌并解释</text>
                     <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
                   </view>
                   <view class="action-divider"></view>
@@ -640,20 +640,6 @@
                 </view>
               </scroll-view>
 
-              <!-- 出牌玩家：表达入口固定在卡片右下角 -->
-              <view class="card-express-corner" wx:if="{{isCurrentPlayer}}">
-                <view
-                  class="express-fab-btn"
-                  catchtap="toggleExpressChatInCard"
-                >
-                  <image
-                    class="express-fab-bubble"
-                    src="{{expressChatPanelVisible ? '/assets/partnerMode/icon-express-view.png' : '/assets/partnerMode/icon-express-bubble.svg'}}"
-                    mode="aspectFit"
-                  />
-                </view>
-              </view>
-
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
                 <view class="spectator-card-head">
@@ -690,6 +676,58 @@
                   <view id="express-chat-bottom" style="height: 1rpx;"></view>
                 </scroll-view>
 
+                <!-- 展开时点输入区外收起（用 catchtap，避免 touchstart 打断打开手势） -->
+                <view
+                  class="spectator-express-dismiss-mask"
+                  wx:if="{{expressComposerOpen}}"
+                  catchtap="closeExpressComposer"
+                ></view>
+
+                <!-- 表达入口：文档流，避免 absolute 叠在原生 scroll-view / 打分条上导致点按无效 -->
+                <view class="spectator-express-row">
+                  <view
+                    class="spectator-express-composer"
+                    wx:if="{{expressComposerOpen}}"
+                    catchtap="noop"
+                  >
+                    <input
+                      class="spectator-express-input"
+                      value="{{expressDraftText}}"
+                      focus="{{expressInputFocus}}"
+                      maxlength="40"
+                      confirm-type="send"
+                      hold-keyboard="{{true}}"
+                      placeholder="说点什么…"
+                      placeholder-class="spectator-express-placeholder"
+                      bindinput="onExpressInput"
+                      bindconfirm="submitExpress"
+                      bindblur="onExpressComposerBlur"
+                    />
+                    <view
+                      class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                      catchtap="submitExpress"
+                    >
+                      <image
+                        class="spectator-express-send-icon"
+                        src="/assets/partnerMode/icon-express-send.png"
+                        mode="aspectFit"
+                      />
+                    </view>
+                  </view>
+                  <view
+                    wx:else
+                    class="express-fab-btn"
+                    hover-class="spectator-express-fab-hover"
+                    catchtap="openExpressComposer"
+                  >
+                    <image
+                      class="express-fab-bubble"
+                      src="/assets/partnerMode/icon-express-bubble.svg"
+                      mode="aspectFit"
+                    />
+                  </view>
+                </view>
+
                 <view class="spectator-bottom-stack">
                   <!-- 占位：仅保留收起高度，避免上方内容随展开抖动 -->
                   <view class="score-sheet-spacer" style="height: {{scoreSheetCollapsedPx}}px;"></view>
@@ -703,28 +741,25 @@
                     style="height: {{scoreSheetVisiblePx}}px;"
                   >
                     <view
-                      class="score-sheet {{scoreSheetAnimating ? 'score-sheet-animating' : ''}}"
+                      class="score-sheet {{scoreSheetAnimating ? 'score-sheet-animating' : ''}} {{!scorePanelExpanded && !scoreSheetAnimating && scoreSheetTranslateY >= scoreSheetMaxTranslateY ? 'score-sheet-collapsed' : ''}}"
                       style="transform: translateY({{scoreSheetTranslateY}}px);"
-                      catchtouchstart="onScoreSheetTouchStart"
-                      catchtouchmove="onScoreSheetTouchMove"
-                      catchtouchend="onScoreSheetTouchEnd"
-                      catchtouchcancel="onScoreSheetTouchEnd"
                     >
-                      <!-- 头部：点击展开/收起；touchend 也会兜底（真机 catchtouchmove 常吞 tap） -->
+                      <!-- 仅头部响应拖拽/点击展开收起，避免吞掉评分按钮 tap -->
                       <view
-                        class="score-sheet-handle-wrap"
+                        class="score-sheet-header"
                         data-sheet-hit="header"
-                        catchtap="toggleScorePanel"
+                        catchtouchstart="onScoreSheetTouchStart"
+                        catchtouchmove="onScoreSheetTouchMove"
+                        catchtouchend="onScoreSheetTouchEnd"
+                        catchtouchcancel="onScoreSheetTouchEnd"
                       >
-                        <view class="score-sheet-handle"></view>
-                      </view>
-                      <view
-                        class="score-sheet-head"
-                        data-sheet-hit="header"
-                        catchtap="toggleScorePanel"
-                      >
-                        <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
-                        <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+                        <view class="score-sheet-handle-wrap">
+                          <view class="score-sheet-handle"></view>
+                        </view>
+                        <view class="score-sheet-head">
+                          <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
+                          <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
+                        </view>
                       </view>
                       <view
                         class="score-buttons"
@@ -742,8 +777,10 @@
                           catchtap="onScoreTap"
                         >
                           <view class="score-btn-content">
-                            <text class="score-num">{{item}}</text>
-                            <text class="score-unit">分</text>
+                            <view class="score-btn-label">
+                              <text class="score-num">{{item}}</text>
+                              <text class="score-unit">分</text>
+                            </view>
                           </view>
                         </view>
                       </view>
@@ -794,6 +831,20 @@
                       mode="aspectFit"
                     />
                   </view>
+                </view>
+              </view>
+
+              <!-- 出牌玩家：匿名表达入口在卡片右下角 -->
+              <view class="card-express-corner" wx:if="{{isCurrentPlayer}}">
+                <view
+                  class="express-fab-btn"
+                  catchtap="toggleExpressChatInCard"
+                >
+                  <image
+                    class="express-fab-bubble"
+                    src="{{expressChatPanelVisible ? '/assets/partnerMode/icon-express-view.png' : '/assets/partnerMode/icon-express-bubble.svg'}}"
+                    mode="aspectFit"
+                  />
                 </view>
               </view>
             </view>

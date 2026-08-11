@@ -1,89 +1,97 @@
-<view class="container">
-  <view class="header-section">
-    <player-top-bar
-      avatarList="{{avatarList}}"
-      maxVisible="{{5}}"
-      bind:goroom="handleGoRoom"
-    />
-    <view class="title-block">
-      <text class="page-title">谁是卧底</text>
-      <text class="page-subtitle">{{statusText}}</text>
-      <text class="page-intro">相近词伪装身份，口头描述找卧底。开始前可自由翻阅牌库。</text>
-    </view>
-  </view>
-
-  <!-- 主区：当前玩家 + 开始游戏 -->
-  <view class="section">
-    <view class="section-title">当前玩家</view>
-    <view class="member-list-wrap">
-      <user-list
-        avatarList="{{playerAvatarList}}"
-        enableAdd="{{false}}"
-        isFold="{{false}}"
-        showName="{{true}}"
-        layout="scroll"
+<view class="container {{isHost ? 'is-host' : 'is-member'}}">
+  <view class="page-body">
+    <view class="header-section">
+      <player-top-bar
+        showAvatars="{{false}}"
+        bind:goroom="handleGoRoom"
       />
+      <view class="title-block">
+        <text class="page-title">谁是卧底</text>
+        <text class="page-subtitle">{{statusText}}</text>
+        <text class="page-intro">相近词伪装身份，口头描述找卧底。开始前可自由翻阅牌库。</text>
+      </view>
     </view>
-    <view class="hint-text" style="margin-top: 20rpx">{{spyCountHint}}</view>
-    <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名玩家才能开始</view>
+
+    <!-- 主区：当前玩家 -->
+    <view class="section section-players">
+      <view class="section-title">当前玩家</view>
+      <view class="member-list-wrap">
+        <user-list
+          avatarList="{{playerAvatarList}}"
+          enableAdd="{{false}}"
+          isFold="{{false}}"
+          showName="{{true}}"
+          layout="scroll"
+        />
+      </view>
+      <view class="hint-text" style="margin-top: 20rpx">{{spyCountHint}}</view>
+      <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名玩家才能开始</view>
+    </view>
+
+    <!-- 弹性占位：把次级入口与底栏之间的空白摊开 -->
+    <view class="body-spacer" wx:if="{{!rulesExpanded}}"></view>
+
+    <!-- 次级功能：牌库 / 玩法说明 -->
+    <view class="secondary-actions">
+      <view
+        wx:if="{{showLibraryEntry}}"
+        class="secondary-btn"
+        bindtap="onOpenLibrary"
+      >
+        <view class="deck-icon">
+          <view class="deck-layer deck-l3"></view>
+          <view class="deck-layer deck-l2"></view>
+          <view class="deck-layer deck-l1"></view>
+        </view>
+        <view class="secondary-btn-text">
+          <text class="secondary-btn-title">牌库 · {{libraryGroupCount}}组</text>
+          <text class="secondary-btn-sub">浏览全部词语卡</text>
+        </view>
+      </view>
+      <view
+        wx:else
+        class="secondary-btn secondary-btn-disabled"
+      >
+        <view class="deck-icon deck-icon-muted">
+          <view class="deck-layer deck-l3"></view>
+          <view class="deck-layer deck-l2"></view>
+          <view class="deck-layer deck-l1"></view>
+        </view>
+        <view class="secondary-btn-text">
+          <text class="secondary-btn-title">牌库已锁定</text>
+          <text class="secondary-btn-sub">对局分词后不可查阅</text>
+        </view>
+      </view>
+
+      <view class="secondary-btn" bindtap="onToggleRules">
+        <view class="rules-icon">?</view>
+        <view class="secondary-btn-text">
+          <text class="secondary-btn-title">玩法说明</text>
+          <text class="secondary-btn-sub">{{rulesExpanded ? '收起说明' : '查看规则'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section section-rules" wx:if="{{rulesExpanded}}">
+      <view class="section-title">玩法说明</view>
+      <view class="rules-list">
+        <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
+        <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
+        <text class="rules-item">3. 发言阶段可翻看自己的词语卡；房主在合适时机点击「开始投票」。</text>
+        <text class="rules-item">4. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
+        <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+      </view>
+    </view>
   </view>
 
-  <!-- 次级功能：牌库 / 玩法说明（低于主按钮层级） -->
-  <view class="secondary-actions">
+  <page-footer extClass="footer footer-{{isHost ? 'host' : 'member'}}" showPrev="{{isHost}}" bind:prev="handleGoBack">
     <view
-      wx:if="{{showLibraryEntry}}"
-      class="secondary-btn"
-      bindtap="onOpenLibrary"
-    >
-      <view class="deck-icon">
-        <view class="deck-layer deck-l3"></view>
-        <view class="deck-layer deck-l2"></view>
-        <view class="deck-layer deck-l1"></view>
-      </view>
-      <view class="secondary-btn-text">
-        <text class="secondary-btn-title">牌库 · {{libraryGroupCount}}组</text>
-        <text class="secondary-btn-sub">浏览全部词语卡</text>
-      </view>
-    </view>
-    <view
-      wx:else
-      class="secondary-btn secondary-btn-disabled"
-    >
-      <view class="deck-icon deck-icon-muted">
-        <view class="deck-layer deck-l3"></view>
-        <view class="deck-layer deck-l2"></view>
-        <view class="deck-layer deck-l1"></view>
-      </view>
-      <view class="secondary-btn-text">
-        <text class="secondary-btn-title">牌库已锁定</text>
-        <text class="secondary-btn-sub">对局分词后不可查阅</text>
-      </view>
-    </view>
-
-    <view class="secondary-btn" bindtap="onToggleRules">
-      <view class="rules-icon">?</view>
-      <view class="secondary-btn-text">
-        <text class="secondary-btn-title">玩法说明</text>
-        <text class="secondary-btn-sub">{{rulesExpanded ? '收起说明' : '查看规则'}}</text>
-      </view>
-    </view>
-  </view>
-
-  <view class="section" wx:if="{{rulesExpanded}}">
-    <view class="section-title">玩法说明</view>
-    <view class="rules-list">
-      <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
-      <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
-      <text class="rules-item">3. 发言阶段可翻看自己的词语卡；房主在合适时机点击「开始投票」。</text>
-      <text class="rules-item">4. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
-      <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
-    </view>
-  </view>
-
-  <page-footer extClass="footer" bind:prev="handleGoBack">
-    <view
+      wx:if="{{isHost}}"
       class="primary-btn {{canStart && !starting ? '' : 'dimmed'}}"
       bindtap="onStartGame"
     >开始游戏</view>
+    <view wx:else class="wait-host-bar">
+      <text class="wait-host-bar-text">{{waitFooterText}}</text>
+    </view>
   </page-footer>
 </view>

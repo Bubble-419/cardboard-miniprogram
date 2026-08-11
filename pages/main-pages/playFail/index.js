@@ -80,6 +80,12 @@ Page({
         });
         const result = (res && res.result) || {};
         if (result.ok !== true || !result.roomState) return;
+        if (result.hasSelectedMode !== true) {
+          wx.redirectTo({
+            url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+          });
+          return;
+        }
         const page = (result.roomState.currentPage || '').toLowerCase();
         const idx = result.roomState.currentPlayerIndex != null ? result.roomState.currentPlayerIndex : 1;
         if (page === 'playfail') {

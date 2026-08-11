@@ -11,6 +11,11 @@ Component({
       type: Number,
       value: 5
     },
+    /** 是否展示顶栏头像列表；等待页等已有大名单时可关掉避免重复 */
+    showAvatars: {
+      type: Boolean,
+      value: true
+    },
     showRoomEntry: {
       type: Boolean,
       value: true
