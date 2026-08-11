@@ -2,6 +2,7 @@ const { withSessionFields } = require('../../utils/partnerInspirationSession');
 const { isAiFeatureEnabled } = require('../../utils/aiFeature');
 const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
 const { goRoomPage } = require('../../utils/goRoomPage');
+const { safeNavigateBack } = require('../../utils/pageNavigate');
 
 Page({
   data: {
@@ -81,12 +82,12 @@ Page({
 
   goBack() {
     this._syncCountToOpener({ refreshCloud: true });
-    const pages = getCurrentPages();
-    if (pages.length > 1) {
-      wx.navigateBack();
-      return;
-    }
-    goRoomPage(this.data.roomId);
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      fallbackUrl: roomId
+        ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/aaa/index'
+    });
   },
 
   /** 把当前列表数量写回上一页灯泡角标，避免返回后仍显示旧数字 */

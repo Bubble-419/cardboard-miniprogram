@@ -17,7 +17,7 @@ const {
 const { followSubScreenRoomPoll } = require('./subScreenRoomPoll');
 const { openUrl } = require('./pageNavigate');
 const { goRoomPage } = require('./goRoomPage');
-const { buildAvatarList } = require('./avatars');
+const { buildAvatarList, buildAvatarListAsync } = require('./avatars');
 const { handleRoomGoneFromResult } = require('./roomDissolved');
 const { handleRoomLastEvent } = require('./roomMembersSync');
 
@@ -367,6 +367,7 @@ module.exports = {
   openUrl,
   goRoomPage,
   buildAvatarList,
+  buildAvatarListAsync,
   startSpyCountdownTicker,
   safePageSetData,
   samePlayerIndex,

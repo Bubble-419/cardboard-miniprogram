@@ -17,6 +17,7 @@ const {
 const { followSpyRoomState } = require('../../../utils/spyFollow');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 function shouldShowLibrary(spyGame) {
   if (!spyGame || !spyGame.phase) return true;
@@ -189,12 +190,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.redirectTo({
-          url: `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(this.data.roomId)}`
-        });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/brainstormMode/index';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/brainstormMode/index',
+      fallbackUrl
     });
   },
 

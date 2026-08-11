@@ -1,6 +1,7 @@
 const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -151,12 +152,16 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({
-          url: '/pages/main-pages/addPlayer/index'
-        });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
+      : '/pages/main-pages/addPlayer/index';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/partnerMode/gamepage/index',
+        'pages/main-pages/partnerMode/statement/index'
+      ],
+      fallbackUrl
     });
   },
 

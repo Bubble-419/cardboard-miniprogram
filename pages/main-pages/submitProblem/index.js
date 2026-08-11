@@ -9,8 +9,9 @@ const {
   normalizeBG
 } = require('../../../utils/scenarioCategories');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
-const { buildUserListFromMembers } = require('../../../utils/userListData');
+const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -75,10 +76,10 @@ Page({
     this.setData({ categories: buildCategoriesFromBG(normalized) });
   },
 
-  _syncMembersFromResult(result) {
+  async _syncMembersFromResult(result) {
     if (!result || result.ok !== true) return;
     const members = result.members || [];
-    const avatarList = buildUserListFromMembers(members);
+    const avatarList = await buildUserListFromMembersAsync(members);
     const me = members.find((m) => m.isMe);
     this.setData({
       workshopName: result.workshopName || this.data.workshopName,
@@ -107,7 +108,7 @@ Page({
         this._syncCategoriesFromBG(roomBG);
       }
 
-      this._syncMembersFromResult(result);
+      await this._syncMembersFromResult(result);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
@@ -212,10 +213,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index' });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/partnerMode/confirmBG/index';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/confirmBG/index',
+      fallbackUrl
     });
   },
 

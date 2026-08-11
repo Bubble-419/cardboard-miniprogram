@@ -1,6 +1,6 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { openUrl } = require('../../../../utils/pageNavigate');
+const { openUrl, safeNavigateBack } = require('../../../../utils/pageNavigate');
 const {
   PHASE_DISCUSSION,
   phaseFromStatementResult,
@@ -223,15 +223,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
-          });
-        }
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
+      : '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+      fallbackUrl
     });
   },
 

@@ -35,7 +35,7 @@ const {
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
-const { assignAvatarImages, resolveCloudAvatarUrls, getMemberAvatarFingerprint } = require('../../../utils/avatars');
+const { assignAvatarImages, getMemberAvatarFingerprint } = require('../../../utils/avatars');
 const {
   getStoredProfile,
   applyChooseAvatarEvent,
@@ -459,9 +459,9 @@ Page({
 
   async _prepareMembersForDisplay(rawMembers) {
     const deduped = this._dedupeMembersById(rawMembers);
-    const withResolvedUrls = await resolveCloudAvatarUrls(deduped);
-    const withLocalMe = this._applyLocalAvatarForMe(withResolvedUrls);
-    return this._assignAvatarImages(withLocalMe);
+    const withLocalMe = this._applyLocalAvatarForMe(deduped);
+    const { prepareMembersForDisplay } = require('../../../utils/avatars');
+    return prepareMembersForDisplay(withLocalMe);
   },
 
   _hasAuthorizedWechatAvatar() {

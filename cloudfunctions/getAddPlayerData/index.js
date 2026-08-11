@@ -192,19 +192,12 @@ async function resolveCloudAvatarUrls(members) {
       if (m && m.avatarUrl && urlMap[m.avatarUrl]) {
         return { ...m, avatarUrl: urlMap[m.avatarUrl] };
       }
-      if (m && typeof m.avatarUrl === 'string' && m.avatarUrl.startsWith('cloud://')) {
-        return { ...m, avatarUrl: null };
-      }
+      // 转换失败时保留 cloud://，交给客户端 sticky / 二次 resolve，避免直接抹空导致头像消失
       return m;
     });
   } catch (e) {
     console.warn('resolveCloudAvatarUrls failed', e);
-    return list.map((m) => {
-      if (m && typeof m.avatarUrl === 'string' && m.avatarUrl.startsWith('cloud://')) {
-        return { ...m, avatarUrl: null };
-      }
-      return m;
-    });
+    return list;
   }
 }
 

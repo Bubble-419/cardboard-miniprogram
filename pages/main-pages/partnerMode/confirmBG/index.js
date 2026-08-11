@@ -3,7 +3,8 @@ const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
-const { buildAvatarList } = require('../../../../utils/avatars');
+const { buildAvatarListAsync } = require('../../../../utils/avatars');
+const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -49,10 +50,10 @@ Page({
     this._initPage(roomId);
   },
 
-  _syncAvatarListFromResult(result) {
+  async _syncAvatarListFromResult(result) {
     if (!result || result.ok !== true) return;
     try {
-      const avatarList = buildAvatarList(result.members || []);
+      const avatarList = await buildAvatarListAsync(result.members || []);
       this.setData({ avatarList });
     } catch (e) {
       console.warn('confirmBG buildAvatarList', e);
@@ -67,7 +68,7 @@ Page({
         name: 'getAddPlayerData',
         data: { roomId }
       });
-      this._syncAvatarListFromResult((res && res.result) || {});
+      await this._syncAvatarListFromResult((res && res.result) || {});
     } catch (e) {
       console.warn('confirmBG syncAvatarList', e);
     }
@@ -312,17 +313,16 @@ Page({
       this.handleReturnToGame();
       return;
     }
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-          });
-        } else {
-          wx.navigateBack();
-        }
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+      : '/pages/main-pages/modeIndex/index?modeId=partner';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/modeIndex/index',
+        'pages/main-pages/selectBG/index'
+      ],
+      fallbackUrl
     });
   },
 

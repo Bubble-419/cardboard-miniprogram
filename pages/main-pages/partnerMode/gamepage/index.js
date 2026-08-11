@@ -7,6 +7,7 @@ const {
   getMemberAvatarFingerprint,
   getAvatarStableKey
 } = require('../../../../utils/avatars');
+const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
@@ -4301,17 +4302,19 @@ Page({
 
   handleGoBack() {
     this._prepareLeavePage();
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-          });
-        } else {
-          wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
-        }
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/aaa/index';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/partnerMode/confirmFirstPlayer/index',
+        'pages/main-pages/selectPlayer/index',
+        'pages/main-pages/partnerMode/statement/index',
+        'pages/main-pages/partnerMode/specialMove/index',
+        'pages/main-pages/discussion/index'
+      ],
+      fallbackUrl
     });
   }
 });

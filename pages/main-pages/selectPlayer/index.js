@@ -3,6 +3,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -502,7 +503,28 @@ Page({
 
   // 返回
   goBack() {
-    wx.navigateBack();
+    const roomId = this.data.roomId || '';
+    const modeId = this.data.selectedModeId || 'partner';
+    let fallbackUrl = '/pages/main-pages/brainstormMode/index';
+    if (modeId === 'partner') {
+      fallbackUrl = roomId
+        ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/selectProblem/index';
+    } else if (modeId === 'halliGalli') {
+      fallbackUrl = roomId
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
+        : '/pages/main-pages/modeIndex/index?modeId=halliGalli';
+    } else if (roomId) {
+      fallbackUrl = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`;
+    }
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/selectProblem/index',
+        'pages/main-pages/modeIndex/index',
+        'pages/main-pages/selectMode/index'
+      ],
+      fallbackUrl
+    });
   }
-})
+});
 

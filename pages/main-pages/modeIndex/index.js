@@ -13,7 +13,8 @@ const {
 } = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { buildAvatarList } = require('../../../utils/avatars');
+const { buildAvatarListAsync } = require('../../../utils/avatars');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
@@ -98,9 +99,9 @@ Page({
     this.setData({ scenarios, offlineScenario, customScenarios });
   },
 
-  _syncMembersFromResult(result) {
+  async _syncMembersFromResult(result) {
     if (!result || result.ok !== true) return;
-    const avatarList = buildAvatarList(result.members || []);
+    const avatarList = await buildAvatarListAsync(result.members || []);
     const me = avatarList.find((item) => item.isMe);
     this.setData({
       workshopName: result.workshopName || this.data.workshopName,
@@ -119,7 +120,7 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true) {
-        this._syncMembersFromResult(result);
+        await this._syncMembersFromResult(result);
       }
       return result;
     } catch (e) {
@@ -327,12 +328,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.redirectTo({
-          url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(this.data.roomId)}`
-        });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/brainstormMode/index';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/brainstormMode/index',
+      fallbackUrl
     });
   },
 

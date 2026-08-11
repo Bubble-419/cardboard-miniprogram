@@ -20,6 +20,9 @@
                   class="avatar-img"
                   src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
                   mode="aspectFill"
+                  data-player-index="{{item.id}}"
+                  data-user-key="{{item.userId || item.id}}"
+                  binderror="onAvatarImgError"
                 />
               </view>
               <block wx:if="{{item.id == resolvedActingUser && actingFrameMode === 'timer' && !suppressTimerCanvas}}">

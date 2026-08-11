@@ -25,8 +25,14 @@ const AVATAR_IMAGES = [
  * 仅用于减少重复 getTempFileURL；展示时仍以当前成员 avatarUrl 为准
  */
 const cloudTempUrlCache = new Map();
-/** 玩家已授权头像的展示 URL，避免轮询短暂丢链时回退随机头像 */
+/**
+ * 玩家已授权头像的展示 URL。
+ * value: { url, stableKey, savedAt }
+ * 过期后改用最新临时链，避免粘性旧签名导致裂图。
+ */
 const stickyCustomAvatarByUser = new Map();
+/** 云临时链粘性最长复用时间（签名通常约 2h，提前刷新） */
+const STICKY_MAX_AGE_MS = 50 * 60 * 1000;
 
 function getMemberAvatarUserKey(member) {
   if (!member) return '';
@@ -73,6 +79,31 @@ function isDisplayableAvatarUrl(url) {
   return isLocalTempAvatar(url) || isShareableAvatarUrl(url);
 }
 
+function _readSticky(userKey) {
+  if (!userKey || !stickyCustomAvatarByUser.has(userKey)) return null;
+  const raw = stickyCustomAvatarByUser.get(userKey);
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    return { url: raw, stableKey: getAvatarStableKey(raw), savedAt: 0 };
+  }
+  return raw;
+}
+
+function _writeSticky(userKey, url) {
+  if (!userKey || !isDisplayableAvatarUrl(url)) return;
+  stickyCustomAvatarByUser.set(userKey, {
+    url,
+    stableKey: getAvatarStableKey(url),
+    savedAt: Date.now()
+  });
+}
+
+/** 加载失败时清掉该用户粘性，避免一直挂坏链 */
+function clearStickyAvatar(userKey) {
+  if (!userKey) return;
+  stickyCustomAvatarByUser.delete(String(userKey));
+}
+
 /**
  * 将成员列表中的 cloud:// 头像 fileID 批量转为可展示的 HTTPS 临时链接
  * （跨账号/跨用户无法直接加载他人上传的 cloud:// 路径）
@@ -104,8 +135,8 @@ async function resolveCloudAvatarUrls(members) {
       }
       const cached = cloudTempUrlCache.get(m.avatarUrl);
       if (cached) return { ...m, avatarUrl: cached };
-      // 转换失败：清掉不可展示的 cloud://，交给 assign 回退随机/粘性头像
-      return { ...m, avatarUrl: null };
+      // 转换失败：保留 cloud:// 由 sticky / 回退兜底，避免直接抹成 null 造成「消失」
+      return m;
     });
   } catch (e) {
     console.warn('resolveCloudAvatarUrls failed', e);
@@ -113,13 +144,14 @@ async function resolveCloudAvatarUrls(members) {
       if (!m || !isCloudFileId(m.avatarUrl)) return m;
       const cached = cloudTempUrlCache.get(m.avatarUrl);
       if (cached) return { ...m, avatarUrl: cached };
-      return { ...m, avatarUrl: null };
+      return m;
     });
   }
 }
 
 /** 为成员列表补充 avatarImage（优先可共享微信头像，否则按 avatarIndex 映射随机头像） */
 function assignAvatarImages(members) {
+  const now = Date.now();
   return (members || []).map((m, i) => {
     if (!m) return m;
     const userKey = getMemberAvatarUserKey(m);
@@ -130,27 +162,37 @@ function assignAvatarImages(members) {
     if (canUseUrl) {
       const incoming = m.avatarUrl;
       const incomingKey = getAvatarStableKey(incoming);
-      if (userKey && stickyCustomAvatarByUser.has(userKey)) {
-        const sticky = stickyCustomAvatarByUser.get(userKey);
-        // 稳定键相同（仅签名变化）时复用旧 URL，避免 <image src> 每次轮询都变
-        if (
-          isDisplayableAvatarUrl(sticky)
-          && getAvatarStableKey(sticky) === incomingKey
-        ) {
-          return { ...m, avatarUrl: sticky, avatarImage: sticky };
-        }
+      const sticky = _readSticky(userKey);
+      // 稳定键相同且粘性未过期：复用旧 URL，避免轮询换签名闪烁；过期则改用最新链
+      if (
+        sticky &&
+        isDisplayableAvatarUrl(sticky.url) &&
+        sticky.stableKey === incomingKey &&
+        sticky.savedAt > 0 &&
+        now - sticky.savedAt < STICKY_MAX_AGE_MS
+      ) {
+        return { ...m, avatarUrl: sticky.url, avatarImage: sticky.url };
       }
-      if (userKey) stickyCustomAvatarByUser.set(userKey, incoming);
+      _writeSticky(userKey, incoming);
       return { ...m, avatarImage: incoming };
     }
-    if (userKey && stickyCustomAvatarByUser.has(userKey)) {
-      const sticky = stickyCustomAvatarByUser.get(userKey);
-      if (isDisplayableAvatarUrl(sticky)) {
-        return { ...m, avatarImage: sticky };
+    if (userKey) {
+      const sticky = _readSticky(userKey);
+      if (sticky && isDisplayableAvatarUrl(sticky.url)) {
+        return { ...m, avatarImage: sticky.url };
       }
     }
     return { ...m, avatarImage: pickFallbackAvatarImage(m, i) };
   });
+}
+
+/**
+ * 展示前统一入口：先 resolve cloud://，再 assign 粘性/回退。
+ * 各页轮询/首屏应优先走这里，避免只 assign 漏转临时链。
+ */
+async function prepareMembersForDisplay(members) {
+  const resolved = await resolveCloudAvatarUrls(members || []);
+  return assignAvatarImages(resolved);
 }
 
 /** 供 selectProblem / selectMode 等页面的头像条使用 */
@@ -166,12 +208,21 @@ function buildAvatarList(members) {
     }));
 }
 
+async function buildAvatarListAsync(members) {
+  const enriched = await prepareMembersForDisplay(members);
+  return buildAvatarList(enriched);
+}
+
 module.exports = {
   AVATAR_IMAGES,
   DEFAULT_AVATAR,
   getAvatarStableKey,
   getMemberAvatarFingerprint,
+  getMemberAvatarUserKey,
   resolveCloudAvatarUrls,
   assignAvatarImages,
-  buildAvatarList
+  prepareMembersForDisplay,
+  clearStickyAvatar,
+  buildAvatarList,
+  buildAvatarListAsync
 };

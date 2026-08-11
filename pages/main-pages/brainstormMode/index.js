@@ -5,9 +5,10 @@ const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { followSpyRoomState, resolveSpyTargetPage } = require('../../../utils/spyFollow');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { buildAvatarList } = require('../../../utils/avatars');
+const { buildAvatarListAsync } = require('../../../utils/avatars');
 const { callCloudFunction } = require('../../../utils/cloudApi');
 const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 const BRAINSTORM_MODES = [
   {
@@ -168,7 +169,7 @@ Page({
 
       let avatarList = [];
       try {
-        avatarList = buildAvatarList(result.members || []);
+        avatarList = await buildAvatarListAsync(result.members || []);
       } catch (e) {
         console.warn('brainstormMode buildAvatarList', e);
       }
@@ -334,12 +335,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.redirectTo({
-          url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(this.data.roomId)}`
-        });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/addPlayer/index';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/addPlayer/index',
+      fallbackUrl
     });
   },
 

@@ -8,7 +8,8 @@ const {
 const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { buildAvatarList } = require('../../../utils/avatars');
+const { buildAvatarListAsync } = require('../../../utils/avatars');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -96,7 +97,7 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
 
-      const avatarList = buildAvatarList(result.members || []);
+      const avatarList = await buildAvatarListAsync(result.members || []);
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
@@ -426,10 +427,17 @@ Page({
   },
 
   goBack() {
-    wx.navigateBack();
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
+      : '/pages/main-pages/submitProblem/index';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/submitProblem/index',
+      fallbackUrl
+    });
   },
 
-      handleGoRoom() {
+  handleGoRoom() {
     goRoomPage(this.data.roomId);
   }
 });

@@ -222,12 +222,71 @@ function clearPendingNavigation() {
   _nav.lastAt = 0;
 }
 
+function getPrevRoute() {
+  const pages = getCurrentPages();
+  if (!pages || pages.length < 2) return '';
+  return pages[pages.length - 2].route || '';
+}
+
+function _openFallback(url) {
+  if (!url || typeof url !== 'string') return;
+  const route = normalizeRoute(url);
+  if (route === getCurrentRoute()) return;
+  wx.redirectTo({
+    url,
+    fail: () => {
+      wx.reLaunch({
+        url,
+        fail: (err) => console.warn('[pageNavigate] fallback 失败', err, url)
+      });
+    }
+  });
+}
+
+/**
+ * 语义化返回：栈上一页不符合期望时走 fallback，避免房主 redirectTo 卸页后 navigateBack「退两级」。
+ * @param {object} [options]
+ * @param {string|string[]} [options.expectedPrev] 期望的上一页 route（可带/不带前导 /）
+ * @param {string} [options.fallbackUrl] 期望不符或 navigateBack 失败时的去向
+ * @param {number} [options.delta]
+ */
+function safeNavigateBack(options = {}) {
+  const delta = options.delta > 0 ? options.delta : 1;
+  const fallbackUrl = options.fallbackUrl || '';
+  const expected = options.expectedPrev;
+  const expectedList = !expected
+    ? []
+    : (Array.isArray(expected) ? expected : [expected]).map(normalizeRoute).filter(Boolean);
+
+  const pages = getCurrentPages();
+  if (!pages || pages.length <= delta) {
+    _openFallback(fallbackUrl);
+    return false;
+  }
+
+  if (expectedList.length) {
+    const prevRoute = getPrevRoute();
+    if (!expectedList.includes(prevRoute)) {
+      _openFallback(fallbackUrl);
+      return false;
+    }
+  }
+
+  wx.navigateBack({
+    delta,
+    fail: () => _openFallback(fallbackUrl)
+  });
+  return true;
+}
+
 module.exports = {
   getCurrentRoute,
+  getPrevRoute,
   normalizeRoute,
   isRouteRegistered,
   openUrl,
   safeOpenUrl,
   openPartnerPage,
-  clearPendingNavigation
+  clearPendingNavigation,
+  safeNavigateBack
 };

@@ -1,6 +1,7 @@
 const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../../utils/spyMode');
 const { listLibraryCards, getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 /** 分词开始后不允许查阅牌库 */
 function isLibraryLocked(spyGame) {
@@ -101,13 +102,10 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        openUrl(buildSpyPageUrl('intro', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-      }
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'packageSpy/pages/modeIndex/index',
+      fallbackUrl: buildSpyPageUrl('intro', roomId)
     });
   },
 
