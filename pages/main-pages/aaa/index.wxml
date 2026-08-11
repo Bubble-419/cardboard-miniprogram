@@ -6,7 +6,7 @@
         <button
           class="avatar-btn"
           open-type="chooseAvatar"
-          catchtap="onAvatarAuthTap"
+          bindtap="onAvatarAuthTap"
           bindchooseavatar="onChooseAvatar"
         >
           <image class="user-avatar" src="{{userAvatarUrl}}" mode="aspectFill" />

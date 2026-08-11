@@ -206,14 +206,9 @@ function exitRoomGone(result, options = {}) {
     return true;
   }
 
-  // 授权中：保留登录/授权，延后跳转与提示
+  /** 授权进行中：只挂起跳转，不清房间态（避免扫码授权时被误踢清掉即将 join 的 roomId） */
   if (isUserAuthInProgress()) {
-    const roomId = options.roomId
-      || (result && result.roomId)
-      || (getApp().globalData && getApp().globalData.roomId)
-      || '';
-    clearRoomLocalState(roomId);
-    _deferredExit = { result, options: { ...options, roomId } };
+    _deferredExit = { result, options: { ...options } };
     runAfterUserAuth(() => {
       const pending = _deferredExit;
       _deferredExit = null;
@@ -224,6 +219,11 @@ function exitRoomGone(result, options = {}) {
   }
 
   return _runExitRoomGone(result, options);
+}
+
+/** 成功入房后取消挂起的误踢/误解散 */
+function cancelDeferredExit() {
+  _deferredExit = null;
 }
 
 /** 轮询/接口结果：解散或不在房间时统一处理 */
@@ -271,6 +271,7 @@ module.exports = {
   isRemovedFromRoomResult,
   clearRoomLocalState,
   exitRoomGone,
+  cancelDeferredExit,
   handleRoomGoneFromResult,
   consumePendingRoomGoneToast,
   resetRoomGoneGuardForTest

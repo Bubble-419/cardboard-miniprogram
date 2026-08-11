@@ -18,8 +18,12 @@ const {
 const {
   beginUserAuthFlow,
   endUserAuthFlow,
+  forceEndUserAuthFlow,
   isUserAuthInProgress
 } = require('../../../utils/userAuthSession');
+
+/** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
+let _scanJoinNavigatingRoomId = '';
 
 Page({
   data: {
@@ -53,14 +57,17 @@ Page({
   },
 
   onShow() {
-    // 系统头像选择面板关闭后 chooseavatar 可能不回调，释放闸门以免挂起解散跳转
+    // 系统头像选择面板关闭后 chooseavatar 可能不回调；拉长兜底，避免打断进行中的授权
     if (isUserAuthInProgress()) {
-      setTimeout(() => {
-        if (isUserAuthInProgress()) endUserAuthFlow();
-      }, 300);
+      clearTimeout(this._authReleaseTimer);
+      this._authReleaseTimer = setTimeout(() => {
+        if (isUserAuthInProgress()) forceEndUserAuthFlow();
+      }, 2500);
     }
     consumePendingRoomGoneToast();
     this._restoreUserProfile();
+    // 扫码跳转途中不要用「即将加入」的 roomId 跑成员校验，否则会误弹退出房间
+    if (_scanJoinNavigatingRoomId) return;
     this.loadJoinedRoomState();
   },
 
@@ -86,6 +93,8 @@ Page({
   },
 
   async loadJoinedRoomState() {
+    if (_scanJoinNavigatingRoomId) return;
+
     const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
@@ -217,10 +226,12 @@ Page({
   },
 
   onAvatarAuthTap() {
+    clearTimeout(this._authReleaseTimer);
     beginUserAuthFlow();
   },
 
   onChooseAvatar(e) {
+    clearTimeout(this._authReleaseTimer);
     try {
       const profile = applyChooseAvatarEvent(e.detail);
       if (!profile) return;
@@ -575,14 +586,27 @@ Page({
 
   _goToScanJoinRoom(roomId) {
     if (!roomId) return;
-    getApp().globalData.roomId = roomId;
-    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    // 禁止 join 前写入 joinedRoomId：否则首页 onShow / 轮询会把「未入房」误判成退出房间
+    _scanJoinNavigatingRoomId = roomId;
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
     wx.redirectTo({
       url,
+      success: () => {
+        // 跳转成功后短暂保留标记，避免本页 onShow 抢跑
+        setTimeout(() => {
+          if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+        }, 800);
+      },
       fail: (err) => {
         console.warn('redirectTo addPlayer failed, try reLaunch', err);
-        wx.reLaunch({ url });
+        wx.reLaunch({
+          url,
+          complete: () => {
+            setTimeout(() => {
+              if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+            }, 800);
+          }
+        });
       }
     });
   },
