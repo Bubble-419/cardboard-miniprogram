@@ -1,0 +1,48 @@
+<view class="container">
+  <view class="header-section" id="caseHeader">
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      showRoomEntry="{{!!roomId}}"
+      bind:goroom="handleGoRoom"
+    />
+
+    <!-- 四维度情境：对齐选择设计问题页的 header 展示方式 -->
+    <context-display bg="{{bg}}" />
+  </view>
+
+  <scroll-view
+    class="main-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    style="height: {{scrollHeight}}px"
+  >
+    <view class="case-content">
+      <view class="title-section">
+        <text class="page-title">案例展示</text>
+        <text class="page-subtitle">参考下面四维度与设计问题示例</text>
+      </view>
+      <view class="problem-list">
+        <view
+          class="problem-item"
+          wx:for="{{problems}}"
+          wx:for-index="idx"
+          wx:key="idx"
+        >
+          <view class="problem-indicator"></view>
+          <view class="problem-body">
+            <text class="problem-text">{{item.text}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <page-footer
+    extClass="footer"
+    showPrimary="{{false}}"
+    bind:prev="goBack"
+  ></page-footer>
+</view>
+

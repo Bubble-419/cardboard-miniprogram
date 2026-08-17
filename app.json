@@ -16,6 +16,7 @@
     "pages/main-pages/partnerMode/statement/index",
     "pages/main-pages/partnerMode/closingStatement/index",
     "pages/main-pages/partnerMode/closingEnd/index",
+    "pages/main-pages/case/index",
     "pages/main-pages/playSuccess/index",
     "pages/main-pages/playFail/index",
     "pages/main-pages/selectBG/index",

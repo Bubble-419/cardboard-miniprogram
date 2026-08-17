@@ -73,6 +73,7 @@
               <text class="section-title">脑暴情境</text>
             </view>
             <view class="section-add-btn" catchtap="handleAddScenario">
+              <text class="section-add-text">新增模式</text>
               <image class="section-add-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
             </view>
           </view>

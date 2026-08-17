@@ -211,6 +211,21 @@ Page({
     }
   },
 
+  handleOpenCase() {
+    // 从“设计问题示例”跳转到案例页（展示四维度与多条设计问题）
+    const roomIdEnc = this.data.roomId ? encodeURIComponent(this.data.roomId) : '';
+    wx.navigateTo({
+      url: roomIdEnc
+        ? `/pages/main-pages/case/index?roomId=${roomIdEnc}`
+        : '/pages/main-pages/case/index'
+      ,
+      fail: (err) => {
+        console.warn('navigateTo case page fail', err);
+        wx.showToast({ title: '打开案例页失败', icon: 'none' });
+      }
+    });
+  },
+
   handleGoBack() {
     wx.navigateBack({
       fail: () => {

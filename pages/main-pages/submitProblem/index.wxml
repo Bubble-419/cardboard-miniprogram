@@ -27,14 +27,14 @@
       <view class="input-area">
 
         <!-- 示例框 -->
-        <view class="example-box">
+        <view class="example-box" catchtap="handleOpenCase">
           <view class="example-header-row">
             <view class="example-icon-wrap">
               <image class="example-icon" src="/assets/icons/icon-example-hint.svg" mode="aspectFit" />
             </view>
             <text class="example-label-text">设计问题示例</text>
           </view>
-          <text class="example-content">如何帮助用户在驾驶过程中快速进行导航切换？</text>
+          <!-- 去掉示例中的“如何....”长文案，避免干扰输入 -->
         </view>
 
         <!-- 输入框 + 字数计数 + 提交图标 -->

@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "案例",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "player-top-bar": "/components/player-top-bar/index",
+    "context-display": "/components/context-display/index",
+    "page-footer": "/components/page-footer/index"
+  }
+}
+

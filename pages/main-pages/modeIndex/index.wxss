@@ -298,18 +298,30 @@
 }
 
 .section-add-btn {
-  width: 80rpx;
-  height: 80rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   position: relative;
   z-index: 5;
+  height: 64rpx;
+  padding: 0 22rpx 0 20rpx;
+  border-radius: 9999rpx;
+  border: 2rpx solid #5eba6d;
+  background-color: rgba(220, 252, 231, 0.9);
+  gap: 12rpx;
 }
 
 .section-add-btn:active {
-  opacity: 0.6;
+  background-color: rgba(220, 252, 231, 1);
+}
+
+.section-add-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #5eba6d;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .section-add-icon {

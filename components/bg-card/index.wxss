@@ -112,6 +112,8 @@
   padding: 24rpx 36rpx 28rpx;
   box-shadow: 0 14rpx 36rpx rgba(146, 165, 145, 0.18);
   margin-top: -6rpx;
+  /* 防止说明文字过长撑出卡片边界 */
+  overflow: hidden;
 }
 
 .info-header {
@@ -145,8 +147,13 @@
 
 /* 描述文字 */
 .info-desc {
-  font-size: 24rpx;
+  /* “说明小字”字号略增大，但行间距更紧凑 */
+  font-size: 26rpx;
   color: #979797;
-  line-height: 1.55;
+  line-height: 1.38;
   text-align: justify;
+  /* 限制最大展示高度：多出来的行不再撑开卡片 */
+  max-height: 112rpx;
+  overflow: hidden;
+  word-break: break-all;
 }

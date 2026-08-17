@@ -161,7 +161,8 @@
   background-color: #d0e8d0;
   color: #9ec89e;
   border-radius: 24rpx;
-  font-size: 32rpx;
+  /* 与上一页（components/page-footer）保持一致 */
+  font-size: 40rpx;
   font-weight: 500;
   border: none;
   letter-spacing: 4rpx;
