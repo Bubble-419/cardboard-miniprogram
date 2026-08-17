@@ -378,3 +378,4 @@
 | 2026-08-11 | **第 1 部分 P0**：扫码入房闸门（join 前不写 joinedRoomId、禁轮询误踢）；授权连弹收敛（弹层一次、引用计数闸门、授权中不清房间态） |
 | 2026-08-11 | **第 11–12 部分 P0**：打分横跳（评分进度窄 setData + 交互期 defer 整页补丁 + swiper disable-touch）；表态跳轮（提交同步锁；满圈才 `incrementRound`，与 ADVANCE_TURN 对齐） |
 | 2026-08-17 | **第 16 部分 P0**：德心结束「再来一轮 / 返回房间」调用 `roomClearBrainstormMode` 退出当前脑暴模式并回到房间，不再留在德心选情境 |
+| 2026-08-17 | **第 2 部分 P2**：房间页长按拖拽换序接入 `REORDER_SEATS`，多端按 `playerIndex` 同步；房主身份不再随座位号转移 |

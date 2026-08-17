@@ -32,7 +32,8 @@ const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpeci
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
-  disposeRoomSession
+  disposeRoomSession,
+  getActiveRoomSession
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
@@ -726,35 +727,16 @@ Page({
 
       if (silent) {
         // 跳转脑暴模式途中禁止 setData，否则主线程被拖死易触发 navigateTo:fail timeout
-        if (!this._pageAlive || this.data.isDragging || this._navigatingToBrainstorm) {
+        if (
+          !this._pageAlive
+          || this.data.isDragging
+          || this._navigatingToBrainstorm
+          || this._reorderInFlight
+        ) {
           return result;
         }
-        // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
-        const localExpanded = this._expandMembersToSlots(this.data.members || []);
-        const localFilledCount = localExpanded.filter((m) => !!m).length;
-        // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
-        let expanded;
-        if (deduped.length !== localFilledCount) {
-          expanded = this._expandMembersToSlots(withAvatars);
-        } else if (localFilledCount > 0) {
-          const serverById = new Map();
-          withAvatars.forEach((m) => {
-            const id = this._getMemberId(m);
-            if (id) serverById.set(id, m);
-          });
-          const canMerge = serverById.size > 0;
-          const merged = canMerge
-            ? localExpanded.map((m) => {
-                if (!m) return null;
-                const id = this._getMemberId(m);
-                const s = id ? serverById.get(id) : null;
-                return s ? { ...s } : m;
-              })
-            : localExpanded;
-          expanded = this._expandMembersToSlots(merged);
-        } else {
-          expanded = this._expandMembersToSlots(withAvatars);
-        }
+        // 座位顺序以服务端 playerIndex 为准，保证房主拖拽后多端同步
+        const expanded = this._expandMembersToSlots(withAvatars);
 
         const memberSlots = this.buildMemberSlots(expanded);
         const fingerprint = [
@@ -764,7 +746,7 @@ Page({
           roomMeta.selectedModeTitle || '',
           resolvedState.currentPage || '',
           expanded.map((m) => (m
-            ? `${this._getMemberId(m)}:${m.nickName || ''}:${getMemberAvatarFingerprint(m)}`
+            ? `${this._getMemberId(m)}:${m.playerIndex || ''}:${m.nickName || ''}:${getMemberAvatarFingerprint(m)}`
             : '-'
           )).join('|')
         ].join('#');
@@ -998,9 +980,8 @@ Page({
   onSlotTap() {},
 
   _showKickConfirm(member) {
-    const isHost = this.data.isHost;
-    const isDragging = this.data.isDragging;
-    if (isHost !== true || isDragging === true) return;
+    if (this.data.isHost !== true || this.data.isDragging === true) return;
+    if (!member || member.isMe === true) return;
     this._clearLongPressTimer();
     this._slotTouchStart = null;
     this._lastTouch = null;
@@ -1018,7 +999,11 @@ Page({
 
   async _kickMember(member) {
     const roomId = this.data.roomId || getApp().globalData.roomId;
-    if (!roomId || !member || !member.userId) return;
+    if (this.data.isHost !== true) {
+      wx.showToast({ title: '仅房主可踢出成员', icon: 'none' });
+      return;
+    }
+    if (!roomId || !member || !member.userId || member.isMe === true) return;
 
     wx.showLoading({ title: '处理中…' });
     try {
@@ -1121,6 +1106,7 @@ Page({
    * - 后续由 _updateDragPosition 根据手指移动实时更新位置与重排结果
    */
   _enterDragMode(index, slot) {
+    if (this.data.isHost !== true || !slot || !slot.member) return;
     // 优先使用最新触点，保证长按到可拖拽的衔接连续；没有 move 时回退到按下坐标
     const touch = this._lastTouch || this._slotTouchStart;
     let initX = null, initY = null;
@@ -1285,8 +1271,10 @@ Page({
     this._armDragWatchdog();
 
     const overKickZone = this._isPointInRect(clientX, clientY, this._kickZoneRect);
-    if (overKickZone !== this.data.overKickZone) {
-      this.setData({ overKickZone });
+    const draggingSelf = !!(this.data.draggingMember && this.data.draggingMember.isMe);
+    const nextOverKick = draggingSelf ? false : overKickZone;
+    if (nextOverKick !== this.data.overKickZone) {
+      this.setData({ overKickZone: nextOverKick });
     }
 
     // 位置节流：变化不足 1px 时跳过，减少无意义的跨线程通信
@@ -1296,8 +1284,15 @@ Page({
     ) return;
 
     const applyUpdate = () => {
-      // 拖拽中只更新浮层坐标；原槽位/原槽位动效保持不动
-      this.setData({ dragPosX: clientX, dragPosY: clientY });
+      // 拖拽中只更新浮层坐标与落点高亮；原槽位布局在松手时一次性提交
+      const patch = { dragPosX: clientX, dragPosY: clientY };
+      if (!overKickZone && this._circleRect) {
+        const idx = this._getSlotIndexByPoint(clientX, clientY, this._circleRect);
+        if (idx != null && idx !== this.data.dropTargetIndex) {
+          patch.dropTargetIndex = idx;
+        }
+      }
+      this.setData(patch);
     };
 
     if (this._circleRect) {
@@ -1359,7 +1354,7 @@ Page({
     let dropTargetIndex = this.data.dropTargetIndex;
     const lastTouch = this._lastTouch;
     const draggingMember = this.data.draggingMember;
-    const droppedOnKickZone = this._isPointInRect(
+    const droppedOnKickZone = !(draggingMember && draggingMember.isMe) && this._isPointInRect(
       lastTouch && (lastTouch.clientX != null ? lastTouch.clientX : lastTouch.pageX),
       lastTouch && (lastTouch.clientY != null ? lastTouch.clientY : lastTouch.pageY),
       this._kickZoneRect
@@ -1400,12 +1395,14 @@ Page({
     }
 
     // 仅在松手时一次性提交重排，避免拖动中 slots 反复变化导致“卡住”
+    let packed = null;
     if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
       const base = this._dragBaseMembers;
       if (base && draggingMember) {
         const arr = base.slice();
         arr.splice(dropTargetIndex, 0, draggingMember);
-        const reordered = this._expandMembersToSlots(arr);
+        packed = arr.filter(Boolean);
+        const reordered = this._expandMembersToSlots(packed);
         updates.members = reordered;
         updates.memberSlots = this.buildMemberSlots(reordered);
       }
@@ -1419,8 +1416,8 @@ Page({
     this._dragBaseMembers = null; // 释放快照，避免内存残留
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
-    if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
-      wx.showToast({ title: '顺序已调整', icon: 'none', duration: 800 });
+    if (packed && packed.length) {
+      this._syncSeatOrder(packed);
     }
   },
 
@@ -1448,6 +1445,76 @@ Page({
     this._dragBaseMembers = null; // 释放快照，避免内存残留
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
+  },
+
+  _dispatchRoomCommand(type, payload) {
+    const roomId = this.data.roomId || '';
+    if (!roomId || !type) return Promise.resolve({ ok: false, errMsg: '缺少房间或命令' });
+    const session = this._boundRoomSession || getActiveRoomSession();
+    const build = () => {
+      const expectedRevision = session && typeof session.getAppliedRevision === 'function'
+        ? Number(session.getAppliedRevision()) || 0
+        : 0;
+      return {
+        protocolVersion: 2,
+        commandId: `lobby_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        roomId,
+        expectedRevision,
+        payload: payload || {},
+        clientSentAt: Date.now()
+      };
+    };
+    const run = async () => {
+      const command = build();
+      if (session && typeof session.dispatch === 'function') {
+        return session.dispatch(command);
+      }
+      const res = await wx.cloud.callFunction({ name: 'roomCommand', data: command });
+      return (res && res.result) || { ok: false };
+    };
+    return run().then(async (first) => {
+      let result = first;
+      if (!result.ok && result.errCode === 'REVISION_CONFLICT' && session && typeof session.refresh === 'function') {
+        await session.refresh();
+        result = await run();
+      }
+      return result || { ok: false };
+    }).catch((e) => {
+      console.warn('addPlayer roomCommand', type, e);
+      return { ok: false, errMsg: (e && e.errMsg) || (e && e.message) || '命令失败' };
+    });
+  },
+
+  async _syncSeatOrder(orderedMembers) {
+    if (this.data.isHost !== true) return;
+    const roomId = this.data.roomId || '';
+    const packed = (orderedMembers || []).filter(Boolean);
+    const userIdOrder = packed
+      .map((m) => m.userId || m.openid)
+      .filter((id) => !!id);
+    if (!roomId || userIdOrder.length < 2) return;
+    if (userIdOrder.length !== packed.length) {
+      wx.showToast({ title: '顺序同步失败', icon: 'none' });
+      this.loadRoomData(roomId, { silent: true });
+      return;
+    }
+
+    this._reorderInFlight = true;
+    try {
+      const result = await this._dispatchRoomCommand('REORDER_SEATS', { userIdOrder });
+      if (!result || result.ok !== true) {
+        wx.showToast({
+          title: (result && result.errMsg) || '顺序同步失败',
+          icon: 'none'
+        });
+        await this.loadRoomData(roomId, { silent: true });
+        return;
+      }
+      wx.showToast({ title: '顺序已同步', icon: 'none', duration: 800 });
+    } finally {
+      this._reorderInFlight = false;
+    }
   },
 
   startEditRoomName() {

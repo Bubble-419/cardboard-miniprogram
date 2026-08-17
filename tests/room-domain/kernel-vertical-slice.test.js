@@ -166,6 +166,10 @@ describe('RoomKernel vertical slice CREATE/JOIN/LEAVE/REORDER', () => {
     const room = repo.rooms.get('10000005');
     assert.equal(room.seatMap['1'], 'player');
     assert.equal(room.seatMap['2'], 'host');
+    assert.equal(room.membersByUserId.host.role, 'HOST');
+    assert.equal(room.membersByUserId.host.seatNo, 2);
+    assert.equal(room.membersByUserId.player.role, 'PLAYER');
+    assert.equal(room.membersByUserId.player.seatNo, 1);
   });
 
   it('player leave frees seat for later join', async () => {
