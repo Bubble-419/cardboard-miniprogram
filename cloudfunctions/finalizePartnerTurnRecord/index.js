@@ -65,6 +65,7 @@ exports.main = async (event) => {
     const content = normalizePartnerRoundContent(room.partnerCurrentRoundContent);
     const turnRecord = {
       avgScore,
+      scoredCount,
       statementResult,
       statementLabel: getStatementLabel(statementResult),
       recordedAt: Date.now(),

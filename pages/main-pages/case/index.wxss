@@ -1,7 +1,8 @@
 /* ===== 全局容器 ===== */
 .container {
   background-color: #FFFFFF;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -10,15 +11,18 @@
 /* ===== 滚动区域 ===== */
 .main-scroll {
   width: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
-/* MainContent: 对齐 selectProblem 的视觉（用 main-content 自带 padding） */
-.main-content {
-  padding: 30rpx 40rpx 192rpx;
+/* 案例正文：左右 40rpx 与顶栏/情境格对齐；底部预留固定 footer 空间 */
+.case-content {
+  padding: 30rpx 40rpx calc(200rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 30rpx;
+  box-sizing: border-box;
 }
 
 /* ===== Header Section（TopBar + 情境格合为一组） ===== */
@@ -28,6 +32,12 @@
   flex-direction: column;
   align-items: stretch;
   gap: 24rpx;
+  box-sizing: border-box;
+}
+
+/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+.header-section > player-top-bar {
+  margin-left: -40rpx;
 }
 
 .title-section {
@@ -39,7 +49,7 @@
 .page-title {
   font-size: 48rpx;
   font-weight: 700;
-  color: #509D59;
+  color: #5EC159;
   line-height: 72rpx;
 }
 
@@ -101,8 +111,10 @@
   overflow-wrap: anywhere;
 }
 
-/* 适配固定底栏：给左右留出与页面一致的内边距 */
+/* 固定底栏：左右与正文对齐，底部含安全区 */
 .footer {
-  padding: 0 40rpx;
+  padding: 24rpx 40rpx calc(24rpx + env(safe-area-inset-bottom));
+  background-color: rgba(255, 255, 255, 0.96);
+  box-sizing: border-box;
 }
 

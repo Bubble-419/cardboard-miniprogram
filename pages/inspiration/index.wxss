@@ -57,8 +57,8 @@
 }
 
 .navbar-left {
-  width: 80rpx;
-  height: 64rpx;
+  width: 96rpx;
+  height: 72rpx;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -66,10 +66,10 @@
 }
 
 .back-chevron {
-  font-size: 48rpx;
+  font-size: 64rpx;
   color: #1a3d2e;
   line-height: 1;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .navbar-center {
@@ -333,6 +333,7 @@
 /* 键盘升起后 Home Indicator 已被覆盖，去掉 safe-area 避免叠空隙 */
 .inspiration-bar-focused {
   padding-bottom: 18rpx;
+  background: rgba(243, 250, 246, 0.96);
 }
 
 .inspiration-composer {
@@ -444,7 +445,8 @@
   left: 0;
   right: 0;
   top: 0;
-  /* bottom 由内联样式动态留出输入栏 */
+  /* bottom 由内联样式按键盘高度留出输入栏 */
+  bottom: calc(180rpx + env(safe-area-inset-bottom));
   z-index: 50;
   background: transparent;
 }

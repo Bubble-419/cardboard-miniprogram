@@ -60,7 +60,8 @@ Page({
     tieBreak: false,
     viewerOpen: false,
     selectedWord: '',
-    selectedCard: null
+    selectedCard: null,
+    panelScrollY: true
   },
 
   _applyLayoutMetrics() {
@@ -96,11 +97,16 @@ Page({
 
   onUnload() {
     this._pageAlive = false;
+    if (this._panelMeasureTimer) {
+      clearTimeout(this._panelMeasureTimer);
+      this._panelMeasureTimer = null;
+    }
     this.stopPolling();
   },
 
   onResize() {
     this._applyLayoutMetrics();
+    this.schedulePanelScrollMeasure();
   },
 
   startPolling() {
@@ -182,7 +188,7 @@ Page({
   onTapContentTab(e) {
     const tab = Number(e.currentTarget.dataset.tab);
     if (!Number.isFinite(tab) || tab === this.data.contentTab) return;
-    this.setData({ contentTab: tab });
+    this.setContentTab(tab);
   },
 
   onPanelTouchStart(e) {
@@ -207,10 +213,48 @@ Page({
     if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
 
     if (dx < 0 && this.data.contentTab === 0) {
-      this.setData({ contentTab: 1 });
+      this.setContentTab(1);
     } else if (dx > 0 && this.data.contentTab === 1) {
-      this.setData({ contentTab: 0 });
+      this.setContentTab(0);
     }
+  },
+
+  setContentTab(tab) {
+    this.setData({
+      contentTab: tab,
+      panelScrollY: tab === 0
+    }, () => this.schedulePanelScrollMeasure());
+  },
+
+  schedulePanelScrollMeasure() {
+    if (this._panelMeasureTimer) {
+      clearTimeout(this._panelMeasureTimer);
+    }
+    this._panelMeasureTimer = setTimeout(() => {
+      this._panelMeasureTimer = null;
+      this.measurePanelScroll();
+    }, 50);
+  },
+
+  measurePanelScroll() {
+    if (!this._pageAlive) return;
+    if (this.data.contentTab !== 1) {
+      if (!this.data.panelScrollY) this.setData({ panelScrollY: true });
+      return;
+    }
+    const q = this.createSelectorQuery();
+    q.select('.card-scroll').boundingClientRect();
+    q.select('#rulesPanel').boundingClientRect();
+    q.exec((res) => {
+      if (!this._pageAlive) return;
+      const box = res && res[0];
+      const content = res && res[1];
+      if (!box || !content) return;
+      const needScroll = content.height > box.height + 1;
+      if (needScroll !== this.data.panelScrollY) {
+        this.setData({ panelScrollY: needScroll });
+      }
+    });
   },
 
   onTapLibraryCard(e) {

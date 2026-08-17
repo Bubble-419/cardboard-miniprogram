@@ -59,9 +59,6 @@
             <image class="deck-frame" src="/assets/bgCard/union-green.svg" mode="scaleToFill" />
             <image class="deck-watermark" src="/assets/bgCard/icon-center-confirm.svg" mode="aspectFit" />
             <text class="deck-value">{{item.value}}</text>
-            <view class="deck-edit-hint" wx:if="{{!fromGameView}}">
-              <text class="deck-edit-text">点击修改</text>
-            </view>
           </view>
           <text class="deck-label">{{item.label}}</text>
         </view>

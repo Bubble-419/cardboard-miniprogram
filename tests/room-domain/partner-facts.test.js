@@ -174,6 +174,50 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(next.partnerTurnStartedAt, next.partnerRoundStartedAt);
   });
 
+  it('ADVANCE_TURN archives each turn summary even inside the same round', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    room.currentPlayerIndex = 1;
+    room.currentPlayerName = '玩家1';
+    room.partnerCurrentRoundContent = {
+      playHistory: ['玩家1 出牌'],
+      discussionNotes: [],
+      playImages: [],
+      discussionImages: [],
+      playBlocks: [],
+      discussionBlocks: [],
+      images: [],
+      voiceLines: [],
+      turnRecords: []
+    };
+    room.revision = (room.revision || 1) + 1;
+    repo.rooms.set('30000001', room);
+
+    // 两人房：1 → 2 属于同一轮换人，仍必须留下玩家1的历史卡
+    const adv = await app.execute(
+      envelope({
+        commandId: 'p5-adv-archive',
+        type: COMMAND_TYPES.ADVANCE_TURN,
+        roomId: '30000001',
+        expectedRevision: room.revision
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(adv.ok, true, adv.errMsg);
+    assert.equal(adv.effects.incrementRound, false);
+
+    const next = repo.rooms.get('30000001');
+    assert.equal(next.currentPlayerIndex, 2);
+    assert.equal(next.currentRound, 1);
+    assert.equal(next.partnerRoundSummaries.length, 1);
+    assert.equal(next.partnerRoundSummaries[0].playerIndex, 1);
+    assert.deepEqual(next.partnerRoundSummaries[0].playHistory, ['玩家1 出牌']);
+    // 换手后当前内容必须清空，避免下一位玩家继承上一位纪要
+    assert.deepEqual(next.partnerCurrentRoundContent.playHistory, []);
+  });
+
   it('ADVANCE_TURN prefers currentPlayerIndex when workflow.activeSeatNo lags', async () => {
     const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
     const app = createRoomApplication(repo);

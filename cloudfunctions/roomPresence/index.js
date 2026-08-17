@@ -1583,9 +1583,9 @@ var require_room_domain = __commonJS({
         const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
         const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
         const forceIncrement = !!(payload && payload.incrementRound === true);
-        const shouldArchive = wrapped || forceIncrement;
+        const shouldIncrementRound = wrapped || forceIncrement;
         const prevRoundNo = room.workflow && room.workflow.roundNo || (room.currentRound != null ? Number(room.currentRound) : 1);
-        const roundNo = prevRoundNo + (shouldArchive ? 1 : 0);
+        const roundNo = prevRoundNo + (shouldIncrementRound ? 1 : 0);
         const turnId = `turn_r${roundNo}_s${nextSeat}`;
         const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
         const nextMember = nextUserId && room.membersByUserId ? room.membersByUserId[nextUserId] : null;
@@ -1594,7 +1594,7 @@ var require_room_domain = __commonJS({
         let partnerCurrentRoundContent = room.partnerCurrentRoundContent || null;
         let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
         let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
-        if (shouldArchive) {
+        {
           const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === "object" ? payload.roundSummary : null;
           const serverContent = room.partnerCurrentRoundContent;
           if (clientSummary || serverContent) {
@@ -1627,7 +1627,9 @@ var require_room_domain = __commonJS({
             turnRecords: [],
             aiSummary: { status: "pending" }
           };
-          currentRound += 1;
+          if (shouldIncrementRound) {
+            currentRound += 1;
+          }
           partnerRoundStartedAt = ts;
         }
         partnerRoundStartedAt = ts;
@@ -1683,7 +1685,7 @@ var require_room_domain = __commonJS({
             activeSeatNo: nextSeat,
             roundNo,
             turnId,
-            incrementRound: shouldArchive,
+            incrementRound: shouldIncrementRound,
             legacyPage: "gamepage"
           }
         });

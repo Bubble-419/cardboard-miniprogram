@@ -23,6 +23,9 @@ Page({
     inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
+    /** 键盘升起时把输入栏 fixed 到键盘上方；容器定高不可滚，系统顶页无效 */
+    inspirationLiftStyle: '',
+    inspirationMaskStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     navbarPaddingTop: 44
@@ -66,8 +69,12 @@ Page({
 
   onHide() {
     this._unbindInspirationKeyboard();
-    if (this.data.inspirationKeyboardHeight !== 0) {
-      this.setData({ inspirationKeyboardHeight: 0 });
+    if (this.data.inspirationKeyboardHeight !== 0 || this.data.inspirationLiftStyle) {
+      this._inspirationNativeFocused = false;
+      this.setData({
+        inspirationInputFocused: false,
+        ...this._resetInspirationKeyboardUi()
+      });
     }
   },
 
@@ -326,7 +333,7 @@ Page({
       if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationKeyboardHeight: 0
+        ...this._resetInspirationKeyboardUi()
       });
     }, 180);
   },
@@ -346,24 +353,78 @@ Page({
     this.setData({
       inspirationInputFocused: false,
       inspirationHoldKeyboard: false,
-      inspirationKeyboardHeight: 0
+      ...this._resetInspirationKeyboardUi()
     });
   },
 
   onInspirationKeyboardHeightChange(e) {
-    // adjust-position=true 已由系统顶页；禁止再 margin 抬栏，否则双通道上下跳
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height <= 0) {
-      if (this.data.inspirationKeyboardHeight !== 0) {
-        this.setData({ inspirationKeyboardHeight: 0 });
-      }
+      this._setInspirationKeyboardHeight(0);
       return;
     }
     if (active && height <= 0) return;
-    // 仅记录高度供调试/其它逻辑，不驱动布局
-    if (height === this.data.inspirationKeyboardHeight) return;
-    this.setData({ inspirationKeyboardHeight: height });
+    this._setInspirationKeyboardHeight(height);
+  },
+
+  _isDevtools() {
+    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
+    try {
+      const sys = wx.getSystemInfoSync();
+      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
+    } catch (e) {
+      this._isDevtoolsCached = false;
+    }
+    return this._isDevtoolsCached;
+  },
+
+  _buildInspirationKeyboardUi(keyboardHeight) {
+    const h = Math.max(0, Number(keyboardHeight) || 0);
+    if (h <= 0) {
+      return {
+        inspirationKeyboardHeight: 0,
+        inspirationLiftStyle: '',
+        inspirationMaskStyle: 'bottom: calc(180rpx + env(safe-area-inset-bottom))'
+      };
+    }
+    return {
+      inspirationKeyboardHeight: h,
+      inspirationLiftStyle: [
+        'position:fixed',
+        'left:0',
+        'right:0',
+        `bottom:${h}px`,
+        'margin:0',
+        'padding:18rpx 30rpx',
+        'z-index:80',
+        'box-sizing:border-box'
+      ].join(';'),
+      inspirationMaskStyle: `bottom: calc(${h}px + 136rpx)`
+    };
+  },
+
+  _setInspirationKeyboardHeight(height) {
+    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    // 聚焦中收到 0 高度多为抖动，保持当前抬升避免上下跳
+    if (
+      next <= 0
+      && (this._inspirationNativeFocused || this.data.inspirationInputFocused)
+    ) {
+      return;
+    }
+    const patch = this._buildInspirationKeyboardUi(next);
+    if (
+      patch.inspirationKeyboardHeight === this.data.inspirationKeyboardHeight
+      && patch.inspirationLiftStyle === (this.data.inspirationLiftStyle || '')
+    ) {
+      return;
+    }
+    this.setData(patch);
+  },
+
+  _resetInspirationKeyboardUi() {
+    return this._buildInspirationKeyboardUi(0);
   },
 
   _bindInspirationKeyboard() {
@@ -514,7 +575,7 @@ Page({
         inspirationInputFocused: false,
         inspirationAutoFocus: false,
         inspirationHoldKeyboard: false,
-        inspirationKeyboardHeight: 0
+        ...this._resetInspirationKeyboardUi()
       });
       wx.showToast({ title: '已保存', icon: 'success' });
       await this.loadInspirations();

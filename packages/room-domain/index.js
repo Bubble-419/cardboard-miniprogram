@@ -713,10 +713,11 @@ function executeCommand({
     const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
     const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
     const forceIncrement = !!(payload && payload.incrementRound === true);
-    const shouldArchive = wrapped || forceIncrement;
+    // 满圈才进下一轮；但每次换人都要归档刚结束的这一手，否则同轮内的历史卡会丢
+    const shouldIncrementRound = wrapped || forceIncrement;
     const prevRoundNo = (room.workflow && room.workflow.roundNo)
       || (room.currentRound != null ? Number(room.currentRound) : 1);
-    const roundNo = prevRoundNo + (shouldArchive ? 1 : 0);
+    const roundNo = prevRoundNo + (shouldIncrementRound ? 1 : 0);
     const turnId = `turn_r${roundNo}_s${nextSeat}`;
     const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
     const nextMember = nextUserId && room.membersByUserId
@@ -731,7 +732,7 @@ function executeCommand({
     let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
     let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
 
-    if (shouldArchive) {
+    {
       const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === 'object'
         ? payload.roundSummary
         : null;
@@ -770,6 +771,7 @@ function executeCommand({
             || []
         });
       }
+      // 每次换人都清空当前手内容，避免下一位玩家继承上一位的纪要
       partnerCurrentRoundContent = {
         playHistory: [],
         discussionNotes: [],
@@ -782,7 +784,9 @@ function executeCommand({
         turnRecords: [],
         aiSummary: { status: 'pending' }
       };
-      currentRound += 1;
+      if (shouldIncrementRound) {
+        currentRound += 1;
+      }
       partnerRoundStartedAt = ts;
     }
 
@@ -841,7 +845,7 @@ function executeCommand({
         activeSeatNo: nextSeat,
         roundNo,
         turnId,
-        incrementRound: shouldArchive,
+        incrementRound: shouldIncrementRound,
         legacyPage: 'gamepage'
       }
     });

@@ -1,5 +1,12 @@
 const cloud = require('wx-server-sdk');
 const { getCallerOpenId, assertRoomMember } = require('./roomAuth');
+const {
+  collectTurnRecords,
+  aggregateTurnScores,
+  aggregateRoomScores,
+  statsForPlayer,
+  hasTurnScoreData
+} = require('./aggregateTurnScores');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -8,7 +15,8 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /**
- * 获取房间排行榜：每个玩家的平均分
+ * 获取房间排行榜：每个玩家的平均分。
+ * 优先聚合合伙人表态归档（turnRecords）；无归档时回退 roomScores。
  */
 exports.main = async (event, context) => {
   const { roomId } = event || {};
@@ -29,6 +37,7 @@ exports.main = async (event, context) => {
   try {
     const memberCheck = await assertRoomMember(db, roomId, currentUserId);
     if (!memberCheck.ok) return memberCheck;
+    const room = memberCheck.room || {};
 
     const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
@@ -43,33 +52,24 @@ exports.main = async (event, context) => {
       avatarColor: m.avatarColor || '#5EC159'
     }));
 
-    const scoresRes = await db
-      .collection(ROOM_SCORES_COLLECTION)
-      .where({ roomId })
-      .get();
-
-    const scores = scoresRes.data || [];
-
-    const byPlayer = {};
-    scores.forEach(s => {
-      const idx = s.currentPlayerIndex;
-      if (!byPlayer[idx]) {
-        byPlayer[idx] = { sum: 0, count: 0 };
-      }
-      byPlayer[idx].sum += (s.score || 0);
-      byPlayer[idx].count += 1;
-    });
+    let byPlayer = aggregateTurnScores(collectTurnRecords(room));
+    if (!hasTurnScoreData(byPlayer)) {
+      const scoresRes = await db
+        .collection(ROOM_SCORES_COLLECTION)
+        .where({ roomId })
+        .get();
+      byPlayer = aggregateRoomScores(scoresRes.data || []);
+    }
 
     const leaderboard = members.map(m => {
-      const stats = byPlayer[m.playerIndex] || { sum: 0, count: 0 };
-      const avg = stats.count > 0 ? Math.round((stats.sum / stats.count) * 10) / 10 : 0;
+      const stats = statsForPlayer(byPlayer, m.playerIndex);
       return {
         playerIndex: m.playerIndex,
         nickName: m.nickName,
         avatarUrl: m.avatarUrl,
         avatarColor: m.avatarColor,
-        averageScore: avg,
-        scoreCount: stats.count
+        averageScore: stats.averageScore,
+        scoreCount: stats.scoreCount
       };
     });
 

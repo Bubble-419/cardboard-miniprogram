@@ -46,8 +46,27 @@
     </view>
   </view>
 
-  <!-- 底部再来一局/返回房间按钮（副屏不显示） -->
+  <!-- 房主可保留当前模式再来一轮，或清除模式返回房间 -->
   <view class="footer" wx:if="{{!loading && !error && !isSubScreen}}">
-    <button class="new-game-btn" bindtap="handleNewGame">{{from === 'closingEnd' ? '返回房间' : '再来一局'}}</button>
+    <block wx:if="{{from === 'closingEnd'}}">
+      <view class="footer-actions">
+        <button
+          class="return-room-btn"
+          disabled="{{actioning}}"
+          bindtap="handleReturnRoom"
+        >返回房间</button>
+        <button
+          class="new-game-btn"
+          disabled="{{actioning}}"
+          bindtap="handleAnotherRound"
+        >再来一轮</button>
+      </view>
+    </block>
+    <button
+      wx:else
+      class="new-game-btn"
+      disabled="{{actioning}}"
+      bindtap="handleNewGame"
+    >再来一局</button>
   </view>
 </view>

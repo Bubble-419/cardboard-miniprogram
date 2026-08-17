@@ -76,15 +76,16 @@
     </view>
   </scroll-view>
 
-  <!-- 灵感输入：系统顶起页面，勿绑定 focus 脉冲 -->
+  <!-- 灵感输入：页面定高不可滚，按键盘高度把输入栏抬到键盘上方 -->
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused}}"
-    style="bottom: calc(180rpx + env(safe-area-inset-bottom))"
+    style="{{inspirationMaskStyle}}"
     catchtouchstart="onInspirationDismissFocus"
   ></view>
   <view
     class="inspiration-bar {{inspirationInputFocused ? 'inspiration-bar-focused' : ''}}"
+    style="{{inspirationLiftStyle}}"
   >
     <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
       <scroll-view
@@ -129,8 +130,8 @@
           maxlength="2000"
           auto-height
           show-confirm-bar="{{false}}"
-          adjust-position="{{true}}"
-          cursor-spacing="120"
+          adjust-position="{{false}}"
+          cursor-spacing="24"
         />
         <view
           class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

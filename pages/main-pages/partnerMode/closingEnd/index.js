@@ -1,4 +1,5 @@
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const { goRoomPage, endPartnerSessionAndGoRoom } = require('../../../../utils/goRoomPage');
 
 Page({
   data: {
@@ -17,7 +18,15 @@ Page({
     const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
     clearLocalBrainstormProgress(roomId);
     this.setData({ roomId });
-    this._loadHostStatus();
+    // 结束脑暴后无需再点「查看排行榜」，直接进入
+    wx.redirectTo({
+      url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`,
+      fail: () => {
+        wx.reLaunch({
+          url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`
+        });
+      }
+    });
   },
 
   onUnload() {
@@ -82,13 +91,7 @@ Page({
   },
 
   _reLaunchRoom() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
-    clearLocalBrainstormProgress(roomId);
-    wx.reLaunch({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    goRoomPage(this.data.roomId || '');
   },
 
   onBackToRoom() {
@@ -109,36 +112,16 @@ Page({
   },
 
   async _goToRoom() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
     if (this._goingToRoom) return;
     this._goingToRoom = true;
-
-    const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
-    clearLocalBrainstormProgress(roomId);
-
-    // 仅房主可清空脑暴会话态 / 切换 partnerGamePhase；非房主调用会因权限被拒绝
-    // （见 cloudfunctions/updateRoomState 的 isCreator 校验），因此非房主直接
-    // 跳转回房间，不调用 updateRoomState，避免请求失败或写入半途状态。
-    if (this.data.isHost) {
+    this._stopFollowPoll();
+    if (this._hostStatusPromise) {
       try {
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: {
-            roomId,
-            currentPage: 'addPlayer',
-            partnerGamePhase: 'play',
-            partnerMasterMode: false,
-            resetClosingVotes: true,
-            clearBrainstormProgress: true,
-            brainstormSessionEnded: true
-          }
-        });
+        await this._hostStatusPromise;
       } catch (e) {
-        console.warn('closingEnd _goToRoom updateRoomState', e);
+        console.warn('closingEnd host status', e);
       }
     }
-
-    this._reLaunchRoom();
+    await endPartnerSessionAndGoRoom(this.data.roomId, { isHost: this.data.isHost });
   }
 });

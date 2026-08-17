@@ -158,6 +158,19 @@ function appendImageBlocks(blocks, urls) {
   return list;
 }
 
+/** 保留全部文字块，图片块最多 maxCount 张（按出现顺序） */
+function limitImageBlocks(blocks, maxCount) {
+  const max = Math.max(0, Number(maxCount) || 0);
+  const list = Array.isArray(blocks) ? blocks : [];
+  let n = 0;
+  return list.filter((b) => {
+    if (!b || b.type !== 'image') return true;
+    if (n >= max) return false;
+    n += 1;
+    return true;
+  });
+}
+
 const STATEMENT_LABELS = {
   allPass: '全部通过',
   partialPass: '部分通过',
@@ -177,6 +190,7 @@ module.exports = {
   appendTextBlock,
   appendTextSegments,
   appendImageBlocks,
+  limitImageBlocks,
   getStatementLabel,
   STATEMENT_LABELS
 };

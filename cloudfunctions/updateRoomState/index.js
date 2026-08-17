@@ -116,6 +116,18 @@ function deriveListsFromBlocks(blocks) {
   return { texts, images };
 }
 
+function limitImageBlocks(blocks, maxCount) {
+  const max = Math.max(0, Number(maxCount) || 0);
+  const list = Array.isArray(blocks) ? blocks : [];
+  let n = 0;
+  return list.filter((b) => {
+    if (!b || b.type !== 'image') return true;
+    if (n >= max) return false;
+    n += 1;
+    return true;
+  });
+}
+
 function normalizePartnerRoundContent(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const legacyImages = Array.isArray(src.images) ? src.images.slice() : [];
@@ -231,7 +243,8 @@ exports.main = async (event, context) => {
     partnerCurrentRoundContent,
     partnerClosingCreativePoints,
     partnerRoundStartedAt,
-    editingProblemId
+    editingProblemId,
+    archiveTurn
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -287,6 +300,27 @@ exports.main = async (event, context) => {
     };
     const roundPatch = {};
 
+    /** 归档当前出牌玩家这一手的纪要，并清空当前手内容 */
+    const archiveActingTurn = async () => {
+      const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+      const contentRoom = (freshRes.data && freshRes.data[0]) || room;
+      const serverContent = contentRoom.partnerCurrentRoundContent;
+      const clientSummary = roundSummary && typeof roundSummary === 'object' ? roundSummary : null;
+      if (!serverContent && !clientSummary) return;
+      const summaries = Array.isArray(contentRoom.partnerRoundSummaries)
+        ? contentRoom.partnerRoundSummaries.slice()
+        : [];
+      const actingIdx = room.currentPlayerIndex != null
+        ? Number(room.currentPlayerIndex)
+        : null;
+      summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent, {
+        playerIndex: actingIdx,
+        playerName: room.currentPlayerName || (actingIdx != null ? `玩家${actingIdx}` : '')
+      }));
+      roundPatch.partnerRoundSummaries = summaries;
+      roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+    };
+
     if (incrementRound === true) {
       if (event.clearBrainstormProgress === true) {
         // 再来一轮：重置到第 1 轮，清空纪要/表达，而不是 currentRound+=1
@@ -323,26 +357,13 @@ exports.main = async (event, context) => {
           console.warn('[updateRoomState] clear roomScores on brainstorm reset', clearScoreErr);
         }
       } else {
-        const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
-        const contentRoom = (freshRes.data && freshRes.data[0]) || room;
-        const serverContent = contentRoom.partnerCurrentRoundContent;
-        const clientSummary = roundSummary && typeof roundSummary === 'object' ? roundSummary : null;
-        if (serverContent || clientSummary) {
-          const summaries = Array.isArray(room.partnerRoundSummaries)
-            ? room.partnerRoundSummaries.slice()
-            : [];
-          const actingIdx = room.currentPlayerIndex != null
-            ? Number(room.currentPlayerIndex)
-            : null;
-          summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent, {
-            playerIndex: actingIdx,
-            playerName: room.currentPlayerName || (actingIdx != null ? `玩家${actingIdx}` : '')
-          }));
-          roundPatch.partnerRoundSummaries = summaries;
-          roundPatch.partnerCurrentRoundContent = emptyRoundContent;
-        }
+        await archiveActingTurn();
         currentRound += 1;
       }
+      roundPatch.partnerRoundStartedAt = Date.now();
+    } else if (archiveTurn === true) {
+      // 同轮换人：也要归档刚结束的这一手，否则该玩家的历史卡会丢
+      await archiveActingTurn();
       roundPatch.partnerRoundStartedAt = Date.now();
     }
     if (currentPage === 'auth') {
@@ -598,11 +619,11 @@ exports.main = async (event, context) => {
         };
       }
       const incoming = partnerClosingCreativePoints;
-      const blocks = normalizeContentBlocks(
+      const blocks = limitImageBlocks(normalizeContentBlocks(
         incoming.blocks,
         incoming.texts || incoming.playHistory,
         incoming.images
-      );
+      ), 1);
       const derived = deriveListsFromBlocks(blocks);
       updateData.partnerClosingCreativePoints = {
         blocks,

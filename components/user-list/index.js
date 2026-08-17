@@ -90,6 +90,20 @@ Component({
     maxVisible: {
       type: Number,
       value: 0
+    },
+    /**
+     * 视觉变体：
+     * - default：通用头像条（房间顶栏 / 卧底等）
+     * - partner-game：合伙人游戏进程，对齐 Figma「头像类型」六态
+     */
+    visualMode: {
+      type: String,
+      value: 'default'
+    },
+    /** 当前滑动卡片是否为出牌页（行动卡）；用于区分「行动中」与「行动中&&非行动页」 */
+    onActionPage: {
+      type: Boolean,
+      value: true
     }
   },
 
@@ -99,8 +113,11 @@ Component({
     resolvedSelectedUser: null,
     resolvedIndicatorUser: null,
     actingFrameMode: 'spin',
+    /** 当前行动卡是否可见；可见时倒计时由卡片框承担，否则转移到行动者头像 */
+    actingOnActionPage: true,
     displayList: [],
-    overflowCount: 0
+    overflowCount: 0,
+    isPartnerGameVisual: false
   },
 
   observers: {
@@ -120,7 +137,7 @@ Component({
         overflowCount: nextOverflow
       });
     },
-    'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame': function syncFrameUsers() {
+    'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame, visualMode, onActionPage': function syncFrameUsers() {
       this._syncFrameUsers();
       this._syncActingFrameMode();
     },
@@ -164,9 +181,14 @@ Component({
       this._expireAnimPlayed = false;
       this._expiringTriggered = false;
       this._clearExpireTimer();
-      if (this.data.actingFrameMode === 'timer' || this.data.actingFrameMode === 'expiring') {
+      if (
+        this.data.actingFrameMode === 'timer'
+        || this.data.actingFrameMode === 'expiring'
+        || this.data.actingFrameMode === 'static-action'
+      ) {
         this.setData({ actingFrameMode: 'spin' });
       }
+      this._syncFrameUsers();
       this._syncActingFrameMode();
       this._startExpireWatch();
     },
@@ -211,6 +233,15 @@ Component({
       }
     },
 
+    _isPartnerGameVisual() {
+      return this.properties.visualMode === 'partner-game';
+    },
+
+    _sameUserId(a, b) {
+      if (a == null || b == null || a === '' || b === '') return false;
+      return String(a) === String(b);
+    },
+
     _syncFrameUsers() {
       const acting = this.properties.actingUser != null
         ? this.properties.actingUser
@@ -218,13 +249,26 @@ Component({
       const selected = this.properties.selectedUser;
       const indicator = this.properties.indicatorUser;
       const showSelected = this.properties.enableSelectedFrame === true;
+      const partnerGame = this._isPartnerGameVisual();
+      // 合伙人游戏页：独立查看可叠加在行动者上，不因与 acting 相同而丢弃
+      const resolvedSelected = showSelected && selected != null
+        && (partnerGame || !this._sameUserId(selected, acting))
+        ? selected
+        : null;
+      const onActionPage = this.properties.onActionPage !== false;
       this.setData({
+        isPartnerGameVisual: partnerGame,
         resolvedActingUser: this.properties.showActingFrame ? acting : null,
-        resolvedSelectedUser: showSelected && selected != null && selected != acting
-          ? selected
-          : null,
-        resolvedIndicatorUser: indicator != null ? indicator : null
+        resolvedSelectedUser: resolvedSelected,
+        resolvedIndicatorUser: indicator != null ? indicator : null,
+        actingOnActionPage: onActionPage
       });
+    },
+
+    /** 合伙人页仅在查看历史卡时把倒计时绘制到行动者头像；通用模式保持原行为 */
+    _shouldUseAvatarTimerFx() {
+      if (!this._isPartnerGameVisual()) return true;
+      return this.properties.onActionPage === false;
     },
 
     _getTurnStartedAt() {
@@ -258,11 +302,13 @@ Component({
       this._stopExpireWatch();
       // 定时按共享锚点判定是否该切循环动效，避免只靠属性变化导致各端不同步
       this._expireWatch = setInterval(() => {
+        if (!this._shouldUseAvatarTimerFx()) return;
         if (this.data.actingFrameMode === 'timer' && this._hasFirstCountdownEnded()) {
           this._triggerExpireAnimation();
         } else if (
           this.data.actingFrameMode !== 'spin'
           && this.data.actingFrameMode !== 'expiring'
+          && this.data.actingFrameMode !== 'static-action'
           && this._hasFirstCountdownEnded()
           && this.properties.showActingFrame
           && this.data.resolvedActingUser != null
@@ -310,6 +356,17 @@ Component({
         this._expiringTriggered = false;
         this._expireAnimPlayed = false;
         this._enterSpinMode();
+        return;
+      }
+
+      // 当前出牌卡可见：倒计时已经画在卡片四周，头像只显示行动中单环
+      if (!this._shouldUseAvatarTimerFx()) {
+        this._clearExpireTimer();
+        this._stopActingTimerDraw();
+        this._expiringTriggered = false;
+        if (this.data.actingFrameMode !== 'static-action') {
+          this.setData({ actingFrameMode: 'static-action' });
+        }
         return;
       }
 
