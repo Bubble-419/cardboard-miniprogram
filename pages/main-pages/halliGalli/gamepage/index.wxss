@@ -9,10 +9,22 @@
 
 .main-scroll {
   flex: 1;
-  height: 100%;
+  min-height: 0;
 }
 
-/* ===== 顶部区（头像 + 情境） ===== */
+/* 固定顶栏：贴页顶，不随内容滚动；状态栏由 player-top-bar.padTop 负责 */
+.topbar-fixed {
+  flex-shrink: 0;
+  padding: 0 40rpx;
+}
+
+/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+.topbar-fixed > player-top-bar {
+  margin-left: -40rpx;
+  width: calc(100% + 40rpx);
+}
+
+/* ===== 顶部区（情境） ===== */
 .header-section {
   padding: 0 40rpx 24rpx;
   display: flex;

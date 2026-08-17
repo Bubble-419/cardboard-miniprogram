@@ -16,6 +16,7 @@ const {
   runAfterUserAuth
 } = require('./userAuthSession');
 const { PROFILE_STORAGE_KEY } = require('./wxUserAvatar');
+const { upsertHistoryWorkshop } = require('./historyWorkshops');
 
 const HOME_URL = '/pages/main-pages/aaa/index';
 const HOME_ROUTE = 'pages/main-pages/aaa/index';
@@ -88,6 +89,17 @@ function clearRoomLocalState(roomId) {
   const id = roomId
     || (getApp().globalData && getApp().globalData.roomId)
     || '';
+
+  // 房间结束/退出：刷新一次首页历史工作坊记录的时间，方便回看
+  if (id) {
+    try {
+      const app = getApp();
+      const workshopName = (app && app.globalData && app.globalData.workshopName) || '';
+      upsertHistoryWorkshop({ roomId: id, name: workshopName });
+    } catch (e) {
+      // ignore
+    }
+  }
 
   ROOM_STORAGE_KEYS.forEach((key) => {
     if (key === PENDING_TOAST_KEY) return; // toast 标记由消费逻辑处理

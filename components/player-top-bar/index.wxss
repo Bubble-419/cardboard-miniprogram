@@ -2,6 +2,8 @@
   width: 100%;
   box-sizing: border-box;
   flex-shrink: 0;
+  /* 与 submitProblem / selectProblem 等页顶栏左内边距对齐 */
+  padding-left: 40rpx;
 }
 
 .top-bar {

@@ -7,6 +7,32 @@
   box-sizing: border-box;
 }
 
+/* 历史回顾：一屏定高，禁止整页滚动；灵感栏贴底并可随键盘上移 */
+.container-history-review {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.container-history-review .page-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.container-history-review .card-area {
+  flex: 1;
+  min-height: 0;
+}
+
+.container-history-review .inspiration-bar-history {
+  margin-top: 12rpx;
+  margin-bottom: 0;
+  padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: #fafafa;
+}
+
 .page-body {
   flex: 1;
   min-height: 0;
@@ -81,6 +107,10 @@
   cursor: pointer;
 }
 
+.problem-chip-tappable:active {
+  opacity: 0.82;
+}
+
 .problem-icon {
   width: 40rpx;
   height: 40rpx;
@@ -136,6 +166,21 @@
 .user-section {
   padding: 10rpx 30rpx 0;
   flex-shrink: 0;
+}
+
+.history-review-banner {
+  display: flex;
+  justify-content: center;
+  padding: 4rpx 0 0;
+  flex-shrink: 0;
+}
+
+.history-review-banner-text {
+  font-size: 22rpx;
+  color: #7a8a76;
+  background: rgba(122, 138, 118, 0.12);
+  padding: 4rpx 20rpx;
+  border-radius: 20rpx;
 }
 
 /* partner-avatar 滚动行：左缘与主卡片对齐（swiper 40rpx + item 8rpx - avatar 8rpx padding） */
@@ -453,25 +498,12 @@
   position: relative;
   flex-shrink: 0;
   align-self: stretch;
+  /* 预留表达按钮高度，避免上探进 spectator-chat（原生 scroll-view 会吞掉 tap） */
+  padding-top: 84rpx;
   margin-left: -28rpx;
   margin-right: -28rpx;
   z-index: 5;
   overflow: visible;
-}
-
-.spectator-express-row {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  min-height: 60rpx;
-  margin-top: 12rpx;
-  margin-bottom: 16rpx;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 8;
 }
 
 .spectator-express-dismiss-mask {
@@ -684,14 +716,13 @@
 .spectator-express-dock {
   position: absolute;
   right: 44rpx;
-  /* bottom 由 scoreSheetVisiblePx 内联绑定，贴在打分裁剪区顶边上方 */
+  /* bottom 由 scoreSheetVisiblePx 内联绑定，贴在打分裁剪区顶边上方并随上移 */
   margin-bottom: 16rpx;
-  z-index: 6;
+  z-index: 8;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
-  /* 不参与抽屉拖拽，避免误触 */
   pointer-events: auto;
 }
 

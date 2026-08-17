@@ -1,17 +1,19 @@
 <view class="container">
+  <!-- 顶部：房间入口+头像堆叠，固定不随内容滚动 -->
+  <view class="topbar-fixed">
+    <player-top-bar
+      avatarList="{{avatarList}}"
+      maxVisible="{{5}}"
+      enableAdd="{{true}}"
+      bind:goroom="handleGoRoom"
+      bind:addtap="handleGoBack"
+    />
+  </view>
+
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
 
-    <!-- 顶部：房间入口+头像堆叠 + 情境格子 -->
+    <!-- 情境格子 -->
     <view class="header-section">
-      <player-top-bar
-        avatarList="{{avatarList}}"
-        maxVisible="{{5}}"
-        enableAdd="{{true}}"
-        bind:goroom="handleGoRoom"
-        bind:addtap="handleGoBack"
-      />
-
-      <!-- 情境展示 -->
       <context-display bg="{{selectedBG}}" />
     </view>
 

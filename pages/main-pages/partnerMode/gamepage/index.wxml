@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container {{isHistoryReview ? 'container-history-review' : ''}}">
   <view class="page-body">
     <!-- 顶部：房间入口 + 设计问题（与微信胶囊垂直齐平） -->
     <view
@@ -37,19 +37,19 @@
     <view class="user-section">
       <user-list
         avatarList="{{avatarList}}"
-        actingUser="{{currentPlayerIndex}}"
-        selectedUser="{{selectedPlayerIndex}}"
+        actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
+        selectedUser="{{isHistoryReview ? -1 : selectedPlayerIndex}}"
         indicatorUser="{{indicatorPlayerIndex}}"
         enableAdd="{{false}}"
         isFold="{{true}}"
         showName="{{false}}"
-        showActingFrame="{{gamepagePhase !== 'closing'}}"
-        enableSelectedFrame="{{gamepagePhase !== 'closing'}}"
-        enableAvatarTap="{{gamepagePhase !== 'closing'}}"
-        roundStartedAt="{{avatarRoundStartedAt}}"
-        roundTimerActive="{{roundTimerVisible && roundTimerReady}}"
+        showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
+        roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
         roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
-        suppressTimerCanvas="{{showHostStatementTip}}"
+        suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
         bindavatartap="handleAvatarTap"
       />
     </view>
@@ -57,7 +57,7 @@
     <view class="divider-line"></view>
 
     <!-- 收尾阶段：全员通过后先补全符文，房主点下一步后再创意点复盘 -->
-    <block wx:if="{{gamepagePhase === 'closing'}}">
+    <block wx:if="{{!isHistoryReview && gamepagePhase === 'closing'}}">
       <view class="card-area">
         <view class="closing-card-stage">
           <!-- 补全符文 -->
@@ -98,10 +98,11 @@
                 <textarea
                   class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
                   value="{{closingCreativeEditText}}"
+                  disabled="{{!isHost}}"
                   bindfocus="onClosingCreativeFocus"
                   bindinput="onClosingCreativeInput"
                   bindblur="onClosingCreativeBlur"
-                  placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                  placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : (isHost ? '点击开始记录' : '等待房主记录')}}"
                   placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
                   maxlength="500"
                   auto-height
@@ -109,7 +110,7 @@
                   show-confirm-bar="{{false}}"
                   adjust-position="{{true}}"
                   hold-keyboard="{{true}}"
-                  cursor-spacing="8"
+                  cursor-spacing="40"
                 />
               </view>
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
@@ -123,7 +124,7 @@
                 <view class="closing-deck-capture">
                   <view
                     class="closing-deck-capture-inner"
-                    catchtap="onClosingCreativeAddImage"
+                    catchtap="{{isHost ? 'onClosingCreativeAddImage' : ''}}"
                   >
                     <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
                       <image
@@ -135,7 +136,7 @@
                         catchtap="onClosingCreativePreview"
                       />
                     </block>
-                    <view class="closing-deck-capture-frame" wx:if="{{!closingHasDeckImage}}">
+                    <view class="closing-deck-capture-frame" wx:if="{{!closingHasDeckImage && isHost}}">
                       <image
                         class="closing-deck-camera-icon"
                         src="/assets/partnerMode/icon-closing-deck-camera.svg"
@@ -245,6 +246,19 @@
         easing-function="easeOutCubic"
       >
         <!-- 已完成轮次的文字纪要（时间线：越左越早） -->
+        <swiper-item
+          class="card-swiper-item"
+          wx:if="{{isHistoryReview && !displayRoundSummaries.length}}"
+        >
+          <view class="game-card game-card-muted">
+            <view class="card-header-row">
+              <text class="card-section-title card-section-title-inline">历史回顾</text>
+            </view>
+            <view class="card-scroll-inner" style="padding: 48rpx 24rpx;">
+              <view class="card-bullet card-bullet-empty">· 暂无轮次纪要</view>
+            </view>
+          </view>
+        </swiper-item>
         <swiper-item
           class="card-swiper-item"
           wx:for="{{displayRoundSummaries}}"
@@ -406,8 +420,8 @@
           </view>
         </swiper-item>
 
-        <!-- 当前轮次：出牌并解释 / 提出疑问并讨论 -->
-        <swiper-item class="card-swiper-item">
+        <!-- 当前轮次：出牌并解释 / 提出疑问并讨论；历史回顾只看纪要，不展示当前出牌卡 -->
+        <swiper-item class="card-swiper-item" wx:if="{{!isHistoryReview}}">
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible && roundTimerReady}}"
@@ -684,52 +698,55 @@
                   catchtap="closeExpressComposer"
                 ></view>
 
-                <!-- 表达入口：文档流，避免 absolute 叠在原生 scroll-view / 打分条上导致点按无效 -->
-                <view class="spectator-express-row">
+                <view class="spectator-bottom-stack">
+                  <!-- 表达入口：贴打分裁剪区顶边，随 scoreSheetVisiblePx 上移 -->
                   <view
-                    class="spectator-express-composer"
-                    wx:if="{{expressComposerOpen}}"
-                    catchtap="noop"
+                    class="spectator-express-dock {{expressComposerOpen ? 'spectator-express-dock-open' : ''}}"
+                    style="bottom: {{scoreSheetVisiblePx}}px;"
                   >
-                    <input
-                      class="spectator-express-input"
-                      value="{{expressDraftText}}"
-                      focus="{{expressInputFocus}}"
-                      maxlength="40"
-                      confirm-type="send"
-                      hold-keyboard="{{true}}"
-                      placeholder="说点什么…"
-                      placeholder-class="spectator-express-placeholder"
-                      bindinput="onExpressInput"
-                      bindconfirm="submitExpress"
-                      bindblur="onExpressComposerBlur"
-                    />
                     <view
-                      class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                      catchtap="submitExpress"
+                      class="spectator-express-composer"
+                      wx:if="{{expressComposerOpen}}"
+                      catchtap="noop"
+                    >
+                      <input
+                        class="spectator-express-input"
+                        value="{{expressDraftText}}"
+                        focus="{{expressComposerOpen}}"
+                        maxlength="40"
+                        confirm-type="send"
+                        hold-keyboard="{{true}}"
+                        placeholder="说点什么…"
+                        placeholder-class="spectator-express-placeholder"
+                        bindinput="onExpressInput"
+                        bindconfirm="submitExpress"
+                        bindblur="onExpressComposerBlur"
+                      />
+                      <view
+                        class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
+                        catchtap="submitExpress"
+                      >
+                        <image
+                          class="spectator-express-send-icon"
+                          src="/assets/partnerMode/icon-express-send.png"
+                          mode="aspectFit"
+                        />
+                      </view>
+                    </view>
+                    <view
+                      wx:else
+                      class="spectator-express-fab"
+                      hover-class="spectator-express-fab-hover"
+                      catchtap="openExpressComposer"
                     >
                       <image
-                        class="spectator-express-send-icon"
-                        src="/assets/partnerMode/icon-express-send.png"
+                        class="spectator-express-fab-bubble"
+                        src="/assets/partnerMode/icon-express-bubble.svg"
                         mode="aspectFit"
                       />
                     </view>
                   </view>
-                  <view
-                    wx:else
-                    class="express-fab-btn"
-                    hover-class="spectator-express-fab-hover"
-                    catchtap="openExpressComposer"
-                  >
-                    <image
-                      class="express-fab-bubble"
-                      src="/assets/partnerMode/icon-express-bubble.svg"
-                      mode="aspectFit"
-                    />
-                  </view>
-                </view>
 
-                <view class="spectator-bottom-stack">
                   <!-- 占位：仅保留收起高度，避免上方内容随展开抖动 -->
                   <view class="score-sheet-spacer" style="height: {{scoreSheetCollapsedPx}}px;"></view>
 
@@ -788,51 +805,6 @@
                     </view>
                   </view>
                 </view>
-
-                <!--
-                  表达入口必须在 score-sheet-clip 外：
-                  clip 为 overflow:hidden，原先 dock 用 bottom:100% 挂在抽屉顶会被裁掉
-                -->
-                <view
-                  class="card-express-corner spectator-play-express-corner {{expressComposerOpen ? 'card-express-corner-open' : ''}}"
-                  style="bottom: {{scoreSheetVisiblePx + 8}}px;"
-                >
-                  <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
-                    <input
-                      class="spectator-express-input"
-                      value="{{expressDraftText}}"
-                      focus="{{expressComposerOpen}}"
-                      maxlength="40"
-                      confirm-type="send"
-                      placeholder="说点什么…"
-                      placeholder-class="spectator-express-placeholder"
-                      bindinput="onExpressInput"
-                      bindconfirm="submitExpress"
-                      bindblur="onExpressComposerBlur"
-                    />
-                    <view
-                      class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                      catchtap="submitExpress"
-                    >
-                      <image
-                        class="spectator-express-send-icon"
-                        src="/assets/partnerMode/icon-express-send.png"
-                        mode="aspectFit"
-                      />
-                    </view>
-                  </view>
-                  <view
-                    wx:else
-                    class="express-fab-btn"
-                    catchtap="openExpressComposer"
-                  >
-                    <image
-                      class="express-fab-bubble"
-                      src="/assets/partnerMode/icon-express-bubble.svg"
-                      mode="aspectFit"
-                    />
-                  </view>
-                </view>
               </view>
 
               <!-- 出牌玩家：匿名表达入口在卡片右下角 -->
@@ -866,8 +838,11 @@
       </view>
     </view>
 
-    <!-- 灵感记录：文档流 + 键盘时 transform 上移；勿绑 focus=false -->
-    <view class="inspiration-bar" style="{{inspirationLiftStyle}}">
+    <!-- 灵感记录：图标进灵感空间 + 底栏快捷输入 -->
+    <view
+      class="inspiration-bar {{isHistoryReview ? 'inspiration-bar-history' : ''}} {{inspirationKeyboardHeight > 0 && isHistoryReview ? 'inspiration-bar-history-lifted' : ''}}"
+      style="{{inspirationLiftStyle}}"
+    >
       <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
         <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
         <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
@@ -917,7 +892,7 @@
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
             confirm-type="done"
-            adjust-position="{{true}}"
+            adjust-position="{{!isHistoryReview}}"
             cursor-spacing="120"
           />
           <view
@@ -946,7 +921,7 @@
   <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
   <view
     class="page-footer {{inspirationKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
-    wx:if="{{!((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
+    wx:if="{{!isHistoryReview && !((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">
       <button

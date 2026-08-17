@@ -449,7 +449,7 @@ var require_spy = __commonJS({
         voteDeadlineMs: spyGame.voteDeadlineMs || VOTE_ROUND_MS,
         voteStatus: {
           votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes) ? voteStatus.votedPlayerIndexes : [],
-          abstainPlayerIndexes: [],
+          abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes) ? voteStatus.abstainPlayerIndexes : [],
           votedCount,
           totalVoters: aliveCount
         },
@@ -727,7 +727,6 @@ var require_spy = __commonJS({
           const order = spyGame.speakOrder || [];
           spyGame.currentSpeakIndex = order.length;
           spyGame = beginVotePhase(spyGame, ts);
-          spyGame.tieBreak = false;
           const page = pageForPhase(SPY_PHASE.VOTE);
           const next = patchSpyRoom(room, spyGame, page, ts);
           const result = okSpy(commandId, next, { autoVote: true, finished: true });
@@ -766,7 +765,6 @@ var require_spy = __commonJS({
           if (!isHost) return fail(ERR.HOST_REQUIRED);
           spyGame.currentSpeakIndex = order.length;
           spyGame = beginVotePhase(spyGame, ts);
-          spyGame.tieBreak = false;
           const page = pageForPhase(SPY_PHASE.VOTE);
           const next2 = patchSpyRoom(room, spyGame, page, ts);
           const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
@@ -780,7 +778,6 @@ var require_spy = __commonJS({
         if (nextIdx >= order.length) {
           spyGame.currentSpeakIndex = order.length;
           spyGame = beginVotePhase(spyGame, ts);
-          spyGame.tieBreak = false;
           const page = pageForPhase(SPY_PHASE.VOTE);
           const next2 = patchSpyRoom(room, spyGame, page, ts);
           const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
@@ -807,25 +804,32 @@ var require_spy = __commonJS({
         }
         const voteStatus = {
           votedPlayerIndexes: [...spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes || []],
-          abstainPlayerIndexes: [],
+          abstainPlayerIndexes: [...spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes || []],
           tally: { ...spyGame.voteStatus && spyGame.voteStatus.tally || {} },
           ballots: { ...spyGame.voteStatus && spyGame.voteStatus.ballots || {} }
         };
         if (indexIncludes(voteStatus.votedPlayerIndexes, seatNo)) {
           return fail(ERR.ALREADY_VOTED, "\u5DF2\u6295\u7968\uFF0C\u4E0D\u53EF\u4FEE\u6539");
         }
-        const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
-        if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
-          return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6");
+        const isAbstain = !!(payload && payload.abstain);
+        if (isAbstain) {
+          voteStatus.abstainPlayerIndexes.push(seatNo);
+          voteStatus.ballots[String(seatNo)] = { abstain: true, targetPlayerIndex: null };
+          voteStatus.votedPlayerIndexes.push(seatNo);
+        } else {
+          const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
+          if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
+            return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6");
+          }
+          const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
+          if (!target || target.alive === false) {
+            return fail(ERR.INVALID_ARGUMENT, "\u76EE\u6807\u4E0D\u53EF\u6295\u7968");
+          }
+          const key = String(targetPlayerIndex);
+          voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
+          voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
+          voteStatus.votedPlayerIndexes.push(seatNo);
         }
-        const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
-        if (!target || target.alive === false) {
-          return fail(ERR.INVALID_ARGUMENT, "\u76EE\u6807\u4E0D\u53EF\u6295\u7968");
-        }
-        const key = String(targetPlayerIndex);
-        voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
-        voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
-        voteStatus.votedPlayerIndexes.push(seatNo);
         spyGame.voteStatus = voteStatus;
         const aliveVoters = (spyGame.players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true);
         const allVoted = aliveVoters.every((p) => indexIncludes(voteStatus.votedPlayerIndexes, p.playerIndex));

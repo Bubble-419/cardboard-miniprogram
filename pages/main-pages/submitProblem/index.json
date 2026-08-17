@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "提交设计问题",
   "navigationStyle": "custom",
+  "disableScroll": true,
   "usingComponents": {
     "player-top-bar": "/components/player-top-bar/index",
     "context-display": "/components/context-display/index",

@@ -233,7 +233,9 @@ function publicSpyGame(spyGame, assignments) {
       votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes)
         ? voteStatus.votedPlayerIndexes
         : [],
-      abstainPlayerIndexes: [],
+      abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes)
+        ? voteStatus.abstainPlayerIndexes
+        : [],
       votedCount,
       totalVoters: aliveCount
     },
@@ -542,7 +544,7 @@ function executeSpyCommand(ctx) {
       const order = spyGame.speakOrder || [];
       spyGame.currentSpeakIndex = order.length;
       spyGame = beginVotePhase(spyGame, ts);
-      spyGame.tieBreak = false;
+      // 保留 tieBreak：平票加时陈述后开票，投票页需继续展示平票提示
       const page = pageForPhase(SPY_PHASE.VOTE);
       const next = patchSpyRoom(room, spyGame, page, ts);
       const result = okSpy(commandId, next, { autoVote: true, finished: true });
@@ -584,7 +586,7 @@ function executeSpyCommand(ctx) {
       if (!isHost) return fail(ERR.HOST_REQUIRED);
       spyGame.currentSpeakIndex = order.length;
       spyGame = beginVotePhase(spyGame, ts);
-      spyGame.tieBreak = false;
+      // 保留 tieBreak：平票加时陈述后开票，投票页需继续展示平票提示
       const page = pageForPhase(SPY_PHASE.VOTE);
       const next = patchSpyRoom(room, spyGame, page, ts);
       const result = okSpy(commandId, next, { finished: true, autoVote: true });
@@ -599,7 +601,7 @@ function executeSpyCommand(ctx) {
     if (nextIdx >= order.length) {
       spyGame.currentSpeakIndex = order.length;
       spyGame = beginVotePhase(spyGame, ts);
-      spyGame.tieBreak = false;
+      // 保留 tieBreak：平票加时陈述后开票，投票页需继续展示平票提示
       const page = pageForPhase(SPY_PHASE.VOTE);
       const next = patchSpyRoom(room, spyGame, page, ts);
       const result = okSpy(commandId, next, { finished: true, autoVote: true });
@@ -629,7 +631,7 @@ function executeSpyCommand(ctx) {
 
     const voteStatus = {
       votedPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes) || [])],
-      abstainPlayerIndexes: [],
+      abstainPlayerIndexes: [...((spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes) || [])],
       tally: { ...((spyGame.voteStatus && spyGame.voteStatus.tally) || {}) },
       ballots: { ...((spyGame.voteStatus && spyGame.voteStatus.ballots) || {}) }
     };
@@ -637,19 +639,27 @@ function executeSpyCommand(ctx) {
       return fail(ERR.ALREADY_VOTED, '已投票，不可修改');
     }
 
-    const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
-    if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
-      return fail(ERR.INVALID_ARGUMENT, '请选择一名其他玩家');
-    }
-    const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
-    if (!target || target.alive === false) {
-      return fail(ERR.INVALID_ARGUMENT, '目标不可投票');
-    }
+    const isAbstain = !!(payload && payload.abstain);
+    if (isAbstain) {
+      // 弃票：记为已提交，但不计入任何人的得票
+      voteStatus.abstainPlayerIndexes.push(seatNo);
+      voteStatus.ballots[String(seatNo)] = { abstain: true, targetPlayerIndex: null };
+      voteStatus.votedPlayerIndexes.push(seatNo);
+    } else {
+      const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
+      if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
+        return fail(ERR.INVALID_ARGUMENT, '请选择一名其他玩家');
+      }
+      const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
+      if (!target || target.alive === false) {
+        return fail(ERR.INVALID_ARGUMENT, '目标不可投票');
+      }
 
-    const key = String(targetPlayerIndex);
-    voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
-    voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
-    voteStatus.votedPlayerIndexes.push(seatNo);
+      const key = String(targetPlayerIndex);
+      voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
+      voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
+      voteStatus.votedPlayerIndexes.push(seatNo);
+    }
     spyGame.voteStatus = voteStatus;
 
     const aliveVoters = (spyGame.players || [])

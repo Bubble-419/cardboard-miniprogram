@@ -52,6 +52,10 @@ Component({
         return;
       }
       this.setData({ displayItems: enrichDisplayItems(buildContextDisplayItems(bg)) });
+    },
+
+    onDisplayTap() {
+      this.triggerEvent('opentap');
     }
   }
 });

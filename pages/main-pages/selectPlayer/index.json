@@ -2,6 +2,7 @@
   "navigationBarTitleText": "",
   "navigationStyle": "custom",
   "disableSwipeBack": true,
+  "disableScroll": true,
   "usingComponents": {
     "page-footer": "/components/page-footer/index"
   }

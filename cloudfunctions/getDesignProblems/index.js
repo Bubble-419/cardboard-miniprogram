@@ -41,16 +41,31 @@ exports.main = async (event, context) => {
       .where({ roomId, entryType: ENTRY_TYPE })
       .get();
 
-    const problems = (problemsRes.data || []).map((item) => ({
-      id: item._id,
-      text: item.text || item.problemText || '',
-      userId: item.userId || '',
-      playerIndex: item.playerIndex,
-      nickName: item.nickName || '',
-      submitTime: toTimestamp(item.updateTime || item.updatedAt || item.createTime || item.submitTime)
-    }));
+    const problems = (problemsRes.data || []).map((item) => {
+      // 排序只用首次提交时间；编辑只改 updateTime，不得影响顺序
+      const createTime = toTimestamp(
+        item.createTime || item.createdAt || item.submitTime || item.firstSubmitTime
+      );
+      const updateTime = toTimestamp(item.updateTime || item.updatedAt || 0);
+      return {
+        id: item._id,
+        text: item.text || item.problemText || '',
+        userId: item.userId || '',
+        playerIndex: item.playerIndex,
+        nickName: item.nickName || '',
+        createTime,
+        updateTime,
+        // 兼容旧前端字段：submitTime = 首次提交时间
+        submitTime: createTime || updateTime
+      };
+    });
 
-    problems.sort((a, b) => (a.submitTime || 0) - (b.submitTime || 0));
+    problems.sort((a, b) => {
+      const ta = a.createTime || a.submitTime || 0;
+      const tb = b.createTime || b.submitTime || 0;
+      if (ta !== tb) return ta - tb;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
 
     const membersCountRes = await db.collection(ROOM_MEMBERS_COLLECTION).where({ roomId }).count();
     const totalMembers = (membersCountRes && membersCountRes.total) || 0;

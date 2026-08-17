@@ -22,6 +22,11 @@ const {
   forceEndUserAuthFlow,
   isUserAuthInProgress
 } = require('../../../utils/userAuthSession');
+const {
+  getHistoryWorkshops,
+  upsertHistoryWorkshop,
+  formatTime: formatHistoryTime
+} = require('../../../utils/historyWorkshops');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
@@ -66,6 +71,7 @@ Page({
     this.setData({ headerPaddingTop, ...getDevJoinPageData() });
     this._restoreUserProfile();
     this.loadJoinedRoomState();
+    this._loadHistoryWorkshops();
     this._maybeShowFirstProfileAuth();
   },
 
@@ -82,6 +88,20 @@ Page({
     // 扫码跳转途中不要用「即将加入」的 roomId 跑成员校验，否则会误弹退出房间
     if (_scanJoinNavigatingRoomId) return;
     this.loadJoinedRoomState();
+    this._loadHistoryWorkshops();
+  },
+
+  _loadHistoryWorkshops() {
+    this.setData({ historyWorkshops: getHistoryWorkshops() });
+  },
+
+  onTapHistoryCard(e) {
+    const roomId = e.currentTarget.dataset.roomId;
+    if (!roomId) return;
+    getApp().globalData.roomId = roomId;
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+    });
   },
 
   handleViewRoom() {
@@ -413,6 +433,12 @@ Page({
         return;
       }
 
+      upsertHistoryWorkshop({
+        roomId,
+        name: this.data.roomName || '脑暴工作坊',
+        creator: this.data.userNickName,
+        time: formatHistoryTime(Date.now())
+      });
       this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
@@ -686,6 +712,12 @@ Page({
     if (!roomId) return;
     // 禁止 join 前写入 joinedRoomId：否则首页 onShow / 轮询会把「未入房」误判成退出房间
     _scanJoinNavigatingRoomId = roomId;
+    upsertHistoryWorkshop({
+      roomId,
+      name: this.data.roomName || '脑暴工作坊',
+      creator: this.data.userNickName,
+      time: formatHistoryTime(Date.now())
+    });
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
     wx.redirectTo({
       url,
@@ -725,6 +757,12 @@ Page({
         return;
       }
 
+      upsertHistoryWorkshop({
+        roomId,
+        name: result.workshopName || '脑暴工作坊',
+        creator: this.data.userNickName,
+        time: formatHistoryTime(Date.now())
+      });
       this._goToRoomPage(roomId);
     } catch (err) {
       wx.hideLoading();

@@ -1,4 +1,4 @@
-<view class="context-display" wx:if="{{displayItems.length > 0}}">
+<view class="context-display" wx:if="{{displayItems.length > 0}}" bindtap="onDisplayTap">
   <view class="context-grid">
     <view class="context-item" wx:for="{{displayItems}}" wx:key="key">
       <image class="context-icon" src="{{item.icon}}" mode="aspectFit" wx:if="{{item.icon}}" />

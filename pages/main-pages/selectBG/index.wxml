@@ -13,7 +13,7 @@
       wx:for="{{steps}}"
       wx:key="type"
       data-step="{{index}}"
-      bindtap="onTapStep"
+      catchtap="onTapStep"
     >
       <view class="step-circle {{currentStep === index ? 'active' : ''}}">{{index + 1}}</view>
       <text class="step-text">{{item.label}}</text>
@@ -47,6 +47,6 @@
 
   <!-- 底部确认按钮 -->
   <page-footer extClass="footer" bind:prev="goBack">
-    <button class="confirm-btn {{canConfirm ? 'enabled' : ''}}" disabled="{{!canConfirm}}" bindtap="confirmBG">确认情境</button>
+    <button class="confirm-btn {{canConfirm ? 'enabled' : ''}}" disabled="{{!canConfirm}}" catchtap="confirmBG">确认情境</button>
   </page-footer>
 </view>

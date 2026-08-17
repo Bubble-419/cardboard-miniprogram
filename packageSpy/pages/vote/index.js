@@ -47,7 +47,8 @@ Page({
     votedCount: 0,
     totalVoters: 0,
     acting: false,
-    eliminated: false
+    eliminated: false,
+    tieBreak: false
   },
 
   onLoad(options) {
@@ -100,8 +101,20 @@ Page({
     this._tickTimer = startSpyCountdownTicker(
       this,
       () => this._voteStartedAt,
-      this._voteDuration
+      this._voteDuration,
+      'countdownText',
+      (msLeft) => this._onCountdownTick(msLeft)
     );
+  },
+
+  /** 倒计时结束：若未出局且尚未投票，自动提交弃票 */
+  _onCountdownTick(msLeft) {
+    if (msLeft > 0) return;
+    if (!this._pageAlive || this.data.eliminated || this.data.hasVoted || this._autoAbstaining) return;
+    this._autoAbstaining = true;
+    this.submitVote({ abstain: true }).finally(() => {
+      this._autoAbstaining = false;
+    });
   },
 
   async refresh(prefetchedResult) {
@@ -150,6 +163,7 @@ Page({
           avatarList: buildAvatarList(members),
           hasVoted,
           eliminated,
+          tieBreak: spyGame.tieBreak === true,
           circleSlots: buildCircleSlots(players, memberByIndex),
           votedCount: voteStatus.votedCount != null ? voteStatus.votedCount : voted.length,
           totalVoters: voteStatus.totalVoters != null
@@ -176,21 +190,32 @@ Page({
   },
 
   async onConfirmVote() {
-    if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
     if (!this.data.selectedIndex) {
       wx.showToast({ title: '请先选择怀疑对象', icon: 'none' });
       return;
     }
+    await this.submitVote({ abstain: false });
+  },
+
+  async onAbstain() {
+    if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
+    await this.submitVote({ abstain: true });
+  },
+
+  async submitVote({ abstain = false } = {}) {
+    if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
     this.setData({ acting: true });
     try {
       const result = await callSpyAction('submitVote', {
         roomId: this.data.roomId,
-        targetPlayerIndex: this.data.selectedIndex
+        abstain,
+        targetPlayerIndex: abstain ? undefined : this.data.selectedIndex
       });
       if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '投票失败', icon: 'none' });
+        wx.showToast({ title: result.errMsg || (abstain ? '弃票失败' : '投票失败'), icon: 'none' });
         return;
       }
+      if (!this._pageAlive) return;
       this.setData({ hasVoted: true });
       bumpSpyRoomSession();
       if (result.settled) {
@@ -215,10 +240,10 @@ Page({
         });
         return;
       }
-      wx.showToast({ title: '已提交，等待其他人', icon: 'success' });
+      wx.showToast({ title: abstain ? '已弃票，等待其他人' : '已提交，等待其他人', icon: 'success' });
       await this.refresh();
     } catch (e) {
-      wx.showToast({ title: (e && e.errMsg) || '投票失败', icon: 'none' });
+      wx.showToast({ title: (e && e.errMsg) || (abstain ? '弃票失败' : '投票失败'), icon: 'none' });
     } finally {
       if (this._pageAlive) this.setData({ acting: false });
     }

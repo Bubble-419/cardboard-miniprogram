@@ -313,6 +313,7 @@ exports.main = async (event, context) => {
     const roomState = {
       selectedModeId: selectedModeId || null,
       selectedDesignProblem: room.selectedDesignProblem || null,
+      editingProblemId: room.editingProblemId || '',
       currentPage,
       brainstormSessionEnded,
       brainstormSessionSeq,

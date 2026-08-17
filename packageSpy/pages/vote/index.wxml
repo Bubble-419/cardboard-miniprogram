@@ -7,6 +7,7 @@
     />
     <view class="title-block">
       <text class="page-title">匿名投票</text>
+      <text class="page-subtitle tie-subtitle" wx:if="{{tieBreak}}">平票加时：本轮为并列玩家重新投票</text>
       <text class="page-subtitle">
         {{eliminated ? '你已出局，等待本轮投票结束' : (hasVoted ? '已提交，等待全员投完后统一公布' : '点选你怀疑的人（不可投自己）')}}
       </text>
@@ -19,32 +20,34 @@
     <view class="vote-progress-hint">已投票 {{votedCount}} / {{totalVoters}}</view>
   </view>
 
-  <block wx:if="{{!eliminated}}">
-    <view class="circle-wrap">
-      <view class="deco-ring deco-ring-1"></view>
-      <view class="deco-ring deco-ring-2"></view>
-      <view class="deco-ring deco-ring-3"></view>
-      <view class="deco-ring deco-ring-inner"></view>
-      <view
-        class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}}"
-        wx:for="{{circleSlots}}"
-        wx:key="playerIndex"
-        style="left: {{item.left}}%; top: {{item.top}}%;"
-        data-index="{{item.playerIndex}}"
-        bindtap="onSelectTarget"
-      >
-        <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
-        <text class="avatar-name">{{item.name}}{{item.isMe ? '（我）' : ''}}</text>
-      </view>
+  <!-- 圆环始终展示在场玩家：出局者只读（不可点选），仍可看到当前存活玩家 -->
+  <view class="circle-wrap">
+    <view class="deco-ring deco-ring-1"></view>
+    <view class="deco-ring deco-ring-2"></view>
+    <view class="deco-ring deco-ring-3"></view>
+    <view class="deco-ring deco-ring-inner"></view>
+    <view
+      class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}}"
+      wx:for="{{circleSlots}}"
+      wx:key="playerIndex"
+      style="left: {{item.left}}%; top: {{item.top}}%;"
+      data-index="{{item.playerIndex}}"
+      bindtap="onSelectTarget"
+    >
+      <image class="avatar-img" src="{{item.avatarImage}}" mode="aspectFill" />
+      <text class="avatar-name">{{item.name}}{{item.isMe ? '（我）' : ''}}</text>
     </view>
+  </view>
 
+  <block wx:if="{{!eliminated}}">
     <view class="voted-wait" wx:if="{{hasVoted}}">投票已提交，不可修改</view>
     <view class="vote-actions" wx:else>
       <view class="primary-btn {{selectedIndex && !acting ? '' : 'dimmed'}}" bindtap="onConfirmVote">确认投票</view>
+      <text class="abstain-link" bindtap="onAbstain">弃票</text>
     </view>
   </block>
 
   <view class="section" wx:else>
-    <view class="section-body" style="text-align: center">本轮你无需投票，请等待结果公布</view>
+    <view class="section-body" style="text-align: center">你已出局，本轮无需投票，请等待结果公布</view>
   </view>
 </view>

@@ -152,7 +152,9 @@ async function callSpyAction(action, data = {}) {
       break;
     case 'submitVote':
       type = 'SPY_SUBMIT_VOTE';
-      payload = { targetPlayerIndex: data.targetPlayerIndex };
+      payload = data.abstain
+        ? { abstain: true }
+        : { targetPlayerIndex: data.targetPlayerIndex };
       break;
     case 'nextRound':
     case 'continueRound':
@@ -189,13 +191,15 @@ async function callSpyAction(action, data = {}) {
   }
 }
 
-function startSpyCountdownTicker(page, getStartedAt, durationMs, dataKey = 'countdownText') {
+/** onTick(msLeft) 可选：每次刷新倒计时后回调，用于超时自动动作（如投票页弃票） */
+function startSpyCountdownTicker(page, getStartedAt, durationMs, dataKey = 'countdownText', onTick) {
   const tick = () => {
     if (!page || page._pageAlive === false) return;
     try {
       const startedAt = typeof getStartedAt === 'function' ? getStartedAt() : getStartedAt;
       const left = computeMsLeft(startedAt, durationMs);
       page.setData({ [dataKey]: formatCountdown(left), countdownMsLeft: left });
+      if (typeof onTick === 'function') onTick(left);
     } catch (e) {
       // 页面已销毁时忽略，避免 __subPageFrameEndTime__ 空指针
     }

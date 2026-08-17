@@ -4,13 +4,18 @@ const COLLECTION = 'designProblems';
 const ENTRY_TYPE = 'designProblem';
 
 function mapProblemDoc(item) {
+  const createTime = item.createTime || item.createdAt || item.submitTime || item.firstSubmitTime || 0;
+  const updateTime = item.updateTime || item.updatedAt || 0;
   return {
     id: item._id,
     text: item.text || item.problemText || '',
     playerIndex: item.playerIndex,
     nickName: item.nickName || '',
     userId: item.userId || '',
-    submitTime: item.updateTime || item.createTime || item.submitTime || 0
+    createTime,
+    updateTime,
+    // 列表排序固定用首次提交时间，禁止用 updateTime
+    submitTime: createTime || updateTime || 0
   };
 }
 
@@ -40,7 +45,9 @@ async function listProblems(roomId) {
     playerIndex: item.playerIndex,
     nickName: item.nickName || '',
     userId: item.userId || '',
-    submitTime: item.submitTime || 0
+    createTime: item.createTime || item.submitTime || 0,
+    updateTime: item.updateTime || 0,
+    submitTime: item.createTime || item.submitTime || 0
   }));
 }
 

@@ -95,6 +95,19 @@ Page({
     this._goToRoom();
   },
 
+  onViewLeaderboard() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+    wx.navigateTo({
+      url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`,
+      fail: () => {
+        wx.redirectTo({
+          url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`
+        });
+      }
+    });
+  },
+
   async _goToRoom() {
     const roomId = this.data.roomId || '';
     if (!roomId) return;
@@ -104,21 +117,26 @@ Page({
     const { clearLocalBrainstormProgress } = require('../../../../utils/roomBrainstormProgress');
     clearLocalBrainstormProgress(roomId);
 
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          currentPage: 'addPlayer',
-          partnerGamePhase: 'play',
-          partnerMasterMode: false,
-          resetClosingVotes: true,
-          clearBrainstormProgress: true,
-          brainstormSessionEnded: true
-        }
-      });
-    } catch (e) {
-      console.warn('closingEnd _goToRoom updateRoomState', e);
+    // 仅房主可清空脑暴会话态 / 切换 partnerGamePhase；非房主调用会因权限被拒绝
+    // （见 cloudfunctions/updateRoomState 的 isCreator 校验），因此非房主直接
+    // 跳转回房间，不调用 updateRoomState，避免请求失败或写入半途状态。
+    if (this.data.isHost) {
+      try {
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: {
+            roomId,
+            currentPage: 'addPlayer',
+            partnerGamePhase: 'play',
+            partnerMasterMode: false,
+            resetClosingVotes: true,
+            clearBrainstormProgress: true,
+            brainstormSessionEnded: true
+          }
+        });
+      } catch (e) {
+        console.warn('closingEnd _goToRoom updateRoomState', e);
+      }
     }
 
     this._reLaunchRoom();

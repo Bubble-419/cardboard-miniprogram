@@ -991,6 +991,46 @@
   justify-content: center;
 }
 
+.footer-wrap-dragging {
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.kick-zone {
+  position: fixed;
+  left: 40rpx;
+  right: 40rpx;
+  /* 抬到主按钮与「解散房间」上方，避免与 footer 文案重叠 */
+  bottom: calc(env(safe-area-inset-bottom) + 220rpx);
+  height: 96rpx;
+  border-radius: 24rpx;
+  border: 2rpx dashed rgba(220, 38, 38, 0.45);
+  background: rgba(220, 38, 38, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  z-index: 30;
+  pointer-events: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.kick-zone-icon {
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.kick-zone-text {
+  font-size: 26rpx;
+  color: #dc2626;
+}
+
+.kick-zone-active {
+  background: rgba(220, 38, 38, 0.18);
+  border-color: #dc2626;
+  transform: scale(1.02);
+}
+
 .footer {
   width: 100%;
   max-width: 750rpx;
