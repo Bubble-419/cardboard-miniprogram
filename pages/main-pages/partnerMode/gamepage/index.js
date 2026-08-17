@@ -127,6 +127,8 @@ Page({
     discussionDraftText: '',
     discussionDraftFocused: false,
     canStartStatement: false,
+    /** 打分交互中锁定 swiper，避免 setData 重建纪要卡导致横跳 */
+    scoreSwipeLocked: false,
     specialMoveUsedThisTurn: false,
     currentRound: 1,
     brainstormSessionSeq: 0,
@@ -229,6 +231,9 @@ Page({
     this._seenExpressIds = {};
     this._expressReady = false;
     this._cardSwipeBusy = false;
+    this._scoreUiBusy = false;
+    this._scoreUiBusyTimer = null;
+    this._scoreFingerprint = '';
     this._pendingRoomContext = null;
     this._roomDataReady = false;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
@@ -482,6 +487,17 @@ Page({
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
+    if (this._cardSwipeBusyTimer) {
+      clearTimeout(this._cardSwipeBusyTimer);
+      this._cardSwipeBusyTimer = null;
+    }
+    if (this._scoreUiBusyTimer) {
+      clearTimeout(this._scoreUiBusyTimer);
+      this._scoreUiBusyTimer = null;
+    }
+    this._cardSwipeBusy = false;
+    this._scoreUiBusy = false;
+    this._pendingRoomContext = null;
   },
 
   _applyRoundContentFromRoom(roomState) {
@@ -1272,9 +1288,71 @@ Page({
     );
   },
 
+  _pickScoreProgressPatch(patch) {
+    const narrow = {};
+    if (!patch || typeof patch !== 'object') return narrow;
+    if (patch.scoredCount != null) narrow.scoredCount = patch.scoredCount;
+    if (patch.totalRequired != null) narrow.totalRequired = patch.totalRequired;
+    if (Object.prototype.hasOwnProperty.call(patch, 'canStartStatement')) {
+      narrow.canStartStatement = !!patch.canStartStatement;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'selectedScore')) {
+      narrow.selectedScore = patch.selectedScore;
+    }
+    if (patch.scoreTurnKey != null) narrow.scoreTurnKey = patch.scoreTurnKey;
+    return narrow;
+  },
+
+  _applyScoreProgressPatch(patch) {
+    const narrow = this._pickScoreProgressPatch(patch);
+    if (!Object.keys(narrow).length) return;
+    const scoreFingerprint = [
+      narrow.scoredCount != null ? narrow.scoredCount : '',
+      narrow.totalRequired != null ? narrow.totalRequired : '',
+      narrow.canStartStatement ? 1 : 0,
+      narrow.selectedScore != null ? narrow.selectedScore : '',
+      narrow.scoreTurnKey || ''
+    ].join('#');
+    if (scoreFingerprint === this._scoreFingerprint) return;
+    this._scoreFingerprint = scoreFingerprint;
+    this.setData(narrow);
+  },
+
+  _markScoreUiBusy() {
+    this._scoreUiBusy = true;
+    if (this._scoreUiBusyTimer) {
+      clearTimeout(this._scoreUiBusyTimer);
+      this._scoreUiBusyTimer = null;
+    }
+    if (!this.data.scoreSwipeLocked) {
+      this.setData({ scoreSwipeLocked: true });
+    }
+  },
+
+  _releaseScoreUiBusy(delayMs) {
+    const delay = delayMs != null ? delayMs : 360;
+    if (this._scoreUiBusyTimer) clearTimeout(this._scoreUiBusyTimer);
+    this._scoreUiBusyTimer = setTimeout(() => {
+      this._scoreUiBusyTimer = null;
+      this._scoreUiBusy = false;
+      if (this.data.scoreSwipeLocked) {
+        this.setData({ scoreSwipeLocked: false });
+      }
+      this._flushPendingRoomContextIfIdle();
+    }, delay);
+  },
+
+  _flushPendingRoomContextIfIdle() {
+    if (this._cardSwipeBusy || this._scoreUiBusy) return;
+    if (!this._pendingRoomContext) return;
+    const pending = this._pendingRoomContext;
+    this._pendingRoomContext = null;
+    this._applyRoomContext(pending.result, pending.options || {});
+  },
+
   _applyRoomContext(result, options = {}) {
-    // 滑动中勿 setData 改写 controlled swiper.current，否则会顶飞手势并左右晃动
-    if (this._cardSwipeBusy && !options.force && !options.resetTurnUi) {
+    // 滑动/打分交互中勿整页 setData 改写 controlled swiper，否则会顶飞手势并左右晃动
+    if ((this._cardSwipeBusy || this._scoreUiBusy) && !options.force && !options.resetTurnUi) {
       this._pendingRoomContext = { result, options };
       return {
         playerChanged: false,
@@ -1691,10 +1769,7 @@ Page({
       // 不含 cardIndex：用户滑动不应因指纹变化触发整页 setData
       paginationState.cardCount,
       !!patch.specialMoveUsedThisTurn,
-      // Phase 5：评分进度变化也要刷 UI（原先指纹未覆盖 progress）
-      patch.scoredCount != null ? patch.scoredCount : '',
-      patch.totalRequired != null ? patch.totalRequired : '',
-      patch.canStartStatement ? 1 : 0,
+      // 评分进度单独窄更新，勿并入整页指纹（否则会重建 swiper 导致横跳）
       options.resetTurnUi ? 1 : 0
     ].join('#');
     const forcePatch = !!(
@@ -1708,6 +1783,8 @@ Page({
       || leftMyTurn
     );
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
+      // 仅评分进度变化：窄 setData，不动 displayRoundSummaries / cardIndex
+      this._applyScoreProgressPatch(patch);
       // 指纹未变也补测抽屉：首测失败时表达入口 bottom 依赖 visiblePx
       if (!isClosingPhase(roomPhase) && !player.isCurrentPlayer && !this._scoreSheetMeasuredOk) {
         setTimeout(() => this._measureScoreSheetHeights(), 80);
@@ -1715,6 +1792,16 @@ Page({
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
     this._roomContextFingerprint = contextFingerprint;
+    // 整页补丁会带上评分字段，同步指纹避免紧接着再窄刷一次
+    this._scoreFingerprint = [
+      patch.scoredCount != null ? patch.scoredCount : '',
+      patch.totalRequired != null ? patch.totalRequired : '',
+      patch.canStartStatement ? 1 : 0,
+      Object.prototype.hasOwnProperty.call(patch, 'selectedScore')
+        ? (patch.selectedScore != null ? patch.selectedScore : '')
+        : '',
+      patch.scoreTurnKey || ''
+    ].join('#');
 
     const prevStartedAt = Number(this.data.partnerRoundStartedAt) || 0;
     const nextStartedAt = Number(patch.partnerRoundStartedAt) || 0;
@@ -2104,10 +2191,7 @@ Page({
       this._cardSwipeBusyTimer = null;
     }
     this._cardSwipeBusy = false;
-    if (!this._pendingRoomContext) return;
-    const pending = this._pendingRoomContext;
-    this._pendingRoomContext = null;
-    this._applyRoomContext(pending.result, pending.options || {});
+    this._flushPendingRoomContextIfIdle();
   },
 
   onCardSwiperChange(e) {
@@ -2853,6 +2937,7 @@ Page({
   },
 
   onScoreButtonsTouchStart(e) {
+    this._markScoreUiBusy();
     // 子按钮 bindtouchstart 可能已写入待选分；sheet start 会清空，这里先保住
     const keptScore = this._pendingScoreTap;
     this.onScoreSheetTouchStart(e);
@@ -2900,6 +2985,7 @@ Page({
     // 轻触被误判为拖动时，仍按选分处理
     if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) {
       this.onScoreSheetTouchEnd(e);
+      this._releaseScoreUiBusy(200);
       return;
     }
 
@@ -2911,6 +2997,8 @@ Page({
     // catchtouchmove 在真机上常取消 tap：touchend 直接提交
     if (pending != null) {
       this._applyScoreTap(pending);
+    } else {
+      this._releaseScoreUiBusy(200);
     }
 
     setTimeout(() => {
@@ -3026,8 +3114,10 @@ Page({
     this._scoreTapLockScore = score;
     this._scoreTapLockAt = Date.now();
     this._scoreSheetDidDrag = false;
+    this._markScoreUiBusy();
 
     if (this.data.isCurrentPlayer) {
+      this._releaseScoreUiBusy(120);
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
     }
@@ -3045,6 +3135,7 @@ Page({
       if (result.ok !== true) {
         this._pendingScore = null;
         this.setData({ selectedScore: null });
+        this._releaseScoreUiBusy(200);
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
         return;
       }
@@ -3054,7 +3145,7 @@ Page({
         result.totalRequired != null ? Number(result.totalRequired) || 0 : 0,
         Math.max(0, (this.data.members || []).length - 1)
       );
-      this.setData({
+      const scorePatch = {
         selectedScore: score,
         scoredCount,
         totalRequired,
@@ -3063,11 +3154,21 @@ Page({
           && totalRequired > 0
           && scoredCount >= totalRequired,
         scoreTurnKey: `turn_r${this.data.currentRound != null ? this.data.currentRound : 1}_s${currentPlayerIndex}`
-      });
+      };
+      this._scoreFingerprint = [
+        scorePatch.scoredCount,
+        scorePatch.totalRequired,
+        scorePatch.canStartStatement ? 1 : 0,
+        scorePatch.selectedScore,
+        scorePatch.scoreTurnKey
+      ].join('#');
+      this.setData(scorePatch);
+      this._releaseScoreUiBusy(420);
     } catch (err) {
       console.warn('submitGameScore', err);
       this._pendingScore = null;
       this.setData({ selectedScore: null });
+      this._releaseScoreUiBusy(200);
       wx.showToast({ title: '提交失败', icon: 'none' });
     }
   },

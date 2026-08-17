@@ -236,6 +236,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
+        disable-touch="{{scoreSwipeLocked}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
