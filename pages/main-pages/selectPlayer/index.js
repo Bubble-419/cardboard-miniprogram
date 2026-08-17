@@ -318,7 +318,7 @@ Page({
     }, 500);
   },
 
-  // 随机选择玩家：被选中的位置播放 3s 水波纹动画（不随手指离开停止），结束后显示几号玩家被选中 + 确认按钮
+  // 随机选择玩家：被选中的位置播放水波纹；结束后显示几号玩家被选中 + 确认按钮
   selectRandomPlayer() {
     const { activeTouches, members } = this.data;
     let currentPlayerIndex = 1;
@@ -359,7 +359,7 @@ Page({
       });
     }
 
-    const SELECTION_ANIMATION_DURATION = 500;
+    const SELECTION_ANIMATION_DURATION = 250;
     if (selectedPosition) {
       this.animationDoneTimer = setTimeout(() => {
         this.setData({ selectionAnimationDone: true });
