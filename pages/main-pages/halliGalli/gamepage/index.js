@@ -4,6 +4,8 @@
  */
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
+const { prepareMembersForDisplay } = require('../../../../utils/avatars');
+const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -13,7 +15,13 @@ Page({
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     isHost: false,
-    selectedBG: null
+    selectedBG: null,
+    stepImgDeal: '/assets/halliGalli/step-deal.webp',
+    stepImgFlip: '/assets/halliGalli/step-flip.webp',
+    stepImgRing: '/assets/halliGalli/step-ring.webp',
+    stepImgPlay: '/assets/halliGalli/step-play.webp',
+    stepImgVote: '/assets/halliGalli/step-vote.webp',
+    stepImgJudge: '/assets/halliGalli/step-judge.webp'
   },
 
   onLoad(options) {
@@ -54,8 +62,7 @@ Page({
       }
 
       const members = result.members;
-      const { assignAvatarImages } = require('../../../../utils/avatars');
-      const enriched = assignAvatarImages(members);
+      const enriched = await prepareMembersForDisplay(members);
       const avatarList = enriched.map(m => ({
         id: m.playerIndex,
         avatar: m.avatarImage || m.avatarUrl || '',
@@ -152,11 +159,35 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/addPlayer/index' });
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
+      : '/pages/main-pages/addPlayer/index';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/selectPlayer/index',
+        'pages/main-pages/addPlayer/index'
+      ],
+      fallbackUrl
     });
+  },
+
+  onStepImgError(e) {
+    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
+    if (!key) return;
+    const map = {
+      deal: 'stepImgDeal',
+      flip: 'stepImgFlip',
+      ring: 'stepImgRing',
+      play: 'stepImgPlay',
+      vote: 'stepImgVote',
+      judge: 'stepImgJudge'
+    };
+    const field = map[key];
+    if (!field) return;
+    const png = `/assets/halliGalli/step-${key}.png`;
+    if (this.data[field] === png) return;
+    this.setData({ [field]: png });
   },
 
   handleGoRoom() {

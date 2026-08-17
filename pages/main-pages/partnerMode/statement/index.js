@@ -1,6 +1,6 @@
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { openUrl } = require('../../../../utils/pageNavigate');
+const { openUrl, safeNavigateBack } = require('../../../../utils/pageNavigate');
 const {
   PHASE_DISCUSSION,
   phaseFromStatementResult,
@@ -72,6 +72,7 @@ Page({
   onUnload() {
     this._stopStatePolling();
     this._stopHostProgressPolling();
+    this._statementSubmitLock = false;
   },
 
   /**
@@ -278,15 +279,13 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
-          });
-        }
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
+      : '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+      fallbackUrl
     });
   },
 
@@ -296,80 +295,99 @@ Page({
       wx.showToast({ title: '请等待主屏表态', icon: 'none' });
       return;
     }
-    if (this.data.isSubmitting) return;
+    // 同步锁必须在任何 await 之前，防止连点双次 incrementRound
+    if (this.data.isSubmitting || this._statementSubmitLock) return;
+    this._statementSubmitLock = true;
+
     const result = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.result;
-    if (!result) return;
-
-    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
-    if (!roomId) return;
-
-    const partnerGamePhase = phaseFromStatementResult(result);
-    let members = this.data.members || [];
-    if (!members.length) {
-      members = await this._loadMembers(roomId);
+    if (!result) {
+      this._statementSubmitLock = false;
+      return;
     }
 
-    let targetIndex = currentPlayerIndex;
-    let targetName = currentPlayerName;
-    let incrementRound = false;
-
-    if (result === STATEMENT_ALL_PASS) {
-      const next = getNextPlayerTurn(members, currentPlayerIndex);
-      targetIndex = next.nextIndex;
-      targetName = next.nextName;
-      incrementRound = next.incrementRound;
+    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
+    if (!roomId) {
+      this._statementSubmitLock = false;
+      return;
     }
 
     this.setData({ isSubmitting: true });
 
     try {
-      const finalizeRes = await wx.cloud.callFunction({
-        name: 'finalizePartnerTurnRecord',
-        data: {
-          roomId,
-          playerIndex: currentPlayerIndex,
-          playerName: currentPlayerName,
-          statementResult: result
+      const partnerGamePhase = phaseFromStatementResult(result);
+      let members = this.data.members || [];
+      if (!members.length) {
+        members = await this._loadMembers(roomId);
+      }
+
+      let targetIndex = currentPlayerIndex;
+      let targetName = currentPlayerName;
+      let incrementRound = false;
+
+      if (result === STATEMENT_ALL_PASS) {
+        const next = getNextPlayerTurn(members, currentPlayerIndex);
+        targetIndex = next.nextIndex;
+        targetName = next.nextName;
+        incrementRound = next.incrementRound;
+      }
+
+      try {
+        const finalizeRes = await wx.cloud.callFunction({
+          name: 'finalizePartnerTurnRecord',
+          data: {
+            roomId,
+            playerIndex: currentPlayerIndex,
+            playerName: currentPlayerName,
+            statementResult: result
+          }
+        });
+        const finalizeResult = (finalizeRes && finalizeRes.result) || {};
+        if (finalizeResult.ok !== true) {
+          console.warn('finalizePartnerTurnRecord failed', finalizeResult);
+          wx.showToast({
+            title: finalizeResult.errMsg || '表态记录保存失败',
+            icon: 'none'
+          });
         }
+      } catch (err) {
+        console.warn('finalizePartnerTurnRecord', err);
+        wx.showToast({ title: '表态记录保存失败', icon: 'none' });
+      }
+
+      const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
+        partnerGamePhase,
+        partnerMasterMode: false,
+        incrementRound,
+        partnerRoundStartedAt: Date.now(),
+        syncPartnerTurnTimer: true
       });
-      const finalizeResult = (finalizeRes && finalizeRes.result) || {};
-      if (finalizeResult.ok !== true) {
-        console.warn('finalizePartnerTurnRecord failed', finalizeResult);
-        wx.showToast({
-          title: finalizeResult.errMsg || '表态记录保存失败',
-          icon: 'none'
+
+      if (!ok) {
+        this._statementSubmitLock = false;
+        this.setData({ isSubmitting: false });
+        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        return;
+      }
+
+      // 成功后保持 isSubmitting，避免导航完成前再次提交导致跳轮
+      const opened = openUrl(buildGamepageUrl(roomId, targetIndex, 'partner', {
+        phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
+      }), { immediate: true });
+      if (!opened) {
+        wx.redirectTo({
+          url: buildGamepageUrl(roomId, targetIndex, 'partner', {
+            phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
+          }),
+          complete: () => {
+            this._statementSubmitLock = false;
+          }
         });
       }
     } catch (err) {
-      console.warn('finalizePartnerTurnRecord', err);
-      wx.showToast({ title: '表态记录保存失败', icon: 'none' });
-    }
-
-    const ok = await this._updateRoomState('gamepage', targetIndex, targetName, {
-      partnerGamePhase,
-      partnerMasterMode: false,
-      incrementRound,
-      partnerRoundStartedAt: Date.now(),
-      syncPartnerTurnTimer: true
-    });
-
-    this.setData({ isSubmitting: false });
-
-    if (!ok) {
-      wx.showToast({ title: '状态同步失败', icon: 'none' });
-      return;
-    }
-
-    // 主屏立即进入新轮次；副屏通过轮询跟随同一 gamepage
-    const opened = openUrl(buildGamepageUrl(roomId, targetIndex, 'partner', {
-      phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
-    }), { immediate: true });
-    if (!opened) {
-      wx.redirectTo({
-        url: buildGamepageUrl(roomId, targetIndex, 'partner', {
-          phase: partnerGamePhase === PHASE_DISCUSSION ? PHASE_DISCUSSION : undefined
-        })
-      });
+      console.warn('handleStatementResult', err);
+      this._statementSubmitLock = false;
+      this.setData({ isSubmitting: false });
+      wx.showToast({ title: '表态失败', icon: 'none' });
     }
   }
 });

@@ -1767,7 +1767,8 @@ var require_room_domain = __commonJS({
             membersByUserId[uid] = {
               ...membersByUserId[uid],
               seatNo,
-              role: seatNo === 1 ? "HOST" : "PLAYER"
+              // 房主身份跟创建者，不跟座位号，避免拖拽换序把 GOD 角色转走
+              role: String(uid) === String(room.hostUserId) ? "HOST" : "PLAYER"
             };
           }
         });

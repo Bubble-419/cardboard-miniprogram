@@ -11,6 +11,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
+const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -254,16 +255,12 @@ Page({
 
   handleGoBack() {
     const roomId = this.data.roomId || '';
-    wx.navigateBack({
-      fail: () => {
-        if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-          });
-        } else {
-          wx.navigateBack();
-        }
-      }
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+      : '/pages/main-pages/selectPlayer/index?modeId=partner';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/selectPlayer/index',
+      fallbackUrl
     });
   }
 });

@@ -3,6 +3,7 @@ const {
   isRoundTimerActive,
   getRoundTimerState
 } = require('../../utils/partnerRoundTimer');
+const { clearStickyAvatar } = require('../../utils/avatars');
 
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
@@ -480,6 +481,32 @@ Component({
       const playerIndex = dataset && (dataset.playerIndex != null ? dataset.playerIndex : dataset.id);
       if (playerIndex == null || playerIndex === '') return;
       this.triggerEvent('avatartap', { playerIndex, id: playerIndex });
+    },
+
+    /** 临时链过期/裂图：清粘性并回退默认图，避免一直空白 */
+    onAvatarImgError(e) {
+      const dataset = (e && e.currentTarget && e.currentTarget.dataset) || {};
+      const playerIndex = dataset.playerIndex;
+      const userKey = dataset.userKey != null ? String(dataset.userKey) : '';
+      if (userKey) clearStickyAvatar(userKey);
+      if (playerIndex == null || playerIndex === '') return;
+
+      const list = (this.data.displayList || []).slice();
+      let changed = false;
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (!item || String(item.id) !== String(playerIndex)) continue;
+        const fallback = this.data.defaultAvatar;
+        if (item.avatar === fallback && item.avatarImage === fallback) break;
+        list[i] = { ...item, avatar: fallback, avatarImage: fallback };
+        changed = true;
+        break;
+      }
+      if (changed) {
+        this._avatarDisplayFingerprintCache = '';
+        this.setData({ displayList: list });
+      }
+      this.triggerEvent('avatarerror', { playerIndex, userKey });
     }
   }
 });

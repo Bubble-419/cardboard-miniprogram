@@ -1,4 +1,8 @@
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { goRoomPage } = require('../../../utils/goRoomPage');
+const { clearLocalBrainstormProgress } = require('../../../utils/roomBrainstormProgress');
+const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 
 Page({
   data: {
@@ -120,17 +124,8 @@ Page({
         });
         const result = (res && res.result) || {};
         followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            if (page === 'auth') {
-              wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
-              return true;
-            }
-            if (page === 'addplayer') {
-              wx.redirectTo({
-                url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-              });
-              return true;
-            }
+          beforeNavigate: (_pollResult, page) => {
+            // 仍在填写创意时不要把副屏拉走
             if (page === 'creativeinput') return true;
             return false;
           }
@@ -164,50 +159,67 @@ Page({
     }
   },
 
+  async _exitBrainstormModeToRoom() {
+    if (!this.data.isHost || this._exitingMode) return;
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+
+    this._exitingMode = true;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      const callRes = await wx.cloud.callFunction({
+        name: 'roomClearBrainstormMode',
+        data: { roomId }
+      });
+      const result = (callRes && callRes.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        this._exitingMode = false;
+        wx.showToast({ title: result.errMsg || '退出模式失败', icon: 'none' });
+        return;
+      }
+      clearLocalBrainstormProgress(roomId);
+      clearPartnerSpecialMoveUsedFlag(roomId);
+      try {
+        const app = getApp();
+        if (app.globalData) {
+          app.globalData.gameMode = '';
+          app.globalData.selectedMode = null;
+          app.globalData.selectedBG = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+      goRoomPage(roomId);
+    } catch (err) {
+      wx.hideLoading();
+      this._exitingMode = false;
+      wx.showToast({ title: (err && err.errMsg) || '退出模式失败', icon: 'none' });
+    }
+  },
+
   async handleFinish() {
     if (!this.data.isHost) return;
     if (!this.data.canRestartRound) {
       wx.showToast({ title: '请等待所有玩家填写完成', icon: 'none' });
       return;
     }
-
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage: 'auth', resetCreativeIdeas: true }
-      });
-    } catch (e) {
-      console.warn('creativeSummary handleFinish updateRoomState', e);
-    }
-    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
+    await this._exitBrainstormModeToRoom();
   },
 
   async handleGoRoom() {
     if (!this.data.isHost) return;
     if (!this.data.canRestartRound) return;
-
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage: 'addPlayer', resetCreativeIdeas: true }
-      });
-    } catch (e) {
-      console.warn('creativeSummary handleGoRoom updateRoomState', e);
-    }
-    wx.redirectTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    await this._exitBrainstormModeToRoom();
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
-      }
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/creativeInput/index',
+      fallbackUrl: roomId
+        ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
     });
   }
 });

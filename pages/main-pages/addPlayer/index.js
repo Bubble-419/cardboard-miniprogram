@@ -10,7 +10,8 @@ const {
 } = require('../../../utils/spyFollow');
 const {
   exitRoomGone,
-  handleRoomGoneFromResult
+  handleRoomGoneFromResult,
+  cancelDeferredExit
 } = require('../../../utils/roomDissolved');
 const {
   handleRoomLastEvent,
@@ -31,11 +32,12 @@ const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpeci
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
-  disposeRoomSession
+  disposeRoomSession,
+  getActiveRoomSession
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
-const { assignAvatarImages, resolveCloudAvatarUrls, getMemberAvatarFingerprint } = require('../../../utils/avatars');
+const { assignAvatarImages, getMemberAvatarFingerprint } = require('../../../utils/avatars');
 const {
   getStoredProfile,
   applyChooseAvatarEvent,
@@ -82,7 +84,8 @@ Page({
     members: [],
     memberSlots: [],
     isFromScan: false,
-    isHost: true,
+    isHost: false,
+    membershipConfirmed: false,
     memberCount: 0,
     maxMembers: MEMBER_SLOTS,
     memberCountBounce: false,
@@ -217,19 +220,28 @@ Page({
       clearSpyLobbyStay();
     }
 
-    getApp().globalData.roomId = roomId;
-    try {
-      wx.setStorageSync('joinedRoomId', roomId);
-    } catch (e) {
-      console.warn('setStorage joinedRoomId failed', e);
-    }
-
     const fromScan = !!scene || fromScanQuery;
+
+    // 扫码入房：join 成功前不写 joinedRoomId，避免首页/轮询误判 NOT_IN_ROOM
+    this._joinInFlight = fromScan === true;
+    if (!fromScan) {
+      getApp().globalData.roomId = roomId;
+      try {
+        wx.setStorageSync('joinedRoomId', roomId);
+      } catch (e) {
+        console.warn('setStorage joinedRoomId failed', e);
+      }
+    } else {
+      // 仅内存暂存，便于失败提示；持久化延后到 join 成功
+      getApp().globalData.roomId = roomId;
+    }
 
     this.setData({
       roomId,
       formattedRoomId: this._formatRoomId(roomId),
       isFromScan: fromScan,
+      isHost: false,
+      membershipConfirmed: false,
       ...getDevRoomIdDisplayPatch(roomId)
     });
 
@@ -238,6 +250,8 @@ Page({
     } else {
       this.loadRoomData(roomId).then((result) => {
         if (!this._pageAlive || !result) return;
+        this._joinInFlight = false;
+        this.setData({ membershipConfirmed: true });
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
         } else {
@@ -263,8 +277,8 @@ Page({
     if (!this._pageAlive || this._navigatingToBrainstorm) return;
     this.setData({ navFreeze: false });
     consumePendingGameReturnedToast();
-    if (this.data.roomId) {
-      // App 级 RoomSession 单循环；首屏仍由 onLoad 的 loadRoomData 填充
+    // 扫码 join 未完成前禁止轮询，否则会把 NOT_IN_ROOM 误判成退出房间
+    if (this.data.roomId && !this._joinInFlight) {
       this._startMemberPolling();
     }
   },
@@ -321,6 +335,11 @@ Page({
   },
 
   _handleMembershipLost(reason = 'left') {
+    // join 闸门期间忽略误踢
+    if (this._joinInFlight) {
+      console.warn('[addPlayer] ignore membership lost during join', reason);
+      return;
+    }
     disposeRoomSession();
     if (reason === 'dissolved') {
       handleRoomGoneFromResult(
@@ -415,17 +434,20 @@ Page({
   },
 
   _startMemberPolling() {
+    if (this._joinInFlight) return;
     this._stopMemberPolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId,
       intervalMs: this.data.isHost ? 4000 : 2500,
+      // join 成功后不要回放 join 前的 NOT_IN_ROOM 脏快照
+      emitCurrent: this.data.membershipConfirmed === true,
       onSnapshot(snapshot) {
-        if (!this._pageAlive || this._navigatingToBrainstorm) return;
+        if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
         const roomId = this.data.roomId || getApp().globalData.roomId;
         if (!roomId || !snapshot) return;
         const raw = snapshot.raw || snapshot;
         this.loadRoomData(roomId, { silent: true, cachedResult: raw }).then((result) => {
-          if (!this._pageAlive || this._navigatingToBrainstorm) return;
+          if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
           if (!this.data.isHost && result) {
             this._followRoomPageFromResult(result, roomId);
           }
@@ -462,9 +484,9 @@ Page({
 
   async _prepareMembersForDisplay(rawMembers) {
     const deduped = this._dedupeMembersById(rawMembers);
-    const withResolvedUrls = await resolveCloudAvatarUrls(deduped);
-    const withLocalMe = this._applyLocalAvatarForMe(withResolvedUrls);
-    return this._assignAvatarImages(withLocalMe);
+    const withLocalMe = this._applyLocalAvatarForMe(deduped);
+    const { prepareMembersForDisplay } = require('../../../utils/avatars');
+    return prepareMembersForDisplay(withLocalMe);
   },
 
   _hasAuthorizedWechatAvatar() {
@@ -472,11 +494,29 @@ Page({
     return !!(stored && stored.avatarUrl);
   },
 
+  _hasScanAvatarPrompted() {
+    try {
+      return wx.getStorageSync('scanAvatarAuthPrompted') === true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  _markScanAvatarPrompted() {
+    try {
+      wx.setStorageSync('scanAvatarAuthPrompted', true);
+    } catch (e) {
+      // ignore
+    }
+  },
+
   _beginScanJoinWithAvatarPrompt(roomId) {
-    if (this._hasAuthorizedWechatAvatar()) {
+    this._joinInFlight = true;
+    if (this._hasAuthorizedWechatAvatar() || this._hasScanAvatarPrompted()) {
       this.joinRoomThenLoad(roomId);
       return;
     }
+    this._markScanAvatarPrompted();
     beginUserAuthFlow();
     this.setData({
       showAvatarAuth: true,
@@ -485,29 +525,26 @@ Page({
   },
 
   onChooseAvatarAuth(e) {
+    clearTimeout(this._authReleaseTimer);
+    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
     try {
-      const profile = applyChooseAvatarEvent(e.detail);
-      if (!profile) return;
-      const roomId = this.data.pendingJoinRoomId || this.data.roomId;
-      this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
-      if (roomId) {
-        this.joinRoomThenLoad(roomId);
-      }
-    } finally {
-      endUserAuthFlow();
+      applyChooseAvatarEvent(e && e.detail);
+    } catch (err) {
+      console.warn('onChooseAvatarAuth', err);
     }
+    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+    endUserAuthFlow();
+    cancelDeferredExit();
+    if (roomId) this.joinRoomThenLoad(roomId);
   },
 
   onSkipAvatarAuth() {
-    try {
-      const roomId = this.data.pendingJoinRoomId || this.data.roomId;
-      this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
-      if (roomId) {
-        this.joinRoomThenLoad(roomId);
-      }
-    } finally {
-      endUserAuthFlow();
-    }
+    clearTimeout(this._authReleaseTimer);
+    const roomId = this.data.pendingJoinRoomId || this.data.roomId;
+    this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
+    endUserAuthFlow();
+    cancelDeferredExit();
+    if (roomId) this.joinRoomThenLoad(roomId);
   },
 
   async _ensureMyAvatarSynced(roomId, result) {
@@ -554,6 +591,9 @@ Page({
   },
 
   async joinRoomThenLoad(roomId) {
+    this._joinInFlight = true;
+    this._stopMemberPolling();
+    disposeRoomSession();
     const profile = await getOptionalProfileForRoom();
 
     wx.showLoading({ title: '加入中…' });
@@ -565,21 +605,35 @@ Page({
       const result = (joinRes && joinRes.result) || {};
       wx.hideLoading();
       if (result.ok !== true) {
+        this._joinInFlight = false;
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
       }
-      this.loadRoomData(roomId).then((result) => {
-        if (!this._pageAlive || !result) return;
-        if (result.isHost === true) {
-          this._syncLobbyRoomState(result);
-        } else {
-          // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
-          this._followRoomPageFromResult(result, roomId);
-        }
-        this._startMemberPolling();
-        this._ensureMyAvatarSynced(roomId, result);
-      });
+      // join 成功后再持久化，并取消授权期间挂起的误踢
+      getApp().globalData.roomId = roomId;
+      try {
+        wx.setStorageSync('joinedRoomId', roomId);
+      } catch (e) {
+        console.warn('setStorage joinedRoomId failed', e);
+      }
+      cancelDeferredExit();
+
+      const loaded = await this.loadRoomData(roomId);
+      if (!this._pageAlive) return;
+      this._joinInFlight = false;
+      this.setData({ membershipConfirmed: true });
+      if (!loaded) return;
+      if (loaded.isHost === true) {
+        this._syncLobbyRoomState(loaded);
+      } else {
+        // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
+        this._followRoomPageFromResult(loaded, roomId);
+      }
+      this._startMemberPolling();
+      this._ensureMyAvatarSynced(roomId, loaded);
+      this._preloadBrainstormMode();
     } catch (err) {
+      this._joinInFlight = false;
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }
@@ -605,15 +659,24 @@ Page({
       if (!silent) wx.hideLoading();
 
       if (result.ok !== true) {
-        if (!this.data.isHost) {
-          if (result.errCode === 'ROOM_DISSOLVED' || result.roomDissolved === true) {
-            this._handleMembershipLost('dissolved');
-            return null;
+        // join 完成前忽略 NOT_IN_ROOM / 解散误判
+        if (this._joinInFlight) {
+          if (!silent) {
+            this.setData({
+              qrcodeStatus: 'loading',
+              qrcodeErrorHint: ''
+            });
           }
-          if (result.errCode === 'NOT_IN_ROOM') {
-            this._handleMembershipLost('left');
-            return null;
-          }
+          return null;
+        }
+        // 主机退出/解散/踢出：不依赖 membershipConfirmed（偶发场景下该值未及时更新）
+        if (result.errCode === 'ROOM_DISSOLVED' || result.roomDissolved === true) {
+          this._handleMembershipLost('dissolved');
+          return null;
+        }
+        if (result.errCode === 'NOT_IN_ROOM') {
+          this._handleMembershipLost('left');
+          return null;
         }
         if (!silent) {
           this.setData({
@@ -632,7 +695,11 @@ Page({
       const deduped = this._dedupeMembersById(rawMembers);
       const isStillMember = deduped.some((m) => m.isMe);
       if (!result.isHost && !isStillMember) {
-        this._handleMembershipLost('dissolved');
+        if (this._joinInFlight || !this.data.membershipConfirmed) {
+          return null;
+        }
+        // 已确认成员后才判定离开；勿标成「房间已解散」
+        this._handleMembershipLost('left');
         return null;
       }
 
@@ -660,35 +727,16 @@ Page({
 
       if (silent) {
         // 跳转脑暴模式途中禁止 setData，否则主线程被拖死易触发 navigateTo:fail timeout
-        if (!this._pageAlive || this.data.isDragging || this._navigatingToBrainstorm) {
+        if (
+          !this._pageAlive
+          || this.data.isDragging
+          || this._navigatingToBrainstorm
+          || this._reorderInFlight
+        ) {
           return result;
         }
-        // 保留本地槽位布局（含空位），避免单人拖拽后被轮询刷回到默认位置
-        const localExpanded = this._expandMembersToSlots(this.data.members || []);
-        const localFilledCount = localExpanded.filter((m) => !!m).length;
-        // 仅当有人新加入时用服务端顺序；否则保留本地拖拽顺序（位置不变，仅同步成员字段）
-        let expanded;
-        if (deduped.length !== localFilledCount) {
-          expanded = this._expandMembersToSlots(withAvatars);
-        } else if (localFilledCount > 0) {
-          const serverById = new Map();
-          withAvatars.forEach((m) => {
-            const id = this._getMemberId(m);
-            if (id) serverById.set(id, m);
-          });
-          const canMerge = serverById.size > 0;
-          const merged = canMerge
-            ? localExpanded.map((m) => {
-                if (!m) return null;
-                const id = this._getMemberId(m);
-                const s = id ? serverById.get(id) : null;
-                return s ? { ...s } : m;
-              })
-            : localExpanded;
-          expanded = this._expandMembersToSlots(merged);
-        } else {
-          expanded = this._expandMembersToSlots(withAvatars);
-        }
+        // 座位顺序以服务端 playerIndex 为准，保证房主拖拽后多端同步
+        const expanded = this._expandMembersToSlots(withAvatars);
 
         const memberSlots = this.buildMemberSlots(expanded);
         const fingerprint = [
@@ -698,7 +746,7 @@ Page({
           roomMeta.selectedModeTitle || '',
           resolvedState.currentPage || '',
           expanded.map((m) => (m
-            ? `${this._getMemberId(m)}:${m.nickName || ''}:${getMemberAvatarFingerprint(m)}`
+            ? `${this._getMemberId(m)}:${m.playerIndex || ''}:${m.nickName || ''}:${getMemberAvatarFingerprint(m)}`
             : '-'
           )).join('|')
         ].join('#');
@@ -712,6 +760,7 @@ Page({
             memberSlots,
             roomState: resolvedState,
             isHost: nowHost,
+            membershipConfirmed: true,
             ...roomMeta
           };
           // 编辑房间名时不覆盖本地输入，避免轮询打断
@@ -789,6 +838,7 @@ Page({
         members,
         memberSlots,
         isHost,
+        membershipConfirmed: true,
         roomState: resolvedState,
         ...roomMeta
       });
@@ -930,9 +980,8 @@ Page({
   onSlotTap() {},
 
   _showKickConfirm(member) {
-    const isHost = this.data.isHost;
-    const isDragging = this.data.isDragging;
-    if (isHost !== true || isDragging === true) return;
+    if (this.data.isHost !== true || this.data.isDragging === true) return;
+    if (!member || member.isMe === true) return;
     this._clearLongPressTimer();
     this._slotTouchStart = null;
     this._lastTouch = null;
@@ -950,7 +999,11 @@ Page({
 
   async _kickMember(member) {
     const roomId = this.data.roomId || getApp().globalData.roomId;
-    if (!roomId || !member || !member.userId) return;
+    if (this.data.isHost !== true) {
+      wx.showToast({ title: '仅房主可踢出成员', icon: 'none' });
+      return;
+    }
+    if (!roomId || !member || !member.userId || member.isMe === true) return;
 
     wx.showLoading({ title: '处理中…' });
     try {
@@ -1053,6 +1106,7 @@ Page({
    * - 后续由 _updateDragPosition 根据手指移动实时更新位置与重排结果
    */
   _enterDragMode(index, slot) {
+    if (this.data.isHost !== true || !slot || !slot.member) return;
     // 优先使用最新触点，保证长按到可拖拽的衔接连续；没有 move 时回退到按下坐标
     const touch = this._lastTouch || this._slotTouchStart;
     let initX = null, initY = null;
@@ -1217,8 +1271,10 @@ Page({
     this._armDragWatchdog();
 
     const overKickZone = this._isPointInRect(clientX, clientY, this._kickZoneRect);
-    if (overKickZone !== this.data.overKickZone) {
-      this.setData({ overKickZone });
+    const draggingSelf = !!(this.data.draggingMember && this.data.draggingMember.isMe);
+    const nextOverKick = draggingSelf ? false : overKickZone;
+    if (nextOverKick !== this.data.overKickZone) {
+      this.setData({ overKickZone: nextOverKick });
     }
 
     // 位置节流：变化不足 1px 时跳过，减少无意义的跨线程通信
@@ -1228,8 +1284,15 @@ Page({
     ) return;
 
     const applyUpdate = () => {
-      // 拖拽中只更新浮层坐标；原槽位/原槽位动效保持不动
-      this.setData({ dragPosX: clientX, dragPosY: clientY });
+      // 拖拽中只更新浮层坐标与落点高亮；原槽位布局在松手时一次性提交
+      const patch = { dragPosX: clientX, dragPosY: clientY };
+      if (!overKickZone && this._circleRect) {
+        const idx = this._getSlotIndexByPoint(clientX, clientY, this._circleRect);
+        if (idx != null && idx !== this.data.dropTargetIndex) {
+          patch.dropTargetIndex = idx;
+        }
+      }
+      this.setData(patch);
     };
 
     if (this._circleRect) {
@@ -1291,7 +1354,7 @@ Page({
     let dropTargetIndex = this.data.dropTargetIndex;
     const lastTouch = this._lastTouch;
     const draggingMember = this.data.draggingMember;
-    const droppedOnKickZone = this._isPointInRect(
+    const droppedOnKickZone = !(draggingMember && draggingMember.isMe) && this._isPointInRect(
       lastTouch && (lastTouch.clientX != null ? lastTouch.clientX : lastTouch.pageX),
       lastTouch && (lastTouch.clientY != null ? lastTouch.clientY : lastTouch.pageY),
       this._kickZoneRect
@@ -1332,12 +1395,14 @@ Page({
     }
 
     // 仅在松手时一次性提交重排，避免拖动中 slots 反复变化导致“卡住”
+    let packed = null;
     if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
       const base = this._dragBaseMembers;
       if (base && draggingMember) {
         const arr = base.slice();
         arr.splice(dropTargetIndex, 0, draggingMember);
-        const reordered = this._expandMembersToSlots(arr);
+        packed = arr.filter(Boolean);
+        const reordered = this._expandMembersToSlots(packed);
         updates.members = reordered;
         updates.memberSlots = this.buildMemberSlots(reordered);
       }
@@ -1351,8 +1416,8 @@ Page({
     this._dragBaseMembers = null; // 释放快照，避免内存残留
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
-    if (dragFromIndex != null && dropTargetIndex != null && dragFromIndex !== dropTargetIndex) {
-      wx.showToast({ title: '顺序已调整', icon: 'none', duration: 800 });
+    if (packed && packed.length) {
+      this._syncSeatOrder(packed);
     }
   },
 
@@ -1380,6 +1445,76 @@ Page({
     this._dragBaseMembers = null; // 释放快照，避免内存残留
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
+  },
+
+  _dispatchRoomCommand(type, payload) {
+    const roomId = this.data.roomId || '';
+    if (!roomId || !type) return Promise.resolve({ ok: false, errMsg: '缺少房间或命令' });
+    const session = this._boundRoomSession || getActiveRoomSession();
+    const build = () => {
+      const expectedRevision = session && typeof session.getAppliedRevision === 'function'
+        ? Number(session.getAppliedRevision()) || 0
+        : 0;
+      return {
+        protocolVersion: 2,
+        commandId: `lobby_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        roomId,
+        expectedRevision,
+        payload: payload || {},
+        clientSentAt: Date.now()
+      };
+    };
+    const run = async () => {
+      const command = build();
+      if (session && typeof session.dispatch === 'function') {
+        return session.dispatch(command);
+      }
+      const res = await wx.cloud.callFunction({ name: 'roomCommand', data: command });
+      return (res && res.result) || { ok: false };
+    };
+    return run().then(async (first) => {
+      let result = first;
+      if (!result.ok && result.errCode === 'REVISION_CONFLICT' && session && typeof session.refresh === 'function') {
+        await session.refresh();
+        result = await run();
+      }
+      return result || { ok: false };
+    }).catch((e) => {
+      console.warn('addPlayer roomCommand', type, e);
+      return { ok: false, errMsg: (e && e.errMsg) || (e && e.message) || '命令失败' };
+    });
+  },
+
+  async _syncSeatOrder(orderedMembers) {
+    if (this.data.isHost !== true) return;
+    const roomId = this.data.roomId || '';
+    const packed = (orderedMembers || []).filter(Boolean);
+    const userIdOrder = packed
+      .map((m) => m.userId || m.openid)
+      .filter((id) => !!id);
+    if (!roomId || userIdOrder.length < 2) return;
+    if (userIdOrder.length !== packed.length) {
+      wx.showToast({ title: '顺序同步失败', icon: 'none' });
+      this.loadRoomData(roomId, { silent: true });
+      return;
+    }
+
+    this._reorderInFlight = true;
+    try {
+      const result = await this._dispatchRoomCommand('REORDER_SEATS', { userIdOrder });
+      if (!result || result.ok !== true) {
+        wx.showToast({
+          title: (result && result.errMsg) || '顺序同步失败',
+          icon: 'none'
+        });
+        await this.loadRoomData(roomId, { silent: true });
+        return;
+      }
+      wx.showToast({ title: '顺序已同步', icon: 'none', duration: 800 });
+    } finally {
+      this._reorderInFlight = false;
+    }
   },
 
   startEditRoomName() {
@@ -1447,12 +1582,10 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({
-          url: '/pages/main-pages/aaa/index'
-        });
-      }
+    const { safeNavigateBack } = require('../../../utils/pageNavigate');
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/aaa/index',
+      fallbackUrl: '/pages/main-pages/aaa/index'
     });
   },
 

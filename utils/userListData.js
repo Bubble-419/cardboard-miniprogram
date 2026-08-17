@@ -1,6 +1,6 @@
-const { assignAvatarImages } = require('./avatars');
+const { prepareMembersForDisplay, buildAvatarList, assignAvatarImages } = require('./avatars');
 
-/** 将房间成员列表转为 user-list 组件所需的 avatarList */
+/** 将房间成员列表转为 user-list 组件所需的 avatarList（同步，假设已 resolve） */
 function buildUserListFromMembers(members) {
   const enriched = assignAvatarImages(members || []);
   return enriched.map((m) => ({
@@ -12,6 +12,20 @@ function buildUserListFromMembers(members) {
   }));
 }
 
+/** 异步：先 resolve cloud:// 再构建列表 */
+async function buildUserListFromMembersAsync(members) {
+  const enriched = await prepareMembersForDisplay(members || []);
+  return enriched.map((m) => ({
+    id: m.playerIndex != null ? m.playerIndex : (m.userId || ''),
+    nickName: m.nickName || `玩家${m.playerIndex || ''}`,
+    avatar: m.avatarImage || m.avatarUrl || '',
+    avatarImage: m.avatarImage || m.avatarUrl || '',
+    isMe: m.isMe === true
+  }));
+}
+
 module.exports = {
-  buildUserListFromMembers
+  buildUserListFromMembers,
+  buildUserListFromMembersAsync,
+  buildAvatarList
 };

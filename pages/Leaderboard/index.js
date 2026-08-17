@@ -1,5 +1,7 @@
-const { navigateByRoomState } = require('../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../utils/subScreenRoomPoll');
+const { goRoomPage } = require('../../utils/goRoomPage');
+const { clearLocalBrainstormProgress } = require('../../utils/roomBrainstormProgress');
+const { clearPartnerSpecialMoveUsedFlag } = require('../../utils/partnerSpecialMove');
 
 Page({
   data: {
@@ -93,51 +95,71 @@ Page({
   },
 
   handleBack() {
-    // 从合伙人模式收尾页进入时，返回应回到房间，而非德国心脏病模式选择页
     if (this.data.from === 'closingEnd') {
       this._backToRoom();
       return;
     }
-    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
+    this._exitHalliModeToRoom();
   },
 
   _backToRoom() {
     const roomId = this.data.roomId || '';
-    wx.reLaunch({
-      url: `/pages/main-pages/addPlayer/index${roomId ? `?roomId=${encodeURIComponent(roomId)}` : ''}`
-    });
+    goRoomPage(roomId);
   },
 
   async handleNewGame() {
-    // 从合伙人模式收尾页进入时，「再来一局」应回到房间，不应走德国心脏病的清分/新局逻辑
     if (this.data.from === 'closingEnd') {
       this._backToRoom();
       return;
     }
-    const { roomId } = this.data;
-    if (roomId) {
-      wx.showLoading({ title: '加载中…' });
-      try {
-        await wx.cloud.callFunction({
-          name: 'clearRoomScores',
-          data: { roomId }
-        });
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: { roomId, currentPage: 'auth' }
-        });
-      } catch (e) {
-        console.warn('clearRoomScores/updateRoomState', e);
-      } finally {
-        wx.hideLoading();
-      }
+    await this._exitHalliModeToRoom();
+  },
+
+  async _exitHalliModeToRoom() {
+    if (this._exitingMode) return;
+    const roomId = this.data.roomId || '';
+    if (!roomId) {
+      goRoomPage('');
+      return;
     }
-    const app = getApp();
-    const gd = app.globalData;
-    gd.selectedPlayer = null;
-    gd.selectedProblem = null;
-    gd.selectedMode = null;
-    gd.selectedBG = null;
-    wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
+    if (this.data.isSubScreen) {
+      goRoomPage(roomId);
+      return;
+    }
+
+    this._exitingMode = true;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      const callRes = await wx.cloud.callFunction({
+        name: 'roomClearBrainstormMode',
+        data: { roomId }
+      });
+      const result = (callRes && callRes.result) || {};
+      wx.hideLoading();
+      if (result.ok !== true) {
+        this._exitingMode = false;
+        wx.showToast({ title: result.errMsg || '退出模式失败', icon: 'none' });
+        return;
+      }
+      clearLocalBrainstormProgress(roomId);
+      clearPartnerSpecialMoveUsedFlag(roomId);
+      try {
+        const app = getApp();
+        if (app.globalData) {
+          app.globalData.gameMode = '';
+          app.globalData.selectedMode = null;
+          app.globalData.selectedBG = null;
+          app.globalData.selectedPlayer = null;
+          app.globalData.selectedProblem = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+      goRoomPage(roomId);
+    } catch (e) {
+      wx.hideLoading();
+      this._exitingMode = false;
+      wx.showToast({ title: (e && e.errMsg) || '退出模式失败', icon: 'none' });
+    }
   }
 });

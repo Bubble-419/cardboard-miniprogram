@@ -1,6 +1,6 @@
 const { buildGamepageUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { openUrl } = require('../../../../utils/pageNavigate');
+const { openUrl, safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { PHASE_CLOSING } = require('../../../../utils/partnerGamePhase');
 
 function isValidClosingVote(vote) {
@@ -281,15 +281,10 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, 1, 'partner')
-          });
-        }
-      }
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+      fallbackUrl: roomId ? buildGamepageUrl(roomId, 1, 'partner') : ''
     });
   }
 });

@@ -1,3 +1,5 @@
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
+
 Page({
   data: {
     roomId: '',
@@ -182,10 +184,12 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/addPlayer/index' });
-      }
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
+      fallbackUrl: roomId
+        ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/addPlayer/index'
     });
   }
 });

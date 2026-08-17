@@ -3,6 +3,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -317,7 +318,7 @@ Page({
     }, 500);
   },
 
-  // 随机选择玩家：被选中的位置播放 3s 水波纹动画（不随手指离开停止），结束后显示几号玩家被选中 + 确认按钮
+  // 随机选择玩家：被选中的位置播放水波纹；结束后显示几号玩家被选中 + 确认按钮
   selectRandomPlayer() {
     const { activeTouches, members } = this.data;
     let currentPlayerIndex = 1;
@@ -358,7 +359,7 @@ Page({
       });
     }
 
-    const SELECTION_ANIMATION_DURATION = 500;
+    const SELECTION_ANIMATION_DURATION = 250;
     if (selectedPosition) {
       this.animationDoneTimer = setTimeout(() => {
         this.setData({ selectionAnimationDone: true });
@@ -502,7 +503,28 @@ Page({
 
   // 返回
   goBack() {
-    wx.navigateBack();
+    const roomId = this.data.roomId || '';
+    const modeId = this.data.selectedModeId || 'partner';
+    let fallbackUrl = '/pages/main-pages/brainstormMode/index';
+    if (modeId === 'partner') {
+      fallbackUrl = roomId
+        ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/selectProblem/index';
+    } else if (modeId === 'halliGalli') {
+      fallbackUrl = roomId
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
+        : '/pages/main-pages/modeIndex/index?modeId=halliGalli';
+    } else if (roomId) {
+      fallbackUrl = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`;
+    }
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/selectProblem/index',
+        'pages/main-pages/modeIndex/index',
+        'pages/main-pages/selectMode/index'
+      ],
+      fallbackUrl
+    });
   }
-})
+});
 

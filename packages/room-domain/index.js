@@ -929,11 +929,11 @@ function executeCommand({
         membersByUserId[uid] = {
           ...membersByUserId[uid],
           seatNo,
-          role: seatNo === 1 ? 'HOST' : 'PLAYER'
+          // 房主身份跟创建者，不跟座位号，避免拖拽换序把 GOD 角色转走
+          role: String(uid) === String(room.hostUserId) ? 'HOST' : 'PLAYER'
         };
       }
     });
-    // 席位 1 视为房主位置；hostUserId 保持创建者不变（产品默认）
     const domainRevisions = {
       ...(room.domainRevisions || emptyDomainRevisions()),
       members: (room.domainRevisions && room.domainRevisions.members || 0) + 1

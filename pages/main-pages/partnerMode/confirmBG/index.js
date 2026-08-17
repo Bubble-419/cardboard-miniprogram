@@ -3,7 +3,8 @@ const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
 const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
-const { buildAvatarList } = require('../../../../utils/avatars');
+const { buildAvatarListAsync } = require('../../../../utils/avatars');
+const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
 
@@ -114,10 +115,10 @@ Page({
     this._initPage(roomId);
   },
 
-  _syncAvatarListFromResult(result) {
+  async _syncAvatarListFromResult(result) {
     if (!result || result.ok !== true) return;
     try {
-      const avatarList = buildAvatarList(result.members || []);
+      const avatarList = await buildAvatarListAsync(result.members || []);
       this.setData({ avatarList });
     } catch (e) {
       console.warn('confirmBG buildAvatarList', e);
@@ -132,7 +133,7 @@ Page({
         name: 'getAddPlayerData',
         data: { roomId }
       });
-      this._syncAvatarListFromResult((res && res.result) || {});
+      await this._syncAvatarListFromResult((res && res.result) || {});
     } catch (e) {
       console.warn('confirmBG syncAvatarList', e);
     }
@@ -332,21 +333,12 @@ Page({
 
   /** 返回游戏：navigateBack 保留 gamepage 实例与进度，禁止 redirect 重开 */
   handleReturnToGame() {
-    wx.navigateBack({
-      delta: 1,
-      fail: () => {
-        // 栈异常时再兜底；正常从 gamepage navigateTo 进入不会走到这里
-        const roomId = this.data.roomId || getApp().globalData.roomId || '';
-        if (roomId) {
-          wx.navigateBack({
-            fail: () => {
-              wx.redirectTo({
-                url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
-              });
-            }
-          });
-        }
-      }
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+      fallbackUrl: roomId
+        ? `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+        : ''
     });
   },
 
@@ -417,17 +409,16 @@ Page({
       this.handleReturnToGame();
       return;
     }
-    wx.navigateBack({
-      fail: () => {
-        const roomId = this.data.roomId || '';
-        if (roomId) {
-          wx.redirectTo({
-            url: `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-          });
-        } else {
-          wx.navigateBack();
-        }
-      }
+    const roomId = this.data.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+      : '/pages/main-pages/modeIndex/index?modeId=partner';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/modeIndex/index',
+        'pages/main-pages/selectBG/index'
+      ],
+      fallbackUrl
     });
   },
 

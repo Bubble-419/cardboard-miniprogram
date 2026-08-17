@@ -12,6 +12,7 @@ const STEPS_WITHOUT_PLATFORM = [
 ];
 
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -73,7 +74,17 @@ Page({
   },
 
   goBack() {
-    wx.navigateBack({ delta: 1 });
+    const roomId = getApp().globalData.roomId || '';
+    const fallbackUrl = roomId
+      ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+      : '/pages/main-pages/modeIndex/index?modeId=partner';
+    safeNavigateBack({
+      expectedPrev: [
+        'pages/main-pages/modeIndex/index',
+        'pages/main-pages/partnerMode/confirmBG/index'
+      ],
+      fallbackUrl
+    });
   },
 
   handleGoRoom() {

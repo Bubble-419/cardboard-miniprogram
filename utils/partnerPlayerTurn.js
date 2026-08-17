@@ -40,8 +40,8 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
   return {
     nextIndex,
     nextName,
-    // 脑暴模式：每轮仅一次出牌→打分→表态，结束即进入下一轮
-    incrementRound: true
+    // 满圈回到首位才进下一轮（与 ADVANCE_TURN wrapped 对齐）；否则同轮换人
+    incrementRound: nextIndex === seats[0]
   };
 }
 

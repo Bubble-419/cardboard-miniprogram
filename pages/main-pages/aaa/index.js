@@ -1,4 +1,5 @@
 const JOINED_ROOM_STORAGE_KEY = 'joinedRoomId';
+const HOME_PROFILE_AUTH_KEY = 'homeProfileAuthPrompted';
 const DEFAULT_ROOM_DESC = '邀请成员扫码加入，一起进行头脑风暴';
 const { getDevJoinPageData } = require('../../../utils/devJoinRoomById');
 const {
@@ -18,6 +19,7 @@ const {
 const {
   beginUserAuthFlow,
   endUserAuthFlow,
+  forceEndUserAuthFlow,
   isUserAuthInProgress
 } = require('../../../utils/userAuthSession');
 const {
@@ -25,6 +27,17 @@ const {
   upsertHistoryWorkshop,
   formatTime: formatHistoryTime
 } = require('../../../utils/historyWorkshops');
+
+/** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
+let _scanJoinNavigatingRoomId = '';
+
+function _hasCompleteLocalProfile(stored) {
+  if (!stored) return false;
+  const nick = (stored.nickName || '').trim();
+  const hasNick = !!nick && nick !== '微信用户';
+  const hasAvatar = !!(stored.avatarUrl || stored.avatarFileID);
+  return hasNick && hasAvatar;
+}
 
 Page({
   data: {
@@ -41,7 +54,10 @@ Page({
     timeLabel: '创建/加入时间',
     loading: false,
     debugRoomIdInput: '',
-    historyWorkshops: []
+    historyWorkshops: [],
+    showProfileAuth: false,
+    authDraftNick: '',
+    authDraftAvatar: DEFAULT_AVATAR
   },
 
   onLoad() {
@@ -56,17 +72,21 @@ Page({
     this._restoreUserProfile();
     this.loadJoinedRoomState();
     this._loadHistoryWorkshops();
+    this._maybeShowFirstProfileAuth();
   },
 
   onShow() {
-    // 系统头像选择面板关闭后 chooseavatar 可能不回调，释放闸门以免挂起解散跳转
+    // 系统头像选择面板关闭后 chooseavatar 可能不回调；拉长兜底，避免打断进行中的授权
     if (isUserAuthInProgress()) {
-      setTimeout(() => {
-        if (isUserAuthInProgress()) endUserAuthFlow();
-      }, 300);
+      clearTimeout(this._authReleaseTimer);
+      this._authReleaseTimer = setTimeout(() => {
+        if (isUserAuthInProgress()) forceEndUserAuthFlow();
+      }, 2500);
     }
     consumePendingRoomGoneToast();
     this._restoreUserProfile();
+    // 扫码跳转途中不要用「即将加入」的 roomId 跑成员校验，否则会误弹退出房间
+    if (_scanJoinNavigatingRoomId) return;
     this.loadJoinedRoomState();
     this._loadHistoryWorkshops();
   },
@@ -106,6 +126,8 @@ Page({
   },
 
   async loadJoinedRoomState() {
+    if (_scanJoinNavigatingRoomId) return;
+
     const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
@@ -229,18 +251,105 @@ Page({
 
   _restoreUserProfile() {
     const stored = getStoredProfile();
-    if (!stored || !stored.avatarUrl) return;
+    if (!stored) return;
     this.setData({
-      userAvatarUrl: stored.avatarUrl,
+      userAvatarUrl: stored.avatarUrl || this.data.userAvatarUrl || DEFAULT_AVATAR,
       userNickName: stored.nickName || this.data.userNickName || '微信用户'
     });
   },
 
+  _markHomeProfileAuthPrompted() {
+    try {
+      wx.setStorageSync(HOME_PROFILE_AUTH_KEY, true);
+    } catch (e) {
+      // ignore
+    }
+  },
+
+  _maybeShowFirstProfileAuth() {
+    let prompted = false;
+    try {
+      prompted = wx.getStorageSync(HOME_PROFILE_AUTH_KEY) === true;
+    } catch (e) {
+      prompted = false;
+    }
+    const stored = getStoredProfile();
+    if (prompted || _hasCompleteLocalProfile(stored)) {
+      if (_hasCompleteLocalProfile(stored)) this._markHomeProfileAuthPrompted();
+      return;
+    }
+
+    beginUserAuthFlow();
+    this.setData({
+      showProfileAuth: true,
+      authDraftNick: (stored && stored.nickName) || '',
+      authDraftAvatar: (stored && stored.avatarUrl) || DEFAULT_AVATAR
+    });
+  },
+
+  onProfileAuthAvatarTap() {
+    clearTimeout(this._authReleaseTimer);
+    beginUserAuthFlow();
+  },
+
+  onProfileAuthChooseAvatar(e) {
+    clearTimeout(this._authReleaseTimer);
+    try {
+      const profile = applyChooseAvatarEvent(e && e.detail);
+      if (!profile) return;
+      this.setData({
+        authDraftAvatar: profile.avatarUrl,
+        userAvatarUrl: profile.avatarUrl,
+        userNickName: profile.nickName || this.data.authDraftNick || this.data.userNickName || '微信用户',
+        authDraftNick: profile.nickName || this.data.authDraftNick || ''
+      });
+    } finally {
+      // 弹层仍开着，保持闸门；完成/跳过时再 end
+      if (!this.data.showProfileAuth) endUserAuthFlow();
+    }
+  },
+
+  onProfileAuthNickInput(e) {
+    const nickName = (e.detail && e.detail.value) || '';
+    this.setData({ authDraftNick: nickName });
+  },
+
+  onConfirmProfileAuth() {
+    clearTimeout(this._authReleaseTimer);
+    const nickName = (this.data.authDraftNick || '').trim();
+    const avatarUrl = this.data.authDraftAvatar || this.data.userAvatarUrl || '';
+    const stored = getStoredProfile() || {};
+    const next = {
+      ...stored,
+      nickName: nickName || stored.nickName || '微信用户',
+      avatarUrl: avatarUrl && avatarUrl !== DEFAULT_AVATAR ? avatarUrl : (stored.avatarUrl || '')
+    };
+    if (next.avatarUrl || next.nickName) {
+      saveStoredProfile(next);
+    }
+    this._markHomeProfileAuthPrompted();
+    this.setData({
+      showProfileAuth: false,
+      userNickName: next.nickName || '微信用户',
+      userAvatarUrl: next.avatarUrl || DEFAULT_AVATAR
+    });
+    forceEndUserAuthFlow();
+  },
+
+  onSkipProfileAuth() {
+    clearTimeout(this._authReleaseTimer);
+    this._markHomeProfileAuthPrompted();
+    this.setData({ showProfileAuth: false });
+    forceEndUserAuthFlow();
+  },
+
   onAvatarAuthTap() {
+    clearTimeout(this._authReleaseTimer);
     beginUserAuthFlow();
   },
 
   onChooseAvatar(e) {
+    clearTimeout(this._authReleaseTimer);
     try {
       const profile = applyChooseAvatarEvent(e.detail);
       if (!profile) return;
@@ -601,8 +710,8 @@ Page({
 
   _goToScanJoinRoom(roomId) {
     if (!roomId) return;
-    getApp().globalData.roomId = roomId;
-    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    // 禁止 join 前写入 joinedRoomId：否则首页 onShow / 轮询会把「未入房」误判成退出房间
+    _scanJoinNavigatingRoomId = roomId;
     upsertHistoryWorkshop({
       roomId,
       name: this.data.roomName || '脑暴工作坊',
@@ -612,9 +721,22 @@ Page({
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
     wx.redirectTo({
       url,
+      success: () => {
+        // 跳转成功后短暂保留标记，避免本页 onShow 抢跑
+        setTimeout(() => {
+          if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+        }, 800);
+      },
       fail: (err) => {
         console.warn('redirectTo addPlayer failed, try reLaunch', err);
-        wx.reLaunch({ url });
+        wx.reLaunch({
+          url,
+          complete: () => {
+            setTimeout(() => {
+              if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+            }, 800);
+          }
+        });
       }
     });
   },

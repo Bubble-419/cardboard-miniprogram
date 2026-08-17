@@ -1,4 +1,5 @@
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const { safeNavigateBack } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -213,10 +214,12 @@ Page({
   },
 
   handleGoBack() {
-    wx.navigateBack({
-      fail: () => {
-        wx.reLaunch({ url: '/pages/main-pages/modeIndex/index?modeId=halliGalli' });
-      }
+    const roomId = this.data.roomId || '';
+    safeNavigateBack({
+      expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
+      fallbackUrl: roomId
+        ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
     });
   }
 });
