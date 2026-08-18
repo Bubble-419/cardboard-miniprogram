@@ -10,7 +10,11 @@
 
       <view class="title-block">
         <text class="page-title">发言阶段</text>
-        <text class="page-subtitle" wx:if="{{tieBreak}}">平票加时：并列玩家重新陈述</text>
+        <view class="tie-banner" wx:if="{{tieBreak}}">
+          <text class="tie-banner-kicker">平票加时</text>
+          <text class="tie-banner-title">并列玩家重新陈述</text>
+          <text class="tie-banner-names" wx:if="{{tiedNamesText}}">{{tiedNamesText}}</text>
+        </view>
       </view>
 
       <view class="my-word-card-wrap">

@@ -16,6 +16,11 @@ const {
   getLibraryGroupCount,
   listLibraryCards
 } = require('../../../utils/spyWordCardAssets');
+const {
+  buildTiedNames,
+  isTieReturnPending,
+  showTieReturnModal
+} = require('../../../utils/spyTiePrompt');
 
 const SWIPE_THRESHOLD_PX = 48;
 
@@ -58,6 +63,7 @@ Page({
     acting: false,
     isHost: false,
     tieBreak: false,
+    tiedNamesText: '',
     viewerOpen: false,
     selectedWord: '',
     selectedCard: null
@@ -142,6 +148,10 @@ Page({
         });
         if (!spyGame) return;
 
+        if (isTieReturnPending(spyGame)) {
+          showTieReturnModal(spyGame);
+        }
+
         let myCard = this.data.myCard;
         if (!myCard) {
           const cardRes = await callSpyAction('getMyCard', { roomId });
@@ -156,7 +166,8 @@ Page({
           myCard,
           myWord,
           myBlurb: (myCard && myCard.blurb) || '',
-          tieBreak: spyGame.tieBreak === true
+          tieBreak: spyGame.tieBreak === true,
+          tiedNamesText: buildTiedNames(spyGame).join('、')
         };
         const cardReady = !!(myWord && (assets.assignedWordSrc || assets.assignedWordFallbackSrc));
         if (

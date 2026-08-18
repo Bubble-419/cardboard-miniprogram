@@ -15,20 +15,28 @@ const {
 } = require('../../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
 const { followSpyRoomState } = require('../../../utils/spyFollow');
+const {
+  buildTiedNames,
+  isTieReturnPending,
+  showTieReturnModal
+} = require('../../../utils/spyTiePrompt');
 
-function buildCircleSlots(players, memberByIndex) {
+function buildCircleSlots(players, memberByIndex, tiedIndexSet) {
   const list = (players || []).filter((p) => p.alive !== false);
   const n = list.length || 1;
   const radius = 38;
+  const tied = tiedIndexSet || new Set();
   return list.map((p, i) => {
     const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
     const left = 50 + radius * Math.cos(angle);
     const top = 50 + radius * Math.sin(angle);
     const member = memberByIndex[p.playerIndex] || memberByIndex[Number(p.playerIndex)] || {};
+    const playerIndex = Number(p.playerIndex);
     return {
-      playerIndex: Number(p.playerIndex),
+      playerIndex,
       name: p.name,
       isMe: !!p.isMe,
+      isTied: tied.has(playerIndex),
       avatarImage: member.avatarImage || '/assets/avatar/frame_2085662311_1x.png',
       left: left.toFixed(2),
       top: top.toFixed(2)
@@ -48,7 +56,10 @@ Page({
     totalVoters: 0,
     acting: false,
     eliminated: false,
-    tieBreak: false
+    tieBreak: false,
+    showTieBanner: false,
+    tiedNamesText: '',
+    tieBannerTitle: '并列玩家需重新投票'
   },
 
   onLoad(options) {
@@ -127,13 +138,16 @@ Page({
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
 
+        const members = result.members || [];
+        const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        if (this._holdVoteForTieSpeak(spyGame)) {
+          return;
+        }
+
         followSpyRoomState(result, roomId, {
           stayOnPage: 'spyvote',
           allowHost: true
         });
-
-        const members = result.members || [];
-        const spyGame = (result.roomState && result.roomState.spyGame) || {};
         const membersWithAvatar = assignAvatarImages(members);
         const memberByIndex = {};
         membersWithAvatar.forEach((m) => {
@@ -158,13 +172,24 @@ Page({
         const voted = voteStatus.votedPlayerIndexes || [];
         const serverHasVoted = playerIndexIncludes(voted, myIndex);
         const hasVoted = this.data.hasVoted || serverHasVoted;
+        const last = spyGame.lastResult || {};
+        const tiedIndexes = Array.isArray(last.tiedIndexes) ? last.tiedIndexes : [];
+        const tiedIndexSet = new Set(tiedIndexes.map((idx) => Number(idx)));
+        const tiedNamesText = buildTiedNames(spyGame).join('、');
+        const showTieBanner = spyGame.tieBreak === true || last.tied === true;
+        const holdingTieSpeak = isTieReturnPending(spyGame);
 
         this.setData({
           avatarList: buildAvatarList(members),
           hasVoted,
           eliminated,
           tieBreak: spyGame.tieBreak === true,
-          circleSlots: buildCircleSlots(players, memberByIndex),
+          showTieBanner,
+          tiedNamesText,
+          tieBannerTitle: holdingTieSpeak || spyGame.phase === 'speak'
+            ? '并列玩家需重新陈述'
+            : '并列玩家需重新投票',
+          circleSlots: buildCircleSlots(players, memberByIndex, tiedIndexSet),
           votedCount: voteStatus.votedCount != null ? voteStatus.votedCount : voted.length,
           totalVoters: voteStatus.totalVoters != null
             ? voteStatus.totalVoters
@@ -176,6 +201,44 @@ Page({
         console.warn('spy vote refresh', e);
       }
     });
+  },
+
+  _applyTieBanner(spyGame) {
+    const last = (spyGame && spyGame.lastResult) || {};
+    const tiedIndexes = Array.isArray(last.tiedIndexes) ? last.tiedIndexes : [];
+    const tiedIndexSet = new Set(tiedIndexes.map((idx) => Number(idx)));
+    const players = this.data.circleSlots || [];
+    const nextSlots = players.map((slot) => ({
+      ...slot,
+      isTied: tiedIndexSet.has(Number(slot.playerIndex))
+    }));
+    this.setData({
+      tieBreak: true,
+      showTieBanner: true,
+      tiedNamesText: buildTiedNames(spyGame).join('、'),
+      tieBannerTitle: '并列玩家需重新陈述',
+      circleSlots: nextSlots
+    });
+  },
+
+  _goSpeakAfterTie() {
+    this.stopPolling();
+    this.stopTicker();
+    bumpSpyRoomSession();
+    const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
+      immediate: true,
+      noReLaunch: true
+    });
+    if (navigated) this._pageAlive = false;
+  },
+
+  /** 平票已切回发言：停在投票页弹确认，点确定后再走 */
+  _holdVoteForTieSpeak(spyGame) {
+    if (!isTieReturnPending(spyGame)) return false;
+    this.stopTicker();
+    this._applyTieBanner(spyGame);
+    showTieReturnModal(spyGame, () => this._goSpeakAfterTie());
+    return true;
   },
 
   onSelectTarget(e) {
@@ -226,11 +289,13 @@ Page({
         return;
       }
       if (result.tied) {
-        wx.showToast({ title: '平票，进入加时陈述', icon: 'none' });
-        openUrl(buildSpyPageUrl('speak', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
+        const spyGame = Object.assign(
+          { phase: 'speak', tieBreak: true },
+          result.spyGame || {}
+        );
+        if (!this._holdVoteForTieSpeak(spyGame)) {
+          this._goSpeakAfterTie();
+        }
         return;
       }
       if (result.currentPage === 'spyresult' || (result.spyGame && result.spyGame.phase === 'result')) {

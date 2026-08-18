@@ -68,6 +68,37 @@
   line-height: 1.4;
 }
 
+.tie-banner {
+  margin-top: 8rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 20rpx;
+  background: #FFF6E8;
+  border: 2rpx solid #F0C48A;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.tie-banner-kicker {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #C46A12;
+  letter-spacing: 2rpx;
+}
+
+.tie-banner-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #8A4B00;
+  line-height: 1.3;
+}
+
+.tie-banner-names {
+  font-size: 24rpx;
+  color: #8A4B00;
+  line-height: 1.5;
+}
+
 /* ===== 我的词语卡（略缩小高度，保持宽高比） ===== */
 .my-word-card-wrap {
   width: 100%;

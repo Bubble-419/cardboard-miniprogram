@@ -7,10 +7,14 @@
     />
     <view class="title-block">
       <text class="page-title">匿名投票</text>
-      <text class="page-subtitle tie-subtitle" wx:if="{{tieBreak}}">平票加时：本轮为并列玩家重新投票</text>
       <text class="page-subtitle">
         {{eliminated ? '你已出局，等待本轮投票结束' : (hasVoted ? '已提交，等待全员投完后统一公布' : '点选你怀疑的人（不可投自己）')}}
       </text>
+    </view>
+    <view class="tie-banner" wx:if="{{showTieBanner}}">
+      <text class="tie-banner-kicker">平票加时</text>
+      <text class="tie-banner-title">{{tieBannerTitle}}</text>
+      <text class="tie-banner-names" wx:if="{{tiedNamesText}}">{{tiedNamesText}}</text>
     </view>
   </view>
 
@@ -27,7 +31,7 @@
     <view class="deco-ring deco-ring-3"></view>
     <view class="deco-ring deco-ring-inner"></view>
     <view
-      class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}}"
+      class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}} {{item.isTied ? 'is-tied' : ''}}"
       wx:for="{{circleSlots}}"
       wx:key="playerIndex"
       style="left: {{item.left}}%; top: {{item.top}}%;"

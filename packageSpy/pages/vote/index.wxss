@@ -41,6 +41,14 @@
   box-shadow: 0 0 0 6rpx #5EC159;
 }
 
+.avatar-slot.is-tied .avatar-img {
+  box-shadow: 0 0 0 6rpx #E08A1E;
+}
+
+.avatar-slot.is-tied.selected .avatar-img {
+  box-shadow: 0 0 0 6rpx #5EC159, 0 0 0 12rpx rgba(224, 138, 30, 0.45);
+}
+
 .avatar-slot.voted .avatar-badge {
   opacity: 1;
 }
@@ -115,6 +123,37 @@
   display: block;
   color: #e08a1e;
   font-weight: 600;
+}
+
+.tie-banner {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 24rpx;
+  background: #FFF6E8;
+  border: 2rpx solid #F0C48A;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.tie-banner-kicker {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #C46A12;
+  letter-spacing: 2rpx;
+}
+
+.tie-banner-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #8A4B00;
+  line-height: 1.3;
+}
+
+.tie-banner-names {
+  font-size: 26rpx;
+  color: #8A4B00;
+  line-height: 1.5;
 }
 
 .voted-wait {
