@@ -32,12 +32,27 @@ Component({
     suppressCanvas: {
       type: Boolean,
       value: false
+    },
+    /** default | rainbow | sound */
+    borderVariant: {
+      type: String,
+      value: ''
+    },
+    /**
+     * 声贝等级 0~1（用于 sound variant 音柱高度驱动）
+     * 0 = 静音，1 = 最大；由外部页面传入（房主本地采样或轮询同步值）
+     */
+    soundLevel: {
+      type: Number,
+      value: 0
     }
   },
 
   data: {
     borderVisible: false,
-    displayMode: 'idle'
+    displayMode: 'idle',
+    /** 8 个音柱的高度百分比字符串，用于 sound variant */
+    soundBarHeights: ['20%', '40%', '60%', '30%', '70%', '50%', '35%', '55%']
   },
 
   lifetimes: {
@@ -76,7 +91,7 @@ Component({
         setTimeout(() => this._initCanvas(), 16);
       }
     },
-    'startedAt, timerActive'() {
+    'startedAt, timerActive, borderVariant'() {
       const serverTs = Number(this.properties.startedAt);
       const prev = this._lastServerStartedAt || 0;
       if (Number.isFinite(serverTs) && serverTs > 0 && serverTs !== prev) {
@@ -94,6 +109,15 @@ Component({
         this._localCycleStartedAt = 0;
       }
       this._syncDisplayMode();
+    },
+    soundLevel(level) {
+      if (this.properties.borderVariant !== 'sound') return;
+      const lv = Math.min(1, Math.max(0, Number(level) || 0));
+      // 按等级生成 8 个音柱高度（中间柱更高，两侧较低，模拟频谱形状）
+      const SHAPE = [0.5, 0.7, 0.9, 1.0, 1.0, 0.9, 0.7, 0.5];
+      const MIN_H = 0.08; // 静音时的最低高度
+      const soundBarHeights = SHAPE.map((s) => `${Math.round((MIN_H + (1 - MIN_H) * lv * s) * 100)}%`);
+      this.setData({ soundBarHeights });
     }
   },
 
@@ -156,6 +180,10 @@ Component({
         this._clearExpireTimer();
         if (this.data.displayMode !== 'timer') {
           this.setData({ displayMode: 'timer' }, () => this._initCanvas());
+        } else if (this._useCssBorder() || this.properties.suppressCanvas) {
+          this._restartLocalTimer();
+        } else if (!this._ctx) {
+          this._initCanvas();
         } else {
           this._restartLocalTimer();
         }
@@ -239,6 +267,10 @@ Component({
 
     _initCanvas() {
       if (this.data.displayMode !== 'timer') return;
+      if (this._useCssBorder() || this.properties.suppressCanvas) {
+        this._restartLocalTimer();
+        return;
+      }
 
       const query = this.createSelectorQuery().in(this);
       query.select('#gctCanvas')
@@ -387,7 +419,31 @@ Component({
       }
     },
 
+    _useCssBorder() {
+      const variant = this.properties.borderVariant;
+      return variant === 'rainbow' || variant === 'sound';
+    },
+
     _drawBorder() {
+      if (this._useCssBorder()) {
+        const startedAt = this._resolveStartedAt();
+        if (!this.properties.timerActive || !startedAt) {
+          if (
+            this.data.displayMode === 'timer'
+            && this._sawActiveCountdown
+            && this._hasNaturallyExpired()
+          ) {
+            this._triggerExpireAnimation();
+          }
+          return;
+        }
+        const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
+        const ratio = Math.min(1, Math.max(0, (Date.now() - startedAt) / 1000 / durationSec));
+        if (ratio >= 0.9999) {
+          this._triggerExpireAnimation();
+        }
+        return;
+      }
       const ctx = this._ctx;
       const w = this._width;
       const h = this._height;

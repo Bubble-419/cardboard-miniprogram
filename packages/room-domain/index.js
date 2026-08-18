@@ -711,12 +711,11 @@ function executeCommand({
       : ((Number.isFinite(fromWorkflow) && fromWorkflow > 0) ? fromWorkflow : seats[0]);
     const idx = seats.indexOf(current);
     const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
-    const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
-    const forceIncrement = !!(payload && payload.incrementRound === true);
-    const shouldArchive = wrapped || forceIncrement;
+    // 轮次定义：每次 ADVANCE_TURN（换到下一位玩家）都 +1
+    const shouldIncrementRound = true;
     const prevRoundNo = (room.workflow && room.workflow.roundNo)
       || (room.currentRound != null ? Number(room.currentRound) : 1);
-    const roundNo = prevRoundNo + (shouldArchive ? 1 : 0);
+    const roundNo = prevRoundNo + (shouldIncrementRound ? 1 : 0);
     const turnId = `turn_r${roundNo}_s${nextSeat}`;
     const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
     const nextMember = nextUserId && room.membersByUserId
@@ -731,59 +730,56 @@ function executeCommand({
     let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
     let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
 
-    if (shouldArchive) {
-      const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === 'object'
-        ? payload.roundSummary
-        : null;
-      const serverContent = room.partnerCurrentRoundContent;
-      if (clientSummary || serverContent) {
-        partnerRoundSummaries.push({
-          round: currentRound,
-          ...(clientSummary || {}),
-          // 强制写入刚结束的出牌座位（覆盖客户端兜底），避免 (round-1)%n+1 误推
-          playerIndex: current,
-          playerName: room.currentPlayerName || `玩家${current}`,
-          // 客户端未带齐时尽量保留服务端当前轮内容
-          playHistory: (clientSummary && clientSummary.playHistory)
-            || (serverContent && serverContent.playHistory)
-            || [],
-          discussionNotes: (clientSummary && clientSummary.discussionNotes)
-            || (serverContent && serverContent.discussionNotes)
-            || [],
-          playImages: (clientSummary && clientSummary.playImages)
-            || (serverContent && serverContent.playImages)
-            || [],
-          discussionImages: (clientSummary && clientSummary.discussionImages)
-            || (serverContent && serverContent.discussionImages)
-            || [],
-          playBlocks: (clientSummary && clientSummary.playBlocks)
-            || (serverContent && serverContent.playBlocks)
-            || [],
-          discussionBlocks: (clientSummary && clientSummary.discussionBlocks)
-            || (serverContent && serverContent.discussionBlocks)
-            || [],
-          voiceLines: (clientSummary && clientSummary.voiceLines)
-            || (serverContent && serverContent.voiceLines)
-            || [],
-          turnRecords: (clientSummary && clientSummary.turnRecords)
-            || (serverContent && serverContent.turnRecords)
-            || []
-        });
-      }
-      partnerCurrentRoundContent = {
-        playHistory: [],
-        discussionNotes: [],
-        playImages: [],
-        discussionImages: [],
-        playBlocks: [],
-        discussionBlocks: [],
-        images: [],
-        voiceLines: [],
-        turnRecords: [],
-        aiSummary: { status: 'pending' }
-      };
+    const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === 'object'
+      ? payload.roundSummary
+      : null;
+    const serverContent = room.partnerCurrentRoundContent;
+    partnerRoundSummaries.push({
+      round: currentRound,
+      ...(clientSummary || {}),
+      // 强制写入刚结束的出牌座位（覆盖客户端兜底），避免 (round-1)%n+1 误推
+      playerIndex: current,
+      playerName: room.currentPlayerName || `玩家${current}`,
+      archivedAt: ts,
+      playHistory: (clientSummary && clientSummary.playHistory)
+        || (serverContent && serverContent.playHistory)
+        || [],
+      discussionNotes: (clientSummary && clientSummary.discussionNotes)
+        || (serverContent && serverContent.discussionNotes)
+        || [],
+      playImages: (clientSummary && clientSummary.playImages)
+        || (serverContent && serverContent.playImages)
+        || [],
+      discussionImages: (clientSummary && clientSummary.discussionImages)
+        || (serverContent && serverContent.discussionImages)
+        || [],
+      playBlocks: (clientSummary && clientSummary.playBlocks)
+        || (serverContent && serverContent.playBlocks)
+        || [],
+      discussionBlocks: (clientSummary && clientSummary.discussionBlocks)
+        || (serverContent && serverContent.discussionBlocks)
+        || [],
+      voiceLines: (clientSummary && clientSummary.voiceLines)
+        || (serverContent && serverContent.voiceLines)
+        || [],
+      turnRecords: (clientSummary && clientSummary.turnRecords)
+        || (serverContent && serverContent.turnRecords)
+        || []
+    });
+    partnerCurrentRoundContent = {
+      playHistory: [],
+      discussionNotes: [],
+      playImages: [],
+      discussionImages: [],
+      playBlocks: [],
+      discussionBlocks: [],
+      images: [],
+      voiceLines: [],
+      turnRecords: [],
+      aiSummary: { status: 'pending' }
+    };
+    if (shouldIncrementRound) {
       currentRound += 1;
-      partnerRoundStartedAt = ts;
     }
 
     // 每次换人（含同轮换座）都必须重开计时，否则会沿用上一玩家半程戳
@@ -841,7 +837,7 @@ function executeCommand({
         activeSeatNo: nextSeat,
         roundNo,
         turnId,
-        incrementRound: shouldArchive,
+        incrementRound: shouldIncrementRound,
         legacyPage: 'gamepage'
       }
     });

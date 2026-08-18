@@ -34,12 +34,18 @@ function enrichSummaryWithPlayer(summary, members, memberCount) {
   };
 }
 
+function sortSummaries(roundSummaries) {
+  return (roundSummaries || []).slice().sort((a, b) => {
+    const rd = (a.round || 0) - (b.round || 0);
+    if (rd !== 0) return rd;
+    return (a.archivedAt || 0) - (b.archivedAt || 0);
+  });
+}
+
 function filterSummariesForPlayer(roundSummaries, playerIndex, memberCount) {
   const idx = parseInt(playerIndex, 10);
   const count = Number(memberCount) || 1;
-  return (roundSummaries || [])
-    .slice()
-    .sort((a, b) => (a.round || 0) - (b.round || 0))
+  return sortSummaries(roundSummaries)
     .filter((item) => {
       const stored = item && item.playerIndex != null
         ? parseInt(item.playerIndex, 10)
@@ -51,9 +57,7 @@ function filterSummariesForPlayer(roundSummaries, playerIndex, memberCount) {
 
 function buildDisplaySummaries(roundSummaries, members, filteredPlayerIndex, isFilterActive) {
   const memberCount = (members || []).length || 1;
-  const sorted = (roundSummaries || [])
-    .slice()
-    .sort((a, b) => (a.round || 0) - (b.round || 0));
+  const sorted = sortSummaries(roundSummaries);
   const shouldFilter = isFilterActive === true
     && filteredPlayerIndex != null
     && !Number.isNaN(parseInt(filteredPlayerIndex, 10));

@@ -30,7 +30,7 @@
 
   <view class="host-content" wx:else>
     <view class="instruction">
-      <text class="instruction-line">请用表态卡对第{{currentPlayerIndex}}位玩家行动表态</text>
+      <text class="instruction-line">使用表态卡对玩家{{currentPlayerName}}的行动表态</text>
       <text class="instruction-line">选择表态统计结果</text>
     </view>
 
@@ -38,10 +38,10 @@
       <text class="statement-progress-text">已表态：{{passCount}}/{{memberCount}}</text>
     </view>
 
-    <view class="result-stack">
+    <view class="result-stack {{isSubmitting ? 'result-stack-disabled' : ''}}">
       <view
         class="result-item"
-        bindtap="handleStatementResult"
+        catchtap="handleStatementResult"
         data-result="allPass"
       >
         <view class="result-circle result-circle-pass">
@@ -51,7 +51,7 @@
 
       <view
         class="result-item"
-        bindtap="handleStatementResult"
+        catchtap="handleStatementResult"
         data-result="partialPass"
       >
         <view class="result-circle result-circle-partial">
@@ -61,7 +61,7 @@
 
       <view
         class="result-item"
-        bindtap="handleStatementResult"
+        catchtap="handleStatementResult"
         data-result="allQuestion"
       >
         <view class="result-circle result-circle-question">

@@ -45,6 +45,12 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     if (options.specialMoveUsed) {
       url += '&specialMoveUsed=1';
     }
+    if (options.currentRound != null && Number.isFinite(Number(options.currentRound))) {
+      url += `&currentRound=${Number(options.currentRound)}`;
+    }
+    if (options.fromStatement) {
+      url += '&fromStatement=1';
+    }
     return url;
   }
   if (modeId === 'spy') {
@@ -60,6 +66,9 @@ function buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, option
   let url = `/pages/main-pages/partnerMode/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`;
   if (options.isSubScreen) url += '&isSubScreen=1';
   if (options.isWaiting) url += '&isWaiting=1';
+  if (options.currentRound != null && Number.isFinite(Number(options.currentRound))) {
+    url += `&currentRound=${Number(options.currentRound)}`;
+  }
   return url;
 }
 

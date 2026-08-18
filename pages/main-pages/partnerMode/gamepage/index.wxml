@@ -35,23 +35,34 @@
 
     <!-- 玩家列表：使用 partner-avatar 展示六种头像状态 -->
     <view class="user-section">
-      <user-list
-        avatarList="{{avatarList}}"
-        actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
-        selectedUser="{{isHistoryReview ? -1 : selectedPlayerIndex}}"
-        indicatorUser="{{indicatorPlayerIndex}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{false}}"
-        showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
-        roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
-        roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
-        suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
-        bindavatartap="handleAvatarTap"
-      />
+      <view class="user-section-row">
+        <view class="user-section-list">
+          <user-list
+            avatarList="{{avatarList}}"
+            actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
+            selectedUser="{{isHistoryReview ? -1 : selectedPlayerIndex}}"
+            indicatorUser="{{indicatorPlayerIndex}}"
+            enableAdd="{{false}}"
+            isFold="{{true}}"
+            showName="{{false}}"
+            showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+            enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+            enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+            roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
+            roundTimerActive="{{!isHistoryReview && roundTimerVisible}}"
+            roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
+            suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
+            bindavatartap="handleAvatarTap"
+          />
+        </view>
+        <view
+          class="user-filter-toggle"
+          wx:if="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+          bindtap="handleAvatarFilterToggle"
+        >
+          <text class="user-filter-toggle-text">{{isPlayerFilterActive ? '查看全部' : '查看单人'}}</text>
+        </view>
+      </view>
     </view>
 
     <view class="divider-line"></view>
@@ -112,6 +123,7 @@
                   hold-keyboard="{{true}}"
                   cursor-spacing="40"
                 />
+                <text class="closing-creative-text-hint">{{isHost ? '可输入文字（换行可分条）' : '房主可在此输入复盘文字'}}</text>
               </view>
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
                 <view class="closing-scroll-inner">
@@ -156,7 +168,10 @@
       </view>
 
       <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
-      <view class="inspiration-bar" style="{{inspirationLiftStyle}}">
+      <view
+        class="inspiration-bar {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
+        style="{{inspirationLiftStyle}}"
+      >
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
           <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
           <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
@@ -424,10 +439,11 @@
         <swiper-item class="card-swiper-item" wx:if="{{!isHistoryReview}}">
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible && roundTimerReady}}"
+            timerActive="{{roundTimerVisible}}"
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
+            borderVariant="{{isMasterMode ? 'rainbow' : ''}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
@@ -570,10 +586,11 @@
 
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible && roundTimerReady}}"
+            timerActive="{{roundTimerVisible}}"
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
+            borderVariant="{{isMasterMode ? 'rainbow' : ''}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >
@@ -588,12 +605,15 @@
               >
                 <view class="action-card-inner {{expressChatPanelVisible ? 'action-card-inner-express' : ''}}">
                   <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
-                    <view class="action-title-row" wx:if="{{isMasterMode}}">
-                      <view class="master-mode-badge">MASTER模式</view>
-                      <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                    <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
+                    <view class="action-title-block">
+                      <view class="action-title-row" wx:if="{{isMasterMode}}">
+                        <view class="master-mode-badge">MASTER模式</view>
+                        <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                      </view>
+                      <text class="action-title" wx:else>出牌并解释</text>
+                      <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
                     </view>
-                    <text class="action-title" wx:else>出牌并解释</text>
-                    <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
                   </view>
                   <view class="action-divider"></view>
 
@@ -658,6 +678,7 @@
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
                 <view class="spectator-card-head">
+                  <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
                   <text class="spectator-card-title">玩家正在出牌</text>
                   <text class="spectator-card-desc">您可以对该玩家的出牌进行表达或打分</text>
                 </view>
@@ -920,7 +941,7 @@
 
   <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
   <view
-    class="page-footer {{inspirationKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
+    class="page-footer {{inspirationKeyboardHeight > 0 || closingCreativeEditFocus ? 'page-footer-insp-hidden' : ''}}"
     wx:if="{{!isHistoryReview && !((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">

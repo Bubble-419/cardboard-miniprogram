@@ -196,7 +196,8 @@ function buildArchivedRoundSummary(currentRound, clientSummary, serverContent, m
     images: pickPreferredList(client && client.images, server.images),
     voiceLines: pickPreferredList(client && client.voiceLines, server.voiceLines),
     turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
-    aiSummary: server.aiSummary || { status: 'pending' }
+    aiSummary: server.aiSummary || { status: 'pending' },
+    archivedAt: (meta && meta.archivedAt) || Date.now()
   };
   if (Number.isFinite(playerIndex) && playerIndex > 0) {
     out.playerIndex = playerIndex;
@@ -231,7 +232,13 @@ exports.main = async (event, context) => {
     partnerCurrentRoundContent,
     partnerClosingCreativePoints,
     partnerRoundStartedAt,
-    editingProblemId
+    editingProblemId,
+    partnerSilentSoundLevel,
+    /**
+     * skipArchive: true 时跳过纪要归档。
+     * 用于 ADVANCE_TURN 之后的双写调用：room-domain 已归档，此处只补写计时/phase，不重复归档。
+     */
+    skipArchive
   } = event || {};
 
   if (!roomId || typeof roomId !== 'string') {
@@ -272,6 +279,26 @@ exports.main = async (event, context) => {
       };
     }
 
+    // 静默声贝：只写分贝字段，禁止改 currentPage / 轮次，避免把其他玩家打回房间页
+    const silentSoundOnly = partnerSilentSoundLevel != null
+      && Number.isFinite(Number(partnerSilentSoundLevel))
+      && currentPage == null
+      && currentPlayerIndex == null
+      && incrementRound !== true
+      && partnerGamePhase == null
+      && roundSummary == null
+      && partnerCurrentRoundContent == null
+      && partnerRoundStartedAt == null;
+    if (silentSoundOnly) {
+      await db.collection(ROOMS_COLLECTION).where({ roomId }).update({
+        data: {
+          partnerSilentSoundLevel: Math.min(1, Math.max(0, Number(partnerSilentSoundLevel))),
+          updatedAt: Date.now()
+        }
+      });
+      return { ok: true };
+    }
+
     let currentRound = room.currentRound != null ? room.currentRound : 1;
     const emptyRoundContent = {
       playHistory: [],
@@ -286,61 +313,71 @@ exports.main = async (event, context) => {
       aiSummary: { status: 'pending' }
     };
     const roundPatch = {};
+    const incomingPlayerChanging = currentPlayerIndex != null
+      && Number.isFinite(Number(currentPlayerIndex))
+      && Number(currentPlayerIndex) !== Number(room.currentPlayerIndex);
+    // 只有「结束本轮并换人」（incrementRound）才归档纪要。
+    // 不能仅因座位变化归档：选定首位出牌玩家时会从默认玩家1改到玩家2，
+    // 否则会先写入一张空的玩家1纪要，表态后再出现玩家1+玩家2两张卡。
+    const shouldArchiveTurn = skipArchive !== true && incrementRound === true;
+    let archivedThisRequest = false;
 
-    if (incrementRound === true) {
-      if (event.clearBrainstormProgress === true) {
-        // 再来一轮：重置到第 1 轮，清空纪要/表达，而不是 currentRound+=1
-        roundPatch.partnerRoundSummaries = [];
-        roundPatch.partnerCurrentRoundContent = emptyRoundContent;
-        roundPatch.partnerClosingCreativePoints = {
-          blocks: [],
-          texts: [],
-          images: []
-        };
-        roundPatch.partnerExpressMessages = [];
-        roundPatch.brainstormSessionSeq = getBrainstormSessionSeq(room) + 1;
-        roundPatch.partnerTurnStartedAt = null;
-        roundPatch.progress = _.set({
-          scoredCount: 0,
-          requiredScoreCount: 0,
-          votedCount: 0,
-          requiredVoteCount: 0,
-          turnId: null
-        });
-        currentRound = 1;
-        // 再来一轮必须清 roomScores，否则 round 回到 1 会读到旧满分
-        try {
-          const MAX_BATCH = 100;
-          let hasMore = true;
-          while (hasMore) {
-            const scoreRes = await db.collection('roomScores').where({ roomId }).limit(MAX_BATCH).get();
-            const docs = (scoreRes && scoreRes.data) || [];
-            if (!docs.length) break;
-            await Promise.all(docs.map((doc) => db.collection('roomScores').doc(doc._id).remove()));
-            if (docs.length < MAX_BATCH) hasMore = false;
-          }
-        } catch (clearScoreErr) {
-          console.warn('[updateRoomState] clear roomScores on brainstorm reset', clearScoreErr);
+    if (incrementRound === true && event.clearBrainstormProgress === true) {
+      // 再来一轮：重置到第 1 轮，清空纪要/表达，而不是 currentRound+=1
+      roundPatch.partnerRoundSummaries = [];
+      roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+      roundPatch.partnerClosingCreativePoints = {
+        blocks: [],
+        texts: [],
+        images: []
+      };
+      roundPatch.partnerExpressMessages = [];
+      roundPatch.brainstormSessionSeq = getBrainstormSessionSeq(room) + 1;
+      roundPatch.partnerTurnStartedAt = null;
+      roundPatch.progress = _.set({
+        scoredCount: 0,
+        requiredScoreCount: 0,
+        votedCount: 0,
+        requiredVoteCount: 0,
+        turnId: null
+      });
+      currentRound = 1;
+      archivedThisRequest = true;
+      // 再来一轮必须清 roomScores，否则 round 回到 1 会读到旧满分
+      try {
+        const MAX_BATCH = 100;
+        let hasMore = true;
+        while (hasMore) {
+          const scoreRes = await db.collection('roomScores').where({ roomId }).limit(MAX_BATCH).get();
+          const docs = (scoreRes && scoreRes.data) || [];
+          if (!docs.length) break;
+          await Promise.all(docs.map((doc) => db.collection('roomScores').doc(doc._id).remove()));
+          if (docs.length < MAX_BATCH) hasMore = false;
         }
-      } else {
-        const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
-        const contentRoom = (freshRes.data && freshRes.data[0]) || room;
-        const serverContent = contentRoom.partnerCurrentRoundContent;
-        const clientSummary = roundSummary && typeof roundSummary === 'object' ? roundSummary : null;
-        if (serverContent || clientSummary) {
-          const summaries = Array.isArray(room.partnerRoundSummaries)
-            ? room.partnerRoundSummaries.slice()
-            : [];
-          const actingIdx = room.currentPlayerIndex != null
-            ? Number(room.currentPlayerIndex)
-            : null;
-          summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent, {
-            playerIndex: actingIdx,
-            playerName: room.currentPlayerName || (actingIdx != null ? `玩家${actingIdx}` : '')
-          }));
-          roundPatch.partnerRoundSummaries = summaries;
-          roundPatch.partnerCurrentRoundContent = emptyRoundContent;
-        }
+      } catch (clearScoreErr) {
+        console.warn('[updateRoomState] clear roomScores on brainstorm reset', clearScoreErr);
+      }
+      roundPatch.partnerRoundStartedAt = Date.now();
+    } else if (shouldArchiveTurn) {
+      const freshRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
+      const contentRoom = (freshRes.data && freshRes.data[0]) || room;
+      const serverContent = contentRoom.partnerCurrentRoundContent;
+      const clientSummary = roundSummary && typeof roundSummary === 'object' ? roundSummary : null;
+      const summaries = Array.isArray(room.partnerRoundSummaries)
+        ? room.partnerRoundSummaries.slice()
+        : [];
+      const actingIdx = room.currentPlayerIndex != null
+        ? Number(room.currentPlayerIndex)
+        : null;
+      summaries.push(buildArchivedRoundSummary(currentRound, clientSummary, serverContent, {
+        playerIndex: actingIdx,
+        playerName: room.currentPlayerName || (actingIdx != null ? `玩家${actingIdx}` : ''),
+        archivedAt: Date.now()
+      }));
+      roundPatch.partnerRoundSummaries = summaries;
+      roundPatch.partnerCurrentRoundContent = emptyRoundContent;
+      archivedThisRequest = true;
+      if (incrementRound === true) {
         currentRound += 1;
       }
       roundPatch.partnerRoundStartedAt = Date.now();
@@ -354,6 +391,16 @@ exports.main = async (event, context) => {
     const resolvedCurrentPage = currentPage != null
       ? String(currentPage || 'addPlayer').toLowerCase()
       : (room.currentPage || 'addPlayer').toLowerCase();
+    const prevPage = (room.currentPage || '').toLowerCase();
+    // 已离开表态页后，忽略迟到的 statement 回写（bootstrap / 旧请求），否则全员会被拉回表态页
+    const staleStatementWrite = resolvedCurrentPage === 'statement'
+      && prevPage === 'gamepage'
+      && currentPlayerIndex == null
+      && incrementRound !== true
+      && partnerGamePhase == null;
+    if (staleStatementWrite) {
+      return { ok: true, ignored: 'stale_statement_page' };
+    }
 
     const updateData = {
       currentPage: resolvedCurrentPage,
@@ -406,7 +453,6 @@ exports.main = async (event, context) => {
     }
 
     const page = updateData.currentPage;
-    const prevPage = (room.currentPage || '').toLowerCase();
     const sessionSeq = updateData.brainstormSessionSeq != null
       ? updateData.brainstormSessionSeq
       : getBrainstormSessionSeq(room);
@@ -470,6 +516,17 @@ exports.main = async (event, context) => {
           };
         }
       }
+    }
+    // 从表态页回到对局：清掉 STATEMENT step，避免轮询仍按「表态中」把人拉回去
+    if (resolvedCurrentPage === 'gamepage' && prevPage === 'statement') {
+      const baseWf = updateData.workflow
+        || (room.workflow && typeof room.workflow === 'object' ? room.workflow : {});
+      updateData.workflow = {
+        ...baseWf,
+        mode: baseWf.mode || 'PARTNER',
+        step: 'TURN_ACTIVE',
+        legacyPage: 'gamepage'
+      };
     }
     // 换人/换轮进入 gamepage：必须清零评分进度，否则上一回合满分会让「开始表态」误亮
     {
@@ -613,7 +670,7 @@ exports.main = async (event, context) => {
     }
     if (partnerCurrentRoundContent && typeof partnerCurrentRoundContent === 'object') {
       // 同请求已换轮：上一轮纪要已归档并清空，禁止再用旧内容写回新轮
-      const skippedForRoundAdvance = incrementRound === true;
+      const skippedForRoundAdvance = archivedThisRequest === true;
       // 客户端声明内容所属轮次；与当前房间轮次不一致则丢弃（防过期同步串轮）
       const contentRound = event.contentRound != null ? Number(event.contentRound) : null;
       const roomRound = Number(updateData.currentRound);
@@ -739,6 +796,10 @@ exports.main = async (event, context) => {
       if (shouldSyncTurnTimer) {
         updateData.partnerTurnStartedAt = nextStartedAt;
       }
+    }
+
+    if (partnerSilentSoundLevel != null && Number.isFinite(Number(partnerSilentSoundLevel))) {
+      updateData.partnerSilentSoundLevel = Math.min(1, Math.max(0, Number(partnerSilentSoundLevel)));
     }
 
     const updateRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).update({

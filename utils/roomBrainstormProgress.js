@@ -12,7 +12,7 @@ function storageKey(roomId) {
 }
 
 function saveLocalBrainstormProgress(roomId, currentPage) {
-  if (!roomId || !currentPage || currentPage === 'addPlayer') return;
+  if (!roomId || !currentPage || String(currentPage).toLowerCase() === 'addplayer') return;
   if (isNonResumableProgressPage(currentPage)) return;
   try {
     wx.setStorageSync(storageKey(roomId), currentPage);
@@ -50,7 +50,7 @@ function resolveBrainstormProgress(roomId, roomState, hasSelectedMode) {
 
   if (
     hasSelectedMode
-    && (page === 'addPlayer' || !page)
+    && (String(page).toLowerCase() === 'addplayer' || !page)
     && local
     && !isNonResumableProgressPage(local)
   ) {

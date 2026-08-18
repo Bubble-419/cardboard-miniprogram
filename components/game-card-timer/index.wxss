@@ -7,7 +7,7 @@
 }
 
 /* 静止态：与 Figma #5848:3392 对齐的浅绿描边 */
-.gct-wrap:not(.gct-wrap-timer-on):not(.gct-wrap-expiring) .gct-inner {
+.gct-wrap:not(.gct-wrap-timer-on):not(.gct-wrap-expiring):not(.gct-wrap-rainbow):not(.gct-wrap-sound) .gct-inner {
   border: 8rpx solid #b0e0ae;
 }
 
@@ -74,6 +74,85 @@
   right: 8rpx;
   bottom: 8rpx;
   border-radius: 20rpx;
+}
+
+/* Master：卡片外框彩虹描边（静止/倒计时都用 CSS，不走绿色 canvas） */
+.gct-wrap-rainbow:not(.gct-wrap-expiring) {
+  overflow: hidden;
+  padding: 8rpx;
+  background: linear-gradient(
+    120deg,
+    #ff5a7a 0%,
+    #ffb347 18%,
+    #ffe066 36%,
+    #5ec159 54%,
+    #4fc3f7 72%,
+    #8b7cff 88%,
+    #ff5a7a 100%
+  );
+  background-size: 240% 240%;
+  animation: gct-rainbow-shift 4.5s linear infinite;
+  box-sizing: border-box;
+}
+
+.gct-wrap-rainbow:not(.gct-wrap-expiring) .gct-inner {
+  border: none;
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  bottom: 8rpx;
+  border-radius: 20rpx;
+}
+
+/* 静默：底边声贝识别槽 + 青色外框 */
+.gct-wrap-sound:not(.gct-wrap-expiring) {
+  overflow: hidden;
+  background: #3ec6c9;
+  box-shadow: 0 0 18rpx rgba(62, 198, 201, 0.35);
+}
+
+.gct-wrap-sound:not(.gct-wrap-expiring) .gct-inner {
+  border: none;
+  left: 8rpx;
+  top: 8rpx;
+  right: 8rpx;
+  bottom: 36rpx;
+  border-radius: 20rpx;
+}
+
+.gct-sound-bars {
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 6rpx;
+  z-index: 3;
+  height: 24rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.gct-sound-bar {
+  width: 8rpx;
+  border-radius: 8rpx;
+  background: linear-gradient(180deg, #7ef0f3 0%, #3ec6c9 100%);
+  transition: height 0.18s ease-out;
+}
+
+.gct-sound-bar-1 { animation-delay: 0s; }
+.gct-sound-bar-2 { animation-delay: 0.08s; }
+.gct-sound-bar-3 { animation-delay: 0.16s; }
+.gct-sound-bar-4 { animation-delay: 0.24s; }
+.gct-sound-bar-5 { animation-delay: 0.1s; }
+.gct-sound-bar-6 { animation-delay: 0.2s; }
+.gct-sound-bar-7 { animation-delay: 0.04s; }
+.gct-sound-bar-8 { animation-delay: 0.14s; }
+
+@keyframes gct-rainbow-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .gct-expire-ring {

@@ -1,12 +1,12 @@
-<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}} {{suppressCanvas && displayMode === 'timer' ? 'gct-wrap-suppressed' : ''}}">
+<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}} {{suppressCanvas && displayMode === 'timer' ? 'gct-wrap-suppressed' : ''}} {{borderVariant === 'rainbow' ? 'gct-wrap-rainbow' : ''}} {{borderVariant === 'sound' ? 'gct-wrap-sound' : ''}}">
   <canvas
-    wx:if="{{displayMode === 'timer' && !suppressCanvas}}"
+    wx:if="{{displayMode === 'timer' && !suppressCanvas && borderVariant !== 'rainbow' && borderVariant !== 'sound'}}"
     type="2d"
     id="gctCanvas"
     class="gct-canvas {{borderVisible ? 'gct-canvas-visible' : ''}}"
   ></canvas>
   <view
-    wx:elif="{{displayMode === 'timer' && suppressCanvas}}"
+    wx:elif="{{displayMode === 'timer' && suppressCanvas && borderVariant !== 'rainbow' && borderVariant !== 'sound'}}"
     class="gct-canvas-placeholder"
   ></view>
   <block wx:if="{{displayMode === 'expiring'}}">
@@ -14,6 +14,9 @@
     <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-2"></view>
     <view class="gct-expire-ring gct-expire-settle"></view>
   </block>
+  <view class="gct-sound-bars" wx:if="{{borderVariant === 'sound' && displayMode !== 'expiring'}}">
+    <view class="gct-sound-bar" wx:for="{{soundBarHeights}}" wx:key="index" style="height: {{item}}"></view>
+  </view>
   <view class="gct-inner">
     <slot></slot>
   </view>

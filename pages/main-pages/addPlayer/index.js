@@ -24,7 +24,8 @@ const {
 const {
   saveLocalBrainstormProgress,
   clearLocalBrainstormProgress,
-  resolveBrainstormProgress
+  resolveBrainstormProgress,
+  isNonResumableProgressPage
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
 const { buildGamepageUrl, buildStatementUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
@@ -1776,7 +1777,16 @@ Page({
     const roomIdEnc = encodeURIComponent(roomId);
     const modeId = selectedModeId || 'halliGalli';
     const state = roomState || {};
-    const page = (state.currentPage || 'addPlayer').toLowerCase();
+    let page = (state.currentPage || 'addPlayer').toLowerCase();
+    const progressPage = (state.brainstormProgressPage || '').toLowerCase();
+    if (
+      page === 'addplayer'
+      && progressPage
+      && progressPage !== 'addplayer'
+      && !isNonResumableProgressPage(progressPage)
+    ) {
+      page = progressPage;
+    }
     const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
     const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
     const bg = selectedBG || (getApp().globalData && getApp().globalData.selectedBG);

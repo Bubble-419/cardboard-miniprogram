@@ -40,8 +40,8 @@ function getNextPlayerTurn(members, currentPlayerIndex) {
   return {
     nextIndex,
     nextName,
-    // 满圈回到首位才进下一轮（与 ADVANCE_TURN wrapped 对齐）；否则同轮换人
-    incrementRound: nextIndex === seats[0]
+    // 轮次定义改为“玩家出牌次序号”：每次换到下一位玩家都进入下一轮
+    incrementRound: true
   };
 }
 

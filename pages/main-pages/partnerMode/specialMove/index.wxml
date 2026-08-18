@@ -175,6 +175,8 @@
               timerActive="{{silentTimerActive}}"
               durationSec="{{silentDurationSec}}"
               loop="{{false}}"
+              borderVariant="sound"
+              soundLevel="{{soundLevel}}"
               bind:timerexpire="handleSilentTimerExpire"
             >
               <scroll-view class="silent-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">

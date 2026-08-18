@@ -90,6 +90,11 @@
   box-sizing: border-box;
 }
 
+.result-stack-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .result-item {
   display: flex;
   align-items: center;

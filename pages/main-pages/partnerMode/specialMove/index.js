@@ -90,6 +90,9 @@ Page({
     silentDurationSec: SILENT_DURATION_SEC,
     silentStartedAt: 0,
     silentTimerActive: false,
+    isHost: false,
+    /** 声贝等级 0~1，房主本地采样或从房间轮询读取 */
+    soundLevel: 0,
     inspirationDraftText: '',
     inspirationInputFocused: false,
     inspirationKeyboardHeight: 0,
@@ -131,12 +134,14 @@ Page({
       inspirationLiftStyle: ''
     });
     this._stopStatePolling();
+    this._stopSoundLevelSampling();
   },
 
   onUnload() {
     this._unbindInspirationKeyboard();
     this.clearSilentTimer();
     this._stopStatePolling();
+    this._stopSoundLevelSampling();
   },
 
   _markSpecialMoveUsedForGamepage() {
@@ -186,6 +191,10 @@ Page({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
+    // 房主：采样麦克风分贝并广播；非房主：轮询读取分贝
+    if (this.data.isHost) {
+      this._startSoundLevelSampling();
+    }
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
     this._silentTimer = setTimeout(() => {
       this._silentTimer = null;
@@ -198,6 +207,7 @@ Page({
       clearTimeout(this._silentTimer);
       this._silentTimer = null;
     }
+    this._stopSoundLevelSampling();
   },
 
   _stopSilentTimerUi() {
@@ -397,6 +407,7 @@ Page({
         brainstormSessionSeq: result.roomState && result.roomState.brainstormSessionSeq != null
           ? result.roomState.brainstormSessionSeq
           : 0,
+        isHost: result.isHost === true,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
         problemExpanded: false,
         problemTextOverflow: false
@@ -405,6 +416,61 @@ Page({
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
+    }
+  },
+
+  /**
+   * 房主：使用 RecorderManager 采样麦克风分贝，仅驱动本机音柱。
+   * 不写房间态：updateRoomState 会改 currentPage，曾把其他玩家打回房间页。
+   */
+  _startSoundLevelSampling() {
+    if (!this.data.isHost) return;
+    this._stopSoundLevelSampling();
+
+    wx.authorize({ scope: 'scope.record' }).catch(() => {});
+
+    const manager = wx.getRecorderManager();
+    this._recorderManager = manager;
+
+    manager.onFrameRecorded((res) => {
+      if (!res || !res.frameBuffer) return;
+      try {
+        const buf = res.frameBuffer;
+        const samples = new Int16Array(buf);
+        if (!samples.length) return;
+        let sumSq = 0;
+        for (let i = 0; i < samples.length; i++) {
+          sumSq += samples[i] * samples[i];
+        }
+        const rms = Math.sqrt(sumSq / samples.length);
+        const db = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
+        // 映射：-60dB 以下→0，-10dB 以上→1
+        const lv = Math.min(1, Math.max(0, (db + 60) / 50));
+        this.setData({ soundLevel: lv });
+      } catch (e) {
+        // ignore PCM parse errors
+      }
+    });
+
+    manager.onError((err) => {
+      console.warn('silent recorder error', err);
+      this._stopSoundLevelSampling();
+    });
+
+    manager.start({
+      duration: (SILENT_DURATION_SEC + 10) * 1000,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      encodeBitRate: 48000,
+      format: 'pcm',
+      frameSize: 1
+    });
+  },
+
+  _stopSoundLevelSampling() {
+    if (this._recorderManager) {
+      try { this._recorderManager.stop(); } catch (e) { /* ignore */ }
+      this._recorderManager = null;
     }
   },
 
@@ -463,6 +529,16 @@ Page({
         }
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
+            // 非房主：同步房主的声贝等级到音柱
+            if (
+              !this.data.isHost
+              && this.data.silentTimerActive
+              && pollResult.roomState
+              && pollResult.roomState.partnerSilentSoundLevel != null
+            ) {
+              const lv = Math.min(1, Math.max(0, Number(pollResult.roomState.partnerSilentSoundLevel) || 0));
+              this.setData({ soundLevel: lv });
+            }
             // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
             if (page === 'closingstatement') {
               const state = pollResult.roomState || {};

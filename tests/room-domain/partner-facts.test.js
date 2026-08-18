@@ -144,7 +144,50 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(repo.rooms.get('30000001').partnerGamePhase, 'play');
   });
 
-  it('ADVANCE_TURN refreshes round timer even when round does not increment', async () => {
+  it('ADVANCE_TURN archives finishing player and increments round per turn', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    room.currentPlayerIndex = 1;
+    room.currentPlayerName = '玩家1';
+    room.currentRound = 1;
+    room.partnerRoundSummaries = [];
+    room.partnerCurrentRoundContent = {
+      playHistory: ['玩家1的出牌解释'],
+      discussionNotes: [],
+      playImages: [],
+      discussionImages: [],
+      playBlocks: [],
+      discussionBlocks: [],
+      voiceLines: [],
+      turnRecords: []
+    };
+    room.revision = (room.revision || 1) + 1;
+    repo.rooms.set('30000001', room);
+
+    const adv = await app.execute(
+      envelope({
+        commandId: 'p5-adv-archive',
+        type: COMMAND_TYPES.ADVANCE_TURN,
+        roomId: '30000001',
+        expectedRevision: room.revision
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(adv.ok, true, adv.errMsg);
+    const next = repo.rooms.get('30000001');
+    assert.equal(next.currentPlayerIndex, 2);
+    assert.equal(next.currentRound, 2);
+    assert.equal(adv.effects.incrementRound, true);
+    assert.equal(next.partnerRoundSummaries.length, 1);
+    assert.equal(next.partnerRoundSummaries[0].playerIndex, 1);
+    assert.equal(next.partnerRoundSummaries[0].round, 1);
+    assert.deepEqual(next.partnerRoundSummaries[0].playHistory, ['玩家1的出牌解释']);
+    assert.deepEqual(next.partnerCurrentRoundContent.playHistory, []);
+  });
+
+  it('ADVANCE_TURN refreshes round timer on every turn advance', async () => {
     const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
     const app = createRoomApplication(repo);
     await seedActivePartnerRoom(app, repo);
@@ -245,5 +288,52 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     );
     assert.equal(stmt.ok, false);
     assert.equal(stmt.errCode, ERR.INVALID_TRANSITION);
+  });
+
+  it('ADVANCE_TURN archives acting player (not next player) in round summary', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+    const room = repo.rooms.get('30000001');
+    // 玩家1正在出牌
+    room.currentPlayerIndex = 1;
+    room.currentPlayerName = '玩家1';
+    room.currentRound = 1;
+    room.partnerRoundSummaries = [];
+    room.partnerCurrentRoundContent = {
+      playHistory: ['玩家1的出牌说明'],
+      discussionNotes: ['疑问讨论内容'],
+      playImages: [],
+      discussionImages: [],
+      playBlocks: [],
+      discussionBlocks: [],
+      voiceLines: [],
+      turnRecords: []
+    };
+    room.revision = (room.revision || 1) + 1;
+    repo.rooms.set('30000001', room);
+
+    // 房主调用 ADVANCE_TURN（模拟表态全部通过后换人）
+    const adv = await app.execute(
+      envelope({
+        commandId: 'stmt-pass-adv',
+        type: COMMAND_TYPES.ADVANCE_TURN,
+        roomId: '30000001',
+        expectedRevision: room.revision,
+        payload: { incrementRound: false }
+      }),
+      { userId: 'host' }
+    );
+    assert.equal(adv.ok, true, adv.errMsg);
+    const next = repo.rooms.get('30000001');
+    // 应进入玩家2
+    assert.equal(next.currentPlayerIndex, 2);
+    // 纪要应归档玩家1的行动（不是玩家2）
+    assert.equal(next.partnerRoundSummaries.length, 1, '应有且仅有一条纪要');
+    assert.equal(next.partnerRoundSummaries[0].playerIndex, 1, '纪要归档的是出牌玩家1');
+    assert.equal(next.partnerRoundSummaries[0].round, 1);
+    assert.deepEqual(next.partnerRoundSummaries[0].playHistory, ['玩家1的出牌说明']);
+    // 清空当前轮内容
+    assert.deepEqual(next.partnerCurrentRoundContent.playHistory, []);
   });
 });

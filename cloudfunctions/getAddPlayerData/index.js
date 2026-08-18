@@ -291,7 +291,7 @@ exports.main = async (event, context) => {
     if (
       hasSelectedMode &&
       !brainstormSessionEnded &&
-      (currentPage === 'addPlayer' || !room.currentPage) &&
+      (String(currentPage).toLowerCase() === 'addplayer' || !room.currentPage) &&
       room.brainstormProgressPage &&
       !isNonResumableProgressPage(room.brainstormProgressPage)
     ) {

@@ -161,7 +161,7 @@ Page({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return false;
     try {
-      const data = { roomId, currentPage };
+      const data = { roomId, currentPage, skipArchive: true };
       if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
       const res = await wx.cloud.callFunction({

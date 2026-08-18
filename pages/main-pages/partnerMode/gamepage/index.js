@@ -244,6 +244,8 @@ Page({
     this._scoreFingerprint = '';
     this._pendingRoomContext = null;
     this._roomDataReady = false;
+    // 仅用于“服务端缺字段时的临时兜底”；新页面实例必须从空开始，避免带入旧会话纪要
+    this._lastRawRoundSummaries = [];
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -266,11 +268,19 @@ Page({
       : CLOSING_STEP_RUNE;
     const specialMoveUsedFromUrl = options && (options.specialMoveUsed === '1' || options.specialMoveUsed === 1);
     const isHistoryReview = !!(options && (options.mode === 'review' || options.from === 'history'));
+    // 从 URL 读取 currentRound，避免 discussion 重进时 loadRoomData 完成前本地值为初始的 1
+    const initialRound = options && options.currentRound != null
+      ? parseInt(options.currentRound, 10) || 1
+      : 1;
     this._isHistoryReview = isHistoryReview;
+    const fromStatement = !!(options && (options.fromStatement === '1' || options.fromStatement === 1));
+    // 从表态页回来后，短时间内忽略过期的 currentPage=statement，防止闪回后再点一次
+    this._suppressStatementFollowUntil = fromStatement ? Date.now() + 12000 : 0;
 
     this.setData({
       roomId,
       currentPlayerIndex,
+      currentRound: initialRound,
       gamepagePhase: initialPhase,
       closingStep: initialClosingStep,
       cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
@@ -464,6 +474,11 @@ Page({
     this._pageVisible = false;
     this._unbindInspirationKeyboard();
     this._persistHistoryReviewSnapshot(true);
+    this._closingPickingImage = false;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
     // 离开时不改 roundTimerVisible：避免卡片框从 timer→idle 布局突变导致转场卡顿
     if (this.data.inspirationKeyboardHeight || this.data.inspirationLiftStyle) {
       this.setData({
@@ -1539,17 +1554,50 @@ Page({
       ? roomState.partnerExpressMessages
       : [];
     this._expressMessagesAll = expressMessages;
-    // 服务端 partnerRoundSummaries 为 null/undefined（字段缺失）时不代表纪要被清空，
-    // 保留上一次已知的原始纪要，避免部分用户刷新/轮询后纪要卡瞬间消失
+    // 服务端 partnerRoundSummaries 缺失时可短暂兜底，但新会话必须清缓存，防止旧纪要串入新局
+    if (sessionChanged && !Array.isArray(roomState.partnerRoundSummaries)) {
+      this._lastRawRoundSummaries = [];
+    }
     if (Array.isArray(roomState.partnerRoundSummaries)) {
       this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
     }
-    const rawRoundSummaries = roomState.partnerRoundSummaries != null
+    const rawRoundSummaries = Array.isArray(roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
-      : (this._lastRawRoundSummaries || []);
-    const roundSummaries = (Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [])
+      : (sessionChanged ? [] : (this._lastRawRoundSummaries || []));
+    let normalizedRawRoundSummaries = Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [];
+    // 新局首回合保护：第1轮玩家1出牌时不应出现任何历史纪要，强制忽略旧缓存/旧会话残留
+    if (
+      !this.data.isHistoryReview
+      && normalizePartnerGamePhase(roomPhase) === PHASE_PLAY
+      && Number(currentRound) === 1
+      && Number(player.currentPlayerIndex) === 1
+      && normalizedRawRoundSummaries.length > 0
+    ) {
+      normalizedRawRoundSummaries = [];
+      this._lastRawRoundSummaries = [];
+    }
+    const roundSummaries = normalizedRawRoundSummaries
       .slice()
-      .sort((a, b) => (a.round || 0) - (b.round || 0))
+      .sort((a, b) => {
+        const rd = (a.round || 0) - (b.round || 0);
+        if (rd !== 0) return rd;
+        return (a.archivedAt || 0) - (b.archivedAt || 0);
+      })
+      // 只展示“已结束轮次”的纪要：当前轮进行中，不应出现当前/未来轮纪要卡
+      .filter((item) => {
+        const rd = Number(item && item.round);
+        if (!Number.isFinite(rd) || rd <= 0 || rd >= Number(currentRound || 1)) return false;
+        // 选定首位玩家时可能误归档一张空纪要：无任何内容则不展示
+        const has = (arr) => Array.isArray(arr) && arr.length > 0;
+        return has(item.playHistory)
+          || has(item.discussionNotes)
+          || has(item.playImages)
+          || has(item.discussionImages)
+          || has(item.playBlocks)
+          || has(item.discussionBlocks)
+          || has(item.voiceLines)
+          || has(item.turnRecords);
+      })
       .map((item) => {
         const lists = this._buildExpressListsForRound(expressMessages, item.round, currentRound);
         return {
@@ -2287,6 +2335,9 @@ Page({
           return true;
         }
         if (page === 'statement') {
+          if (this._suppressStatementFollowUntil && Date.now() < this._suppressStatementFollowUntil) {
+            return true;
+          }
           const idx = state.currentPlayerIndex != null
             ? state.currentPlayerIndex
             : this.data.currentPlayerIndex;
@@ -2294,7 +2345,10 @@ Page({
           const isHost = pollResult.isHost === true || this.data.isHost === true;
           safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
             isSubScreen: !isHost,
-            isWaiting: !isHost
+            isWaiting: !isHost,
+            currentRound: state.currentRound != null
+              ? state.currentRound
+              : this.data.currentRound
           }), { immediate: true });
           return true;
         }
@@ -2341,6 +2395,9 @@ Page({
       }
       if (extra && extra.syncPartnerTurnTimer != null) {
         data.syncPartnerTurnTimer = extra.syncPartnerTurnTimer === true;
+      }
+      if (extra && extra.skipArchive === true) {
+        data.skipArchive = true;
       }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
@@ -2432,6 +2489,42 @@ Page({
     }
   },
 
+  handleAvatarFilterToggle() {
+    if (isClosingPhase(this.data.gamepagePhase) || this.data.isHistoryReview) return;
+    if (this.data.isPlayerFilterActive) {
+      this._clearPlayerAvatarFilter();
+      return;
+    }
+    wx.showToast({ title: '请点击头像查看该玩家纪要', icon: 'none' });
+  },
+
+  _clearPlayerAvatarFilter() {
+    const {
+      members,
+      roundSummaries,
+      currentPlayerIndex,
+      cardIndexBeforeFilter
+    } = this.data;
+    this._playerFilterIndex = null;
+    const restoredIndex = cardIndexBeforeFilter != null
+      ? cardIndexBeforeFilter
+      : (roundSummaries || []).length;
+    const cardState = this._buildDisplayCardState({
+      roundSummaries,
+      members,
+      filteredPlayerIndex: null,
+      isPlayerFilterActive: false,
+      currentPlayerIndex,
+      preferredCardIndex: restoredIndex
+    });
+    this.setData({
+      filteredPlayerIndex: null,
+      isPlayerFilterActive: false,
+      cardIndexBeforeFilter: 0,
+      ...cardState
+    });
+  },
+
   handleAvatarTap(e) {
     if (isClosingPhase(this.data.gamepagePhase)) return;
     const id = e.detail && (e.detail.playerIndex != null ? e.detail.playerIndex : e.detail.id);
@@ -2445,32 +2538,13 @@ Page({
       roundSummaries,
       currentPlayerIndex,
       isPlayerFilterActive,
-      filteredPlayerIndex,
-      cardIndexBeforeFilter,
       cardIndex
     } = this.data;
     const memberCount = (members || []).length;
     const activeFilter = this._resolveActivePlayerFilter();
 
     if (isPlayerFilterActive && isSamePlayerIndex(activeFilter, playerIndex)) {
-      this._playerFilterIndex = null;
-      const restoredIndex = cardIndexBeforeFilter != null
-        ? cardIndexBeforeFilter
-        : (roundSummaries || []).length;
-      const cardState = this._buildDisplayCardState({
-        roundSummaries,
-        members,
-        filteredPlayerIndex: null,
-        isPlayerFilterActive: false,
-        currentPlayerIndex,
-        preferredCardIndex: restoredIndex
-      });
-      this.setData({
-        filteredPlayerIndex: null,
-        isPlayerFilterActive: false,
-        cardIndexBeforeFilter: 0,
-        ...cardState
-      });
+      this._clearPlayerAvatarFilter();
       return;
     }
 
@@ -3835,7 +3909,7 @@ Page({
     this._stopRoundTimerBurstPoll();
     await this._syncRoundContentToRoom();
 
-    const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
+    const { roomId, currentPlayerIndex, currentPlayerName, currentRound } = this.data;
     let ok = false;
     const cmd = await this._dispatchPartnerCommand('START_STATEMENT', {});
     if (cmd && cmd.ok === true) {
@@ -3852,7 +3926,7 @@ Page({
       return;
     }
 
-    safeOpenUrl(buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName));
+    safeOpenUrl(buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, { currentRound }));
   },
 
   async handleEndDiscussion() {
@@ -3871,19 +3945,17 @@ Page({
         partnerMasterMode: false,
         incrementRound
       };
-      if (incrementRound) {
-        const ctx = await this._syncRoomContext();
-        const roundContent = ctx && ctx.roundContent;
-        extra.roundSummary = {
-          ...this._buildRoundSummaryPayload(),
-          voiceLines: (roundContent && roundContent.voiceLines.length)
-            ? roundContent.voiceLines
-            : (this.data.voiceLines || []),
-          turnRecords: (roundContent && roundContent.turnRecords.length)
-            ? roundContent.turnRecords
-            : (this.data.turnRecords || [])
-        };
-      }
+      const ctx = await this._syncRoomContext();
+      const roundContent = ctx && ctx.roundContent;
+      extra.roundSummary = {
+        ...this._buildRoundSummaryPayload(),
+        voiceLines: (roundContent && roundContent.voiceLines.length)
+          ? roundContent.voiceLines
+          : (this.data.voiceLines || []),
+        turnRecords: (roundContent && roundContent.turnRecords.length)
+          ? roundContent.turnRecords
+          : (this.data.turnRecords || [])
+      };
 
       let ok = false;
       let cmd = null;
@@ -3904,15 +3976,6 @@ Page({
         if (effects.incrementRound != null) {
           incrementRound = !!effects.incrementRound;
         }
-        // 协议过渡期双写：钉死 play phase + 抬 revision，避免仅依赖 roomCommand 读模型
-        const timerNow = Date.now();
-        await this._updateRoomState('gamepage', nextIndex, nextName, {
-          partnerGamePhase: PHASE_PLAY,
-          partnerMasterMode: false,
-          partnerRoundStartedAt: timerNow,
-          syncPartnerTurnTimer: true,
-          incrementRound: false
-        });
       } else {
         ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
       }
@@ -3927,9 +3990,16 @@ Page({
       const amCurrentAfterPass = !!(members.find(
         (m) => m && m.isMe && toPlayerIndex(m.playerIndex, 0) === toPlayerIndex(nextIndex, 0)
       ));
-      const nextRound = incrementRound
-        ? (Number(this.data.currentRound) || 1) + 1
-        : (this.data.currentRound != null ? this.data.currentRound : 1);
+      // 优先用 room-domain 返回的权威轮次（effects.roundNo），避免 discussion gamepage
+      // 初始 currentRound=1 的 stale 值导致轮次显示错误
+      const cmdRoundNo = cmd && cmd.effects && cmd.effects.roundNo != null
+        ? Number(cmd.effects.roundNo)
+        : null;
+      const nextRound = cmdRoundNo != null
+        ? cmdRoundNo
+        : (incrementRound
+          ? (Number(this.data.currentRound) || 1) + 1
+          : (this.data.currentRound != null ? this.data.currentRound : 1));
       this._scoreProgressFromSnapshot = false;
       this.setData({
         currentPlayerIndex: nextIndex,
@@ -4490,6 +4560,10 @@ Page({
   onClosingCreativeFocus() {
     // 创意点复盘仅房主可写；非房主 textarea 已 disabled，此处兜底
     if (!this.data.isHost) return;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
     this.setData({ closingCreativeEditFocus: true });
   },
 
@@ -4505,7 +4579,13 @@ Page({
   },
 
   async onClosingCreativeBlur() {
-    await this._commitClosingCreativeEdit({ allowEmptyExit: true });
+    if (this._closingPickingImage) return;
+    if (this._closingBlurTimer) clearTimeout(this._closingBlurTimer);
+    this._closingBlurTimer = setTimeout(() => {
+      this._closingBlurTimer = null;
+      if (this._closingPickingImage) return;
+      this._commitClosingCreativeEdit({ allowEmptyExit: true });
+    }, 80);
   },
 
   async _commitClosingCreativeEdit(options = {}) {
@@ -4548,6 +4628,11 @@ Page({
       wx.showToast({ title: '最多插入 9 张图片', icon: 'none' });
       return;
     }
+    this._closingPickingImage = true;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
     wx.showActionSheet({
       itemList: ['拍照', '从相册选择'],
       success: (res) => {
@@ -4558,7 +4643,11 @@ Page({
           sourceType,
           success: async (chooseRes) => {
             const paths = chooseRes.tempFilePaths || [];
-            if (!paths.length) return;
+            this._closingPickingImage = false;
+            if (!paths.length) {
+              this.setData({ closingCreativeEditFocus: true });
+              return;
+            }
             wx.showLoading({ title: '上传中…', mask: true });
             try {
               await this._appendClosingCreativeContent({ photos: paths });
@@ -4568,9 +4657,15 @@ Page({
             }
           },
           fail: () => {
+            this._closingPickingImage = false;
+            this._commitClosingCreativeEdit({ allowEmptyExit: true });
             wx.showToast({ title: '选择图片失败', icon: 'none' });
           }
         });
+      },
+      fail: () => {
+        this._closingPickingImage = false;
+        this._commitClosingCreativeEdit({ allowEmptyExit: true });
       }
     });
   },
@@ -4615,6 +4710,7 @@ Page({
     const roomId = this.data.roomId || 'room';
     const list = Array.isArray(paths) ? paths : [];
     const results = [];
+    let failedCount = 0;
     for (let i = 0; i < list.length; i++) {
       const filePath = list[i];
       try {
@@ -4627,7 +4723,13 @@ Page({
       } catch (e) {
         console.warn('_uploadClosingCreativePhotos cloud fail', e);
       }
-      results.push(await persistTempPhoto(filePath));
+      failedCount += 1;
+    }
+    if (failedCount > 0) {
+      wx.showToast({
+        title: failedCount === list.length ? '图片上传失败' : `有${failedCount}张图片上传失败`,
+        icon: 'none'
+      });
     }
     return results;
   },
