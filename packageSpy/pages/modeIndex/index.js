@@ -45,7 +45,8 @@ Page({
     starting: false,
     showLibraryEntry: true,
     libraryGroupCount: 0,
-    rulesExpanded: false
+    rulesExpanded: false,
+    rulesNeedScroll: false
   },
 
   onLoad(options) {
@@ -70,6 +71,11 @@ Page({
     this._pageAlive = true;
     this.refreshRoom();
     this.startPolling();
+    if (this.data.rulesExpanded) this.scheduleRulesScrollMeasure();
+  },
+
+  onResize() {
+    if (this.data.rulesExpanded) this.scheduleRulesScrollMeasure();
   },
 
   onHide() {
@@ -80,6 +86,10 @@ Page({
 
   onUnload() {
     this._pageAlive = false;
+    if (this._rulesMeasureTimer) {
+      clearTimeout(this._rulesMeasureTimer);
+      this._rulesMeasureTimer = null;
+    }
     this.stopPolling();
   },
 
@@ -155,7 +165,40 @@ Page({
   },
 
   onToggleRules() {
-    this.setData({ rulesExpanded: !this.data.rulesExpanded });
+    const next = !this.data.rulesExpanded;
+    this.setData({
+      rulesExpanded: next,
+      rulesNeedScroll: false
+    }, () => {
+      if (next) this.scheduleRulesScrollMeasure();
+    });
+  },
+
+  scheduleRulesScrollMeasure() {
+    if (this._rulesMeasureTimer) {
+      clearTimeout(this._rulesMeasureTimer);
+    }
+    this._rulesMeasureTimer = setTimeout(() => {
+      this._rulesMeasureTimer = null;
+      this.measureRulesScroll();
+    }, 50);
+  },
+
+  measureRulesScroll() {
+    if (!this._pageAlive || !this.data.rulesExpanded) return;
+    const q = this.createSelectorQuery();
+    q.select('.section-rules').boundingClientRect();
+    q.select('#rulesContent').boundingClientRect();
+    q.exec((res) => {
+      if (!this._pageAlive || !this.data.rulesExpanded) return;
+      const box = res && res[0];
+      const content = res && res[1];
+      if (!box || !content) return;
+      const needScroll = content.height > box.height + 1;
+      if (needScroll !== this.data.rulesNeedScroll) {
+        this.setData({ rulesNeedScroll: needScroll });
+      }
+    });
   },
 
   async onStartGame() {

@@ -116,6 +116,18 @@ function deriveListsFromBlocks(blocks) {
   return { texts, images };
 }
 
+function limitImageBlocks(blocks, maxCount) {
+  const max = Math.max(0, Number(maxCount) || 0);
+  const list = Array.isArray(blocks) ? blocks : [];
+  let n = 0;
+  return list.filter((b) => {
+    if (!b || b.type !== 'image') return true;
+    if (n >= max) return false;
+    n += 1;
+    return true;
+  });
+}
+
 function normalizePartnerRoundContent(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const legacyImages = Array.isArray(src.images) ? src.images.slice() : [];
@@ -655,11 +667,11 @@ exports.main = async (event, context) => {
         };
       }
       const incoming = partnerClosingCreativePoints;
-      const blocks = normalizeContentBlocks(
+      const blocks = limitImageBlocks(normalizeContentBlocks(
         incoming.blocks,
         incoming.texts || incoming.playHistory,
         incoming.images
-      );
+      ), 1);
       const derived = deriveListsFromBlocks(blocks);
       updateData.partnerClosingCreativePoints = {
         blocks,

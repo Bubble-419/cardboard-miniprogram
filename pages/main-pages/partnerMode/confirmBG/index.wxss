@@ -227,20 +227,6 @@
   z-index: 1;
 }
 
-/* 左下角"点击修改"提示（悬停可见，常态半透明） */
-.deck-edit-hint {
-  position: absolute;
-  left: 20rpx;
-  bottom: 18rpx;
-  z-index: 4;
-  pointer-events: none;
-}
-.deck-edit-text {
-  font-size: 22rpx;
-  color: rgba(94, 193, 89, 0.55);
-  letter-spacing: 1rpx;
-}
-
 /*
   HTML demo .deck-card-label
   放在 deck-slot 层，不受 deck-card overflow:hidden 截断

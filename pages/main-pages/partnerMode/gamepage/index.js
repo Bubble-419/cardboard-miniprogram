@@ -11,7 +11,7 @@ const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
-const { buildStatementUrl, buildSpecialMoveUrl, buildClosingEndUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
+const { buildStatementUrl, buildSpecialMoveUrl, buildClosingStatementUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
 const {
   bindPageToRoomSession,
@@ -51,6 +51,7 @@ const {
   normalizeContentBlocks,
   appendTextSegments,
   appendImageBlocks,
+  limitImageBlocks,
   deriveListsFromBlocks,
   splitRecordSegments
 } = require('../../../../utils/partnerRoundContent');
@@ -127,9 +128,15 @@ Page({
     closingReviewRounds: [],
     closingCreativeBlocks: [],
     closingHasDeckImage: false,
+    closingDeckImageUrl: '',
     closingCreativeEditText: '',
     closingCreativeEditFocus: false,
+    closingCreativeWantFocus: false,
     closingCreativeSaving: false,
+    /** 正在输入态编辑的文字块 key；清空并失焦即删除 */
+    closingCreativeEditingKey: '',
+    /** 长按图片后显示删除叉的 block key */
+    closingImageDeleteKey: '',
     playDraftText: '',
     playDraftFocused: false,
     discussionDraftText: '',
@@ -144,11 +151,15 @@ Page({
     displayRoundSummaries: [],
     filteredPlayerIndex: null,
     isPlayerFilterActive: false,
+    /** 仅看此人时：非当前出牌人则隐藏出牌卡 */
+    showCurrentActionCard: true,
     cardIndexBeforeFilter: 0,
     partnerRoundStartedAt: null,
     /** 当前行动玩家本轮首次倒计时起点；卡片循环重启不更新，供头像框同步 */
     avatarRoundStartedAt: null,
     roundTimerVisible: false,
+    /** 已拿到有效共享锚点；与 roundTimerVisible 共同决定卡片框/头像框是否绘制倒计时 */
+    roundTimerReady: false,
     roundTimerElapsedRatio: 0,
     roundTimerRemainingSec: 30,
     cardCount: 1,
@@ -674,12 +685,16 @@ Page({
     const isReview = historyReview === true
       || this.data.isHistoryReview
       || this._isHistoryReview;
-    // 历史回顾：只展示纪要卡，不含当前出牌卡
-    const cardCount = isReview
-      ? Math.max(1, summaryCount)
-      : Math.max(1, summaryCount + 1);
+    // 仅看此人：只保留该玩家的纪要卡；若他正好是当前出牌人，才附带出牌卡
+    const showCurrentActionCard = !isReview && (
+      !filterActive
+      || isSamePlayerIndex(filteredPlayerIndex, currentPlayerIndex)
+    );
+    const cardCount = showCurrentActionCard
+      ? Math.max(1, summaryCount + 1)
+      : Math.max(1, summaryCount);
     const actionCardIndex = summaryCount;
-    const defaultIndex = isReview ? 0 : actionCardIndex;
+    const defaultIndex = showCurrentActionCard ? actionCardIndex : Math.max(0, summaryCount - 1);
     const cardIndex = preferredCardIndex != null
       ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
       : defaultIndex;
@@ -692,6 +707,7 @@ Page({
       cardCount,
       paginationDots: buildPaginationDots(cardIndex, cardCount),
       cardIndex,
+      showCurrentActionCard,
       isPlayerFilterActive: filterActive,
       selectedPlayerIndex: filterActive
         ? filteredPlayerIndex
@@ -783,6 +799,7 @@ Page({
       avatarRoundStartedAt: null,
       cardIndex: 0,
       cardCount,
+      showCurrentActionCard: false,
       paginationDots: buildPaginationDots(0, cardCount),
       indicatorPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
         ? this.data.displayRoundSummaries[0].playerIndex
@@ -1007,8 +1024,10 @@ Page({
 
   _closingDeckImagePatch(blocks) {
     const list = blocks != null ? blocks : (this.data.closingCreativeBlocks || []);
+    const first = list.find((b) => b && b.type === 'image' && b.url);
     return {
-      closingHasDeckImage: list.some((b) => b && b.type === 'image' && b.url)
+      closingHasDeckImage: !!first,
+      closingDeckImageUrl: first ? first.url : ''
     };
   },
 
@@ -1211,6 +1230,7 @@ Page({
         partnerRoundStartedAt: null,
         avatarRoundStartedAt: null,
         roundTimerVisible: false,
+        roundTimerReady: false,
         roundTimerElapsedRatio: 0
       });
       this._avatarTimerTurnKey = '';
@@ -1224,6 +1244,7 @@ Page({
       this.setData({
         partnerRoundStartedAt: null,
         roundTimerVisible: false,
+        roundTimerReady: false,
         roundTimerElapsedRatio: 0
       });
       this._stopRoundTimer();
@@ -1249,6 +1270,7 @@ Page({
     this.setData({
       partnerRoundStartedAt: ts,
       roundTimerVisible: this._pageVisible !== false,
+      roundTimerReady: true,
       roundTimerRemainingSec: timerState.remainingSec,
       roundTimerElapsedRatio: timerState.elapsedRatio
     });
@@ -1339,13 +1361,13 @@ Page({
   },
 
   _syncRoundTimerVisible(partnerRoundStartedAt) {
-    const visible = !!(
-      this._pageVisible !== false
-      && partnerRoundStartedAt
-      && !isClosingPhase(this.data.gamepagePhase)
-    );
-    if (visible !== this.data.roundTimerVisible) {
-      this.setData({ roundTimerVisible: visible });
+    const hasAnchor = !!(partnerRoundStartedAt && !isClosingPhase(this.data.gamepagePhase));
+    const visible = !!(this._pageVisible !== false && hasAnchor);
+    const patch = {};
+    if (visible !== this.data.roundTimerVisible) patch.roundTimerVisible = visible;
+    if (hasAnchor !== this.data.roundTimerReady) patch.roundTimerReady = hasAnchor;
+    if (Object.keys(patch).length) {
+      this.setData(patch);
     }
   },
 
@@ -1643,11 +1665,12 @@ Page({
       ? (() => {
         const timerState = getRoundTimerState(partnerRoundStartedAt);
         return {
+          roundTimerReady: true,
           roundTimerElapsedRatio: timerState.elapsedRatio,
           roundTimerRemainingSec: timerState.remainingSec
         };
       })()
-      : { roundTimerElapsedRatio: 0 };
+      : { roundTimerReady: false, roundTimerElapsedRatio: 0 };
     const nextFilteredPlayerIndex = (playerChanged || roundChanged || sessionChanged || options.resetTurnUi)
       ? null
       : this._resolveActivePlayerFilter();
@@ -1763,6 +1786,7 @@ Page({
         patch.partnerRoundStartedAt = null;
         patch.roundTimerElapsedRatio = 0;
         patch.roundTimerVisible = false;
+        patch.roundTimerReady = false;
       }
     }
 
@@ -1899,16 +1923,20 @@ Page({
         playBlocks: patch.playBlocks,
         discussionBlocks: patch.discussionBlocks
       });
-      const closingCreative = normalizeContentBlocks(
+      const closingCreative = limitImageBlocks(normalizeContentBlocks(
         roomState.partnerClosingCreativePoints
           && roomState.partnerClosingCreativePoints.blocks,
         roomState.partnerClosingCreativePoints
           && roomState.partnerClosingCreativePoints.texts,
         roomState.partnerClosingCreativePoints
           && roomState.partnerClosingCreativePoints.images
-      );
-      // 编辑中不打断本地输入框
-      if (!this.data.closingCreativeEditFocus && !this.data.closingCreativeSaving) {
+      ), 1);
+      // 非房主始终同步只读内容；房主编辑/保存中不打断本地输入
+      const hostEditingClosing = this.data.isHost
+        && (this.data.closingCreativeEditFocus
+          || this.data.closingCreativeSaving
+          || !!this.data.closingCreativeEditingKey);
+      if (!hostEditingClosing) {
         patch.closingCreativeBlocks = closingCreative;
         Object.assign(patch, this._closingDeckImagePatch(closingCreative));
       }
@@ -1916,8 +1944,12 @@ Page({
       patch.closingReviewRounds = [];
       patch.closingCreativeBlocks = [];
       patch.closingHasDeckImage = false;
+      patch.closingDeckImageUrl = '';
       patch.closingCreativeEditText = '';
       patch.closingCreativeEditFocus = false;
+      patch.closingCreativeWantFocus = false;
+      patch.closingCreativeEditingKey = '';
+      patch.closingImageDeleteKey = '';
       patch.playDraftText = '';
       patch.playDraftFocused = false;
       patch.discussionDraftText = '';
@@ -2296,8 +2328,12 @@ Page({
           }), { immediate: true });
           return true;
         }
-        if (page === 'closingend') {
-          safeOpenUrl(buildClosingEndUrl(roomId), { immediate: true });
+        if (page === 'closingend' || page === 'leaderboard') {
+          // 结束脑暴后直接进排行榜，不再停在 closingEnd 过渡页
+          safeOpenUrl(buildLeaderboardUrl(roomId, {
+            from: 'closingEnd',
+            isSubScreen: true
+          }), { immediate: true });
           return true;
         }
         if (page === 'gamepage') {
@@ -2387,6 +2423,9 @@ Page({
       if (extra && extra.roundSummary) {
         data.roundSummary = extra.roundSummary;
       }
+      if (extra && extra.archiveTurn === true) {
+        data.archiveTurn = true;
+      }
       if (extra && extra.partnerCurrentRoundContent) {
         data.partnerCurrentRoundContent = extra.partnerCurrentRoundContent;
       }
@@ -2469,7 +2508,7 @@ Page({
       this._cardSwipeBusy = true;
     }
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
-    const maxIndex = (this.data.displayRoundSummaries || []).length;
+    const maxIndex = Math.max(0, (this.data.cardCount || 1) - 1);
     const cardIndex = Math.min(index, maxIndex);
     this.setData({
       cardIndex,
@@ -4018,21 +4057,20 @@ Page({
         specialMoveUsedThisTurn: false,
         isCurrentPlayer: amCurrentAfterPass,
         showSpecialMoveBtn: amCurrentAfterPass,
-        playHistory: incrementRound ? [] : this.data.playHistory,
-        discussionNotes: incrementRound ? [] : this.data.discussionNotes,
-        playImages: incrementRound ? [] : this.data.playImages,
-        discussionImages: incrementRound ? [] : this.data.discussionImages,
-        playBlocks: incrementRound ? [] : this.data.playBlocks,
-        discussionBlocks: incrementRound ? [] : this.data.discussionBlocks,
-        voiceLines: incrementRound ? [] : this.data.voiceLines,
-        turnRecords: incrementRound ? [] : this.data.turnRecords
+        // 换人即换手：本地当前手内容一律清空，避免继承上一位玩家的纪要
+        playHistory: [],
+        discussionNotes: [],
+        playImages: [],
+        discussionImages: [],
+        playBlocks: [],
+        discussionBlocks: [],
+        voiceLines: [],
+        turnRecords: []
       }, () => {
-        if (incrementRound) {
-          this._roundSpeech && this._roundSpeech.stop();
-          this._syncRoundSpeech();
-        } else {
+        this._roundSpeech && this._roundSpeech.stop();
+        this._syncRoundSpeech();
+        if (!incrementRound) {
           this.refreshScoreStatus();
-          this._syncRoundSpeech();
         }
         // 换人后由房主重开共享计时
         if (this.data.isHost) {
@@ -4517,14 +4555,14 @@ Page({
       return;
     }
     const { roomId, currentPlayerIndex, currentPlayerName } = this.data;
-    const ok = await this._updateRoomState('closingEnd', currentPlayerIndex, currentPlayerName, {
+    const ok = await this._updateRoomState('leaderboard', currentPlayerIndex, currentPlayerName, {
       partnerGamePhase: PHASE_CLOSING
     });
     if (!ok) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }
-    safeOpenUrl(buildClosingEndUrl(roomId));
+    safeOpenUrl(buildLeaderboardUrl(roomId, { from: 'closingEnd' }));
   },
 
   handleClosingPhoto() {
@@ -4564,7 +4602,10 @@ Page({
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
     }
-    this.setData({ closingCreativeEditFocus: true });
+    this.setData({
+      closingCreativeEditFocus: true,
+      closingImageDeleteKey: ''
+    });
   },
 
   onClosingCreativeInput(e) {
@@ -4588,29 +4629,139 @@ Page({
     }, 80);
   },
 
+  /** 点击已记录文字 → 拉回输入态编辑；清空后失焦即删除 */
+  async onClosingCreativeTextTap(e) {
+    if (!this.data.isHost) return;
+    if (this.data.closingCreativeSaving) return;
+    const key = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.key
+      : '';
+    if (!key) return;
+    const block = (this.data.closingCreativeBlocks || []).find(
+      (b) => b && b.type === 'text' && b.key === key
+    );
+    if (!block) return;
+
+    // 若正在编辑其他内容，先提交
+    const editingOther = this.data.closingCreativeEditingKey
+      && this.data.closingCreativeEditingKey !== key;
+    const hasDraft = !!(this.data.closingCreativeEditText || '').trim();
+    if (editingOther || (hasDraft && this.data.closingCreativeEditingKey !== key)) {
+      await this._commitClosingCreativeEdit();
+    }
+
+    this.setData({ closingCreativeWantFocus: false }, () => {
+      this.setData({
+        closingCreativeEditText: block.text || '',
+        closingCreativeEditingKey: key,
+        closingCreativeEditFocus: true,
+        closingCreativeWantFocus: true,
+        closingImageDeleteKey: ''
+      });
+    });
+  },
+
   async _commitClosingCreativeEdit(options = {}) {
+    if (!this.data.isHost) return;
     if (this.data.closingCreativeSaving) return;
     const raw = this.data.closingCreativeEditText || '';
-    if (!splitRecordSegments(raw).length) {
+    const editingKey = this.data.closingCreativeEditingKey || '';
+    const segments = splitRecordSegments(raw);
+
+    if (!segments.length) {
+      if (editingKey) {
+        // 输入态清空 = 删除该条文字
+        this.setData({ closingCreativeSaving: true });
+        try {
+          const ok = await this._removeClosingCreativeBlockByKey(editingKey);
+          this.setData({
+            closingCreativeEditText: '',
+            closingCreativeEditFocus: false,
+            closingCreativeWantFocus: false,
+            closingCreativeEditingKey: ok ? '' : editingKey
+          });
+        } finally {
+          this.setData({ closingCreativeSaving: false });
+        }
+        return;
+      }
       if (options.allowEmptyExit) {
         this.setData({
-          closingCreativeEditFocus: false
+          closingCreativeEditFocus: false,
+          closingCreativeWantFocus: false
         });
       }
       return;
     }
+
     this.setData({ closingCreativeSaving: true });
     try {
-      const ok = await this._appendClosingCreativeContent({ text: raw });
+      let ok = false;
+      if (editingKey) {
+        ok = await this._replaceClosingCreativeText(editingKey, raw);
+      } else {
+        ok = await this._appendClosingCreativeContent({ text: raw });
+      }
       if (ok) {
         this.setData({
           closingCreativeEditText: '',
-          closingCreativeEditFocus: false
+          closingCreativeEditFocus: false,
+          closingCreativeWantFocus: false,
+          closingCreativeEditingKey: ''
         });
       }
     } finally {
       this.setData({ closingCreativeSaving: false });
     }
+  },
+
+  async _replaceClosingCreativeText(key, raw) {
+    if (!this.data.isHost) return false;
+    const blocks = (this.data.closingCreativeBlocks || []).slice();
+    const idx = blocks.findIndex((b) => b && b.key === key);
+    if (idx < 0) {
+      return this._appendClosingCreativeContent({ text: raw });
+    }
+    const inserted = appendTextSegments([], raw);
+    if (!inserted.length) {
+      return this._removeClosingCreativeBlockByKey(key);
+    }
+    const nextBlocks = blocks.slice();
+    nextBlocks.splice(idx, 1, ...inserted);
+    this.setData({
+      closingCreativeBlocks: nextBlocks,
+      ...this._closingDeckImagePatch(nextBlocks)
+    });
+    const ok = await this._syncClosingCreativeToRoom(nextBlocks);
+    if (!ok) {
+      this.setData({
+        closingCreativeBlocks: blocks,
+        ...this._closingDeckImagePatch(blocks)
+      });
+      wx.showToast({ title: '同步失败', icon: 'none' });
+    }
+    return ok;
+  },
+
+  async _removeClosingCreativeBlockByKey(key) {
+    if (!this.data.isHost || !key) return false;
+    const blocks = this.data.closingCreativeBlocks || [];
+    if (!blocks.some((b) => b && b.key === key)) return true;
+    const nextBlocks = blocks.filter((b) => b && b.key !== key);
+    this.setData({
+      closingCreativeBlocks: nextBlocks,
+      closingImageDeleteKey: '',
+      ...this._closingDeckImagePatch(nextBlocks)
+    });
+    const ok = await this._syncClosingCreativeToRoom(nextBlocks);
+    if (!ok) {
+      this.setData({
+        closingCreativeBlocks: blocks,
+        ...this._closingDeckImagePatch(blocks)
+      });
+      wx.showToast({ title: '删除失败', icon: 'none' });
+    }
+    return ok;
   },
 
   onClosingCreativeAddImage() {
@@ -4623,9 +4774,8 @@ Page({
     const imageCount = (this.data.closingCreativeBlocks || []).filter(
       (b) => b && b.type === 'image'
     ).length;
-    const remain = 9 - imageCount;
-    if (remain <= 0) {
-      wx.showToast({ title: '最多插入 9 张图片', icon: 'none' });
+    if (imageCount >= 1 || this.data.closingHasDeckImage) {
+      wx.showToast({ title: '每张卡片只能上传1张图片', icon: 'none' });
       return;
     }
     this._closingPickingImage = true;
@@ -4638,7 +4788,7 @@ Page({
       success: (res) => {
         const sourceType = res.tapIndex === 0 ? ['camera'] : ['album'];
         wx.chooseImage({
-          count: remain,
+          count: 1,
           sizeType: ['compressed'],
           sourceType,
           success: async (chooseRes) => {
@@ -4650,8 +4800,19 @@ Page({
             }
             wx.showLoading({ title: '上传中…', mask: true });
             try {
-              await this._appendClosingCreativeContent({ photos: paths });
-              this.setData({ closingCreativeEditFocus: true });
+              // 先落盘当前输入态（编辑中的文字/草稿），再插图
+              await this._commitClosingCreativeEdit();
+              const ok = await this._appendClosingCreativeContent({
+                photos: paths.slice(0, 1)
+              });
+              if (ok) {
+                this.setData({
+                  closingCreativeEditText: '',
+                  closingCreativeEditingKey: '',
+                  closingCreativeEditFocus: true,
+                  closingCreativeWantFocus: true
+                });
+              }
             } finally {
               wx.hideLoading();
             }
@@ -4682,6 +4843,49 @@ Page({
     // wx.previewImage 不支持 cloud:// fileID，需先换成可访问的临时链
     const { list: resolvedList, current: resolvedCurrent } = await this._resolveClosingCreativePreviewUrls(list, url);
     wx.previewImage({ current: resolvedCurrent, urls: resolvedList });
+  },
+
+  onClosingCreativeImageLongPress(e) {
+    if (!this.data.isHost) return;
+    const key = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.key
+      : '';
+    if (!key) return;
+    this.setData({ closingImageDeleteKey: key });
+  },
+
+  onClosingCreativeImageTap(e) {
+    const key = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.key
+      : '';
+    // 删除态下再点图片：收起叉叉，不进预览
+    if (this.data.closingImageDeleteKey && this.data.closingImageDeleteKey === key) {
+      this.setData({ closingImageDeleteKey: '' });
+      return;
+    }
+    if (this.data.closingImageDeleteKey) {
+      this.setData({ closingImageDeleteKey: '' });
+    }
+    this.onClosingCreativePreview(e);
+  },
+
+  async onClosingCreativeRemoveBlock(e) {
+    if (!this.data.isHost) return;
+    if (this.data.closingCreativeSaving) return;
+    const key = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.key
+      : '';
+    if (!key) return;
+    const blocks = this.data.closingCreativeBlocks || [];
+    const target = blocks.find((b) => b && b.key === key);
+    if (!target || target.type !== 'image') return;
+
+    this.setData({ closingCreativeSaving: true });
+    try {
+      await this._removeClosingCreativeBlockByKey(key);
+    } finally {
+      this.setData({ closingCreativeSaving: false });
+    }
   },
 
   async _resolveClosingCreativePreviewUrls(list, current) {
@@ -4735,23 +4939,34 @@ Page({
   },
 
   async _appendClosingCreativeContent(options = {}) {
+    if (!this.data.isHost) return false;
     const text = typeof options.text === 'string' ? options.text : '';
     const photos = Array.isArray(options.photos) ? options.photos : [];
     const segments = splitRecordSegments(text);
     if (!segments.length && !photos.length) return false;
 
+    const existingBlocks = this.data.closingCreativeBlocks || [];
+    const hasImage = existingBlocks.some((b) => b && b.type === 'image' && b.url);
+    const photosToUpload = hasImage ? [] : photos.slice(0, 1);
+    if (photos.length && hasImage) {
+      wx.showToast({ title: '每张卡片只能上传1张图片', icon: 'none' });
+      if (!segments.length) return false;
+    }
+
     let uploaded = [];
-    if (photos.length) {
-      uploaded = await this._uploadClosingCreativePhotos(photos);
+    if (photosToUpload.length) {
+      uploaded = await this._uploadClosingCreativePhotos(photosToUpload);
       if (!uploaded.length && !segments.length) {
         wx.showToast({ title: '图片上传失败', icon: 'none' });
         return false;
       }
     }
 
-    let nextBlocks = (this.data.closingCreativeBlocks || []).slice();
-    if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded);
+    let nextBlocks = existingBlocks.slice();
+    // 先追加文字、再追加图片，保证插图落在已有文字末尾；之后继续输入的文字会排在图片下方
     if (segments.length) nextBlocks = appendTextSegments(nextBlocks, text);
+    if (uploaded.length) nextBlocks = appendImageBlocks(nextBlocks, uploaded.slice(0, 1));
+    nextBlocks = limitImageBlocks(nextBlocks, 1);
     this.setData({
       closingCreativeBlocks: nextBlocks,
       ...this._closingDeckImagePatch(nextBlocks)
@@ -4765,6 +4980,7 @@ Page({
   },
 
   async _syncClosingCreativeToRoom(blocks) {
+    if (!this.data.isHost) return false;
     const roomId = this.data.roomId;
     if (!roomId) return false;
     const nextBlocks = normalizeContentBlocks(blocks);

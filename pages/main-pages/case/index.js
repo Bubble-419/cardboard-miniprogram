@@ -86,7 +86,7 @@ Page({
         const rect = res && res[0];
         if (rect && rect.height) {
           const windowHeight = this._windowHeight || 750;
-          // 留出底部 footer 遮罩/内边距的余量，避免超出屏幕
+          // 滚动区占满 header 以下；列表底部 padding 避开固定 footer
           this.setData({ scrollHeight: Math.max(200, windowHeight - rect.height) });
         }
       });

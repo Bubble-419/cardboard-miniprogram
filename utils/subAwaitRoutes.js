@@ -2,7 +2,7 @@ const {
   buildGamepageUrl,
   buildStatementUrl,
   buildClosingStatementUrl,
-  buildClosingEndUrl,
+  buildLeaderboardUrl,
   buildSpyPageUrl,
   getSelectedModeId
 } = require('./modeRoutes');
@@ -255,9 +255,9 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
       closingVoteSessionId: state.closingVoteSessionId || '',
       _t: Date.now()
     }),
-    closingend: buildClosingEndUrl(roomId),
+    closingend: buildLeaderboardUrl(roomId, { from: 'closingEnd', isSubScreen: true }),
     discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
-    leaderboard: `/pages/leaderboard/index?roomId=${roomIdEnc}&isSubScreen=1`,
+    leaderboard: buildLeaderboardUrl(roomId, { from: 'closingEnd', isSubScreen: true }),
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
     creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
     spymodeindex: buildSpyPageUrl('intro', roomId),

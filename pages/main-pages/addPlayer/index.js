@@ -133,7 +133,7 @@ Page({
       : this.data.brainstormSessionEnded;
     const memberCount = patch.memberCount != null ? patch.memberCount : this.data.memberCount;
 
-    let primaryBtnText = '选择游戏';
+    let primaryBtnText = '选择模式';
     let primaryBtnDisabled = false;
     let primaryBtnAction = 'selectMode';
     // 底部次级文案：房主恒为「解散房间」，成员恒为「退出房间」
@@ -148,16 +148,16 @@ Page({
       primaryBtnDisabled = false;
     } else if (brainstormSessionEnded && hasSelectedMode) {
       // 上一局结束且模式仍在：同模式再开一局
-      primaryBtnText = '选择游戏';
+      primaryBtnText = '再来一轮';
       primaryBtnAction = 'anotherRound';
       primaryBtnDisabled = false;
     } else if (isHost) {
       // 未选模式 / 回大厅已清模式：应进选模式页，不能走 anotherRound
-      primaryBtnText = memberCount < 2 ? '等待成员加入' : '选择游戏';
+      primaryBtnText = memberCount < 2 ? '等待成员加入' : '选择模式';
       primaryBtnDisabled = memberCount < 2;
       primaryBtnAction = 'selectMode';
     } else {
-      primaryBtnText = '等待房主选择游戏';
+      primaryBtnText = '等待房主选择模式';
       primaryBtnDisabled = true;
       primaryBtnAction = '';
     }

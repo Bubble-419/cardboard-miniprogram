@@ -95,6 +95,13 @@ function buildClosingEndUrl(roomId) {
   return `/pages/main-pages/partnerMode/closingEnd/index?roomId=${roomIdEnc}`;
 }
 
+function buildLeaderboardUrl(roomId, options = {}) {
+  const roomIdEnc = encodeURIComponent(roomId || '');
+  const from = options.from ? `&from=${encodeURIComponent(options.from)}` : '';
+  const sub = options.isSubScreen ? '&isSubScreen=1' : '';
+  return `/pages/leaderboard/index?roomId=${roomIdEnc}${from}${sub}`;
+}
+
 module.exports = {
   getSelectedModeId,
   buildGamepageUrl,
@@ -102,5 +109,6 @@ module.exports = {
   buildSpecialMoveUrl,
   buildClosingStatementUrl,
   buildClosingEndUrl,
+  buildLeaderboardUrl,
   buildSpyPageUrl
 };

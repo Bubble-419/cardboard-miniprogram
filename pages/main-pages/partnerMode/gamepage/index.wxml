@@ -35,34 +35,25 @@
 
     <!-- 玩家列表：使用 partner-avatar 展示六种头像状态 -->
     <view class="user-section">
-      <view class="user-section-row">
-        <view class="user-section-list">
-          <user-list
-            avatarList="{{avatarList}}"
-            actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
-            selectedUser="{{isHistoryReview ? -1 : selectedPlayerIndex}}"
-            indicatorUser="{{indicatorPlayerIndex}}"
-            enableAdd="{{false}}"
-            isFold="{{true}}"
-            showName="{{false}}"
-            showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-            enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-            enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-            roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
-            roundTimerActive="{{!isHistoryReview && roundTimerVisible}}"
-            roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
-            suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
-            bindavatartap="handleAvatarTap"
-          />
-        </view>
-        <view
-          class="user-filter-toggle"
-          wx:if="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-          bindtap="handleAvatarFilterToggle"
-        >
-          <text class="user-filter-toggle-text">{{isPlayerFilterActive ? '查看全部' : '查看单人'}}</text>
-        </view>
-      </view>
+      <user-list
+        avatarList="{{avatarList}}"
+        actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
+        selectedUser="{{isHistoryReview || !isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
+        indicatorUser="{{indicatorPlayerIndex}}"
+        enableAdd="{{false}}"
+        isFold="{{true}}"
+        showName="{{false}}"
+        visualMode="partner-game"
+        onActionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
+        showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+        roundStartedAt="{{isHistoryReview ? null : partnerRoundStartedAt}}"
+        roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
+        roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
+        suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
+        bindavatartap="handleAvatarTap"
+      />
     </view>
 
     <view class="divider-line"></view>
@@ -104,51 +95,73 @@
             <view class="closing-badge">收尾阶段</view>
             <view class="closing-card-body">
               <text class="closing-card-title">创意点复盘</text>
-              <!-- 输入框放在 scroll-view 外，避免 enhanced 滚动区抢焦点 -->
-              <view class="card-inline-textarea-wrap">
-                <textarea
-                  class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                  value="{{closingCreativeEditText}}"
-                  disabled="{{!isHost}}"
-                  bindfocus="onClosingCreativeFocus"
-                  bindinput="onClosingCreativeInput"
-                  bindblur="onClosingCreativeBlur"
-                  placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : (isHost ? '点击开始记录' : '等待房主记录')}}"
-                  placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                  maxlength="500"
-                  auto-height
-                  disable-default-padding="{{true}}"
-                  show-confirm-bar="{{false}}"
-                  adjust-position="{{true}}"
-                  hold-keyboard="{{true}}"
-                  cursor-spacing="40"
-                />
-                <text class="closing-creative-text-hint">{{isHost ? '可输入文字（换行可分条）' : '房主可在此输入复盘文字'}}</text>
-              </view>
               <scroll-view class="closing-scroll" scroll-y enhanced show-scrollbar="{{true}}">
                 <view class="closing-scroll-inner">
                 <view class="card-section-flow">
                   <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
-                    <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
-                  </block>
-                </view>
-
-                <view class="closing-deck-capture">
-                  <view
-                    class="closing-deck-capture-inner"
-                    catchtap="{{isHost ? 'onClosingCreativeAddImage' : ''}}"
-                  >
-                    <block wx:for="{{closingCreativeBlocks}}" wx:key="key">
+                    <view
+                      wx:if="{{item.type === 'text' && item.key !== closingCreativeEditingKey}}"
+                      class="card-bullet {{isHost ? 'closing-text-editable' : ''}}"
+                      data-key="{{item.key}}"
+                      catchtap="onClosingCreativeTextTap"
+                    >· {{item.text}}</view>
+                    <view
+                      wx:elif="{{item.type === 'image'}}"
+                      class="closing-deck-photo-wrap {{closingImageDeleteKey === item.key ? 'closing-deck-photo-wrap-deleting' : ''}}"
+                      data-key="{{item.key}}"
+                      data-url="{{item.url}}"
+                      bindlongpress="onClosingCreativeImageLongPress"
+                    >
                       <image
-                        wx:if="{{item.type === 'image'}}"
                         class="closing-deck-photo"
                         src="{{item.url}}"
-                        mode="aspectFill"
+                        mode="widthFix"
+                        data-key="{{item.key}}"
                         data-url="{{item.url}}"
-                        catchtap="onClosingCreativePreview"
+                        catchtap="onClosingCreativeImageTap"
                       />
-                    </block>
-                    <view class="closing-deck-capture-frame" wx:if="{{!closingHasDeckImage && isHost}}">
+                      <view
+                        wx:if="{{isHost && closingImageDeleteKey === item.key}}"
+                        class="closing-deck-photo-remove"
+                        catchtap="onClosingCreativeRemoveBlock"
+                        data-key="{{item.key}}"
+                      >×</view>
+                    </view>
+                  </block>
+                  <view
+                    class="card-bullet card-bullet-empty"
+                    wx:if="{{!isHost && !closingCreativeBlocks.length}}"
+                  >等待房主记录</view>
+                </view>
+                </view>
+              </scroll-view>
+              <!-- 输入区跟在已记录内容之后；插图入口始终在输入提示/最后一行文字下方 -->
+              <view class="closing-compose-tail" wx:if="{{isHost}}">
+                <view class="card-inline-textarea-wrap">
+                  <textarea
+                    class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                    value="{{closingCreativeEditText}}"
+                    focus="{{closingCreativeWantFocus}}"
+                    bindfocus="onClosingCreativeFocus"
+                    bindinput="onClosingCreativeInput"
+                    bindblur="onClosingCreativeBlur"
+                    placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                    placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                    maxlength="500"
+                    auto-height
+                    disable-default-padding="{{true}}"
+                    show-confirm-bar="{{false}}"
+                    adjust-position="{{true}}"
+                    hold-keyboard="{{true}}"
+                    cursor-spacing="40"
+                  />
+                </view>
+                <view class="closing-deck-capture" wx:if="{{!closingHasDeckImage}}">
+                  <view
+                    class="closing-deck-capture-inner"
+                    catchtap="onClosingCreativeAddImage"
+                  >
+                    <view class="closing-deck-capture-frame">
                       <image
                         class="closing-deck-camera-icon"
                         src="/assets/partnerMode/icon-closing-deck-camera.svg"
@@ -156,12 +169,8 @@
                       />
                     </view>
                   </view>
-                  <view class="closing-deck-hint">
-                    <text class="closing-deck-hint-text">（提示玩家拍摄卡组）</text>
-                  </view>
                 </view>
-                </view>
-              </scroll-view>
+              </view>
             </view>
           </view>
         </view>
@@ -169,7 +178,7 @@
 
       <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
       <view
-        class="inspiration-bar {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
+        class="inspiration-bar inspiration-bar-closing {{isHost ? '' : 'inspiration-bar-safe-bottom'}} {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
         style="{{inspirationLiftStyle}}"
       >
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
@@ -435,8 +444,8 @@
           </view>
         </swiper-item>
 
-        <!-- 当前轮次：出牌并解释 / 提出疑问并讨论；历史回顾只看纪要，不展示当前出牌卡 -->
-        <swiper-item class="card-swiper-item" wx:if="{{!isHistoryReview}}">
+        <!-- 当前轮次出牌卡：仅看他人时隐藏，只保留属于该玩家的纪要 -->
+        <swiper-item class="card-swiper-item" wx:if="{{!isHistoryReview && showCurrentActionCard}}">
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
             timerActive="{{roundTimerVisible}}"
@@ -595,12 +604,9 @@
             wx:else
           >
             <view class="action-card-wrap">
-              <!-- 当前出牌玩家：出牌并解释 -->
-              <scroll-view
+              <!-- 当前出牌玩家：出牌并解释（规则一屏内展示，禁止上下滚动） -->
+              <view
                 class="action-card-scroll"
-                scroll-y
-                enhanced
-                show-scrollbar="{{true}}"
                 wx:if="{{isCurrentPlayer}}"
               >
                 <view class="action-card-inner {{expressChatPanelVisible ? 'action-card-inner-express' : ''}}">
@@ -673,7 +679,7 @@
                   </view>
 
                 </view>
-              </scroll-view>
+              </view>
 
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
@@ -828,8 +834,14 @@
                 </view>
               </view>
 
-              <!-- 出牌玩家：匿名表达入口在卡片右下角 -->
-              <view class="card-express-corner" wx:if="{{isCurrentPlayer}}">
+              <!-- 出牌玩家：匿名表达入口在卡片右下角；房主出牌时进度与按钮同一行垂直居中 -->
+              <view
+                class="card-express-corner {{isHost && isCurrentPlayer && !expressChatPanelVisible ? 'card-express-corner-with-progress' : ''}}"
+                wx:if="{{isCurrentPlayer}}"
+              >
+                <view class="host-score-progress" wx:if="{{isHost && isCurrentPlayer && !expressChatPanelVisible}}">
+                  <text>完成打分人数 {{scoredCount}}/{{totalRequired}}</text>
+                </view>
                 <view
                   class="express-fab-btn"
                   catchtap="toggleExpressChatInCard"

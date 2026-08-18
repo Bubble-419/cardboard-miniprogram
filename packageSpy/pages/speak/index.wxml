@@ -58,8 +58,9 @@
 
       <scroll-view
         class="card-scroll"
-        scroll-y
+        scroll-y="{{panelScrollY}}"
         enhanced
+        bounces="{{panelScrollY}}"
         show-scrollbar="{{false}}"
         bindtouchstart="onPanelTouchStart"
         bindtouchend="onPanelTouchEnd"
@@ -86,7 +87,7 @@
           </view>
         </view>
 
-        <view class="panel panel-visible" wx:else>
+        <view class="panel panel-visible" id="rulesPanel" wx:else>
           <view class="rules-panel">
             <view class="rules-list">
               <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>

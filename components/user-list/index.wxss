@@ -398,3 +398,100 @@
     transform: rotate(360deg);
   }
 }
+
+/* ═══════════════════════════════════════════════════
+ * 合伙人游戏进程 visualMode=partner-game
+ * Figma 头像类型 #4735:62387
+ * 样式一 #4735:62392：行动中&&非行动页 · 非独立
+ *   52×52 外框 / 48×48 头像 / 外环 #C3E4C1 + 内环 #5EC159
+ * ═══════════════════════════════════════════════════ */
+.partner-game.fold .avatar-row {
+  gap: 8rpx;
+  padding: 8rpx 4rpx 20rpx;
+}
+
+.partner-game .avatar-frame-box-pg,
+.partner-game.fold .avatar-frame-box-pg {
+  width: 104rpx;
+  height: 104rpx;
+}
+
+.partner-game .avatar-frame-box-pg .avatar-wrap,
+.partner-game.fold .avatar-frame-box-pg .avatar-wrap {
+  width: 96rpx;
+  height: 96rpx;
+  padding: 0;
+  border: none;
+  background-color: #f2f2f2;
+  box-shadow: none;
+}
+
+/* 样式一：行动中&&非行动页 — 浅绿外环 + 绿色内环（静态） */
+.partner-game .partner-ring-pg-outer {
+  z-index: 2;
+  border: 4rpx solid #c3e4c1;
+  box-sizing: border-box;
+}
+
+.partner-game .partner-ring-pg-inner {
+  z-index: 3;
+  left: 4rpx;
+  top: 4rpx;
+  width: calc(100% - 8rpx);
+  height: calc(100% - 8rpx);
+  border: 4rpx solid #5ec159;
+  box-sizing: border-box;
+}
+
+/*
+ * 样式二 #4735:62402：行动中&&非行动页 · 独立查看（仅看此人）
+ * 在双环上再叠约 3px 绿描边 + 绿色发光
+ */
+.partner-game .partner-ring-pg-independent {
+  z-index: 5;
+  left: 3rpx;
+  top: 3rpx;
+  width: calc(100% - 6rpx);
+  height: calc(100% - 6rpx);
+  border: 6rpx solid #5ec159;
+  box-shadow: 0 0 10rpx rgba(94, 193, 89, 1);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.partner-game .pg-active-nonaction.pg-independent .partner-ring-pg-outer {
+  border-color: rgba(195, 228, 193, 0.9);
+}
+
+.partner-game .pg-active-nonaction.pg-independent .partner-ring-pg-inner {
+  border-color: #5ec159;
+}
+
+/* 出牌页行动中静态兜底：单绿环（倒计时 canvas 未就绪时） */
+.partner-game .partner-ring-acting-solid {
+  z-index: 2;
+  left: 4rpx;
+  top: 4rpx;
+  width: calc(100% - 8rpx);
+  height: calc(100% - 8rpx);
+  border: 4rpx solid #5ec159;
+  box-sizing: border-box;
+}
+
+/* 普通 · 独立查看：细绿边 + 柔光 */
+.partner-game .partner-ring-selected {
+  z-index: 2;
+  left: 2rpx;
+  top: 2rpx;
+  width: calc(100% - 4rpx);
+  height: calc(100% - 4rpx);
+  border: 2rpx solid #5ec159;
+  box-shadow: 0 0 10rpx rgba(94, 193, 89, 0.8);
+}
+
+.partner-game.fold .me-indicator {
+  width: 34rpx;
+  height: 16rpx;
+  margin-top: 6rpx;
+}
+

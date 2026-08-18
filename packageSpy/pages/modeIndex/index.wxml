@@ -72,16 +72,25 @@
       </view>
     </view>
 
-    <view class="section section-rules" wx:if="{{rulesExpanded}}">
-      <view class="section-title">玩法说明</view>
-      <view class="rules-list">
-        <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
-        <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
-        <text class="rules-item">3. 发言阶段可翻看自己的词语卡；房主在合适时机点击「开始投票」。</text>
-        <text class="rules-item">4. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
-        <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+    <scroll-view
+      class="section section-rules"
+      wx:if="{{rulesExpanded}}"
+      scroll-y="{{rulesNeedScroll}}"
+      enhanced
+      bounces="{{rulesNeedScroll}}"
+      show-scrollbar="{{false}}"
+    >
+      <view id="rulesContent">
+        <view class="section-title">玩法说明</view>
+        <view class="rules-list">
+          <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
+          <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
+          <text class="rules-item">3. 发言阶段可翻看自己的词语卡；房主在合适时机点击「开始投票」。</text>
+          <text class="rules-item">4. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
+          <text class="rules-item">5. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+        </view>
       </view>
-    </view>
+    </scroll-view>
   </view>
 
   <page-footer extClass="footer footer-{{isHost ? 'host' : 'member'}}" showPrev="{{isHost}}" bind:prev="handleGoBack">

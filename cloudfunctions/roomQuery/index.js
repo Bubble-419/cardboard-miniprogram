@@ -1581,9 +1581,8 @@ var require_room_domain = __commonJS({
         const current = Number.isFinite(fromPage) && fromPage > 0 ? fromPage : Number.isFinite(fromWorkflow) && fromWorkflow > 0 ? fromWorkflow : seats[0];
         const idx = seats.indexOf(current);
         const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
-        const wrapped = idx >= 0 && nextSeat === seats[0] && current === seats[seats.length - 1];
-        const forceIncrement = !!(payload && payload.incrementRound === true);
-        const shouldIncrementRound = wrapped || forceIncrement;
+        // 轮次定义：每次 ADVANCE_TURN（换到下一位玩家）都 +1
+        const shouldIncrementRound = true;
         const prevRoundNo = room.workflow && room.workflow.roundNo || (room.currentRound != null ? Number(room.currentRound) : 1);
         const roundNo = prevRoundNo + (shouldIncrementRound ? 1 : 0);
         const turnId = `turn_r${roundNo}_s${nextSeat}`;

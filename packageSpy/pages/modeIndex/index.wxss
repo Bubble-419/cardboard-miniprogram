@@ -3,7 +3,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   box-sizing: border-box;
   /* 底栏 fixed，给主内容留空，避免被遮 */
   padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
@@ -143,7 +144,10 @@
 }
 
 .section-rules {
+  flex: 1;
+  min-height: 0;
   margin-top: 8rpx;
+  height: 0;
 }
 
 /* 非房主底栏：与主按钮同高的等待条，占满主操作位 */

@@ -1,10 +1,10 @@
-<view class="user-list {{showName ? 'show-name' : ''}} {{isFold ? 'fold' : ''}} {{layout === 'stack' ? 'layout-stack' : 'layout-scroll'}}">
+<view class="user-list {{showName ? 'show-name' : ''}} {{isFold ? 'fold' : ''}} {{layout === 'stack' ? 'layout-stack' : 'layout-scroll'}} {{isPartnerGameVisual ? 'partner-game' : ''}}">
   <scroll-view
     class="avatar-scroll"
     scroll-x="{{layout !== 'stack'}}"
     enable-flex="{{layout !== 'stack'}}"
     show-scrollbar="{{false}}"
-    style="{{layout !== 'stack' ? (isFold ? 'height:120rpx;max-height:120rpx;' : 'height:160rpx;max-height:160rpx;') : ''}}"
+    style="{{layout !== 'stack' ? (isPartnerGameVisual ? 'height:140rpx;max-height:140rpx;' : (isFold ? 'height:120rpx;max-height:120rpx;' : 'height:160rpx;max-height:160rpx;')) : ''}}"
   >
     <view class="avatar-row {{layout === 'stack' ? 'avatar-row-stack' : ''}}">
       <block wx:for="{{displayList}}" wx:key="id">
@@ -14,7 +14,77 @@
           data-player-index="{{item.id}}"
         >
           <view class="avatar-slot">
-            <view class="avatar-frame-box {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-frame-expiring' : ''}}">
+            <!-- 合伙人游戏页：Figma 六态；样式一 = 行动中&&非行动页 -->
+            <view
+              wx:if="{{isPartnerGameVisual}}"
+              class="avatar-frame-box avatar-frame-box-pg {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-frame-expiring' : ''}} {{item.id == resolvedActingUser && !actingOnActionPage ? 'pg-active-nonaction' : ''}} {{item.id == resolvedActingUser && actingOnActionPage ? 'pg-active' : ''}} {{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight) ? 'pg-independent' : ''}}"
+            >
+              <view class="avatar-wrap {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-wrap-expiring' : ''}}">
+                <image
+                  class="avatar-img"
+                  src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
+                  mode="aspectFill"
+                  data-player-index="{{item.id}}"
+                  data-user-key="{{item.userId || item.id}}"
+                  binderror="onAvatarImgError"
+                />
+              </view>
+              <!-- 历史卡没有卡片倒计时：把共享倒计时转移到当前出牌玩家头像 -->
+              <block wx:if="{{item.id == resolvedActingUser && !actingOnActionPage && actingFrameMode === 'timer' && !suppressTimerCanvas}}">
+                <canvas
+                  type="2d"
+                  id="actingTimerCanvas"
+                  class="acting-timer-canvas acting-timer-canvas-visible"
+                ></canvas>
+                <view
+                  wx:if="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                  class="partner-ring partner-ring-pg-independent"
+                ></view>
+              </block>
+              <block wx:elif="{{item.id == resolvedActingUser && !actingOnActionPage && actingFrameMode === 'timer' && suppressTimerCanvas}}">
+                <view class="partner-ring partner-ring-pg-outer"></view>
+                <view class="partner-ring partner-ring-pg-inner"></view>
+                <view
+                  wx:if="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                  class="partner-ring partner-ring-pg-independent"
+                ></view>
+              </block>
+              <block wx:elif="{{item.id == resolvedActingUser && !actingOnActionPage && actingFrameMode === 'expiring'}}">
+                <view class="partner-ring partner-ring-acting-outer partner-ring-expiring"></view>
+                <view class="partner-ring partner-ring-acting-inner partner-ring-expiring-inner"></view>
+                <view
+                  wx:if="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                  class="partner-ring partner-ring-pg-independent"
+                ></view>
+              </block>
+              <!-- 历史卡下倒计时已结束/锚点未就绪：保留行动中双环 -->
+              <block wx:elif="{{item.id == resolvedActingUser && !actingOnActionPage}}">
+                <view class="partner-ring partner-ring-pg-outer"></view>
+                <view class="partner-ring partner-ring-pg-inner"></view>
+                <view
+                  wx:if="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                  class="partner-ring partner-ring-pg-independent"
+                ></view>
+              </block>
+              <!-- 出牌卡可见：卡片四周已有倒计时，头像只显示行动中单环 -->
+              <block wx:elif="{{item.id == resolvedActingUser && actingOnActionPage}}">
+                <view class="partner-ring partner-ring-acting-solid"></view>
+                <view
+                  wx:if="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                  class="partner-ring partner-ring-pg-independent"
+                ></view>
+              </block>
+              <view
+                wx:elif="{{enableSelectedFrame && (item.id == resolvedSelectedUser || item.highlight)}}"
+                class="partner-ring partner-ring-selected"
+              ></view>
+            </view>
+
+            <!-- 默认视觉（房间顶栏 / 卧底等） -->
+            <view
+              wx:else
+              class="avatar-frame-box {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-frame-expiring' : ''}}"
+            >
               <view class="avatar-wrap {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-wrap-expiring' : ''}}">
                 <image
                   class="avatar-img"
@@ -49,6 +119,7 @@
                 class="partner-ring partner-ring-selected"
               ></view>
             </view>
+
             <image
               wx:if="{{item.id == resolvedIndicatorUser}}"
               class="me-indicator"
