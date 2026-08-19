@@ -18,6 +18,7 @@ const {
 const SUB_AWAIT_ROUTE = 'pages/sub-pages/subAwait/index';
 
 const AWAIT_PAGE_TO_SCENE = {
+  brainstormmode: 'brainstormMode',
   auth: 'bg',
   selectbg: 'bg',
   confirmbg: 'bg',
@@ -27,6 +28,17 @@ const AWAIT_PAGE_TO_SCENE = {
 };
 
 const SCENE_UI = {
+  brainstormMode: {
+    navbarTitle: '',
+    mainText: '等待房主确认游戏模式',
+    mainTextLines: [],
+    subText: '等待中...',
+    subTextLine1: '房主正在选择本次工作坊的游戏模式',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
+    multiLine: false,
+    useHeroLayout: true
+  },
   bg: {
     navbarTitle: '',
     mainText: '等待房主设置情境',
@@ -72,6 +84,7 @@ const SCENE_UI = {
 
 const PAGE_PROGRESS_RANK = {
   addplayer: 0,
+  brainstormmode: 5,
   auth: 10,
   selectbg: 10,
   confirmbg: 10,
@@ -99,6 +112,7 @@ const PAGE_PROGRESS_RANK = {
 
 const ROUTE_TO_PAGE = {
   'pages/main-pages/addPlayer/index': 'addplayer',
+  'pages/main-pages/brainstormMode/index': 'brainstormmode',
   'pages/main-pages/submitProblem/index': 'submitproblem',
   'pages/main-pages/selectProblem/index': 'selectproblem',
   'pages/main-pages/selectMode/index': 'selectmode',
@@ -138,6 +152,7 @@ function shouldSkipStaleBackwardRedirect(targetPage) {
 }
 
 const SCENE_PROGRESS_RANK = {
+  brainstormMode: 5,
   bg: 10,
   mode: 40,
   player: 50,
@@ -208,6 +223,7 @@ function resolveHostMainPageUrl(page, roomState, roomId) {
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const hostMap = {
+    brainstormmode: `/pages/main-pages/brainstormMode/index?roomId=${roomIdEnc}&isHost=1`,
     auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}`,
     selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}`,
     confirmbg: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,

@@ -1,0 +1,82 @@
+.custom-navbar {
+  width: 100%;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  overflow: visible;
+}
+
+.navbar-content {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.navbar-back {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 16rpx;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.navbar-back-hover {
+  opacity: 0.55;
+}
+
+.navbar-back-icon {
+  width: 40rpx;
+  height: 40rpx;
+  display: block;
+}
+
+.navbar-center {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title-wrap {
+  position: relative;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navbar-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+  max-width: 360rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-edit-icon {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  width: 32rpx;
+  height: 32rpx;
+  margin-left: 10rpx;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+}
+
+.navbar-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}

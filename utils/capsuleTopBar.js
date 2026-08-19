@@ -37,7 +37,7 @@ function resolveStatusBarHeight(sys, fallback) {
  */
 function getCapsuleTopBarMetrics(options = {}) {
   const minBarPx = options.minBarPx != null ? options.minBarPx : 32;
-  const statusBarFallback = 20;
+  const statusBarFallback = 44;
   const sys = getWindowInfoSafe();
   const statusBarHeight = resolveStatusBarHeight(sys, statusBarFallback);
 

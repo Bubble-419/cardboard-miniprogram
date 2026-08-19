@@ -19,15 +19,19 @@
 }
 
 .navbar-left {
-  width: 174rpx;
-  height: 64rpx;
+  width: 96rpx;
+  height: 72rpx;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
 }
 
-.back-icon {
-  width: 32rpx;
-  height: 32rpx;
+.back-chevron {
+  font-size: 64rpx;
+  color: #1a3d2e;
+  line-height: 1;
+  font-weight: 500;
 }
 
 .navbar-title {

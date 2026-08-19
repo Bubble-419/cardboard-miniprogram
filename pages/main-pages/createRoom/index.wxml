@@ -2,13 +2,8 @@
   <!-- 自定义导航栏 -->
   <view class="custom-navbar">
     <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        ></image>
+      <view class="navbar-left" bindtap="handleGoBack">
+        <text class="back-chevron">‹</text>
       </view>
       <view class="navbar-title"></view>
       <view class="navbar-right">

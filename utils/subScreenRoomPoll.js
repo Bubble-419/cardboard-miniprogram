@@ -76,6 +76,11 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   // 已退出游戏模式：房主与成员均从游戏页回到房间等待态
   if (result.hasSelectedMode !== true) {
     const current = getCurrentRoute();
+    // 房主停在脑暴模式页：非房主统一进空状态，等待确认游戏模式
+    if (page === 'brainstormmode') {
+      if (result.isHost === true) return false;
+      return navigateByRoomState(page, result.roomState, id, { isHost: false });
+    }
     // 正在「选择脑暴模式」页时不要强行拉回大厅（房主主动进入）
     if (current === 'pages/main-pages/brainstormMode/index') {
       return false;

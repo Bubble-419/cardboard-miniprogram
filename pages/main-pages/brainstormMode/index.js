@@ -1,8 +1,7 @@
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
-const { followSpyRoomState, resolveSpyTargetPage } = require('../../../utils/spyFollow');
+const { openSubAwait } = require('../../../utils/subAwaitRoutes');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
@@ -94,11 +93,17 @@ Page({
       scrollHeight: computeScrollHeight(),
       brainstormModes: cloneModesWithoutCover()
     });
+
+    if (!isHost) {
+      this._redirectNonHostToAwait();
+    } else {
+      this._updateRoomState('brainstormMode');
+    }
   },
 
   onReady() {
     this._readyOnce = true;
-    if (!this._pageAlive || !this.data.roomId) return;
+    if (!this._pageAlive || !this.data.roomId || !this.data.isHost) return;
     // 先刷房间数据，封面再延后一帧挂载，降低首屏解码压力
     this._scheduleRoomRefresh({ silent: true });
     this._coverLoadTimer = setTimeout(() => {
@@ -110,12 +115,11 @@ Page({
   },
 
   onShow() {
-    if (!this._pageAlive || !this._readyOnce || !this.data.roomId) return;
+    if (!this._pageAlive || !this._readyOnce || !this.data.roomId || !this.data.isHost) return;
     this._scheduleRoomRefresh({ silent: true });
   },
 
   onHide() {
-    this._stopStatePolling();
     if (this._roomRefreshTimer) {
       clearTimeout(this._roomRefreshTimer);
       this._roomRefreshTimer = null;
@@ -128,7 +132,6 @@ Page({
 
   onUnload() {
     this._pageAlive = false;
-    this._stopStatePolling();
     if (this._roomRefreshTimer) {
       clearTimeout(this._roomRefreshTimer);
       this._roomRefreshTimer = null;
@@ -174,7 +177,7 @@ Page({
         console.warn('brainstormMode buildAvatarList', e);
       }
       const me = avatarList.find((item) => item.isMe);
-      const isHost = result.isHost === true || this.data.isHost === true;
+      const isHost = result.isHost === true;
       this.setData({
         workshopName: result.workshopName || '脑暴工作坊',
         avatarList,
@@ -182,11 +185,11 @@ Page({
         isHost
       });
 
-      if (isHost) {
-        this._stopStatePolling();
-      } else {
-        this._startStatePolling();
+      if (!isHost) {
+        this._redirectNonHostToAwait();
+        return;
       }
+      this._publishSelectingModeState();
     } catch (err) {
       console.warn('brainstormMode refreshRoomData', err);
       if (!silent) {
@@ -197,39 +200,28 @@ Page({
     }
   },
 
-  _startStatePolling() {
-    if (this.data.isHost) return;
-    this._stopStatePolling();
-    const poll = async () => {
-      if (!this._pageAlive || this.data.isHost) return;
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await callCloudFunction('getAddPlayerData', { roomId });
-        if (!this._pageAlive) return;
-        const result = (res && res.result) || {};
-        // 谁是卧底：优先走专用跟随，避免进错共用 modeIndex / 白屏
-        const modeId = result.selectedModeId
-          || (result.roomState && result.roomState.selectedModeId)
-          || '';
-        if (modeId === 'spy' || resolveSpyTargetPage(result.roomState)) {
-          followSpyRoomState(result, roomId);
-          return;
-        }
-        followSubScreenRoomPoll(result, roomId);
-      } catch (e) {
-        console.warn('brainstormMode state poll', e);
-      }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+  _redirectNonHostToAwait() {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    openSubAwait(roomId, 'brainstormMode');
   },
 
-  _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
+  async _updateRoomState(currentPage) {
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId || !currentPage) return false;
+    try {
+      const res = await callCloudFunction('updateRoomState', { roomId, currentPage });
+      const result = (res && res.result) || {};
+      return result.ok === true;
+    } catch (e) {
+      console.warn('brainstormMode updateRoomState', e);
+      return false;
     }
+  },
+
+  _publishSelectingModeState() {
+    if (this.data.isHost !== true) return;
+    this._updateRoomState('brainstormMode');
   },
 
   onTapMode(e) {
@@ -335,6 +327,9 @@ Page({
   },
 
   handleGoBack() {
+    if (this.data.isHost === true) {
+      this._updateRoomState('addPlayer');
+    }
     const roomId = this.data.roomId || '';
     const fallbackUrl = roomId
       ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
@@ -346,6 +341,9 @@ Page({
   },
 
   handleGoRoom() {
+    if (this.data.isHost === true) {
+      this._updateRoomState('addPlayer');
+    }
     goRoomPage(this.data.roomId);
   }
 });

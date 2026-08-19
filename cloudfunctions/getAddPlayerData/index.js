@@ -14,7 +14,7 @@ const ROOM_SCORES_COLLECTION = 'roomScores';
 /** 未刷新超过该时长视为离线（仅标记，不删除成员、不释放席位） */
 const PRESENCE_TIMEOUT_MS = 90 * 1000;
 
-const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement'];
+const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement', 'brainstormmode'];
 
 function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());

@@ -38,7 +38,7 @@ Page({
     wx.navigateBack({
       fail: () => {
         wx.reLaunch({
-          url: '/pages/main-pages/modeIndex/index?modeId=halliGalli'
+          url: '/pages/main-pages/aaa/index'
         });
       }
     });

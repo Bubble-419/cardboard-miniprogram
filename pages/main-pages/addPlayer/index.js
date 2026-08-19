@@ -119,6 +119,8 @@ Page({
     exitTextLabel: '退出房间',
     exitTextAction: 'leave',
     exitTextDanger: false,
+    showWaitingHint: false,
+    waitingHintText: '等待房主选择模式',
     showModeActionSheet: false,
     showExitModeConfirm: false
   },
@@ -142,6 +144,9 @@ Page({
     let exitTextAction = isHost ? 'dissolve' : 'leave';
     let exitTextDanger = isHost === true;
 
+    let showWaitingHint = false;
+    const waitingHintText = '等待房主选择模式';
+
     if (hasSelectedMode && !brainstormSessionEnded) {
       primaryBtnText = '继续游戏';
       primaryBtnAction = 'continue';
@@ -157,9 +162,10 @@ Page({
       primaryBtnDisabled = memberCount < 2;
       primaryBtnAction = 'selectMode';
     } else {
-      primaryBtnText = '等待房主选择模式';
+      primaryBtnText = '';
       primaryBtnDisabled = true;
       primaryBtnAction = '';
+      showWaitingHint = true;
     }
 
     return {
@@ -169,7 +175,9 @@ Page({
       showExitText,
       exitTextLabel,
       exitTextAction,
-      exitTextDanger
+      exitTextDanger,
+      showWaitingHint,
+      waitingHintText
     };
   },
 
@@ -390,11 +398,17 @@ Page({
   },
 
   _followRoomPageFromResult(result, roomId) {
+    const page = (result && result.roomState && result.roomState.currentPage || 'addPlayer').toLowerCase();
     // 主动停留大厅时：只处理被踢/解散，不跟随游戏页
     if (this._stayOnLobby || isSpyLobbyStayActive(roomId)) {
       this._stayOnLobby = true;
       if (shouldSubScreenLeaveRoom(result)) {
         clearSpyLobbyStay();
+        followSubScreenRoomPoll(result, roomId);
+        return;
+      }
+      // 房主正在确认游戏模式：非房主仍统一进空状态等待页
+      if (page === 'brainstormmode') {
         followSubScreenRoomPoll(result, roomId);
       }
       return;
@@ -403,11 +417,15 @@ Page({
       followSubScreenRoomPoll(result, roomId);
       return;
     }
-    const page = (result.roomState.currentPage || 'addPlayer').toLowerCase();
     if (page === 'closingend') return;
     if (result.roomState.brainstormSessionEnded === true) {
       const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
       if (stalePages.includes(page)) return;
+    }
+    // 房主在脑暴模式页：优先进等待空状态，避免被卧底跟随抢走
+    if (page === 'brainstormmode') {
+      followSubScreenRoomPoll(result, roomId);
+      return;
     }
     // 谁是卧底：走专用跟随，避免 reLaunch 白屏 / 进错共用页
     const modeId = result.selectedModeId
@@ -1583,11 +1601,7 @@ Page({
   },
 
   handleGoBack() {
-    const { safeNavigateBack } = require('../../../utils/pageNavigate');
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/aaa/index',
-      fallbackUrl: '/pages/main-pages/aaa/index'
-    });
+    this.handleExitBrainstorm();
   },
 
   handleGoBrainstormMode() {

@@ -1,7 +1,7 @@
 const STORAGE_PREFIX = 'brainstormProgress_';
 
-/** 不应被 brainstormProgressPage / 本地缓存恢复的页面（收尾过渡态） */
-const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement'];
+/** 不应被 brainstormProgressPage / 本地缓存恢复的页面（收尾过渡态 / 选模式） */
+const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement', 'brainstormmode'];
 
 function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
@@ -12,7 +12,8 @@ function storageKey(roomId) {
 }
 
 function saveLocalBrainstormProgress(roomId, currentPage) {
-  if (!roomId || !currentPage || String(currentPage).toLowerCase() === 'addplayer') return;
+  const page = String(currentPage || '').toLowerCase();
+  if (!roomId || !currentPage || page === 'addplayer' || page === 'brainstormmode') return;
   if (isNonResumableProgressPage(currentPage)) return;
   try {
     wx.setStorageSync(storageKey(roomId), currentPage);

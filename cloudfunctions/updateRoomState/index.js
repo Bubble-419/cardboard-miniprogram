@@ -496,7 +496,7 @@ exports.main = async (event, context) => {
     if (event.clearBrainstormProgress === true || brainstormSessionEnded === true) {
       updateData.brainstormProgressPage = null;
       resolvedClosingVoteState = clearClosingVoteFields(updateData, sessionSeq);
-    } else if (page && page !== 'addplayer') {
+    } else if (page && page !== 'addplayer' && page !== 'brainstormmode') {
       updateData.brainstormProgressPage = page;
     }
     if (brainstormSessionEnded === true) {

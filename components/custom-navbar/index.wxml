@@ -1,0 +1,40 @@
+<view
+  class="custom-navbar {{extClass}}"
+  style="padding-top: {{padTop}}px; padding-right: {{padRightPx}}px; height: {{barHeight}}px; background-color: {{background}};"
+>
+  <view class="navbar-content" style="height: {{barHeight}}px;">
+    <view
+      wx:if="{{showBack}}"
+      class="navbar-back"
+      style="width: {{capsuleWidth}}px;"
+      hover-class="navbar-back-hover"
+      hover-stay-time="80"
+      catchtap="onBack"
+    >
+      <image
+        class="navbar-back-icon"
+        src="/assets/icons/icon-nav-back.svg"
+        mode="aspectFit"
+      />
+    </view>
+    <view class="navbar-center">
+      <slot name="center">
+        <view
+          class="navbar-title-wrap"
+          catchtap="onEdit"
+        >
+          <text class="navbar-title">{{title}}</text>
+          <image
+            wx:if="{{showEdit}}"
+            class="navbar-edit-icon"
+            src="/assets/icons/editname.png"
+            mode="aspectFit"
+          />
+        </view>
+      </slot>
+    </view>
+    <view class="navbar-right" style="width: {{capsuleWidth}}px; height: {{barHeight}}px;">
+      <slot name="right"></slot>
+    </view>
+  </view>
+</view>

@@ -4,66 +4,34 @@
   catchtouchend="onContentTouchEnd"
   catchtouchcancel="onContentTouchEnd"
 >
-  <view class="custom-navbar">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          catchtap="handleGoBack"
-        ></image>
-      </view>
-      <view class="navbar-title"></view>
-      <view class="navbar-right"></view>
+  <custom-navbar
+    title="{{workshopName || '脑暴工作坊'}}"
+    showEdit="{{isHost && !isEditingRoomName}}"
+    bind:back="handleGoBack"
+    bind:edit="startEditRoomName"
+  >
+    <view wx:if="{{isEditingRoomName}}" slot="center" class="room-name-input-row" catchtap="noop">
+      <input
+        class="room-name-input"
+        value="{{editingRoomName}}"
+        focus="{{isEditingRoomName}}"
+        maxlength="20"
+        placeholder="设置房间名称"
+        placeholder-class="room-name-placeholder"
+        bindinput="onRoomNameInput"
+        bindconfirm="confirmEditRoomName"
+      />
+      <image
+        class="room-name-confirm-icon"
+        src="/assets/icons/comfirm.svg"
+        mode="aspectFit"
+        catchtap="confirmEditRoomName"
+      />
     </view>
-  </view>
+  </custom-navbar>
 
-  <!-- 紧凑信息区：工作坊名 + 人数 · 模式 -->
+  <!-- 紧凑信息区：人数 · 模式 -->
   <view class="info-section">
-    <block wx:if="{{!isEditingRoomName}}">
-      <view class="info-title-bar">
-        <view class="info-title-side">
-          <image
-            wx:if="{{isHost && hasSelectedMode}}"
-            class="exit-brainstorm-icon"
-            src="/assets/partnerMode/icon-exit-brainstorm.svg"
-            mode="aspectFit"
-            catchtap="handleExitBrainstorm"
-          />
-        </view>
-        <view class="info-title-row" catchtap="startEditRoomName">
-          <text class="info-title">{{workshopName || '脑暴工作坊'}}</text>
-          <image
-            wx:if="{{isHost}}"
-            class="room-name-edit-icon"
-            src="/assets/icons/editname.png"
-            mode="aspectFit"
-          />
-        </view>
-        <view class="info-title-side"></view>
-      </view>
-    </block>
-    <block wx:else>
-      <view class="room-name-input-row" catchtap="noop">
-        <input
-          class="room-name-input"
-          value="{{editingRoomName}}"
-          focus="{{isEditingRoomName}}"
-          maxlength="20"
-          placeholder="设置房间名称"
-          placeholder-class="room-name-placeholder"
-          bindinput="onRoomNameInput"
-          bindconfirm="confirmEditRoomName"
-        />
-        <image
-          class="room-name-confirm-icon"
-          src="/assets/icons/comfirm.svg"
-          mode="aspectFit"
-          catchtap="confirmEditRoomName"
-        />
-      </view>
-    </block>
     <view class="info-meta-row">
       <text class="info-meta-text {{memberCountBounce ? 'count-bounce' : ''}}">{{memberCount}}/{{maxMembers}}人</text>
       <text class="info-meta-dot"> · </text>
@@ -245,13 +213,20 @@
   <!-- 底部：绿色主按钮 + 小号文字（房主解散 / 成员退出）；拖拽时降低透明度，避免与踢出区抢视觉 -->
   <view class="footer-wrap {{isDragging ? 'footer-wrap-dragging' : ''}}">
     <view class="footer">
+      <view class="waiting-hint" wx:if="{{showWaitingHint}}">{{waitingHintText}}</view>
       <button
+        wx:if="{{!showWaitingHint && primaryBtnAction && primaryBtnText}}"
         class="primary-btn {{primaryBtnDisabled ? 'primary-btn-disabled' : ''}}"
         disabled="{{primaryBtnDisabled}}"
         catchtap="onTapPrimaryAction"
       >{{primaryBtnText}}</button>
+      <view
+        wx:if="{{showExitText && !isHost}}"
+        class="exit-outline-btn"
+        catchtap="onTapExitText"
+      >{{exitTextLabel}}</view>
       <text
-        wx:if="{{showExitText}}"
+        wx:elif="{{showExitText}}"
         class="exit-text-btn {{exitTextDanger ? 'exit-text-btn-danger' : ''}}"
         catchtap="onTapExitText"
       >{{exitTextLabel}}</text>
