@@ -35,6 +35,26 @@
         "value": "prd"
       },
       {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "docs"
+      },
+      {
+        "type": "folder",
+        "value": "scripts"
+      },
+      {
+        "type": "folder",
+        "value": "cloud-common"
+      },
+      {
+        "type": "folder",
+        "value": ".vscode"
+      },
+      {
         "type": "suffix",
         "value": ".md"
       },
@@ -43,8 +63,48 @@
         "value": "**/.DS_Store"
       },
       {
+        "type": "glob",
+        "value": "assets/halliGalli/*.png"
+      },
+      {
+        "type": "folder",
+        "value": "pages/main-pages/createRoom"
+      },
+      {
+        "type": "folder",
+        "value": "pages/main-pages/setRoom"
+      },
+      {
+        "type": "folder",
+        "value": "pages/main-pages/firstplayer"
+      },
+      {
+        "type": "folder",
+        "value": "pages/sub-pages/selectProblem"
+      },
+      {
         "type": "file",
         "value": "bg-card-demo.html"
+      },
+      {
+        "type": "file",
+        "value": "pnpm-lock.yaml"
+      },
+      {
+        "type": "file",
+        "value": "pnpm-workspace.yaml"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "file",
+        "value": ".gitignore"
+      },
+      {
+        "type": "file",
+        "value": "assets/icons/aaatest.png"
       }
     ],
     "include": []
