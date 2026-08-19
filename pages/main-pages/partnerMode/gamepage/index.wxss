@@ -371,6 +371,15 @@
   left: 16rpx;
   right: 16rpx;
   max-width: none;
+  width: calc(100% - 32rpx);
+  justify-content: stretch;
+}
+
+.card-express-corner-open .spectator-express-form,
+.card-express-corner-open .spectator-express-composer {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
 }
 
 .card-express-corner-with-progress {
@@ -608,22 +617,29 @@
   position: relative;
   flex-shrink: 0;
   align-self: stretch;
-  /* 预留表达按钮高度，避免上探进 spectator-chat（原生 scroll-view 会吞掉 tap） */
-  padding-top: 84rpx;
   margin-left: -28rpx;
   margin-right: -28rpx;
-  z-index: 5;
+  z-index: 8;
   overflow: visible;
 }
 
-.spectator-express-dismiss-mask {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 7;
-  background: transparent;
+.spectator-express-slot {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0 44rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.spectator-express-fab-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.spectator-express-form {
+  width: 100%;
+  display: block;
 }
 
 .score-sheet-spacer {
@@ -827,24 +843,6 @@
   box-sizing: border-box;
 }
 
-.spectator-express-dock {
-  position: absolute;
-  right: 44rpx;
-  /* bottom 由 scoreSheetVisiblePx 内联绑定，贴在打分裁剪区顶边上方并随上移 */
-  margin-bottom: 16rpx;
-  z-index: 8;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  pointer-events: auto;
-}
-
-.spectator-express-dock-open {
-  left: 44rpx;
-  right: 44rpx;
-}
-
 .spectator-express-fab {
   width: 60rpx;
   height: 60rpx;
@@ -963,9 +961,10 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 12rpx;
+  gap: 16rpx;
   min-width: 0;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .spectator-express-input {
@@ -984,13 +983,26 @@
   color: #aeaeae;
 }
 
-.spectator-express-send {
-  width: 60rpx;
+.spectator-express-send-btn {
+  flex: 0 0 60rpx;
+  width: 60rpx !important;
+  min-width: 60rpx !important;
+  max-width: 60rpx !important;
   height: 60rpx;
-  flex-shrink: 0;
+  padding: 0 !important;
+  margin: 0;
+  line-height: 0;
+  background: transparent;
+  border: none;
+  border-radius: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+}
+
+.spectator-express-send-btn::after {
+  border: none;
 }
 
 .spectator-express-send-disabled {
@@ -1000,6 +1012,8 @@
 .spectator-express-send-icon {
   width: 60rpx;
   height: 60rpx;
+  pointer-events: none;
+  display: block;
 }
 
 .score-panel {
@@ -1157,8 +1171,57 @@ game-card-timer {
   box-sizing: border-box;
 }
 
+.closing-compose-form {
+  width: 100%;
+  display: block;
+}
+
 .closing-compose-tail .card-inline-textarea-wrap {
   margin: 0;
+}
+
+.closing-compose-input-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 16rpx;
+}
+
+.closing-compose-input-row .card-inline-textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+.closing-compose-save-btn {
+  flex: 0 0 48rpx;
+  width: 48rpx !important;
+  min-width: 48rpx !important;
+  max-width: 48rpx !important;
+  height: 48rpx;
+  margin: 0 0 20rpx;
+  padding: 0 !important;
+  line-height: 0;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.closing-compose-save-btn::after {
+  border: none;
+}
+
+.closing-compose-save-disabled {
+  opacity: 0.35;
+}
+
+.closing-compose-save-icon {
+  width: 44rpx;
+  height: 44rpx;
+  pointer-events: none;
+  display: block;
 }
 
 .closing-compose-tail .closing-deck-capture {

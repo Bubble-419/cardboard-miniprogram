@@ -130,8 +130,10 @@ Page({
     closingHasDeckImage: false,
     closingDeckImageUrl: '',
     closingCreativeEditText: '',
+    closingCreativeHasText: false,
     closingCreativeEditFocus: false,
     closingCreativeWantFocus: false,
+    closingKeyboardHeight: 0,
     closingCreativeSaving: false,
     /** 正在输入态编辑的文字块 key；清空并失焦即删除 */
     closingCreativeEditingKey: '',
@@ -196,6 +198,8 @@ Page({
     expressChatPanelVisible: false,
     expressCanSend: false,
     expressComposerOpen: false,
+    /** 仅打开瞬间为 true，避免 focus 常驻导致每次 setData 重聚焦/收键盘 */
+    expressComposerNeedFocus: false,
     expressDraftText: '',
     expressHasText: false,
     expressSending: false,
@@ -1468,6 +1472,7 @@ Page({
   },
 
   _applyScoreProgressPatch(patch) {
+    if (this._isLocalInputGuarding()) return;
     const narrow = this._pickScoreProgressPatch(patch);
     if (!Object.keys(narrow).length) return;
     const scoreFingerprint = [
@@ -1508,10 +1513,25 @@ Page({
 
   _flushPendingRoomContextIfIdle() {
     if (this._cardSwipeBusy || this._scoreUiBusy) return;
+    if (this._isLocalInputGuarding()) return;
     if (!this._pendingRoomContext) return;
     const pending = this._pendingRoomContext;
     this._pendingRoomContext = null;
     this._applyRoomContext(pending.result, pending.options || {});
+  },
+
+  /** 本地输入法打开时禁止轮询 setData，否则真机约 1 秒后键盘被整页重绘打掉 */
+  _isLocalInputGuarding() {
+    return !!(
+      this._closingNativeFocused
+      || this.data.closingCreativeEditFocus
+      || this.data.closingCreativeSaving
+      || this.data.expressComposerOpen
+      || this.data.expressSending
+      || this._inspirationNativeFocused
+      || this.data.inspirationInputFocused
+      || this.data.inspirationHoldKeyboard
+    );
   },
 
   _applyRoomContext(result, options = {}) {
@@ -1933,7 +1953,8 @@ Page({
       ), 1);
       // 非房主始终同步只读内容；房主编辑/保存中不打断本地输入
       const hostEditingClosing = this.data.isHost
-        && (this.data.closingCreativeEditFocus
+        && (this._closingNativeFocused
+          || this.data.closingCreativeEditFocus
           || this.data.closingCreativeSaving
           || !!this.data.closingCreativeEditingKey);
       if (!hostEditingClosing) {
@@ -1995,6 +2016,10 @@ Page({
       || becameMyTurn
       || leftMyTurn
     );
+    if (this._isLocalInputGuarding() && !forcePatch) {
+      this._pendingRoomContext = { result, options };
+      return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
+    }
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
       // 仅评分进度变化：窄 setData，不动 displayRoundSummaries / cardIndex
       this._applyScoreProgressPatch(patch);
@@ -2193,6 +2218,7 @@ Page({
   },
 
   async refreshScoreStatus() {
+    if (this._isLocalInputGuarding()) return;
     const {
       isHost,
       gamepagePhase,
@@ -2286,6 +2312,7 @@ Page({
     // 进度未达标时始终轮询；达标后再靠快照即可
     this._scorePollTimer = setInterval(() => {
       if (!this._roomDataReady) return;
+      if (this._isLocalInputGuarding()) return;
       const membersRequired = Math.max(0, (this.data.members || []).length - 1);
       const req = Math.max(Number(this.data.totalRequired) || 0, membersRequired);
       if (
@@ -2337,13 +2364,6 @@ Page({
           return true;
         }
         if (page === 'gamepage') {
-          if (
-            this.data.inspirationInputFocused
-            || this.data.inspirationHoldKeyboard
-            || this._inspirationNativeFocused
-          ) {
-            return true;
-          }
           const prevMaster = this.data.isMasterMode;
           const prevClosingStep = this.data.closingStep;
           const { playerChanged, phaseChanged, roundChanged } = this._applyRoomContext(pollResult);
@@ -3503,10 +3523,11 @@ Page({
       wx.showToast({ title: '当前阶段不可表达', icon: 'none' });
       return;
     }
-    // 打开瞬间 input focus 可能立刻触发 blur，短暂忽略以免看起来“没反应”
-    this._expressComposerIgnoreBlurUntil = Date.now() + 400;
+    this._expressDraftText = '';
+    this._expressComposerIgnoreBlurUntil = Date.now() + 600;
     this.setData({
       expressComposerOpen: true,
+      expressComposerNeedFocus: true,
       expressDraftText: '',
       expressHasText: false
     });
@@ -3514,18 +3535,38 @@ Page({
 
   closeExpressComposer() {
     if (this.data.expressSending) return;
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
+    this._expressDraftText = '';
     this.setData({
       expressComposerOpen: false,
+      expressComposerNeedFocus: false,
       expressDraftText: '',
       expressHasText: false
     });
+    this._flushPendingRoomContextIfIdle();
+  },
+
+  onExpressComposerFocus() {
+    this._expressComposerIgnoreBlurUntil = Date.now() + 400;
+    if (this.data.expressComposerNeedFocus) {
+      this.setData({ expressComposerNeedFocus: false });
+    }
   },
 
   onExpressComposerBlur() {
     if (this.data.expressSending) return;
     if (Date.now() < (this._expressComposerIgnoreBlurUntil || 0)) return;
-    if ((this.data.expressDraftText || '').trim()) return;
-    this.setData({ expressComposerOpen: false });
+    if (this._expressBlurTimer) clearTimeout(this._expressBlurTimer);
+    this._expressBlurTimer = setTimeout(() => {
+      this._expressBlurTimer = null;
+      if (this.data.expressSending) return;
+      if (Date.now() < (this._expressComposerIgnoreBlurUntil || 0)) return;
+      if ((this.data.expressDraftText || '').trim()) return;
+      this.closeExpressComposer();
+    }, 200);
   },
 
   /** 出牌玩家：表态结束后（进入讨论）才可发送；讨论阶段全员可发；旁观出牌阶段可发 */
@@ -3586,13 +3627,25 @@ Page({
 
   onExpressInput(e) {
     const text = (e.detail && e.detail.value) || '';
+    this._expressDraftText = text;
     this.setData({
       expressDraftText: text,
       expressHasText: !!text.trim()
     });
   },
 
-  async submitExpress() {
+  onExpressFormSubmit(e) {
+    if (this._expressSubmitLock || this.data.expressSending) return;
+    this._expressComposerIgnoreBlurUntil = Date.now() + 800;
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
+    this.submitExpress(e);
+  },
+
+  async submitExpress(e) {
+    if (this._expressSubmitLock) return;
     if (this.data.expressSending) return;
     const canSend = this._computeExpressCanSend(
       this.data.isCurrentPlayer,
@@ -3602,10 +3655,29 @@ Page({
       wx.showToast({ title: '本轮表态结束后可发送', icon: 'none' });
       return;
     }
-    const text = (this.data.expressDraftText || '').trim();
-    if (!text) return;
+    const formVal = e && e.detail && e.detail.value && e.detail.value.expressText;
+    const fromForm = typeof formVal === 'string' ? formVal.trim() : '';
+    const fromEvent = e && e.detail && typeof e.detail.value === 'string'
+      ? String(e.detail.value).trim()
+      : '';
+    const text = fromForm
+      || fromEvent
+      || (this._expressDraftText || '').trim()
+      || (this.data.expressDraftText || '').trim();
+    if (!text) {
+      wx.showToast({ title: '请输入内容', icon: 'none' });
+      return;
+    }
+    this._expressSubmitLock = true;
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
     const roomId = this.data.roomId;
-    if (!roomId) return;
+    if (!roomId) {
+      this._expressSubmitLock = false;
+      return;
+    }
 
     const phase = isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play';
     this.setData({ expressSending: true });
@@ -3628,9 +3700,11 @@ Page({
       if (result.message) {
         this._showExpressMessage(result.message);
       }
+      this._expressDraftText = '';
       this.setData({
         expressModalVisible: false,
         expressComposerOpen: false,
+        expressComposerNeedFocus: false,
         expressDraftText: '',
         expressHasText: false
       });
@@ -3638,7 +3712,9 @@ Page({
       console.warn('submitExpress', e);
       wx.showToast({ title: '发送失败', icon: 'none' });
     } finally {
+      this._expressSubmitLock = false;
       this.setData({ expressSending: false });
+      this._flushPendingRoomContextIfIdle();
     }
   },
 
@@ -4596,37 +4672,73 @@ Page({
   },
 
   onClosingCreativeFocus() {
-    // 创意点复盘仅房主可写；非房主 textarea 已 disabled，此处兜底
     if (!this.data.isHost) return;
+    this._closingNativeFocused = true;
     if (this._closingBlurTimer) {
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
     }
-    this.setData({
-      closingCreativeEditFocus: true,
-      closingImageDeleteKey: ''
-    });
+    if (this._closingFocusUiTimer) clearTimeout(this._closingFocusUiTimer);
+    this._closingFocusUiTimer = setTimeout(() => {
+      this._closingFocusUiTimer = null;
+      if (!this._closingNativeFocused) return;
+      if (!this.data.closingCreativeEditFocus) {
+        this.setData({
+          closingCreativeEditFocus: true,
+          closingImageDeleteKey: ''
+        });
+      }
+    }, 280);
   },
 
   onClosingCreativeInput(e) {
     if (!this.data.isHost) return;
+    const text = (e.detail && e.detail.value) || '';
+    this._closingDraftText = text;
     this.setData({
-      closingCreativeEditText: (e.detail && e.detail.value) || ''
+      closingCreativeEditText: text,
+      closingCreativeHasText: !!text.trim()
     });
   },
 
-  async onClosingCreativeConfirm() {
-    await this._commitClosingCreativeEdit();
+  onClosingCreativeKeyboardHeightChange(e) {
+    const height = Number(e && e.detail && e.detail.height) || 0;
+    if (height === this.data.closingKeyboardHeight) return;
+    this.setData({ closingKeyboardHeight: height });
+  },
+
+  onClosingCreativeFormSubmit(e) {
+    if (this.data.closingCreativeSaving) return;
+    this._closingSaveIgnoreBlurUntil = Date.now() + 800;
+    this._closingNativeFocused = true;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
+    if (this._closingFocusUiTimer) {
+      clearTimeout(this._closingFocusUiTimer);
+      this._closingFocusUiTimer = null;
+    }
+    const formVal = e && e.detail && e.detail.value && e.detail.value.closingCreativeText;
+    const text = typeof formVal === 'string' ? formVal : undefined;
+    this._commitClosingCreativeEdit({ text });
   },
 
   async onClosingCreativeBlur() {
     if (this._closingPickingImage) return;
+    if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
+    if (this._closingFocusUiTimer) {
+      clearTimeout(this._closingFocusUiTimer);
+      this._closingFocusUiTimer = null;
+    }
     if (this._closingBlurTimer) clearTimeout(this._closingBlurTimer);
     this._closingBlurTimer = setTimeout(() => {
       this._closingBlurTimer = null;
       if (this._closingPickingImage) return;
+      if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
+      this._closingNativeFocused = false;
       this._commitClosingCreativeEdit({ allowEmptyExit: true });
-    }, 80);
+    }, 200);
   },
 
   /** 点击已记录文字 → 拉回输入态编辑；清空后失焦即删除 */
@@ -4653,6 +4765,7 @@ Page({
     this.setData({ closingCreativeWantFocus: false }, () => {
       this.setData({
         closingCreativeEditText: block.text || '',
+        closingCreativeHasText: !!(block.text || '').trim(),
         closingCreativeEditingKey: key,
         closingCreativeEditFocus: true,
         closingCreativeWantFocus: true,
@@ -4664,32 +4777,41 @@ Page({
   async _commitClosingCreativeEdit(options = {}) {
     if (!this.data.isHost) return;
     if (this.data.closingCreativeSaving) return;
-    const raw = this.data.closingCreativeEditText || '';
+    const raw = options.text != null
+      ? String(options.text)
+      : ((this._closingDraftText != null ? this._closingDraftText : this.data.closingCreativeEditText) || '');
     const editingKey = this.data.closingCreativeEditingKey || '';
     const segments = splitRecordSegments(raw);
 
     if (!segments.length) {
       if (editingKey) {
-        // 输入态清空 = 删除该条文字
         this.setData({ closingCreativeSaving: true });
         try {
           const ok = await this._removeClosingCreativeBlockByKey(editingKey);
           this.setData({
             closingCreativeEditText: '',
+            closingCreativeHasText: false,
             closingCreativeEditFocus: false,
             closingCreativeWantFocus: false,
-            closingCreativeEditingKey: ok ? '' : editingKey
+            closingCreativeEditingKey: ok ? '' : editingKey,
+            closingKeyboardHeight: 0
           });
         } finally {
           this.setData({ closingCreativeSaving: false });
+          this._flushPendingRoomContextIfIdle();
         }
         return;
       }
       if (options.allowEmptyExit) {
+        this._closingNativeFocused = false;
         this.setData({
           closingCreativeEditFocus: false,
-          closingCreativeWantFocus: false
+          closingCreativeWantFocus: false,
+          closingKeyboardHeight: 0
         });
+        this._flushPendingRoomContextIfIdle();
+      } else {
+        wx.showToast({ title: '请输入内容', icon: 'none' });
       }
       return;
     }
@@ -4703,15 +4825,20 @@ Page({
         ok = await this._appendClosingCreativeContent({ text: raw });
       }
       if (ok) {
+        this._closingDraftText = '';
+        this._closingNativeFocused = false;
         this.setData({
           closingCreativeEditText: '',
+          closingCreativeHasText: false,
           closingCreativeEditFocus: false,
           closingCreativeWantFocus: false,
-          closingCreativeEditingKey: ''
+          closingCreativeEditingKey: '',
+          closingKeyboardHeight: 0
         });
       }
     } finally {
       this.setData({ closingCreativeSaving: false });
+      this._flushPendingRoomContextIfIdle();
     }
   },
 
@@ -4795,7 +4922,11 @@ Page({
             const paths = chooseRes.tempFilePaths || [];
             this._closingPickingImage = false;
             if (!paths.length) {
-              this.setData({ closingCreativeEditFocus: true });
+              this.setData({
+                closingCreativeEditFocus: false,
+                closingCreativeWantFocus: false,
+                closingKeyboardHeight: 0
+              });
               return;
             }
             wx.showLoading({ title: '上传中…', mask: true });
@@ -4808,9 +4939,11 @@ Page({
               if (ok) {
                 this.setData({
                   closingCreativeEditText: '',
+                  closingCreativeHasText: false,
                   closingCreativeEditingKey: '',
-                  closingCreativeEditFocus: true,
-                  closingCreativeWantFocus: true
+                  closingCreativeEditFocus: false,
+                  closingCreativeWantFocus: false,
+                  closingKeyboardHeight: 0
                 });
               }
             } finally {

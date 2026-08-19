@@ -137,25 +137,65 @@
               </scroll-view>
               <!-- 输入区跟在已记录内容之后；插图入口始终在输入提示/最后一行文字下方 -->
               <view class="closing-compose-tail" wx:if="{{isHost}}">
-                <view class="card-inline-textarea-wrap">
-                  <textarea
-                    class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                    value="{{closingCreativeEditText}}"
-                    focus="{{closingCreativeWantFocus}}"
-                    bindfocus="onClosingCreativeFocus"
-                    bindinput="onClosingCreativeInput"
-                    bindblur="onClosingCreativeBlur"
-                    placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
-                    placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                    maxlength="500"
-                    auto-height
-                    disable-default-padding="{{true}}"
-                    show-confirm-bar="{{false}}"
-                    adjust-position="{{true}}"
-                    hold-keyboard="{{true}}"
-                    cursor-spacing="40"
-                  />
-                </view>
+                <form
+                  class="closing-compose-form"
+                  bindsubmit="onClosingCreativeFormSubmit"
+                >
+                  <view class="card-inline-textarea-wrap closing-compose-input-row">
+                    <!-- 勿绑 focus=false：真机会锁死原生键盘。仅编辑已有文字时用 focus=true 的实例。 -->
+                    <textarea
+                      wx:if="{{closingCreativeWantFocus}}"
+                      class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                      name="closingCreativeText"
+                      value="{{closingCreativeEditText}}"
+                      focus="{{true}}"
+                      bindfocus="onClosingCreativeFocus"
+                      bindinput="onClosingCreativeInput"
+                      bindblur="onClosingCreativeBlur"
+                      bindkeyboardheightchange="onClosingCreativeKeyboardHeightChange"
+                      placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                      placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                      maxlength="500"
+                      auto-height
+                      disable-default-padding="{{true}}"
+                      show-confirm-bar="{{false}}"
+                      adjust-position="{{true}}"
+                      hold-keyboard="{{true}}"
+                      cursor-spacing="40"
+                    />
+                    <textarea
+                      wx:else
+                      class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                      name="closingCreativeText"
+                      value="{{closingCreativeEditText}}"
+                      bindfocus="onClosingCreativeFocus"
+                      bindinput="onClosingCreativeInput"
+                      bindblur="onClosingCreativeBlur"
+                      bindkeyboardheightchange="onClosingCreativeKeyboardHeightChange"
+                      placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
+                      placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                      maxlength="500"
+                      auto-height
+                      disable-default-padding="{{true}}"
+                      show-confirm-bar="{{false}}"
+                      adjust-position="{{true}}"
+                      hold-keyboard="{{true}}"
+                      cursor-spacing="40"
+                    />
+                    <button
+                      class="closing-compose-save-btn {{closingCreativeSaving ? 'closing-compose-save-disabled' : ''}}"
+                      form-type="submit"
+                      hover-class="none"
+                      disabled="{{closingCreativeSaving}}"
+                    >
+                      <image
+                        class="closing-compose-save-icon"
+                        src="/assets/partnerMode/icon-insp-send.svg"
+                        mode="aspectFit"
+                      />
+                    </button>
+                  </view>
+                </form>
                 <view class="closing-deck-capture" wx:if="{{!closingHasDeckImage}}">
                   <view
                     class="closing-deck-capture-inner"
@@ -554,30 +594,43 @@
 
               <!-- 讨论阶段：表达入口统一在卡片右下角 -->
               <view class="card-express-corner {{expressComposerOpen ? 'card-express-corner-open' : ''}}">
-                <view class="spectator-express-composer" wx:if="{{expressComposerOpen}}">
-                  <input
-                    class="spectator-express-input"
-                    value="{{expressDraftText}}"
-                    focus="{{expressComposerOpen}}"
-                    maxlength="40"
-                    confirm-type="send"
-                    placeholder="说点什么…"
-                    placeholder-class="spectator-express-placeholder"
-                    bindinput="onExpressInput"
-                    bindconfirm="submitExpress"
-                    bindblur="onExpressComposerBlur"
-                  />
-                  <view
-                    class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                    catchtap="submitExpress"
-                  >
-                    <image
-                      class="spectator-express-send-icon"
-                      src="/assets/partnerMode/icon-express-send.png"
-                      mode="aspectFit"
+                <form
+                  wx:if="{{expressComposerOpen}}"
+                  class="spectator-express-form"
+                  bindsubmit="onExpressFormSubmit"
+                >
+                  <view class="spectator-express-composer">
+                    <input
+                      class="spectator-express-input"
+                      name="expressText"
+                      value="{{expressDraftText}}"
+                      maxlength="40"
+                      confirm-type="send"
+                      hold-keyboard="{{true}}"
+                      adjust-position="{{true}}"
+                      cursor-spacing="24"
+                      focus="{{expressComposerNeedFocus}}"
+                      placeholder="说点什么…"
+                      placeholder-class="spectator-express-placeholder"
+                      bindfocus="onExpressComposerFocus"
+                      bindinput="onExpressInput"
+                      bindconfirm="submitExpress"
+                      bindblur="onExpressComposerBlur"
                     />
+                    <button
+                      class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
+                      form-type="submit"
+                      hover-class="none"
+                      disabled="{{expressSending}}"
+                    >
+                      <image
+                        class="spectator-express-send-icon"
+                        src="/assets/partnerMode/icon-express-send.png"
+                        mode="aspectFit"
+                      />
+                    </button>
                   </view>
-                </view>
+                </form>
                 <view
                   wx:else
                   class="express-fab-btn"
@@ -694,7 +747,6 @@
                 <scroll-view
                   class="spectator-chat"
                   scroll-y
-                  enhanced
                   show-scrollbar="{{true}}"
                   scroll-into-view="{{expressChatAnchor}}"
                 >
@@ -718,59 +770,60 @@
                   <view id="express-chat-bottom" style="height: 1rpx;"></view>
                 </scroll-view>
 
-                <!-- 展开时点输入区外收起（用 catchtap，避免 touchstart 打断打开手势） -->
-                <view
-                  class="spectator-express-dismiss-mask"
-                  wx:if="{{expressComposerOpen}}"
-                  catchtap="closeExpressComposer"
-                ></view>
-
                 <view class="spectator-bottom-stack">
-                  <!-- 表达入口：贴打分裁剪区顶边，随 scoreSheetVisiblePx 上移 -->
-                  <view
-                    class="spectator-express-dock {{expressComposerOpen ? 'spectator-express-dock-open' : ''}}"
-                    style="bottom: {{scoreSheetVisiblePx}}px;"
-                  >
-                    <view
-                      class="spectator-express-composer"
+                  <view class="spectator-express-slot">
+                    <form
                       wx:if="{{expressComposerOpen}}"
-                      catchtap="noop"
+                      class="spectator-express-form"
+                      bindsubmit="onExpressFormSubmit"
                     >
-                      <input
-                        class="spectator-express-input"
-                        value="{{expressDraftText}}"
-                        focus="{{expressComposerOpen}}"
-                        maxlength="40"
-                        confirm-type="send"
-                        hold-keyboard="{{true}}"
-                        placeholder="说点什么…"
-                        placeholder-class="spectator-express-placeholder"
-                        bindinput="onExpressInput"
-                        bindconfirm="submitExpress"
-                        bindblur="onExpressComposerBlur"
-                      />
+                      <view class="spectator-express-composer">
+                        <input
+                          class="spectator-express-input"
+                          name="expressText"
+                          value="{{expressDraftText}}"
+                          maxlength="40"
+                          confirm-type="send"
+                          hold-keyboard="{{true}}"
+                          adjust-position="{{true}}"
+                          cursor-spacing="24"
+                          focus="{{expressComposerNeedFocus}}"
+                          placeholder="说点什么…"
+                          placeholder-class="spectator-express-placeholder"
+                          bindfocus="onExpressComposerFocus"
+                          bindinput="onExpressInput"
+                          bindconfirm="submitExpress"
+                          bindblur="onExpressComposerBlur"
+                        />
+                        <button
+                          class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
+                          form-type="submit"
+                          hover-class="none"
+                          disabled="{{expressSending}}"
+                        >
+                          <image
+                            class="spectator-express-send-icon"
+                            src="/assets/partnerMode/icon-express-send.png"
+                            mode="aspectFit"
+                          />
+                        </button>
+                      </view>
+                    </form>
+                    <view
+                      wx:else
+                      class="spectator-express-fab-row"
+                    >
                       <view
-                        class="spectator-express-send {{expressSending || !expressHasText ? 'spectator-express-send-disabled' : ''}}"
-                        catchtap="submitExpress"
+                        class="spectator-express-fab"
+                        hover-class="spectator-express-fab-hover"
+                        catchtap="openExpressComposer"
                       >
                         <image
-                          class="spectator-express-send-icon"
-                          src="/assets/partnerMode/icon-express-send.png"
+                          class="spectator-express-fab-bubble"
+                          src="/assets/partnerMode/icon-express-bubble.svg"
                           mode="aspectFit"
                         />
                       </view>
-                    </view>
-                    <view
-                      wx:else
-                      class="spectator-express-fab"
-                      hover-class="spectator-express-fab-hover"
-                      catchtap="openExpressComposer"
-                    >
-                      <image
-                        class="spectator-express-fab-bubble"
-                        src="/assets/partnerMode/icon-express-bubble.svg"
-                        mode="aspectFit"
-                      />
                     </view>
                   </view>
 
@@ -953,7 +1006,7 @@
 
   <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
   <view
-    class="page-footer {{inspirationKeyboardHeight > 0 || closingCreativeEditFocus ? 'page-footer-insp-hidden' : ''}}"
+    class="page-footer {{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
     wx:if="{{!isHistoryReview && !((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">
