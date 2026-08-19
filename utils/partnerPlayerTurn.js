@@ -50,13 +50,21 @@ function buildPartnerAvatarList(members, highlightIds) {
   const highlightSet = new Set(
     highlights.map((id) => toPlayerIndex(id, 0)).filter((n) => n > 0)
   );
-  return (members || []).map((m) => ({
-    id: m.playerIndex,
-    avatar: m.avatarImage || m.avatarUrl || '',
-    nickName: m.nickName,
-    isMe: m.isMe,
-    highlight: highlightSet.has(toPlayerIndex(m.playerIndex, 0))
-  }));
+  return (members || []).map((m) => {
+    const userId = m.userId || '';
+    const playerIndex = m.playerIndex;
+    return {
+      id: playerIndex,
+      userId,
+      userKey: userId || (playerIndex != null ? `p${playerIndex}` : ''),
+      avatarIndex: m.avatarIndex,
+      avatar: m.avatarImage || m.avatarUrl || '',
+      avatarImage: m.avatarImage || m.avatarUrl || '',
+      nickName: m.nickName,
+      isMe: m.isMe,
+      highlight: highlightSet.has(toPlayerIndex(playerIndex, 0))
+    };
+  });
 }
 
 function resolveCurrentPlayerFromRoom(members, roomState, fallbackIndex) {

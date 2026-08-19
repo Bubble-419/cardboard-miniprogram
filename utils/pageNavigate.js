@@ -47,7 +47,8 @@ function getCurrentRoute() {
 
 /** 回看案例 / 只读情境等叠层页：跟随跳转不得拆掉当前页 */
 const FLOW_OVERLAY_ROUTES = new Set([
-  'pages/main-pages/case/index'
+  'pages/main-pages/case/index',
+  'pages/inspiration/index'
 ]);
 
 function isFlowOverlayRoute() {

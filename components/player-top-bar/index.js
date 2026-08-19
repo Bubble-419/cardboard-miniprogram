@@ -6,10 +6,10 @@ Component({
       type: Array,
       value: []
     },
-    /** 最多直接展示的头像数，超出显示 +N */
+    /** 顶栏始终展示全部头像（超出可横向滑动），不再截断为灰色 +N */
     maxVisible: {
       type: Number,
-      value: 5
+      value: 0
     },
     /** 是否展示顶栏头像列表；等待页等已有大名单时可关掉避免重复 */
     showAvatars: {

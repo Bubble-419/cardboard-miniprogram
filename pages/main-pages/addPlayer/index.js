@@ -13,6 +13,7 @@ const {
   handleRoomGoneFromResult,
   cancelDeferredExit
 } = require('../../../utils/roomDissolved');
+const { beginScanJoin, endScanJoin } = require('../../../utils/scanJoinGate');
 const {
   handleRoomLastEvent,
   consumePendingGameReturnedToast
@@ -233,6 +234,7 @@ Page({
 
     // 扫码入房：join 成功前不写 joinedRoomId，避免首页/轮询误判 NOT_IN_ROOM
     this._joinInFlight = fromScan === true;
+    if (fromScan) beginScanJoin(roomId);
     if (!fromScan) {
       getApp().globalData.roomId = roomId;
       try {
@@ -301,6 +303,9 @@ Page({
 
   onUnload() {
     this._pageAlive = false;
+    if (this._joinInFlight) {
+      endScanJoin(this.data.roomId);
+    }
     this._stopMemberPolling();
     this._stopStatePolling();
     this._clearLongPressTimer();
@@ -611,6 +616,7 @@ Page({
 
   async joinRoomThenLoad(roomId) {
     this._joinInFlight = true;
+    beginScanJoin(roomId);
     this._stopMemberPolling();
     disposeRoomSession();
     const profile = await getOptionalProfileForRoom();
@@ -625,6 +631,7 @@ Page({
       wx.hideLoading();
       if (result.ok !== true) {
         this._joinInFlight = false;
+        endScanJoin(roomId);
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
       }
@@ -637,11 +644,17 @@ Page({
       }
       cancelDeferredExit();
 
-      const loaded = await this.loadRoomData(roomId);
+      const loaded = await this._loadRoomDataAfterJoin(roomId);
       if (!this._pageAlive) return;
+      if (!loaded) {
+        this._joinInFlight = false;
+        endScanJoin(roomId);
+        wx.showToast({ title: '加入失败，请重试', icon: 'none' });
+        return;
+      }
       this._joinInFlight = false;
       this.setData({ membershipConfirmed: true });
-      if (!loaded) return;
+      endScanJoin(roomId);
       if (loaded.isHost === true) {
         this._syncLobbyRoomState(loaded);
       } else {
@@ -653,9 +666,21 @@ Page({
       this._preloadBrainstormMode();
     } catch (err) {
       this._joinInFlight = false;
+      endScanJoin(roomId);
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }
+  },
+
+  async _loadRoomDataAfterJoin(roomId) {
+    // 成员刚写入时云库偶发读不到，重试避免误报「您已不在该房间」
+    for (let i = 0; i < 4; i += 1) {
+      const loaded = await this.loadRoomData(roomId);
+      if (loaded && loaded.ok !== false) return loaded;
+      if (!this._pageAlive) return null;
+      await new Promise((resolve) => setTimeout(resolve, 220 + i * 180));
+    }
+    return this.loadRoomData(roomId);
   },
 
   async loadRoomData(roomId, opts = {}) {

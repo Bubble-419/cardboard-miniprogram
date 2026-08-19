@@ -8,6 +8,7 @@ const {
   handleRoomGoneFromResult
 } = require('./roomDissolved');
 const { handleRoomLastEvent } = require('./roomMembersSync');
+const { isScanJoinActive } = require('./scanJoinGate');
 
 const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
 
@@ -55,6 +56,10 @@ function redirectSubScreenToAddPlayer(roomId) {
 function followSubScreenRoomPoll(result, roomId, options = {}) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
 
+  if (isScanJoinActive(id) && !isRoomDissolvedResult(result)) {
+    return false;
+  }
+
   if (shouldSubScreenLeaveRoom(result)) {
     return redirectSubScreenHomeDissolved(result, id);
   }
@@ -78,7 +83,8 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
     if (handled === true) return true;
   }
 
-  // 已退出游戏模式：房主与成员均从游戏页回到房间等待态
+  // 已退出游戏模式：从游戏页回到房间等待态。
+  // 提交/选择设计问题等尚未写入 selectedModeId 的流程页不要当成退出。
   if (result.hasSelectedMode !== true) {
     const current = getCurrentRoute();
     // 房主停在脑暴模式页：非房主统一进空状态，等待确认游戏模式
@@ -89,6 +95,17 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
     // 正在「选择脑暴模式」页时不要强行拉回大厅（房主主动进入）
     if (current === 'pages/main-pages/brainstormMode/index') {
       return false;
+    }
+    const preModeSetupPages = {
+      submitproblem: true,
+      selectproblem: true,
+      confirmbg: true,
+      selectbg: true,
+      auth: true
+    };
+    if (preModeSetupPages[page]) {
+      if (result.isHost === true) return false;
+      return navigateByRoomState(page, result.roomState, id, { isHost: false });
     }
     if (current !== ADD_PLAYER_ROUTE) {
       return redirectSubScreenToAddPlayer(id);

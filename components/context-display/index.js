@@ -40,18 +40,24 @@ Component({
 
   methods: {
     _syncDisplayItems(bg, items) {
+      let displayItems = [];
       if (Array.isArray(items) && items.length > 0) {
-        const displayItems = enrichDisplayItems(
+        displayItems = enrichDisplayItems(
           items.filter((item) => {
             if (!item || !item.name) return false;
             if (item.label && item.name === item.label) return false;
             return true;
           })
         );
-        this.setData({ displayItems });
-        return;
+      } else {
+        displayItems = enrichDisplayItems(buildContextDisplayItems(bg));
       }
-      this.setData({ displayItems: enrichDisplayItems(buildContextDisplayItems(bg)) });
+      const fingerprint = displayItems
+        .map((item) => `${item.key || ''}:${item.name || ''}:${item.icon || ''}`)
+        .join('|');
+      if (fingerprint === this._displayFingerprint) return;
+      this._displayFingerprint = fingerprint;
+      this.setData({ displayItems });
     },
 
     onDisplayTap() {

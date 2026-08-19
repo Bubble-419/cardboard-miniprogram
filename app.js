@@ -42,7 +42,14 @@ function patchWxCloudForSharedEnv(app) {
 }
 
 App({
-  onLaunch() {
+  onLaunch(options) {
+    try {
+      const { beginScanJoinFromLaunch } = require('./utils/scanJoinGate');
+      beginScanJoinFromLaunch(options);
+    } catch (e) {
+      // ignore
+    }
+
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力');
       return;
@@ -72,8 +79,15 @@ App({
     }
   },
 
-  onShow() {
+  onShow(options) {
     try {
+      const { beginScanJoinFromLaunch, isScanJoinActive } = require('./utils/scanJoinGate');
+      beginScanJoinFromLaunch(options);
+      if (isScanJoinActive()) {
+        const { disposeRoomSession } = require('./modules/room-session/index');
+        disposeRoomSession();
+        return;
+      }
       const { resumeRoomSession } = require('./modules/room-session/index');
       resumeRoomSession();
     } catch (e) {

@@ -67,7 +67,6 @@ Page({
       this.loadSubmittedProblems();
       this._measureHeaderHeight();
     });
-    this.startCountdown();
     this.startProblemCheck();
   },
 
@@ -136,7 +135,13 @@ Page({
     if (normalized) {
       applyBGToApp(normalized);
     }
-    this.setData({ categories: buildCategoriesFromBG(normalized) });
+    const categories = buildCategoriesFromBG(normalized);
+    const fingerprint = (categories || [])
+      .map((item) => `${item.key || ''}:${item.name || ''}`)
+      .join('|');
+    if (fingerprint === this._categoriesFingerprint) return;
+    this._categoriesFingerprint = fingerprint;
+    this.setData({ categories });
   },
 
   async loadRoomData() {
@@ -164,14 +169,23 @@ Page({
       const roomState = result.roomState || {};
       const patch = {
         workshopName: result.workshopName || '脑暴工作坊',
-        avatarList,
         currentUser: me ? me.id : null,
         myPlayerIndex: meMember ? meMember.playerIndex : null,
         isHost
       };
+      const avatarFp = (avatarList || [])
+        .map((item) => `${item.id || ''}:${item.avatarImage || item.avatar || ''}`)
+        .join('|');
+      if (avatarFp !== this._avatarFingerprint) {
+        this._avatarFingerprint = avatarFp;
+        patch.avatarList = avatarList;
+      }
       // 成员端：进入页即同步房主编辑态标记（只同步 id，不同步正文）
       if (!isHost) {
-        patch.remoteEditingProblemId = roomState.editingProblemId || '';
+        const remoteId = roomState.editingProblemId || '';
+        if (remoteId !== (this.data.remoteEditingProblemId || '')) {
+          patch.remoteEditingProblemId = remoteId;
+        }
       }
       this.setData(patch);
 
@@ -197,8 +211,11 @@ Page({
   _followRoomOrStay(result, roomId) {
     followSubScreenRoomPoll(result, roomId, {
       beforeNavigate: (pollResult, page) => {
-        // 模式已退出：交给后续逻辑拉回大厅，不要吞掉
-        if (pollResult && pollResult.hasSelectedMode !== true) return false;
+        const leftWorkshop = pollResult
+          && pollResult.hasSelectedMode !== true
+          && (page === 'addplayer' || page === 'brainstormmode');
+        // 房主已回大厅/重选模式：不要吞掉，交给后续逻辑拉回
+        if (leftWorkshop) return false;
         return SELECT_PROBLEM_STALE_PAGES[page] === true;
       }
     });

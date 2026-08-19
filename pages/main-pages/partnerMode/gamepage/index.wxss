@@ -613,6 +613,15 @@
   overflow: visible;
 }
 
+.score-sheet-backdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+}
+
 .spectator-bottom-stack {
   position: relative;
   flex-shrink: 0;
@@ -780,11 +789,19 @@
   letter-spacing: -0.06em;
 }
 
-.spectator-chat {
+.spectator-chat-wrap {
+  position: relative;
+  z-index: 5;
   flex: 1;
   min-height: 0;
+  height: 0;
   width: 100%;
   margin-top: 8rpx;
+}
+
+.spectator-chat {
+  height: 100%;
+  width: 100%;
   padding-bottom: 0;
   box-sizing: border-box;
 }
@@ -1540,6 +1557,7 @@ game-card-timer {
   z-index: 60;
   min-height: 92rpx;
   box-sizing: border-box;
+  background: #fafafa;
 }
 
 /* 收尾阶段：卡片与灵感栏之间留出空隙 */

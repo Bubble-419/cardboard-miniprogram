@@ -3,7 +3,7 @@ const {
   isRoundTimerActive,
   getRoundTimerState
 } = require('../../utils/partnerRoundTimer');
-const { clearStickyAvatar } = require('../../utils/avatars');
+const { clearStickyAvatar, pickFallbackAvatarImage } = require('../../utils/avatars');
 
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
@@ -132,6 +132,7 @@ Component({
         return;
       }
       this._avatarDisplayFingerprintCache = nextFp;
+      this._avatarErrorRetry = {};
       this.setData({
         displayList: nextDisplay,
         overflowCount: nextOverflow
@@ -540,29 +541,68 @@ Component({
       this.triggerEvent('avatartap', { playerIndex, id: playerIndex });
     },
 
-    /** 临时链过期/裂图：清粘性并回退默认图，避免一直空白 */
+    _fallbackAvatarFor(item, index) {
+      return pickFallbackAvatarImage(item, index);
+    },
+
+    /** 临时链过期/整页重绘裂图：先回源重试，再回退座位头像，避免全员变成同一张默认图 */
     onAvatarImgError(e) {
       const dataset = (e && e.currentTarget && e.currentTarget.dataset) || {};
       const playerIndex = dataset.playerIndex;
       const userKey = dataset.userKey != null ? String(dataset.userKey) : '';
-      if (userKey) clearStickyAvatar(userKey);
       if (playerIndex == null || playerIndex === '') return;
 
       const list = (this.data.displayList || []).slice();
-      let changed = false;
+      let index = -1;
       for (let i = 0; i < list.length; i++) {
-        const item = list[i];
-        if (!item || String(item.id) !== String(playerIndex)) continue;
-        const fallback = this.data.defaultAvatar;
-        if (item.avatar === fallback && item.avatarImage === fallback) break;
-        list[i] = { ...item, avatar: fallback, avatarImage: fallback };
-        changed = true;
-        break;
+        if (list[i] && String(list[i].id) === String(playerIndex)) {
+          index = i;
+          break;
+        }
       }
-      if (changed) {
-        this._avatarDisplayFingerprintCache = '';
-        this.setData({ displayList: list });
+      if (index < 0) return;
+
+      const item = list[index];
+      const fallback = this._fallbackAvatarFor(item, index);
+      const current = item.avatar || item.avatarImage || item.url || '';
+      if (current === fallback || current === this.data.defaultAvatar) return;
+
+      if (!this._avatarErrorRetry) this._avatarErrorRetry = {};
+      if (!this._avatarRetrying) this._avatarRetrying = {};
+      const retryKey = String(playerIndex);
+      if (this._avatarRetrying[retryKey]) return;
+      const retryCount = this._avatarErrorRetry[retryKey] || 0;
+
+      if (retryCount < 1) {
+        this._avatarErrorRetry[retryKey] = retryCount + 1;
+        this._avatarRetrying[retryKey] = true;
+        const sourceList = Array.isArray(this.properties.avatarList) ? this.properties.avatarList : [];
+        const source = sourceList.find((row) => row && String(row.id) === String(playerIndex));
+        const restore = (source && (source.avatar || source.avatarImage || source.url)) || current;
+        list[index] = { ...item, avatar: '', avatarImage: '' };
+        this.setData({ displayList: list }, () => {
+          setTimeout(() => {
+            const next = (this.data.displayList || []).slice();
+            const j = next.findIndex((row) => row && String(row.id) === String(playerIndex));
+            if (j < 0) {
+              this._avatarRetrying[retryKey] = false;
+              return;
+            }
+            next[j] = { ...next[j], avatar: restore, avatarImage: restore };
+            this._avatarDisplayFingerprintCache = '';
+            this.setData({ displayList: next }, () => {
+              this._avatarRetrying[retryKey] = false;
+            });
+          }, 60);
+        });
+        return;
       }
+
+      if (userKey) clearStickyAvatar(userKey);
+      clearStickyAvatar(String(playerIndex));
+      list[index] = { ...item, avatar: fallback, avatarImage: fallback };
+      this._avatarDisplayFingerprintCache = '';
+      this.setData({ displayList: list });
       this.triggerEvent('avatarerror', { playerIndex, userKey });
     }
   }

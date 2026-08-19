@@ -15,7 +15,7 @@ Page({
     referencedInspirations: [],
     inspirations: [],
     displayInspirations: [],
-    waterfallColumns: [{ items: [] }, { items: [] }],
+    waterfallColumns: [{ key: 'col-0', items: [] }, { key: 'col-1', items: [] }],
     isGenerating: false,
     inspirationDraftText: '',
     inspirationDraftPhotos: [],
@@ -47,6 +47,7 @@ Page({
   },
 
   onLoad(options) {
+    this._pageAlive = true;
     this._applyNavbarInset();
     const roomId = (options && options.roomId) || (getApp().globalData && getApp().globalData.roomId) || '';
     // 带房间进入时一律按「本房间本人灵感」展示，与灯泡角标一致
@@ -59,7 +60,6 @@ Page({
       workshopOnly,
       brainstormSessionSeq: Number.isFinite(brainstormSessionSeq) ? brainstormSessionSeq : 0
     });
-    this.loadInspirations();
   },
 
   onShow() {
@@ -79,6 +79,7 @@ Page({
   },
 
   onUnload() {
+    this._pageAlive = false;
     this._unbindInspirationKeyboard();
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
@@ -243,18 +244,21 @@ Page({
         return;
       }
 
-      const inspirations = (result.inspirations || []).map((item) => {
+      const inspirations = (result.inspirations || []).map((item, idx) => {
         const imageUrls = Array.isArray(item.imageUrls) && item.imageUrls.length
           ? item.imageUrls
           : (item.imageUrl ? [item.imageUrl] : []);
+        const id = item.id || item._id || `insp-${idx}`;
         return {
           ...item,
+          id,
           imageUrl: item.imageUrl || imageUrls[0] || '',
           imageUrls,
-          referenced: this.data.referencedInspirations.includes(item.id)
+          referenced: this.data.referencedInspirations.includes(id)
         };
       });
 
+      if (!this._pageAlive) return;
       this.setData({ inspirations });
       this._refreshDisplay();
     } catch (err) {
@@ -265,7 +269,10 @@ Page({
 
   layoutWaterfall(inspirations) {
     const list = inspirations || this.data.inspirations || [];
-    const columns = [{ items: [], height: 0 }, { items: [], height: 0 }];
+    const columns = [
+      { key: 'col-0', items: [], height: 0 },
+      { key: 'col-1', items: [], height: 0 }
+    ];
 
     // 按列表顺序（已是新→旧）依次填入较短列，保证越新越靠上
     list.forEach((item) => {

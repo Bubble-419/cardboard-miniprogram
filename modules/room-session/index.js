@@ -123,10 +123,18 @@ async function bindPageToRoomSession(page, options) {
   const roomId = typeof getRoomId === 'function' ? getRoomId.call(page) : '';
   if (!roomId) return null;
 
+  const bindGen = (page._roomSessionBindGen || 0) + 1;
+  page._roomSessionBindGen = bindGen;
+
   const session = await openRoomSession(roomId, {
     intervalMs: options.intervalMs || 2000,
     full: options.full === true
   });
+
+  // onHide 已 unbind 时，禁止把跟随订阅挂到已离开的页面上（会把灵感空间等叠层页打回）
+  if (page._roomSessionBindGen !== bindGen) {
+    return null;
+  }
 
   if (page._roomSessionUnsub) {
     page._roomSessionUnsub();
@@ -136,6 +144,7 @@ async function bindPageToRoomSession(page, options) {
   const emitCurrent = options.emitCurrent !== false;
   page._roomSessionUnsub = session.subscribe((snapshot) => {
     if (!snapshot) return;
+    if (page._roomSessionBindGen !== bindGen) return;
     if (typeof onSnapshot === 'function') {
       onSnapshot.call(page, snapshot);
     }
@@ -155,7 +164,9 @@ async function bindPageToRoomSession(page, options) {
 }
 
 function unbindPageFromRoomSession(page) {
-  if (page && page._roomSessionUnsub) {
+  if (!page) return;
+  page._roomSessionBindGen = (page._roomSessionBindGen || 0) + 1;
+  if (page._roomSessionUnsub) {
     page._roomSessionUnsub();
     page._roomSessionUnsub = null;
   }

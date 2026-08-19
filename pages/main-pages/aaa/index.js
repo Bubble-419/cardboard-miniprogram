@@ -17,6 +17,10 @@ const {
   isRoomDissolvedResult
 } = require('../../../utils/roomDissolved');
 const {
+  beginScanJoin,
+  isScanJoinActive
+} = require('../../../utils/scanJoinGate');
+const {
   beginUserAuthFlow,
   endUserAuthFlow,
   forceEndUserAuthFlow,
@@ -86,7 +90,7 @@ Page({
     consumePendingRoomGoneToast();
     this._restoreUserProfile();
     // 扫码跳转途中不要用「即将加入」的 roomId 跑成员校验，否则会误弹退出房间
-    if (_scanJoinNavigatingRoomId) return;
+    if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
     this.loadJoinedRoomState();
     this._loadHistoryWorkshops();
   },
@@ -126,7 +130,9 @@ Page({
   },
 
   async loadJoinedRoomState() {
-    if (_scanJoinNavigatingRoomId) return;
+    if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+    const gen = (this._joinedStateGen || 0) + 1;
+    this._joinedStateGen = gen;
 
     const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
@@ -142,6 +148,8 @@ Page({
         name: 'getAddPlayerData',
         data: { roomId }
       });
+      if (gen !== this._joinedStateGen) return;
+      if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
       const result = (res && res.result) || {};
 
       if (result.ok !== true) {
@@ -712,6 +720,8 @@ Page({
     if (!roomId) return;
     // 禁止 join 前写入 joinedRoomId：否则首页 onShow / 轮询会把「未入房」误判成退出房间
     _scanJoinNavigatingRoomId = roomId;
+    this._joinedStateGen = (this._joinedStateGen || 0) + 1;
+    beginScanJoin(roomId);
     upsertHistoryWorkshop({
       roomId,
       name: this.data.roomName || '脑暴工作坊',
@@ -763,7 +773,7 @@ Page({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      this._goToRoomPage(roomId);
+      this._goToScanJoinRoom(roomId);
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });

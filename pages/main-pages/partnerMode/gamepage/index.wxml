@@ -270,8 +270,8 @@
               placeholder-class="inspiration-placeholder"
               maxlength="2000"
               confirm-type="done"
-              adjust-position="{{true}}"
-              cursor-spacing="120"
+              adjust-position="{{false}}"
+              cursor-spacing="12"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -301,7 +301,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
-        disable-touch="{{scoreSwipeLocked}}"
+        disable-touch="{{scoreSwipeLocked || innerScrollLocked}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
@@ -510,6 +510,9 @@
                 enhanced
                 show-scrollbar="{{true}}"
                 scroll-into-view="{{discussionExpressChatAnchor}}"
+                bindtouchstart="onInnerScrollTouchStart"
+                bindtouchend="onInnerScrollTouchEnd"
+                bindtouchcancel="onInnerScrollTouchEnd"
               >
                 <view class="discussion-scroll-inner">
                   <!-- 出牌解释：仅出牌阶段匿名聊天 -->
@@ -604,7 +607,7 @@
                       class="spectator-express-input"
                       name="expressText"
                       maxlength="40"
-                      confirm-type="send"
+                      confirm-type="done"
                       hold-keyboard="{{true}}"
                       adjust-position="{{true}}"
                       cursor-spacing="24"
@@ -613,7 +616,6 @@
                       placeholder-class="spectator-express-placeholder"
                       bindfocus="onExpressComposerFocus"
                       bindinput="onExpressInput"
-                      bindconfirm="submitExpress"
                       bindblur="onExpressComposerBlur"
                     />
                     <view
@@ -681,6 +683,9 @@
                       enhanced
                       show-scrollbar="{{true}}"
                       scroll-into-view="{{expressChatAnchor}}"
+                      bindtouchstart="onInnerScrollTouchStart"
+                      bindtouchend="onInnerScrollTouchEnd"
+                      bindtouchcancel="onInnerScrollTouchEnd"
                     >
                       <view
                         class="spectator-chat-row"
@@ -733,6 +738,13 @@
 
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
+                <!-- 展开时点卡片空白处收起，不挡打分抽屉和表达按钮 -->
+                <view
+                  wx:if="{{scorePanelExpanded}}"
+                  class="score-sheet-backdrop"
+                  catchtap="onScoreSheetBackdropTap"
+                  catchtouchmove="preventMove"
+                ></view>
                 <view class="spectator-card-head">
                   <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
                   <text class="spectator-card-title">玩家正在出牌</text>
@@ -740,12 +752,17 @@
                 </view>
                 <view class="action-divider"></view>
 
-                <!-- 匿名聊天区 -->
+                <!-- 匿名聊天区：外包一层定高，iOS 原生 scroll-view 才能滚 -->
+                <view class="spectator-chat-wrap">
                 <scroll-view
                   class="spectator-chat"
                   scroll-y
+                  enhanced
                   show-scrollbar="{{true}}"
                   scroll-into-view="{{expressChatAnchor}}"
+                  bindtouchstart="onInnerScrollTouchStart"
+                  bindtouchend="onInnerScrollTouchEnd"
+                  bindtouchcancel="onInnerScrollTouchEnd"
                 >
                   <view
                     class="spectator-chat-row"
@@ -766,6 +783,7 @@
                   </view>
                   <view id="express-chat-bottom" style="height: 1rpx;"></view>
                 </scroll-view>
+                </view>
 
                 <view class="spectator-bottom-stack">
                   <view
@@ -782,7 +800,7 @@
                           class="spectator-express-input"
                           name="expressText"
                           maxlength="40"
-                          confirm-type="send"
+                          confirm-type="done"
                           hold-keyboard="{{true}}"
                           adjust-position="{{true}}"
                           cursor-spacing="24"
@@ -791,7 +809,6 @@
                           placeholder-class="spectator-express-placeholder"
                           bindfocus="onExpressComposerFocus"
                           bindinput="onExpressInput"
-                          bindconfirm="submitExpress"
                           bindblur="onExpressComposerBlur"
                         />
                         <view
@@ -975,8 +992,8 @@
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
             confirm-type="done"
-            adjust-position="{{!isHistoryReview}}"
-            cursor-spacing="120"
+            adjust-position="{{false}}"
+            cursor-spacing="12"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

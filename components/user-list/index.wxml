@@ -25,7 +25,7 @@
                   src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
                   mode="aspectFill"
                   data-player-index="{{item.id}}"
-                  data-user-key="{{item.userId || item.id}}"
+                  data-user-key="{{item.userKey || item.userId || item.id}}"
                   binderror="onAvatarImgError"
                 />
               </view>
@@ -91,7 +91,7 @@
                   src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
                   mode="aspectFill"
                   data-player-index="{{item.id}}"
-                  data-user-key="{{item.userId || item.id}}"
+                  data-user-key="{{item.userKey || item.userId || item.id}}"
                   binderror="onAvatarImgError"
                 />
               </view>
@@ -133,7 +133,7 @@
           </view>
         </view>
       </block>
-      <view class="avatar-item overflow-item" wx:if="{{overflowCount > 0}}">
+      <view class="avatar-item overflow-item" wx:if="{{overflowCount > 0 && layout !== 'stack'}}">
         <view class="avatar-slot">
           <view class="avatar-frame-box">
             <view class="avatar-wrap overflow-wrap">

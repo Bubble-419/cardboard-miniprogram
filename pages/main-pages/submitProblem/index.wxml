@@ -3,7 +3,6 @@
   <view class="header-section">
     <player-top-bar
       avatarList="{{avatarList}}"
-      maxVisible="{{5}}"
       bind:goroom="handleGoRoom"
     />
 

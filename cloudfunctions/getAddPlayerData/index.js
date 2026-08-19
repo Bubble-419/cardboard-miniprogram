@@ -20,6 +20,24 @@ function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
 }
 
+function sameUserId(a, b) {
+  return a != null && b != null && String(a) === String(b);
+}
+
+function collectCallerUserIds(wxContext) {
+  const ids = [];
+  const fromOpenid = wxContext && wxContext.FROM_OPENID;
+  const openid = wxContext && wxContext.OPENID;
+  if (fromOpenid) ids.push(String(fromOpenid));
+  if (openid && ids.indexOf(String(openid)) === -1) ids.push(String(openid));
+  return ids;
+}
+
+function findMemberByCaller(members, callerIds) {
+  const ids = callerIds || [];
+  return (members || []).find((m) => m && ids.some((id) => sameUserId(m.userId, id))) || null;
+}
+
 /** 谁是卧底公开快照：不泄露他人词语/身份；投票中不公开票数 */
 function buildPublicSpyGame(spyGame, isHost, assignments) {
   if (!spyGame || typeof spyGame !== 'object') return null;
@@ -134,7 +152,7 @@ async function applyPresenceView(room, currentUserId, members, options) {
   const allowWrite = !(options && options.noSideEffects);
 
   if (allowWrite) {
-    const myMember = list.find((m) => m && String(m.userId) === String(currentUserId)) || null;
+    const myMember = list.find((m) => m && sameUserId(m.userId, currentUserId)) || null;
     if (myMember && myMember._id) {
       try {
         await db.collection(ROOM_MEMBERS_COLLECTION).doc(myMember._id).update({
@@ -217,7 +235,8 @@ exports.main = async (event, context) => {
 
   const wxContext = cloud.getWXContext();
   // 跨账号共享时 OPENID 为资源方，调用方用户需用 FROM_OPENID
-  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  const callerIds = collectCallerUserIds(wxContext);
+  const currentUserId = callerIds[0] || '';
 
   try {
     const roomRes = await db.collection(ROOMS_COLLECTION).where({ roomId }).limit(1).get();
@@ -251,8 +270,8 @@ exports.main = async (event, context) => {
       .get();
 
     let rawMembers = membersRes.data || [];
-    let myMember = rawMembers.find((m) => m.userId === currentUserId) || null;
-    let isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
+    let myMember = findMemberByCaller(rawMembers, callerIds);
+    let isHost = !!(room.creatorId && callerIds.some((id) => sameUserId(room.creatorId, id)));
 
     if (!isHost && !myMember) {
       return {
@@ -264,16 +283,17 @@ exports.main = async (event, context) => {
 
     // V2 房间：查询无写副作用（心跳走 roomPresence）；V1 仍刷新本人 lastSeenAt
     const isV2 = Number(room.protocolVersion) === 2 || Number(room.schemaVersion) === 2;
-    const presence = await applyPresenceView(room, currentUserId, rawMembers, {
+    const presenceUserId = (myMember && myMember.userId) || currentUserId;
+    const presence = await applyPresenceView(room, presenceUserId, rawMembers, {
       noSideEffects: isV2 || event.noSideEffects === true
     });
     room = presence.room || room;
     rawMembers = presence.members || rawMembers;
-    myMember = rawMembers.find((m) => m.userId === currentUserId) || null;
+    myMember = findMemberByCaller(rawMembers, callerIds);
     const lastEvent = presence.lastEvent || room.lastEvent || null;
     const presenceNow = Date.now();
 
-    isHost = !!(room.creatorId && String(room.creatorId) === String(currentUserId));
+    isHost = !!(room.creatorId && callerIds.some((id) => sameUserId(room.creatorId, id)));
     if (!isHost && !myMember) {
       return {
         ok: false,
@@ -308,7 +328,11 @@ exports.main = async (event, context) => {
         sessionId: 0
       };
     const includeFullPartnerContent = event && event.full === true;
-    const scoreProgress = await loadScoreProgress(room, rawMembers, currentUserId);
+    const scoreProgress = await loadScoreProgress(
+      room,
+      rawMembers,
+      (myMember && myMember.userId) || currentUserId
+    );
 
     const roomState = {
       selectedModeId: selectedModeId || null,
@@ -382,7 +406,7 @@ exports.main = async (event, context) => {
         nickName: m.nickName || `玩家${m.playerIndex}`,
         avatarColor: m.avatarColor || '#5EC159',
         avatarUrl: m.avatarUrl || null,
-        isMe: m.userId === currentUserId,
+        isMe: callerIds.some((id) => sameUserId(m.userId, id)),
         userId: m.userId || null,
         role: m.role || 'PLAYER',
         online: isMemberOnline(m, presenceNow, room.creatorId),

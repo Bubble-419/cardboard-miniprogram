@@ -18,7 +18,7 @@
       <view class="avatar-group" wx:if="{{showAvatars}}">
         <user-list
           avatarList="{{avatarList}}"
-          maxVisible="{{maxVisible}}"
+          maxVisible="{{0}}"
           currentUser="{{currentUser}}"
           actingUser="{{actingUser}}"
           selectedUser="{{selectedUser}}"

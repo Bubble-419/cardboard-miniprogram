@@ -6,7 +6,7 @@ const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesi
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
 const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
-const { openUrl } = require('../../../../utils/pageNavigate');
+const { openUrl, openPartnerPage } = require('../../../../utils/pageNavigate');
 const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
@@ -103,10 +103,11 @@ Page({
   },
 
   onLoad(options) {
-    const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const initiatorPlayerIndex = options.currentPlayerIndex != null
-      ? parseInt(options.currentPlayerIndex, 10)
-      : 1;
+    const opts = options || {};
+    const app = getApp();
+    const roomId = opts.roomId || (app && app.globalData && app.globalData.roomId) || '';
+    const parsedIdx = parseInt(opts.currentPlayerIndex, 10);
+    const initiatorPlayerIndex = Number.isFinite(parsedIdx) && parsedIdx > 0 ? parsedIdx : 1;
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
@@ -142,6 +143,13 @@ Page({
     this.clearSilentTimer();
     this._stopStatePolling();
     this._stopSoundLevelSampling();
+  },
+
+  /** 仅在确认「本人不是当前出牌人」时退出；isMe 未对上时不要踢，避免进页闪退 */
+  _shouldLeaveForTurnChange(members, player) {
+    const me = (members || []).find((m) => m && m.isMe);
+    if (!me || !player) return false;
+    return player.isCurrentPlayer !== true;
   },
 
   _markSpecialMoveUsedForGamepage() {
@@ -225,13 +233,31 @@ Page({
   },
 
   handleGoInspirationCenter() {
+    // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
+    this._stopStatePolling();
     const roomId = this.data.roomId || '';
     const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
     let url = '/pages/inspiration/index?scope=workshop';
     if (roomId) {
       url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
     }
-    wx.navigateTo({ url });
+    const opened = openPartnerPage(url);
+    if (!opened) {
+      wx.navigateTo({
+        url,
+        fail: (err) => {
+          console.warn('navigateTo inspiration fail', err);
+          wx.redirectTo({
+            url,
+            fail: (err2) => {
+              console.warn('redirectTo inspiration fail', err2);
+              this._startStatePolling();
+              wx.showToast({ title: '打开灵感空间失败', icon: 'none' });
+            }
+          });
+        }
+      });
+    }
   },
 
   _isDevtools() {
@@ -387,8 +413,8 @@ Page({
         result.roomState,
         this.data.initiatorPlayerIndex
       );
-      // 非当前出牌玩家不得停留在特殊行动页（含房主代进）
-      if (!player.isCurrentPlayer) {
+      // 非当前出牌玩家不得停留；本人身份尚未对上时先留在本页
+      if (this._shouldLeaveForTurnChange(members, player)) {
         wx.showToast({ title: '请等待您的轮次', icon: 'none' });
         this._returnToGamepage(false);
         return;
@@ -521,7 +547,7 @@ Page({
           this.data.currentPlayerIndex
         );
         // 轮次已切走：退出特殊行动页
-        if (result.ok === true && members.length && !player.isCurrentPlayer) {
+        if (result.ok === true && members.length && this._shouldLeaveForTurnChange(members, player)) {
           this._stopStatePolling();
           wx.showToast({ title: '请等待您的轮次', icon: 'none' });
           this._returnToGamepage(false);
@@ -549,7 +575,7 @@ Page({
               return true;
             }
             // 仍在 gamepage 且非 master：勿被旧 poll 打回 gamepage（防卡顿回跳）
-            if (page === 'gamepage' && pollResult.roomState.partnerMasterMode !== true) {
+            if (page === 'gamepage' && (pollResult.roomState || {}).partnerMasterMode !== true) {
               return true;
             }
             return false;

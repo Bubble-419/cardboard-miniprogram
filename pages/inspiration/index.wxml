@@ -28,17 +28,18 @@
     </view>
   </view>
 
-  <scroll-view class="inspirations-container" scroll-y enhanced show-scrollbar="{{false}}">
+  <scroll-view class="inspirations-container" scroll-y show-scrollbar="{{false}}">
     <view class="waterfall-empty" wx:if="{{!displayInspirations.length}}">
       <text class="waterfall-empty-text">还没有灵感，写下第一条吧</text>
     </view>
 
     <view class="waterfall-wrapper" wx:if="{{displayInspirations.length}}">
-      <view class="waterfall-column" wx:for="{{waterfallColumns}}" wx:key="index">
+      <view class="waterfall-column" wx:for="{{waterfallColumns}}" wx:key="key" wx:for-index="colIndex">
         <view
           class="inspiration-card {{inspiration.referenced ? 'referenced' : ''}}"
           wx:for="{{item.items}}"
           wx:for-item="inspiration"
+          wx:for-index="inspIndex"
           wx:key="id"
           data-id="{{inspiration.id}}"
           bindtap="toggleReference"

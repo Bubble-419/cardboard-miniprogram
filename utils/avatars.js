@@ -50,9 +50,22 @@ function getAvatarStableKey(url) {
   if (url.startsWith('/')) return url;
   if (isRemoteUrl(url)) {
     const q = url.indexOf('?');
-    return q >= 0 ? url.slice(0, q) : url;
+    const noQuery = q >= 0 ? url.slice(0, q) : url;
+    // 云存储临时链换 CDN 主机时路径不变，去掉 host 才能命中粘性、避免整页重绘裂图
+    const hostStart = noQuery.indexOf('://');
+    if (hostStart < 0) return noQuery;
+    const pathStart = noQuery.indexOf('/', hostStart + 3);
+    return pathStart >= 0 ? noQuery.slice(pathStart) : noQuery;
   }
   return url;
+}
+
+function isPackagedAvatar(url) {
+  return typeof url === 'string' && (url.startsWith('/assets/') || url === DEFAULT_AVATAR);
+}
+
+function isCustomDisplayAvatar(url) {
+  return isDisplayableAvatarUrl(url) && !isPackagedAvatar(url);
 }
 
 function getMemberAvatarFingerprint(member) {
@@ -90,7 +103,7 @@ function _readSticky(userKey) {
 }
 
 function _writeSticky(userKey, url) {
-  if (!userKey || !isDisplayableAvatarUrl(url)) return;
+  if (!userKey || !isCustomDisplayAvatar(url)) return;
   stickyCustomAvatarByUser.set(userKey, {
     url,
     stableKey: getAvatarStableKey(url),
@@ -98,10 +111,36 @@ function _writeSticky(userKey, url) {
   });
 }
 
+function _readStickyForMember(member) {
+  const userKey = getMemberAvatarUserKey(member);
+  const byUser = _readSticky(userKey);
+  if (byUser && isCustomDisplayAvatar(byUser.url)) return byUser;
+  if (member && member.playerIndex != null) {
+    const bySeat = _readSticky(`p${member.playerIndex}`);
+    if (bySeat && isCustomDisplayAvatar(bySeat.url)) return bySeat;
+  }
+  return byUser;
+}
+
+function _writeStickyForMember(member, url) {
+  if (!isCustomDisplayAvatar(url)) return;
+  const userKey = getMemberAvatarUserKey(member);
+  _writeSticky(userKey, url);
+  if (member && member.playerIndex != null) {
+    _writeSticky(`p${member.playerIndex}`, url);
+  }
+}
+
 /** 加载失败时清掉该用户粘性，避免一直挂坏链 */
 function clearStickyAvatar(userKey) {
-  if (!userKey) return;
-  stickyCustomAvatarByUser.delete(String(userKey));
+  if (userKey == null || userKey === '') return;
+  const key = String(userKey);
+  stickyCustomAvatarByUser.delete(key);
+  if (/^\d+$/.test(key)) {
+    stickyCustomAvatarByUser.delete(`p${key}`);
+  } else if (/^p\d+$/i.test(key)) {
+    stickyCustomAvatarByUser.delete(key.slice(1));
+  }
 }
 
 /**
@@ -154,36 +193,64 @@ function assignAvatarImages(members) {
   const now = Date.now();
   return (members || []).map((m, i) => {
     if (!m) return m;
-    const userKey = getMemberAvatarUserKey(m);
-    // 本人可用本机临时路径；其他人必须用可共享且可展示的 URL
+    const sticky = _readStickyForMember(m);
+    // 包内占位图不得当作自定义头像写入粘性，否则会把已设置头像盖掉
     const canUseUrl =
-      isDisplayableAvatarUrl(m.avatarUrl) &&
+      isCustomDisplayAvatar(m.avatarUrl) &&
       (m.isMe === true || isShareableAvatarUrl(m.avatarUrl) || isLocalTempAvatar(m.avatarUrl));
     if (canUseUrl) {
       const incoming = m.avatarUrl;
       const incomingKey = getAvatarStableKey(incoming);
-      const sticky = _readSticky(userKey);
-      // 稳定键相同且粘性未过期：复用旧 URL，避免轮询换签名闪烁；过期则改用最新链
+      // 稳定键相同且粘性未过期：复用旧 URL，避免轮询换签名/CDN 主机闪烁；过期则改用最新链
       if (
         sticky &&
-        isDisplayableAvatarUrl(sticky.url) &&
+        isCustomDisplayAvatar(sticky.url) &&
         sticky.stableKey === incomingKey &&
         sticky.savedAt > 0 &&
         now - sticky.savedAt < STICKY_MAX_AGE_MS
       ) {
         return { ...m, avatarUrl: sticky.url, avatarImage: sticky.url };
       }
-      _writeSticky(userKey, incoming);
+      _writeStickyForMember(m, incoming);
       return { ...m, avatarImage: incoming };
     }
-    if (userKey) {
-      const sticky = _readSticky(userKey);
-      if (sticky && isDisplayableAvatarUrl(sticky.url)) {
-        return { ...m, avatarImage: sticky.url };
-      }
+    if (sticky && isCustomDisplayAvatar(sticky.url)) {
+      return { ...m, avatarImage: sticky.url };
     }
     return { ...m, avatarImage: pickFallbackAvatarImage(m, i) };
   });
+}
+
+/**
+ * 新快照变成占位图时，保留上一帧已成功展示的自定义头像。
+ * 一轮结束整页 setData / 临时链失败时，避免把已设置头像打回默认图。
+ */
+function preserveMemberAvatars(nextMembers, prevMembers) {
+  const prevByUser = new Map();
+  const prevBySeat = new Map();
+  (prevMembers || []).forEach((m) => {
+    if (!m) return;
+    const url = m.avatarImage || m.avatarUrl || '';
+    if (!isCustomDisplayAvatar(url)) return;
+    const userKey = getMemberAvatarUserKey(m);
+    if (userKey) prevByUser.set(userKey, url);
+    if (m.playerIndex != null) prevBySeat.set(String(m.playerIndex), url);
+  });
+  return (nextMembers || []).map((m) => {
+    if (!m) return m;
+    const current = m.avatarImage || m.avatarUrl || '';
+    if (isCustomDisplayAvatar(current)) return m;
+    const userKey = getMemberAvatarUserKey(m);
+    const preserved = (userKey && prevByUser.get(userKey))
+      || (m.playerIndex != null ? prevBySeat.get(String(m.playerIndex)) : '');
+    if (!preserved) return m;
+    _writeStickyForMember(m, preserved);
+    return { ...m, avatarImage: preserved };
+  });
+}
+
+function memberHasCloudAvatar(member) {
+  return !!(member && isCloudFileId(member.avatarUrl));
 }
 
 /**
@@ -221,6 +288,9 @@ module.exports = {
   getMemberAvatarUserKey,
   resolveCloudAvatarUrls,
   assignAvatarImages,
+  preserveMemberAvatars,
+  memberHasCloudAvatar,
+  pickFallbackAvatarImage,
   prepareMembersForDisplay,
   clearStickyAvatar,
   buildAvatarList,

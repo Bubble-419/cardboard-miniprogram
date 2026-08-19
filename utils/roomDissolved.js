@@ -17,6 +17,7 @@ const {
 } = require('./userAuthSession');
 const { PROFILE_STORAGE_KEY } = require('./wxUserAvatar');
 const { upsertHistoryWorkshop } = require('./historyWorkshops');
+const { isScanJoinActive } = require('./scanJoinGate');
 
 const HOME_URL = '/pages/main-pages/aaa/index';
 const HOME_ROUTE = 'pages/main-pages/aaa/index';
@@ -48,6 +49,7 @@ const ROOM_GLOBAL_KEYS = [
 let _exiting = false;
 let _lastExitAt = 0;
 let _deferredExit = null;
+let _homeRelaunchTimer = null;
 
 function isRoomDissolvedResult(result) {
   if (!result) return false;
@@ -162,7 +164,9 @@ function _scheduleHomeReLaunch(title) {
     duration: 2000
   });
 
-  setTimeout(() => {
+  if (_homeRelaunchTimer) clearTimeout(_homeRelaunchTimer);
+  _homeRelaunchTimer = setTimeout(() => {
+    _homeRelaunchTimer = null;
     wx.reLaunch({
       url: HOME_URL,
       complete: () => {
@@ -236,6 +240,11 @@ function exitRoomGone(result, options = {}) {
 /** 成功入房后取消挂起的误踢/误解散 */
 function cancelDeferredExit() {
   _deferredExit = null;
+  _exiting = false;
+  if (_homeRelaunchTimer) {
+    clearTimeout(_homeRelaunchTimer);
+    _homeRelaunchTimer = null;
+  }
 }
 
 /** 轮询/接口结果：解散或不在房间时统一处理 */
@@ -245,6 +254,8 @@ function handleRoomGoneFromResult(result, roomId, options = {}) {
     return exitRoomGone(result, { roomId, forceDissolved: true, ...options });
   }
   if (isRemovedFromRoomResult(result)) {
+    // 扫码 join 尚未落库时 getAddPlayerData 会回 NOT_IN_ROOM，不能当成真踢出
+    if (isScanJoinActive(roomId)) return false;
     return exitRoomGone(result, { roomId, ...options });
   }
   return false;
@@ -272,6 +283,10 @@ function resetRoomGoneGuardForTest() {
   _exiting = false;
   _lastExitAt = 0;
   _deferredExit = null;
+  if (_homeRelaunchTimer) {
+    clearTimeout(_homeRelaunchTimer);
+    _homeRelaunchTimer = null;
+  }
 }
 
 module.exports = {

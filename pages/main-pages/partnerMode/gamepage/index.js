@@ -4,6 +4,9 @@
  */
 const {
   assignAvatarImages,
+  preserveMemberAvatars,
+  prepareMembersForDisplay,
+  memberHasCloudAvatar,
   getMemberAvatarFingerprint,
   getAvatarStableKey
 } = require('../../../../utils/avatars');
@@ -111,6 +114,7 @@ Page({
     scoreOptions: [0, 1, 2, 3, 4, 5],
     selectedScore: null,
     scoredCount: 0,
+    innerScrollLocked: false,
     /** 打分抽屉：translateY=0 全展开；=max 仅露头部 */
     scorePanelExpanded: false,
     scoreSheetTranslateY: 120,
@@ -259,6 +263,7 @@ Page({
     this._scoreFingerprint = '';
     this._pendingRoomContext = null;
     this._roomDataReady = false;
+    this._cloudAvatarResolving = false;
     // 仅用于“服务端缺字段时的临时兜底”；新页面实例必须从空开始，避免带入旧会话纪要
     this._lastRawRoundSummaries = [];
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
@@ -427,6 +432,39 @@ Page({
 
   preventMove() {},
 
+  onInnerScrollTouchStart() {
+    if (this._innerScrollUnlockTimer) {
+      clearTimeout(this._innerScrollUnlockTimer);
+      this._innerScrollUnlockTimer = null;
+    }
+    if (!this.data.innerScrollLocked) {
+      this.setData({ innerScrollLocked: true });
+    }
+  },
+
+  onInnerScrollTouchEnd() {
+    if (this._innerScrollUnlockTimer) clearTimeout(this._innerScrollUnlockTimer);
+    this._innerScrollUnlockTimer = setTimeout(() => {
+      this._innerScrollUnlockTimer = null;
+      if (this.data.innerScrollLocked) {
+        this.setData({ innerScrollLocked: false });
+      }
+    }, 80);
+  },
+
+  /** iOS：scroll-into-view 若一直停在目标 id，原生列表会锁死无法手势滚动 */
+  _clearExpressChatAnchorSoon() {
+    if (this._expressAnchorClearTimer) clearTimeout(this._expressAnchorClearTimer);
+    this._expressAnchorClearTimer = setTimeout(() => {
+      this._expressAnchorClearTimer = null;
+      if (!this.data.expressChatAnchor && !this.data.discussionExpressChatAnchor) return;
+      this.setData({
+        expressChatAnchor: '',
+        discussionExpressChatAnchor: ''
+      });
+    }, 160);
+  },
+
   onShow() {
     this._pageVisible = true;
     this._bindInspirationKeyboard();
@@ -546,6 +584,14 @@ Page({
     this._cardSwipeBusy = false;
     this._scoreUiBusy = false;
     this._pendingRoomContext = null;
+    if (this._expressAnchorClearTimer) {
+      clearTimeout(this._expressAnchorClearTimer);
+      this._expressAnchorClearTimer = null;
+    }
+    if (this._innerScrollUnlockTimer) {
+      clearTimeout(this._innerScrollUnlockTimer);
+      this._innerScrollUnlockTimer = null;
+    }
   },
 
   _applyRoundContentFromRoom(roomState) {
@@ -1534,6 +1580,43 @@ Page({
     );
   },
 
+  _refreshCloudAvatarsIfNeeded(rawMembers, displayMembers) {
+    const list = Array.isArray(rawMembers) ? rawMembers : [];
+    if (!list.some(memberHasCloudAvatar)) return;
+    if (this._cloudAvatarResolving) return;
+    const shown = Array.isArray(displayMembers) && displayMembers.length
+      ? displayMembers
+      : (this.data.members || []);
+    const stillBroken = list.some((m) => {
+      if (!memberHasCloudAvatar(m)) return false;
+      const current = shown.find((row) => row && String(row.playerIndex) === String(m.playerIndex));
+      const img = current && (current.avatarImage || current.avatarUrl);
+      return !img || String(img).startsWith('cloud://') || String(img).startsWith('/assets/');
+    });
+    if (!stillBroken) return;
+    this._cloudAvatarResolving = true;
+    prepareMembersForDisplay(list)
+      .then((prepared) => {
+        this._cloudAvatarResolving = false;
+        if (this._pageVisible === false) return;
+        if (!prepared || !prepared.length) return;
+        const members = preserveMemberAvatars(prepared, this.data.members);
+        const fp = members
+          .map((m) => `${m.userId || m.playerIndex}:${getMemberAvatarFingerprint(m)}`)
+          .join('|');
+        if (fp && fp === this._avatarOnlyFingerprint) return;
+        this._avatarOnlyFingerprint = fp;
+        const roomPhase = this.data.gamepagePhase;
+        const avatarList = isClosingPhase(roomPhase)
+          ? buildPartnerAvatarList(members, this.data.closingQuestionPlayers)
+          : buildPartnerAvatarList(members);
+        this.setData({ members, avatarList });
+      })
+      .catch(() => {
+        this._cloudAvatarResolving = false;
+      });
+  },
+
   _applyRoomContext(result, options = {}) {
     // 滑动/打分交互中勿整页 setData 改写 controlled swiper，否则会顶飞手势并左右晃动
     if ((this._cardSwipeBusy || this._scoreUiBusy) && !options.force && !options.resetTurnUi) {
@@ -1552,7 +1635,14 @@ Page({
       };
     }
 
-    const members = assignAvatarImages(result.members || this.data.members || []);
+    const members = preserveMemberAvatars(
+      assignAvatarImages(result.members || this.data.members || []),
+      this.data.members
+    );
+    this._avatarOnlyFingerprint = members
+      .map((m) => `${m.userId || m.playerIndex}:${getMemberAvatarFingerprint(m)}`)
+      .join('|');
+    this._refreshCloudAvatarsIfNeeded(result.members || members, members);
     const roomState = result.roomState || {};
     const player = resolveCurrentPlayerFromRoom(
       members,
@@ -2347,6 +2437,8 @@ Page({
       emitCurrent: false,
       followNavigation: !this.data.isHistoryReview,
       beforeNavigate(pollResult, page) {
+        // 已离开本页（灵感空间等叠层）：不要把隐藏页的跟随订阅打回 gamepage
+        if (this._pageVisible === false) return true;
         const state = pollResult.roomState || {};
         if (page === 'closingstatement') {
           safeOpenUrl(buildClosingStatementUrl(roomId, {
@@ -2557,24 +2649,50 @@ Page({
     wx.showToast({ title: '请点击头像查看该玩家纪要', icon: 'none' });
   },
 
+  _resolveCardIndexAfterClearFilter() {
+    const {
+      cardIndex,
+      displayRoundSummaries,
+      showCurrentActionCard,
+      roundSummaries,
+      members
+    } = this.data;
+    const filteredSummaries = displayRoundSummaries || [];
+    const fullSummaries = buildDisplaySummaries(
+      roundSummaries,
+      members,
+      null,
+      false
+    );
+    const onActionCard = !!showCurrentActionCard && cardIndex >= filteredSummaries.length;
+    if (onActionCard) {
+      return fullSummaries.length;
+    }
+    const current = filteredSummaries[cardIndex];
+    if (!current || current.round == null) {
+      return fullSummaries.length;
+    }
+    const idx = fullSummaries.findIndex(
+      (item) => item && parseInt(item.round, 10) === parseInt(current.round, 10)
+    );
+    return idx >= 0 ? idx : fullSummaries.length;
+  },
+
   _clearPlayerAvatarFilter() {
     const {
       members,
       roundSummaries,
-      currentPlayerIndex,
-      cardIndexBeforeFilter
+      currentPlayerIndex
     } = this.data;
+    const preferredCardIndex = this._resolveCardIndexAfterClearFilter();
     this._playerFilterIndex = null;
-    const restoredIndex = cardIndexBeforeFilter != null
-      ? cardIndexBeforeFilter
-      : (roundSummaries || []).length;
     const cardState = this._buildDisplayCardState({
       roundSummaries,
       members,
       filteredPlayerIndex: null,
       isPlayerFilterActive: false,
       currentPlayerIndex,
-      preferredCardIndex: restoredIndex
+      preferredCardIndex
     });
     this.setData({
       filteredPlayerIndex: null,
@@ -3253,6 +3371,12 @@ Page({
     this._setScoreSheetExpanded(!this.data.scorePanelExpanded, { animate: true });
   },
 
+  onScoreSheetBackdropTap() {
+    if (!this.data.scorePanelExpanded) return;
+    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
+    this._setScoreSheetExpanded(false, { animate: true });
+  },
+
   onScoreSheetTouchStart(e) {
     const t = e.touches && e.touches[0];
     if (!t) return;
@@ -3622,6 +3746,7 @@ Page({
       expressHasText: false,
       expressChatAnchor: this.data.expressChatList.length ? 'express-chat-bottom' : ''
     });
+    this._clearExpressChatAnchorSoon();
   },
 
   closeExpressChatPanel() {
@@ -3656,8 +3781,8 @@ Page({
     }
   },
 
-  onExpressFormSubmit(e) {
-    this.onExpressSendTap(e);
+  onExpressFormSubmit() {
+    // 键盘「完成」只收起输入法；发送走右侧按钮
   },
 
   onExpressSendTap(e) {
@@ -3920,6 +4045,9 @@ Page({
       }
     }
     this.setData(patch);
+    if (patch.expressChatAnchor || patch.discussionExpressChatAnchor) {
+      this._clearExpressChatAnchorSoon();
+    }
   },
 
   _showExpressMessage(msg) {
@@ -4018,7 +4146,7 @@ Page({
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     const url = buildSpecialMoveUrl(roomId, currentPlayerIndex);
-    const opened = openPartnerPage(url);
+    const opened = safeOpenUrl(url, { preferNavigate: true, immediate: true });
     if (!opened) {
       wx.navigateTo({
         url,
@@ -4335,17 +4463,29 @@ Page({
 
   _measureInspirationFooterClearance() {
     // 只缓存高度，禁止 setData，避免进页闪一下
-    setTimeout(() => {
+    const run = () => {
       wx.createSelectorQuery()
         .in(this)
-        .select('.page-footer')
+        .select('.inspiration-bar')
         .boundingClientRect((rect) => {
-          this._inspirationFooterClearancePx = rect && rect.height
-            ? Math.ceil(rect.height)
+          if (!rect) {
+            this._inspirationFooterClearancePx = 0;
+            return;
+          }
+          let windowHeight = 0;
+          try {
+            windowHeight = (wx.getSystemInfoSync() || {}).windowHeight || 0;
+          } catch (e) {
+            windowHeight = 0;
+          }
+          this._inspirationFooterClearancePx = windowHeight
+            ? Math.max(0, Math.ceil(windowHeight - rect.bottom))
             : 0;
         })
         .exec();
-    }, 64);
+    };
+    if (typeof wx.nextTick === 'function') wx.nextTick(run);
+    else setTimeout(run, 64);
   },
 
   _buildInspirationLiftStyle(keyboardHeight) {
@@ -4365,8 +4505,12 @@ Page({
         'box-sizing:border-box'
       ].join(';');
     }
-    // 正常对局仍走系统 adjust-position + 隐藏底栏
-    return '';
+    // 正常对局：按「键盘高 − 灵感栏距窗底空隙」上移，底栏留在键盘下，避免 adjust-position 把空隙顶出来
+    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
+    const dy = Math.max(0, h - footer);
+    return dy > 0
+      ? `transform:translateY(-${dy}px);background:#fafafa`
+      : '';
   },
 
   _resetInspirationKeyboardUi() {
@@ -4403,6 +4547,7 @@ Page({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
+    this._measureInspirationFooterClearance();
     // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
     if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
     this._inspirationFocusUiTimer = setTimeout(() => {
@@ -4609,6 +4754,9 @@ Page({
   },
 
   handleGoInspirationCenter() {
+    // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
+    this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
     const roomId = this.data.roomId || '';
     const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
     // scope=workshop：列出本人在本房间的全部灵感（与灯泡角标一致）
@@ -4616,7 +4764,23 @@ Page({
     if (roomId) {
       url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
     }
-    wx.navigateTo({ url });
+    const opened = openPartnerPage(url);
+    if (!opened) {
+      wx.navigateTo({
+        url,
+        fail: (err) => {
+          console.warn('navigateTo inspiration fail', err);
+          wx.redirectTo({
+            url,
+            fail: (err2) => {
+              console.warn('redirectTo inspiration fail', err2);
+              this._startStatePolling();
+              wx.showToast({ title: '打开灵感空间失败', icon: 'none' });
+            }
+          });
+        }
+      });
+    }
   },
 
   async handleClosingNextStep() {

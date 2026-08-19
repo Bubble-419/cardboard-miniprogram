@@ -5,6 +5,7 @@ cloud.init({
 });
 
 const db = cloud.database();
+const _ = db.command;
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
@@ -64,6 +65,15 @@ function allocateSeatNo(members) {
   return null;
 }
 
+function collectCallerUserIds(wxContext) {
+  const ids = [];
+  const fromOpenid = wxContext && wxContext.FROM_OPENID;
+  const openid = wxContext && wxContext.OPENID;
+  if (fromOpenid) ids.push(String(fromOpenid));
+  if (openid && ids.indexOf(String(openid)) === -1) ids.push(String(openid));
+  return ids;
+}
+
 exports.main = async (event, context) => {
   const { roomId, avatarUrl, nickName: clientNickName } = event || {};
   const normalizedAvatarUrl = normalizeShareableAvatarUrl(avatarUrl);
@@ -80,16 +90,20 @@ exports.main = async (event, context) => {
   }
 
   const wxContext = cloud.getWXContext();
-  const currentUserId = wxContext.FROM_OPENID || wxContext.OPENID;
+  const callerIds = collectCallerUserIds(wxContext);
+  const currentUserId = callerIds[0];
   if (!currentUserId) {
     return { ok: false, errCode: 'NO_OPENID', errMsg: '未登录' };
   }
 
   try {
-    // 幂等：已在房间则只刷新资料，不占新席位
+    // 幂等：已在房间则只刷新资料，不占新席位（兼容 FROM_OPENID / OPENID）
     const existing = await db
       .collection(ROOM_MEMBERS_COLLECTION)
-      .where({ roomId, userId: currentUserId })
+      .where({
+        roomId,
+        userId: callerIds.length > 1 ? _.in(callerIds) : currentUserId
+      })
       .limit(1)
       .get();
 
@@ -134,7 +148,10 @@ exports.main = async (event, context) => {
 
       const again = await transaction
         .collection(ROOM_MEMBERS_COLLECTION)
-        .where({ roomId, userId: currentUserId })
+        .where({
+          roomId,
+          userId: callerIds.length > 1 ? _.in(callerIds) : currentUserId
+        })
         .limit(1)
         .get();
       if (again.data && again.data.length > 0) {
