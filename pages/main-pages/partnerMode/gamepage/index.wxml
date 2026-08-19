@@ -603,7 +603,6 @@
                     <input
                       class="spectator-express-input"
                       name="expressText"
-                      value="{{expressDraftText}}"
                       maxlength="40"
                       confirm-type="send"
                       hold-keyboard="{{true}}"
@@ -617,18 +616,16 @@
                       bindconfirm="submitExpress"
                       bindblur="onExpressComposerBlur"
                     />
-                    <button
+                    <view
                       class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
-                      form-type="submit"
-                      hover-class="none"
-                      disabled="{{expressSending}}"
+                      catchtap="onExpressSendTap"
                     >
                       <image
                         class="spectator-express-send-icon"
                         src="/assets/partnerMode/icon-express-send.png"
                         mode="aspectFit"
                       />
-                    </button>
+                    </view>
                   </view>
                 </form>
                 <view
@@ -771,7 +768,10 @@
                 </scroll-view>
 
                 <view class="spectator-bottom-stack">
-                  <view class="spectator-express-slot">
+                  <view
+                    class="spectator-express-slot {{scoreSheetAnimating ? 'spectator-express-slot-animating' : ''}}"
+                    style="bottom: {{scoreSheetVisiblePx}}px;"
+                  >
                     <form
                       wx:if="{{expressComposerOpen}}"
                       class="spectator-express-form"
@@ -781,7 +781,6 @@
                         <input
                           class="spectator-express-input"
                           name="expressText"
-                          value="{{expressDraftText}}"
                           maxlength="40"
                           confirm-type="send"
                           hold-keyboard="{{true}}"
@@ -795,18 +794,16 @@
                           bindconfirm="submitExpress"
                           bindblur="onExpressComposerBlur"
                         />
-                        <button
+                        <view
                           class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
-                          form-type="submit"
-                          hover-class="none"
-                          disabled="{{expressSending}}"
+                          catchtap="onExpressSendTap"
                         >
                           <image
                             class="spectator-express-send-icon"
                             src="/assets/partnerMode/icon-express-send.png"
                             mode="aspectFit"
                           />
-                        </button>
+                        </view>
                       </view>
                     </form>
                     <view

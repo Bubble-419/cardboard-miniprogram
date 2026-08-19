@@ -145,7 +145,9 @@ function shouldSkipStaleBackwardRedirect(targetPage) {
   const currentPage = getPageKeyForCurrentRoute();
   const target = (targetPage || '').toLowerCase();
   const staleTargetsByCurrent = {
-    creativesummary: ['creativeinput', 'gamepage', 'playsuccess', 'playfail']
+    creativesummary: ['creativeinput', 'gamepage', 'playsuccess', 'playfail'],
+    // 非房主已进入选择设计问题后，忽略滞后的 submit/confirm 回写，避免来回 redirect 闪屏
+    selectproblem: ['submitproblem', 'confirmbg', 'selectbg', 'auth', 'addplayer', 'brainstormmode']
   };
   const staleTargets = staleTargetsByCurrent[currentPage];
   return Array.isArray(staleTargets) && staleTargets.includes(target);

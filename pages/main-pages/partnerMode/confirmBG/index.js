@@ -55,6 +55,7 @@ Page({
       passedProblemText = (options && options.problemText) || '';
     }
     this._passedProblemText = String(passedProblemText || '').trim();
+    this._fromGameView = fromGameView;
     this._fromSource = from || (fromGameView ? 'game' : '');
 
     if (roomId) {
@@ -152,6 +153,7 @@ Page({
   },
 
   async _initPage(roomId) {
+    const fromGameView = this._fromGameView === true;
     let bg = getApp().globalData.selectedBG;
     let roomResult = null;
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
@@ -160,14 +162,14 @@ Page({
       if (bg) {
         getApp().globalData.selectedBG = bg;
       }
-    } else if (this.data.fromGameView) {
+    } else if (fromGameView) {
       roomResult = await this._fetchRoomFull(roomId);
     }
 
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
       wx.showToast({ title: '请先选择情境', icon: 'none' });
       setTimeout(() => {
-        if (this.data.fromGameView) {
+        if (fromGameView) {
           this.handleReturnToGame();
           return;
         }
@@ -209,11 +211,11 @@ Page({
       cards,
       categories,
       fullProblemText,
-      canConfirm: this.data.fromGameView ? false : canConfirm,
+      canConfirm: fromGameView ? false : canConfirm,
       isWaiting: false
     });
 
-    if (this.data.fromGameView) {
+    if (fromGameView) {
       if (!roomResult) this._syncAvatarList();
       return;
     }
@@ -241,11 +243,16 @@ Page({
     return (result && result.selectedBG) || null;
   },
 
+  onHide() {
+    this._stopStatePolling();
+  },
+
   onUnload() {
     this._stopStatePolling();
   },
 
   async _fetchHostStatus() {
+    if (this._fromGameView) return;
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
       this.setData({ isHost: true });
@@ -289,6 +296,7 @@ Page({
   },
 
   _startStatePolling() {
+    if (this._fromGameView) return;
     this._stopStatePolling();
     const poll = async () => {
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
@@ -308,9 +316,7 @@ Page({
               return true;
             }
             if (page === 'selectproblem') {
-              wx.redirectTo({
-                url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`
-              });
+              safeOpenUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`);
               return true;
             }
             return false;

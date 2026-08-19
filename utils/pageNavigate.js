@@ -45,6 +45,23 @@ function getCurrentRoute() {
   return pages[pages.length - 1].route || '';
 }
 
+/** 回看案例 / 只读情境等叠层页：跟随跳转不得拆掉当前页 */
+const FLOW_OVERLAY_ROUTES = new Set([
+  'pages/main-pages/case/index'
+]);
+
+function isFlowOverlayRoute() {
+  const pages = getCurrentPages();
+  const current = pages[pages.length - 1];
+  if (!current) return false;
+  const route = current.route || '';
+  if (FLOW_OVERLAY_ROUTES.has(route)) return true;
+  if (route === 'pages/main-pages/partnerMode/confirmBG/index') {
+    return !!(current._fromGameView || (current.data && current.data.fromGameView));
+  }
+  return false;
+}
+
 function normalizeRoute(url) {
   return (url || '').replace(/^\//, '').split('?')[0];
 }
@@ -82,7 +99,7 @@ function _releaseNav() {
   _nav.pendingUrl = '';
   if (pending) {
     const route = normalizeRoute(pending);
-    if (route !== getCurrentRoute()) {
+    if (route !== getCurrentRoute() && !isFlowOverlayRoute()) {
       _nav.timer = setTimeout(() => openUrl(pending, { _fromQueue: true }), 80);
     }
   }
@@ -103,6 +120,11 @@ function openUrl(url, options = {}) {
   const currentRoute = getCurrentRoute();
 
   if (targetRoute === currentRoute) {
+    return false;
+  }
+
+  // 正在回看案例/情境：禁止跟随把用户拉回 submit/select 等主流程
+  if (!options.allowOverlayLeave && isFlowOverlayRoute()) {
     return false;
   }
 
@@ -284,6 +306,7 @@ module.exports = {
   getPrevRoute,
   normalizeRoute,
   isRouteRegistered,
+  isFlowOverlayRoute,
   openUrl,
   safeOpenUrl,
   openPartnerPage,

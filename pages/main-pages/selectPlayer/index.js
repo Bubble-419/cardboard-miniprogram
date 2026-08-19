@@ -409,7 +409,7 @@ Page({
     const { selectedPlayerIndex, roomId } = this.data;
     if (selectedPlayerIndex == null) return;
     if (this._isPartnerMode()) {
-      this.navigateToConfirmFirstPlayer(roomId, selectedPlayerIndex);
+      this.navigateToConfirmFirstPlayer(roomId);
     } else {
       this.navigateToGamepage(roomId, selectedPlayerIndex);
     }
@@ -433,7 +433,7 @@ Page({
     });
   },
 
-  async navigateToConfirmFirstPlayer(roomId, currentPlayerIndex) {
+  async navigateToConfirmFirstPlayer(roomId) {
     if (!roomId) {
       roomId = getApp().globalData.roomId || '';
     }
@@ -443,17 +443,9 @@ Page({
     }
     if (this._navPending) return;
     this._navPending = true;
-    const members = this.data.members || [];
-    const current = members.find((m) => m.playerIndex === currentPlayerIndex);
-    const currentPlayerName = current
-      ? (current.nickName || `玩家${currentPlayerIndex}`)
-      : `玩家${currentPlayerIndex}`;
-    getApp().globalData.selectedPlayer = {
-      currentPlayerIndex,
-      currentPlayerName
-    };
+    getApp().globalData.selectedPlayer = {};
     try {
-      const ok = await this._updateRoomState('confirmFirstPlayer', currentPlayerIndex, currentPlayerName);
+      const ok = await this._updateRoomState('confirmFirstPlayer');
       if (!ok) {
         wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
         return;

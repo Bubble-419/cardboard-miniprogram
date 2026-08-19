@@ -1,5 +1,5 @@
 const { navigateByRoomState } = require('./subAwaitRoutes');
-const { getCurrentRoute, openUrl } = require('./pageNavigate');
+const { getCurrentRoute, openUrl, isFlowOverlayRoute } = require('./pageNavigate');
 const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
 const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
 const {
@@ -64,6 +64,11 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   // 成员变更 / 只剩 1 人回退房间：房主与成员均处理（幂等）
   if (handleRoomLastEvent(result, id, options)) {
     return true;
+  }
+
+  // 回看案例/只读情境：不跟随主流程，避免从叠层页被拉回 submit/select
+  if (isFlowOverlayRoute()) {
+    return false;
   }
 
   const page = (result.roomState.currentPage || 'addplayer').toLowerCase();

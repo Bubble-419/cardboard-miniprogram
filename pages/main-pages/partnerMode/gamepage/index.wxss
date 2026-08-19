@@ -624,10 +624,27 @@
 }
 
 .spectator-express-slot {
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 6;
   width: 100%;
   padding: 0 44rpx 16rpx;
   box-sizing: border-box;
+  pointer-events: none;
+  transition: none;
+}
+
+.spectator-express-slot-animating {
+  transition: bottom 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.spectator-express-slot .spectator-express-form,
+.spectator-express-slot .spectator-express-composer,
+.spectator-express-slot .spectator-express-send-btn,
+.spectator-express-slot .spectator-express-fab-row,
+.spectator-express-slot .spectator-express-fab {
+  pointer-events: auto;
 }
 
 .spectator-express-fab-row {

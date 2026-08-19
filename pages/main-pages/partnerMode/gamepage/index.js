@@ -3524,13 +3524,31 @@ Page({
       return;
     }
     this._expressDraftText = '';
-    this._expressComposerIgnoreBlurUntil = Date.now() + 600;
+    this._expressComposerIgnoreBlurUntil = Date.now() + 1200;
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
+    }
     this.setData({
       expressComposerOpen: true,
-      expressComposerNeedFocus: true,
+      expressComposerNeedFocus: false,
       expressDraftText: '',
       expressHasText: false
     });
+    // 等 input 挂载后再拉键盘；同一拍 wx:if + focus=true 在真机上经常立刻失焦
+    const focusLater = () => {
+      this._expressFocusTimer = null;
+      if (!this.data.expressComposerOpen) return;
+      this._expressComposerIgnoreBlurUntil = Date.now() + 800;
+      this.setData({ expressComposerNeedFocus: true });
+    };
+    if (typeof wx.nextTick === 'function') {
+      wx.nextTick(() => {
+        this._expressFocusTimer = setTimeout(focusLater, 64);
+      });
+    } else {
+      this._expressFocusTimer = setTimeout(focusLater, 80);
+    }
   },
 
   closeExpressComposer() {
@@ -3538,6 +3556,10 @@ Page({
     if (this._expressBlurTimer) {
       clearTimeout(this._expressBlurTimer);
       this._expressBlurTimer = null;
+    }
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
     }
     this._expressDraftText = '';
     this.setData({
@@ -3551,9 +3573,7 @@ Page({
 
   onExpressComposerFocus() {
     this._expressComposerIgnoreBlurUntil = Date.now() + 400;
-    if (this.data.expressComposerNeedFocus) {
-      this.setData({ expressComposerNeedFocus: false });
-    }
+    // 聚焦中禁止立刻 setData(focus=false)，真机会把输入法打掉
   },
 
   onExpressComposerBlur() {
@@ -3564,7 +3584,8 @@ Page({
       this._expressBlurTimer = null;
       if (this.data.expressSending) return;
       if (Date.now() < (this._expressComposerIgnoreBlurUntil || 0)) return;
-      if ((this.data.expressDraftText || '').trim()) return;
+      const draft = (this._expressDraftText || this.data.expressDraftText || '').trim();
+      if (draft) return;
       this.closeExpressComposer();
     }, 200);
   },
@@ -3628,13 +3649,18 @@ Page({
   onExpressInput(e) {
     const text = (e.detail && e.detail.value) || '';
     this._expressDraftText = text;
-    this.setData({
-      expressDraftText: text,
-      expressHasText: !!text.trim()
-    });
+    const hasText = !!text.trim();
+    // 输入中尽量少 setData，避免受控 value + focus 重绘把键盘顶掉
+    if (hasText !== this.data.expressHasText) {
+      this.setData({ expressHasText: hasText });
+    }
   },
 
   onExpressFormSubmit(e) {
+    this.onExpressSendTap(e);
+  },
+
+  onExpressSendTap(e) {
     if (this._expressSubmitLock || this.data.expressSending) return;
     this._expressComposerIgnoreBlurUntil = Date.now() + 800;
     if (this._expressBlurTimer) {

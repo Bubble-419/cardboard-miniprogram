@@ -36,6 +36,14 @@
       },
       {
         "type": "folder",
+        "value": "node_modules"
+      },
+      {
+        "type": "folder",
+        "value": ".pnpm-store"
+      },
+      {
+        "type": "folder",
         "value": "tests"
       },
       {
@@ -55,8 +63,24 @@
         "value": ".vscode"
       },
       {
+        "type": "folder",
+        "value": "packages/room-domain"
+      },
+      {
+        "type": "folder",
+        "value": "packages/room-application"
+      },
+      {
+        "type": "folder",
+        "value": "packages/room-cloudbase-adapter"
+      },
+      {
         "type": "suffix",
         "value": ".md"
+      },
+      {
+        "type": "suffix",
+        "value": ".docx"
       },
       {
         "type": "glob",

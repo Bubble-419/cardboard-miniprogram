@@ -35,16 +35,12 @@ Page({
       getApp().globalData.roomId = roomId;
     }
 
-    const sp = getApp().globalData.selectedPlayer || {};
-    const preIndex = sp.currentPlayerIndex != null ? sp.currentPlayerIndex : null;
-    const preName = sp.currentPlayerName || '';
-
     this.setData({
       roomId,
       isWaiting: !!isWaiting,
-      selectedPlayerIndex: preIndex,
-      selectedPlayerName: preName,
-      canConfirm: preIndex != null
+      selectedPlayerIndex: null,
+      selectedPlayerName: '',
+      canConfirm: false
     });
 
     if (isWaiting) {
@@ -125,32 +121,11 @@ Page({
       const memberCount = result.memberCount != null ? result.memberCount : deduped.length;
       const workshopName = result.workshopName || '';
 
-      let { selectedPlayerIndex, selectedPlayerName, canConfirm } = this.data;
-      if (selectedPlayerIndex == null && result.roomState) {
-        const idx = result.roomState.currentPlayerIndex;
-        if (idx != null) {
-          selectedPlayerIndex = idx;
-          const found = deduped.find((m) => m.playerIndex === idx);
-          selectedPlayerName = found
-            ? (found.nickName || `玩家${idx}`)
-            : (result.roomState.currentPlayerName || `玩家${idx}`);
-          canConfirm = true;
-        }
-      } else if (selectedPlayerIndex != null && !selectedPlayerName) {
-        const found = deduped.find((m) => m.playerIndex === selectedPlayerIndex);
-        if (found) {
-          selectedPlayerName = found.nickName || `玩家${selectedPlayerIndex}`;
-        }
-      }
-
       this.setData({
         members,
         memberSlots,
         memberCount,
-        workshopName,
-        selectedPlayerIndex,
-        selectedPlayerName,
-        canConfirm: selectedPlayerIndex != null
+        workshopName
       });
     } catch (e) {
       console.warn('loadRoomData', e);

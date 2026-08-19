@@ -5,11 +5,22 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState, isAwaitPage } = require('../../../utils/subAwaitRoutes');
+const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+
+/** 已在选择设计问题页时，这些滞后 currentPage 不应把成员拉走 */
+const SELECT_PROBLEM_STALE_PAGES = {
+  selectproblem: true,
+  submitproblem: true,
+  confirmbg: true,
+  selectbg: true,
+  auth: true,
+  addplayer: true,
+  brainstormmode: true
+};
 
 Page({
   data: {
@@ -33,6 +44,7 @@ Page({
 
   onLoad(options) {
     this._pageAlive = true;
+    this._pageVisible = true;
     let screenHeight = 750;
     try {
       const sys = wx.getSystemInfoSync();
@@ -51,6 +63,7 @@ Page({
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
       if (!this._pageAlive) return;
+      this._initialized = true;
       this.loadSubmittedProblems();
       this._measureHeaderHeight();
     });
@@ -80,7 +93,8 @@ Page({
   },
 
   onShow() {
-    if (!this._pageAlive) return;
+    this._pageVisible = true;
+    if (!this._pageAlive || !this._initialized) return;
     if (this.data.roomId) {
       this.loadRoomData().then(() => {
         if (!this._pageAlive) return;
@@ -89,6 +103,15 @@ Page({
     } else {
       this.loadSubmittedProblems();
     }
+  },
+
+  onHide() {
+    this._pageVisible = false;
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
+      this.problemCheckTimer = null;
+    }
+    this._stopStatePolling();
   },
 
   onUnload() {
@@ -157,16 +180,28 @@ Page({
         this._stopStatePolling();
         this.startProblemCheck();
       } else {
-        const page = roomState.currentPage || 'selectProblem';
-        followSubScreenRoomPoll(result, roomId);
-        if (isAwaitPage((page || '').toLowerCase())) {
+        const page = (roomState.currentPage || 'selectProblem').toLowerCase();
+        this._followRoomOrStay(result, roomId);
+        if (isAwaitPage(page)) {
           return;
         }
+        if (this._pageVisible === false) return;
         this._startStatePolling();
       }
     } catch (e) {
       console.warn('loadRoomData', e);
     }
+  },
+
+  /** 非房主跟随：只前进（抽首位/进游戏），不因滞后 currentPage 回跳 */
+  _followRoomOrStay(result, roomId) {
+    followSubScreenRoomPoll(result, roomId, {
+      beforeNavigate: (pollResult, page) => {
+        // 模式已退出：交给后续逻辑拉回大厅，不要吞掉
+        if (pollResult && pollResult.hasSelectedMode !== true) return false;
+        return SELECT_PROBLEM_STALE_PAGES[page] === true;
+      }
+    });
   },
 
   async _updateRoomState(currentPage) {
@@ -185,7 +220,7 @@ Page({
   _startStatePolling() {
     this._stopStatePolling();
     const poll = async () => {
-      if (!this._pageAlive) return;
+      if (!this._pageAlive || this._pageVisible === false) return;
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
       if (!roomId) return;
       try {
@@ -193,20 +228,20 @@ Page({
           name: 'getAddPlayerData',
           data: { roomId }
         });
-        if (!this._pageAlive) return;
+        if (!this._pageAlive || this._pageVisible === false) return;
         const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId);
+        this._followRoomOrStay(result, roomId);
         const roomState = result.roomState || {};
         const remoteId = roomState.editingProblemId || '';
         const prevRemoteId = this.data.remoteEditingProblemId || '';
         if (remoteId !== prevRemoteId) {
           this.setData({ remoteEditingProblemId: remoteId });
+          // 房主退出编辑后再拉列表，拿到保存后的最终文案
+          if (!remoteId) {
+            this.loadSubmittedProblems();
+          }
         }
-        // 房主编辑中：只同步「编辑中」标记，不刷新正文（无需实时同步修改内容）
-        // 退出编辑后再拉列表，拿到保存后的最终文案
-        if (!remoteId) {
-          this.loadSubmittedProblems();
-        }
+        // 编辑中：只同步「编辑中」标记，不刷新正文（无需实时同步修改内容）
       } catch (e) {
         if (this._pageAlive) {
           console.warn('selectProblem state poll', e);
@@ -530,8 +565,25 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    this._pageVisible = false;
+    this._stopStatePolling();
+    if (this.problemCheckTimer) {
+      clearInterval(this.problemCheckTimer);
+      this.problemCheckTimer = null;
+    }
+    clearPendingNavigation();
     wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`
+      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`,
+      fail: (err) => {
+        console.warn('selectProblem viewContext', err);
+        this._pageVisible = true;
+        if (this.data.isHost) {
+          this.startProblemCheck();
+        } else {
+          this._startStatePolling();
+        }
+        wx.showToast({ title: '打开失败', icon: 'none' });
+      }
     });
   }
 });

@@ -11,7 +11,7 @@ const {
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { getCurrentRoute, openUrl, safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
 
 Page({
   data: {
@@ -33,6 +33,8 @@ Page({
   },
 
   onLoad(options) {
+    this._pageAlive = true;
+    this._pageVisible = true;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
@@ -44,6 +46,7 @@ Page({
     this.setData({ roomId });
     this._syncCategoriesFromBG(normalizeBG(getApp().globalData.selectedBG));
     this.loadRoomData().then(() => {
+      if (!this._pageAlive) return;
       this.refreshSubmitStatus();
       this._startPolling();
       this._initialized = true;
@@ -51,16 +54,22 @@ Page({
   },
 
   onShow() {
-    if (this._initialized) {
-      this.loadRoomData().then(() => {
-        if (!this._inputFocused) {
-          this.refreshSubmitStatus();
-        }
-      });
-    }
+    this._pageVisible = true;
+    if (!this._pageAlive || !this._initialized) return;
+    this.loadRoomData().then(() => {
+      if (!this._pageAlive || this._inputFocused) return;
+      this.refreshSubmitStatus();
+    });
+    this._startPolling();
+  },
+
+  onHide() {
+    this._pageVisible = false;
+    this._stopPolling();
   },
 
   onUnload() {
+    this._pageAlive = false;
     this._stopPolling();
     if (this._inputBlurTimer) {
       clearTimeout(this._inputBlurTimer);
@@ -133,7 +142,7 @@ Page({
         patch.problemText = status.myProblemText || '';
       }
       this.setData(patch);
-      if (status.allSubmitted) {
+      if (status.allSubmitted && this._pageVisible !== false) {
         this._goSelectProblem();
       }
     } catch (e) {
@@ -144,9 +153,11 @@ Page({
   _startPolling() {
     this._stopPolling();
     const poll = async () => {
+      if (!this._pageAlive || this._pageVisible === false) return;
       if (this.data.myPlayerIndex != null && !this._inputFocused && !this.data.isSubmitting) {
         await this.refreshSubmitStatus();
       }
+      if (!this._pageAlive || this._pageVisible === false) return;
       const roomId = this.data.roomId;
       if (!roomId) return;
       try {
@@ -154,6 +165,7 @@ Page({
           name: 'getAddPlayerData',
           data: { roomId }
         });
+        if (!this._pageAlive) return;
         const result = (res && res.result) || {};
 
         const roomBG = normalizeBG(result.selectedBG)
@@ -164,7 +176,7 @@ Page({
 
         this._syncMembersFromResult(result);
         followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
+          beforeNavigate: (_pollResult, page) => {
             if (page === 'selectproblem') {
               this._goSelectProblem();
               return true;
@@ -173,7 +185,9 @@ Page({
           }
         });
       } catch (e) {
-        console.warn('submitProblem poll', e);
+        if (this._pageAlive) {
+          console.warn('submitProblem poll', e);
+        }
       }
     };
     poll();
@@ -188,15 +202,15 @@ Page({
   },
 
   _goSelectProblem() {
-    if (this._navigating) return;
+    if (this._navigating || !this._pageAlive || this._pageVisible === false) return;
+    if (getCurrentRoute() === 'pages/main-pages/selectProblem/index') {
+      this._stopPolling();
+      return;
+    }
     this._navigating = true;
+    this._stopPolling();
     const roomIdEnc = encodeURIComponent(this.data.roomId);
-    wx.redirectTo({
-      url: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
-      complete: () => {
-        this._navigating = false;
-      }
-    });
+    openUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`);
   },
 
   async _updateRoomState(currentPage) {
@@ -214,6 +228,7 @@ Page({
 
   handleOpenCase() {
     // 从“设计问题示例”跳转到案例页（展示四维度与多条设计问题）
+    this._pauseFollowForOverlay();
     const roomIdEnc = this.data.roomId ? encodeURIComponent(this.data.roomId) : '';
     wx.navigateTo({
       url: roomIdEnc
@@ -222,6 +237,8 @@ Page({
       ,
       fail: (err) => {
         console.warn('navigateTo case page fail', err);
+        this._pageVisible = true;
+        this._startPolling();
         wx.showToast({ title: '打开案例页失败', icon: 'none' });
       }
     });
@@ -242,6 +259,13 @@ Page({
     goRoomPage(this.data.roomId);
   },
 
+  /** 打开回看叠层前先停跟随，避免在途轮询把用户拉回主流程 */
+  _pauseFollowForOverlay() {
+    this._pageVisible = false;
+    this._stopPolling();
+    clearPendingNavigation();
+  },
+
   /** 点击情境格：只读回看确认情境页，不推进房间状态 */
   handleViewContext() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
@@ -249,10 +273,13 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    this._pauseFollowForOverlay();
     wx.navigateTo({
       url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=submit`,
       fail: (err) => {
         console.warn('submitProblem viewContext', err);
+        this._pageVisible = true;
+        this._startPolling();
         wx.showToast({ title: '打开失败', icon: 'none' });
       }
     });
