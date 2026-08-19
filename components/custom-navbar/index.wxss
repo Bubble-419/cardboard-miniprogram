@@ -7,21 +7,19 @@
 
 .navbar-content {
   position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
   width: 100%;
   box-sizing: border-box;
 }
 
 .navbar-back {
-  height: 100%;
+  position: absolute;
+  left: 8rpx;
+  top: 0;
+  bottom: 0;
+  width: 72rpx;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  padding-left: 16rpx;
-  box-sizing: border-box;
-  flex-shrink: 0;
+  justify-content: center;
   z-index: 2;
 }
 
@@ -35,21 +33,26 @@
   display: block;
 }
 
-.navbar-center {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
+.navbar-title-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .navbar-title-wrap {
   position: relative;
-  max-width: 100%;
+  max-width: 70%;
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
 }
 
 .navbar-title {
@@ -57,7 +60,6 @@
   font-weight: 700;
   color: #111827;
   line-height: 1;
-  max-width: 360rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -71,12 +73,4 @@
   height: 32rpx;
   margin-left: 10rpx;
   transform: translateY(-50%);
-  flex-shrink: 0;
-}
-
-.navbar-right {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
 }

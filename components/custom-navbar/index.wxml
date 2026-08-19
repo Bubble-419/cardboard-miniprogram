@@ -1,12 +1,11 @@
 <view
   class="custom-navbar {{extClass}}"
-  style="padding-top: {{padTop}}px; padding-right: {{padRightPx}}px; height: {{barHeight}}px; background-color: {{background}};"
+  style="padding-top: {{padTop}}px; height: {{barHeight}}px; background-color: {{background}};"
 >
   <view class="navbar-content" style="height: {{barHeight}}px;">
     <view
       wx:if="{{showBack}}"
       class="navbar-back"
-      style="width: {{capsuleWidth}}px;"
       hover-class="navbar-back-hover"
       hover-stay-time="80"
       catchtap="onBack"
@@ -17,12 +16,9 @@
         mode="aspectFit"
       />
     </view>
-    <view class="navbar-center">
+    <view class="navbar-title-layer">
       <slot name="center">
-        <view
-          class="navbar-title-wrap"
-          catchtap="onEdit"
-        >
+        <view class="navbar-title-wrap" catchtap="onEdit">
           <text class="navbar-title">{{title}}</text>
           <image
             wx:if="{{showEdit}}"
@@ -32,9 +28,6 @@
           />
         </view>
       </slot>
-    </view>
-    <view class="navbar-right" style="width: {{capsuleWidth}}px; height: {{barHeight}}px;">
-      <slot name="right"></slot>
     </view>
   </view>
 </view>

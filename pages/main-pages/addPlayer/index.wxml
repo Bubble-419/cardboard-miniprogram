@@ -225,11 +225,11 @@
         class="exit-outline-btn"
         catchtap="onTapExitText"
       >{{exitTextLabel}}</view>
-      <text
+      <view
         wx:elif="{{showExitText}}"
         class="exit-text-btn {{exitTextDanger ? 'exit-text-btn-danger' : ''}}"
         catchtap="onTapExitText"
-      >{{exitTextLabel}}</text>
+      >{{exitTextLabel}}</view>
     </view>
   </view>
 </view>

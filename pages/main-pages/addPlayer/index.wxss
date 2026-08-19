@@ -1009,10 +1009,13 @@
 }
 
 .exit-text-btn {
+  width: 100%;
   font-size: 26rpx;
   color: #9ca3af;
   line-height: 1.4;
   padding: 4rpx 16rpx;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .exit-text-btn-danger {
