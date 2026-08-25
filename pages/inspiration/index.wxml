@@ -88,7 +88,7 @@
     class="inspiration-bar {{inspirationInputFocused ? 'inspiration-bar-focused' : ''}}"
     style="{{inspirationLiftStyle}}"
   >
-    <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}">
+    <view class="inspiration-composer {{inspirationInputFocused ? 'inspiration-composer-focused' : ''}}" catchtap="onInspirationComposerTap">
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
         class="inspiration-photo-strip"

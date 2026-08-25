@@ -25,6 +25,8 @@ Page({
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
     const forceHost = options && (options.isHost === '1' || options.isHost === true);
     const modeId = (options && options.modeId) || '';
+    const from = (options && options.from) || '';
+    this._fromModeIndex = from === 'modeIndex' || from === 'offline';
     if (modeId === 'partner') {
       getApp().globalData.gameMode = 'partner';
     }
@@ -496,7 +498,18 @@ Page({
   // 返回
   goBack() {
     const roomId = this.data.roomId || '';
-    const modeId = this.data.selectedModeId || 'partner';
+    const modeId = this.data.selectedModeId || getApp().globalData.gameMode || 'partner';
+    if (this._fromModeIndex) {
+      const modeParam = modeId === 'halliGalli' ? 'halliGalli' : 'partner';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=${modeParam}`
+        : `/pages/main-pages/modeIndex/index?modeId=${modeParam}`;
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/modeIndex/index',
+        fallbackUrl
+      });
+      return;
+    }
     let fallbackUrl = '/pages/main-pages/brainstormMode/index';
     if (modeId === 'partner') {
       fallbackUrl = roomId

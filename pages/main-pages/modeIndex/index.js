@@ -282,7 +282,7 @@ Page({
           return;
         }
         wx.redirectTo({
-          url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
+          url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
         });
         return;
       }
@@ -320,7 +320,7 @@ Page({
         return;
       }
       wx.redirectTo({
-        url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`
+        url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
       });
     } finally {
       this._navPending = false;

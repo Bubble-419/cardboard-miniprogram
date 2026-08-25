@@ -102,6 +102,11 @@ Page({
     } else {
       this.loadSubmittedProblems();
     }
+    if (this.data.isHost) {
+      this.startProblemCheck();
+    } else {
+      this._startStatePolling();
+    }
   },
 
   onHide() {
@@ -155,7 +160,8 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok !== true) return;
 
-      const avatarList = await buildAvatarListAsync(result.members || []);
+      const avatarList = await buildAvatarListAsync(result.members || [], this._prevMembersForAvatar);
+      this._prevMembersForAvatar = result.members || [];
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
@@ -257,6 +263,8 @@ Page({
           if (!remoteId) {
             this.loadSubmittedProblems();
           }
+        } else {
+          this.loadSubmittedProblems();
         }
         // 编辑中：只同步「编辑中」标记，不刷新正文（无需实时同步修改内容）
       } catch (e) {
@@ -590,7 +598,7 @@ Page({
     }
     clearPendingNavigation();
     wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`,
+      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=select`,
       fail: (err) => {
         console.warn('selectProblem viewContext', err);
         this._pageVisible = true;

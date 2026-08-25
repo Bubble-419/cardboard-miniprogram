@@ -39,12 +39,12 @@ Page({
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
     const from = (options && options.from) || '';
-    // game：游戏页回看；submit：提交设计问题页回看 —— 均为只读确认情境
-    const fromGameView = from === 'game' || from === 'submit'
+    // game：游戏页回看；submit/select：提交/选择设计问题页回看 —— 均为只读确认情境
+    const fromGameView = from === 'game' || from === 'submit' || from === 'select'
       || options.fromGame === '1'
       || options.fromGame === true;
     const isGameDetail = from === 'game' || options.fromGame === '1' || options.fromGame === true;
-    const returnBtnText = from === 'submit' ? '返回' : '返回游戏';
+    const returnBtnText = (from === 'submit' || from === 'select') ? '返回' : '返回游戏';
     // 游戏页传入的最终选定设计问题（URL / eventChannel / globalData）
     let passedProblemText = '';
     try {
@@ -337,13 +337,33 @@ Page({
     }
   },
 
-  /** 返回游戏：navigateBack 保留 gamepage 实例与进度，禁止 redirect 重开 */
+  /** 按来源页返回：game → 对局；submit/select → 设计问题流程页 */
   handleReturnToGame() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    const roomEnc = roomId ? encodeURIComponent(roomId) : '';
+    const from = this._fromSource || '';
+    if (from === 'submit') {
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/submitProblem/index',
+        fallbackUrl: roomEnc
+          ? `/pages/main-pages/submitProblem/index?roomId=${roomEnc}`
+          : '/pages/main-pages/submitProblem/index'
+      });
+      return;
+    }
+    if (from === 'select') {
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/selectProblem/index',
+        fallbackUrl: roomEnc
+          ? `/pages/main-pages/selectProblem/index?roomId=${roomEnc}`
+          : '/pages/main-pages/selectProblem/index'
+      });
+      return;
+    }
     safeNavigateBack({
       expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
-      fallbackUrl: roomId
-        ? `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+      fallbackUrl: roomEnc
+        ? `/pages/main-pages/partnerMode/gamepage/index?roomId=${roomEnc}`
         : ''
     });
   },

@@ -124,7 +124,8 @@ Component({
     'avatarList, maxVisible': function syncDisplayList(avatarList, maxVisible) {
       const list = Array.isArray(avatarList) ? avatarList : [];
       const max = Number(maxVisible) || 0;
-      const nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
+      let nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
+      nextDisplay = this._preserveDisplayAvatars(nextDisplay, this.data.displayList || []);
       const nextOverflow = max > 0 && list.length > max ? list.length - max : 0;
       // 临时 HTTPS 签名变化时稳定键不变，避免无意义 setData 触发 <image> 重载闪烁
       const nextFp = this._avatarDisplayFingerprint(nextDisplay, nextOverflow);
@@ -222,6 +223,32 @@ Component({
         return `${id}:${src}:${name}:${me}`;
       });
       return `${overflowCount || 0}#${rows.join('|')}`;
+    },
+
+    _isPackagedAvatar(url) {
+      return typeof url === 'string'
+        && (url.startsWith('/assets/avatar/') || url === this.data.defaultAvatar);
+    },
+
+    /** 轮询刷新时保留上一帧已成功展示的自定义头像，避免闪回默认占位图 */
+    _preserveDisplayAvatars(nextList, prevList) {
+      const prevMap = new Map();
+      (prevList || []).forEach((item) => {
+        if (!item) return;
+        const url = item.avatar || item.avatarImage || item.url || '';
+        if (url && !this._isPackagedAvatar(url)) {
+          prevMap.set(String(item.id), url);
+        }
+      });
+      return (nextList || []).map((item) => {
+        const url = item.avatar || item.avatarImage || item.url || '';
+        if (url && !this._isPackagedAvatar(url)) return item;
+        const preserved = prevMap.get(String(item.id));
+        if (preserved) {
+          return { ...item, avatar: preserved, avatarImage: preserved };
+        }
+        return item;
+      });
     },
 
     _syncRoundTimerKey() {

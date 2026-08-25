@@ -88,7 +88,8 @@ Page({
   async _syncMembersFromResult(result) {
     if (!result || result.ok !== true) return;
     const members = result.members || [];
-    const avatarList = await buildUserListFromMembersAsync(members);
+    const avatarList = await buildUserListFromMembersAsync(members, this._prevMembersForAvatar);
+    this._prevMembersForAvatar = members;
     const me = members.find((m) => m.isMe);
     this.setData({
       workshopName: result.workshopName || this.data.workshopName,
@@ -209,8 +210,9 @@ Page({
     }
     this._navigating = true;
     this._stopPolling();
+    clearPendingNavigation();
     const roomIdEnc = encodeURIComponent(this.data.roomId);
-    openUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`);
+    openUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`, { preferNavigate: true });
   },
 
   async _updateRoomState(currentPage) {

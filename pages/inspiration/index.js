@@ -130,9 +130,22 @@ Page({
   },
 
   toggleReference(e) {
-    // 引用灵感仅服务于 AI 生成，暂未接入时不响应点击，避免无效交互
-    if (!isAiFeatureEnabled()) return;
     const inspirationId = e.currentTarget.dataset.id;
+    const item = (this.data.inspirations || []).find((row) => row.id === inspirationId);
+    if (!item) return;
+
+    if (!isAiFeatureEnabled()) {
+      if (item.type === 'image') {
+        const urls = (item.imageUrls && item.imageUrls.length)
+          ? item.imageUrls
+          : (item.imageUrl ? [item.imageUrl] : []);
+        if (urls.length) {
+          wx.previewImage({ current: urls[0], urls });
+        }
+      }
+      return;
+    }
+
     const referencedInspirations = [...this.data.referencedInspirations];
     const index = referencedInspirations.indexOf(inspirationId);
 
@@ -259,6 +272,10 @@ Page({
       });
 
       if (!this._pageAlive) return;
+      if (this._inspirationNativeFocused || this.data.inspirationInputFocused) {
+        this._pendingInspirationReload = inspirations;
+        return;
+      }
       this.setData({ inspirations });
       this._refreshDisplay();
     } catch (err) {
@@ -342,7 +359,16 @@ Page({
         inspirationInputFocused: false,
         ...this._resetInspirationKeyboardUi()
       });
+      this._flushPendingInspirationReload();
     }, 180);
+  },
+
+  _flushPendingInspirationReload() {
+    const pending = this._pendingInspirationReload;
+    if (!pending || !this._pageAlive) return;
+    this._pendingInspirationReload = null;
+    this.setData({ inspirations: pending });
+    this._refreshDisplay();
   },
 
   onInspirationDismissFocus() {

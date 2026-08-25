@@ -13,9 +13,13 @@ function buildUserListFromMembers(members) {
 }
 
 /** 异步：先 resolve cloud:// 再构建列表 */
-async function buildUserListFromMembersAsync(members) {
+async function buildUserListFromMembersAsync(members, prevMembers) {
   const enriched = await prepareMembersForDisplay(members || []);
-  return enriched.map((m) => ({
+  const { preserveMemberAvatars } = require('./avatars');
+  const stable = prevMembers && prevMembers.length
+    ? preserveMemberAvatars(enriched, prevMembers)
+    : enriched;
+  return stable.map((m) => ({
     id: m.playerIndex != null ? m.playerIndex : (m.userId || ''),
     nickName: m.nickName || `玩家${m.playerIndex || ''}`,
     avatar: m.avatarImage || m.avatarUrl || '',

@@ -275,8 +275,12 @@ function buildAvatarList(members) {
     }));
 }
 
-async function buildAvatarListAsync(members) {
-  const enriched = await prepareMembersForDisplay(members);
+async function buildAvatarListAsync(members, prevMembers) {
+  const resolved = await resolveCloudAvatarUrls(members || []);
+  let enriched = assignAvatarImages(resolved);
+  if (prevMembers && prevMembers.length) {
+    enriched = preserveMemberAvatars(enriched, prevMembers);
+  }
   return buildAvatarList(enriched);
 }
 
