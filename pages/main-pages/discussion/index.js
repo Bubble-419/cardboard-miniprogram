@@ -1,4 +1,4 @@
-const { buildGamepageUrl, buildStatementUrl } = require('../../../utils/modeRoutes');
+const { buildGamepageUrl } = require('../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
@@ -111,12 +111,7 @@ Page({
             }
             if (page === 'statement') {
               wx.redirectTo({
-                url: buildStatementUrl(
-                  roomId,
-                  idx,
-                  pollResult.roomState.currentPlayerName || `玩家${idx}`,
-                  { isWaiting: true }
-                )
+                url: buildGamepageUrl(roomId, idx, modeId, { phase: 'discussion' })
               });
               return true;
             }

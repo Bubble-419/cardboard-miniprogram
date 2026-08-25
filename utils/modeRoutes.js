@@ -60,16 +60,10 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
 }
 
 function buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, options = {}) {
-  const roomIdEnc = encodeURIComponent(roomId);
-  const idx = currentPlayerIndex != null ? currentPlayerIndex : 1;
-  const name = encodeURIComponent(currentPlayerName || `玩家${idx}`);
-  let url = `/pages/main-pages/partnerMode/statement/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`;
-  if (options.isSubScreen) url += '&isSubScreen=1';
-  if (options.isWaiting) url += '&isWaiting=1';
-  if (options.currentRound != null && Number.isFinite(Number(options.currentRound))) {
-    url += `&currentRound=${Number(options.currentRound)}`;
-  }
-  return url;
+  return buildGamepageUrl(roomId, currentPlayerIndex, 'partner', {
+    phase: 'discussion',
+    currentRound: options.currentRound
+  });
 }
 
 function buildSpecialMoveUrl(roomId, currentPlayerIndex) {

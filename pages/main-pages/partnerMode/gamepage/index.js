@@ -14,7 +14,7 @@ const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
-const { buildStatementUrl, buildSpecialMoveUrl, buildClosingStatementUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
+const { buildSpecialMoveUrl, buildClosingStatementUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
 const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
 const {
   bindPageToRoomSession,
@@ -31,6 +31,8 @@ const {
   normalizePartnerGamePhase,
   isDiscussionPhase,
   isClosingPhase,
+  STATEMENT_ALL_PASS,
+  STATEMENT_ALL_QUESTION
 } = require('../../../../utils/partnerGamePhase');
 const {
   getNextPlayerTurn,
@@ -56,7 +58,8 @@ const {
   appendImageBlocks,
   limitImageBlocks,
   deriveListsFromBlocks,
-  splitRecordSegments
+  splitRecordSegments,
+  getStatementLabel
 } = require('../../../../utils/partnerRoundContent');
 const {
   buildDisplaySummaries,
@@ -361,7 +364,7 @@ Page({
     if (!hint || hint.roomId !== roomId) return;
     app.globalData.partnerAdoptDeckHint = null;
     const title = this.data.isHost
-      ? '请其他玩家打分，完成后点击开始表态'
+      ? '请其他玩家打分，完成后点击表态并讨论'
       : '已采用卡组，请其他玩家打分';
     wx.showToast({ title, icon: 'none', duration: 2500 });
   },
@@ -2486,18 +2489,9 @@ Page({
           if (this._suppressStatementFollowUntil && Date.now() < this._suppressStatementFollowUntil) {
             return true;
           }
-          const idx = state.currentPlayerIndex != null
-            ? state.currentPlayerIndex
-            : this.data.currentPlayerIndex;
-          const playerName = state.currentPlayerName || this.data.currentPlayerName;
-          const isHost = pollResult.isHost === true || this.data.isHost === true;
-          safeOpenUrl(buildStatementUrl(roomId, idx, playerName, {
-            isSubScreen: !isHost,
-            isWaiting: !isHost,
-            currentRound: state.currentRound != null
-              ? state.currentRound
-              : this.data.currentRound
-          }), { immediate: true });
+          if (!isDiscussionPhase(this.data.gamepagePhase)) {
+            this.setData({ gamepagePhase: PHASE_DISCUSSION });
+          }
           return true;
         }
         return false;
@@ -3781,8 +3775,8 @@ Page({
     }
   },
 
-  onExpressFormSubmit() {
-    // 键盘「完成」只收起输入法；发送走右侧按钮
+  onExpressFormSubmit(e) {
+    this.submitExpress(e);
   },
 
   onExpressSendTap(e) {
@@ -4178,15 +4172,18 @@ Page({
     this._stopRoundTimerBurstPoll();
     await this._syncRoundContentToRoom();
 
-    const { roomId, currentPlayerIndex, currentPlayerName, currentRound } = this.data;
+    const { currentPlayerIndex, currentPlayerName } = this.data;
     let ok = false;
     const cmd = await this._dispatchPartnerCommand('START_STATEMENT', {});
     if (cmd && cmd.ok === true) {
       ok = true;
     } else {
-      // 兼容回退：旧 updateRoomState
-      ok = await this._updateRoomState('statement', currentPlayerIndex, currentPlayerName, {
-        partnerMasterMode: false
+      ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+        partnerGamePhase: PHASE_DISCUSSION,
+        partnerMasterMode: false,
+        skipArchive: true,
+        partnerRoundStartedAt: Date.now(),
+        syncPartnerTurnTimer: true
       });
     }
     if (!ok) {
@@ -4195,10 +4192,31 @@ Page({
       return;
     }
 
-    safeOpenUrl(buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, { currentRound }));
+    this.setData({ gamepagePhase: PHASE_DISCUSSION });
+    this._startStatePolling();
   },
 
-  async handleEndDiscussion() {
+  _mergeStatementTurnRecord(result) {
+    const idx = this.data.currentPlayerIndex;
+    const record = {
+      statementResult: result,
+      statementLabel: getStatementLabel(result),
+      recordedAt: Date.now(),
+      playerIndex: idx
+    };
+    const prev = Array.isArray(this.data.turnRecords) ? this.data.turnRecords.slice() : [];
+    const found = prev.findIndex((item) => item && item.playerIndex === idx);
+    if (found >= 0) prev[found] = { ...prev[found], ...record };
+    else prev.push(record);
+    this.setData({ turnRecords: prev });
+    return prev;
+  },
+
+  handleAllPassFromDiscussion() {
+    this.handleEndDiscussion({ statementResult: STATEMENT_ALL_PASS });
+  },
+
+  async handleEndDiscussion(options) {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
@@ -4206,9 +4224,12 @@ Page({
     if (this._endingDiscussion) return;
     this._endingDiscussion = true;
 
+    const statementResult = (options && options.statementResult) || STATEMENT_ALL_QUESTION;
+
     try {
-      const { members, currentPlayerIndex } = this.data;
+      const { roomId, members, currentPlayerIndex, currentPlayerName } = this.data;
       let { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
+      const turnRecords = this._mergeStatementTurnRecord(statementResult);
       const extra = {
         partnerGamePhase: PHASE_PLAY,
         partnerMasterMode: false,
@@ -4221,10 +4242,28 @@ Page({
         voiceLines: (roundContent && roundContent.voiceLines.length)
           ? roundContent.voiceLines
           : (this.data.voiceLines || []),
-        turnRecords: (roundContent && roundContent.turnRecords.length)
-          ? roundContent.turnRecords
-          : (this.data.turnRecords || [])
+        turnRecords: turnRecords.length
+          ? turnRecords
+          : ((roundContent && roundContent.turnRecords.length)
+            ? roundContent.turnRecords
+            : (this.data.turnRecords || []))
       };
+
+      if (roomId) {
+        try {
+          await wx.cloud.callFunction({
+            name: 'finalizePartnerTurnRecord',
+            data: {
+              roomId,
+              playerIndex: currentPlayerIndex,
+              playerName: currentPlayerName,
+              statementResult
+            }
+          });
+        } catch (err) {
+          console.warn('finalizePartnerTurnRecord', err);
+        }
+      }
 
       let ok = false;
       let cmd = null;

@@ -665,15 +665,16 @@ function executeCommand({
     const workflow = {
       ...(room.workflow || {}),
       mode: 'PARTNER',
-      step: 'STATEMENT',
-      legacyPage: 'statement'
+      step: 'DISCUSSION',
+      legacyPage: 'gamepage'
     };
     const next = {
       ...room,
       lifecycle: LIFECYCLE.ACTIVE,
       status: 'STARTED',
-      currentPage: 'statement',
-      brainstormProgressPage: 'statement',
+      currentPage: 'gamepage',
+      brainstormProgressPage: 'gamepage',
+      partnerGamePhase: 'discussion',
       partnerMasterMode: false,
       workflow,
       revision: room.revision + 1,
@@ -689,7 +690,7 @@ function executeCommand({
       changedDomains: ['session'],
       room: next,
       head: buildHead(next, actorUserId),
-      effects: { startedStatement: true, legacyPage: 'statement' }
+      effects: { startedStatement: true, legacyPage: 'gamepage', partnerGamePhase: 'discussion' }
     });
   }
 

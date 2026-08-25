@@ -113,7 +113,7 @@ function normalizePartnerRoundContent(raw) {
 const STATEMENT_LABELS = {
   allPass: '全部通过',
   partialPass: '部分通过',
-  allQuestion: '全部疑问'
+  allQuestion: '有疑问进入讨论'
 };
 
 function getStatementLabel(result) {

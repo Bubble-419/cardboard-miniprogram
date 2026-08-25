@@ -2084,6 +2084,24 @@ game-card-timer {
   background: #c1c1c1;
 }
 
+.bottom-actions-discussion {
+  gap: 16rpx;
+}
+
+.end-discussion-btn-secondary {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.express-dismiss-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+
 /* 收尾阶段 */
 .closing-card-stage {
   flex: 1;

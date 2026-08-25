@@ -1,6 +1,5 @@
 const {
   buildGamepageUrl,
-  buildStatementUrl,
   buildClosingStatementUrl,
   buildLeaderboardUrl,
   buildSpyPageUrl,
@@ -265,9 +264,8 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
         : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
       closingStep: state.partnerClosingStep || undefined
     }),
-    statement: buildStatementUrl(roomId, idx, playerName, {
-      isSubScreen: true,
-      isWaiting: true
+    statement: buildGamepageUrl(roomId, idx, modeId, {
+      phase: 'discussion'
     }),
     closingstatement: buildClosingStatementUrl(roomId, {
       closingVoteSessionId: state.closingVoteSessionId || '',

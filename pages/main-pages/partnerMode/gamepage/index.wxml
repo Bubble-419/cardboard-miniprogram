@@ -476,7 +476,7 @@
                   wx:for-item="turn"
                   wx:for-index="turnIdx"
                   wx:key="turnIdx"
-                >· <block wx:if="{{turn.avgScore != null}}">平均分 {{turn.avgScore}} · </block>{{turn.statementLabel || '未记录'}}</view>
+                >· {{turn.statementLabel || '未记录'}}</view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
               </view>
@@ -596,6 +596,11 @@
               </scroll-view>
 
               <!-- 讨论阶段：表达入口统一在卡片右下角 -->
+              <view
+                wx:if="{{expressComposerOpen}}"
+                class="express-dismiss-mask"
+                catchtap="closeExpressComposer"
+              ></view>
               <view class="card-express-corner {{expressComposerOpen ? 'card-express-corner-open' : ''}}">
                 <form
                   wx:if="{{expressComposerOpen}}"
@@ -607,7 +612,7 @@
                       class="spectator-express-input"
                       name="expressText"
                       maxlength="40"
-                      confirm-type="done"
+                      confirm-type="send"
                       hold-keyboard="{{true}}"
                       adjust-position="{{true}}"
                       cursor-spacing="24"
@@ -618,16 +623,6 @@
                       bindinput="onExpressInput"
                       bindblur="onExpressComposerBlur"
                     />
-                    <view
-                      class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
-                      catchtap="onExpressSendTap"
-                    >
-                      <image
-                        class="spectator-express-send-icon"
-                        src="/assets/partnerMode/icon-express-send.png"
-                        mode="aspectFit"
-                      />
-                    </view>
                   </view>
                 </form>
                 <view
@@ -745,6 +740,11 @@
                   catchtap="onScoreSheetBackdropTap"
                   catchtouchmove="preventMove"
                 ></view>
+                <view
+                  wx:if="{{expressComposerOpen}}"
+                  class="express-dismiss-mask"
+                  catchtap="closeExpressComposer"
+                ></view>
                 <view class="spectator-card-head">
                   <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
                   <text class="spectator-card-title">玩家正在出牌</text>
@@ -800,7 +800,7 @@
                           class="spectator-express-input"
                           name="expressText"
                           maxlength="40"
-                          confirm-type="done"
+                          confirm-type="send"
                           hold-keyboard="{{true}}"
                           adjust-position="{{true}}"
                           cursor-spacing="24"
@@ -811,16 +811,6 @@
                           bindinput="onExpressInput"
                           bindblur="onExpressComposerBlur"
                         />
-                        <view
-                          class="spectator-express-send-btn {{expressSending ? 'spectator-express-send-disabled' : ''}}"
-                          catchtap="onExpressSendTap"
-                        >
-                          <image
-                            class="spectator-express-send-icon"
-                            src="/assets/partnerMode/icon-express-send.png"
-                            mode="aspectFit"
-                          />
-                        </view>
                       </view>
                     </form>
                     <view
@@ -1039,12 +1029,18 @@
         结束脑暴
       </button>
     </view>
-    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
+    <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
       <button
-        class="end-discussion-btn"
+        class="end-discussion-btn end-discussion-btn-secondary"
         bindtap="handleEndDiscussion"
       >
         结束讨论
+      </button>
+      <button
+        class="end-discussion-btn"
+        bindtap="handleAllPassFromDiscussion"
+      >
+        全部通过
       </button>
     </view>
     <view class="bottom-actions" wx:elif="{{showSpecialMoveBtn || isHost || (isCurrentPlayer && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing')}}">
@@ -1083,7 +1079,7 @@
           hover-class="none"
           bindtap="handleStartStatement"
         >
-          开始表态
+          表态并讨论
         </button>
       </view>
     </view>
@@ -1102,7 +1098,7 @@
       style="{{hostStatementTipTextStyle}}"
       catchtap="dismissHostStatementTip"
     >
-      <text class="host-statement-tip-text">全员打分后，「开始表态」才会亮起</text>
+      <text class="host-statement-tip-text">全员打分后，「表态并讨论」才会亮起</text>
       <view class="host-statement-tip-arrow"></view>
     </view>
   </view>

@@ -29,7 +29,7 @@ const {
   isNonResumableProgressPage
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
-const { buildGamepageUrl, buildStatementUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
+const { buildGamepageUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const {
   bindPageToRoomSession,
@@ -1912,8 +1912,10 @@ Page({
         nextPage: 'creativeSummary'
       },
       statement: {
-        path: buildStatementUrl(roomId, idx, state.currentPlayerName || `玩家${idx}`),
-        nextPage: 'statement'
+        path: buildGamepageUrl(roomId, idx, modeId, {
+          phase: 'discussion'
+        }),
+        nextPage: 'gamepage'
       },
       discussion: {
         path: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,

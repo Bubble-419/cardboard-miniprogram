@@ -123,8 +123,9 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
       { userId: 'host' }
     );
     assert.equal(stmt.ok, true, stmt.errMsg);
-    assert.equal(stmt.effects.legacyPage, 'statement');
-    assert.equal(repo.rooms.get('30000001').currentPage, 'statement');
+    assert.equal(stmt.effects.legacyPage, 'gamepage');
+    assert.equal(repo.rooms.get('30000001').currentPage, 'gamepage');
+    assert.equal(repo.rooms.get('30000001').partnerGamePhase, 'discussion');
 
     const afterStmt = repo.rooms.get('30000001');
     const adv = await app.execute(
@@ -272,11 +273,11 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     room.partnerGamePhase = 'discussion';
     room.workflow = {
       mode: 'PARTNER',
-      step: 'STATEMENT',
+      step: 'DISCUSSION',
       roundNo: 1,
       activeSeatNo: 1,
       turnId: 'turn_r1_s1',
-      legacyPage: 'statement'
+      legacyPage: 'gamepage'
     };
     room.revision = (room.revision || 1) + 1;
     repo.rooms.set('30000001', room);

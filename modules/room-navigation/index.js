@@ -47,7 +47,7 @@ const PAGE_TO_ROUTE = {
     mode: 'redirect'
   },
   statement: {
-    path: '/pages/main-pages/partnerMode/statement/index',
+    path: '/pages/main-pages/partnerMode/gamepage/index',
     mode: 'redirect'
   },
   closingstatement: {

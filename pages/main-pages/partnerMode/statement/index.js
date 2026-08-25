@@ -49,6 +49,14 @@ Page({
       return;
     }
 
+    wx.redirectTo({
+      url: buildGamepageUrl(roomId, currentPlayerIndex, 'partner', {
+        phase: PHASE_DISCUSSION,
+        currentRound
+      })
+    });
+    return;
+
     getApp().globalData.roomId = roomId;
 
     this.setData({
