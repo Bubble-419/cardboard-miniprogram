@@ -668,6 +668,16 @@
   display: block;
 }
 
+.express-form-submit-hidden {
+  position: absolute;
+  width: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
 .score-sheet-spacer {
   width: 100%;
   flex-shrink: 0;
@@ -991,6 +1001,7 @@
 }
 
 .spectator-express-composer {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: row;
@@ -1932,6 +1943,13 @@ game-card-timer {
   opacity: 0.9 !important;
 }
 
+.statement-btn-loading {
+  background: #5ec159 !important;
+  color: #fff !important;
+  opacity: 0.85 !important;
+  pointer-events: none;
+}
+
 .discussion-card-body {
   position: relative;
   flex: 1;
@@ -2091,6 +2109,11 @@ game-card-timer {
 .end-discussion-btn-secondary {
   background: #e8e8e8;
   color: #333;
+}
+
+.end-discussion-btn-loading {
+  opacity: 0.85;
+  pointer-events: none;
 }
 
 .express-dismiss-mask {

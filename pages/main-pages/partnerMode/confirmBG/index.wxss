@@ -14,31 +14,27 @@
 /* 游戏详情：设计问题置顶 + 情境 2×2，一屏不滚 */
 .game-detail-body {
   flex: 1;
+  height: 0;
   min-height: 0;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
   box-sizing: border-box;
   padding: 16rpx 40rpx 12rpx;
-  overflow: hidden;
-  gap: 20rpx;
 }
 
 /* Figma #6028:3383 — 与选择设计问题「选中卡」同款；文字垂直居中 */
 .design-problem-block {
-  flex: 1;
-  min-height: 120rpx;
+  flex: none;
   width: 100%;
   box-sizing: border-box;
   background-color: #F2F4F1;
   border: 2rpx solid #5EC159;
   border-radius: 24rpx;
-  padding: 30rpx 24rpx 30rpx 32rpx;
+  padding: 24rpx 24rpx 24rpx 32rpx;
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: 32rpx;
+  margin-bottom: 20rpx;
 }
 
 .design-problem-indicator {
@@ -52,10 +48,9 @@
 .design-problem-text-wrap {
   flex: 1;
   min-width: 0;
-  min-height: 0;
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .design-problem-text {

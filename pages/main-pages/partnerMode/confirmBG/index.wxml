@@ -18,9 +18,9 @@
     bind:prev="handleGoBack"
   ></page-footer>
 
-  <!-- 游戏页进入：设计问题置顶（Figma #6028:3383）+ 情境 2×2 格，一屏不滚动 -->
+  <!-- 游戏页进入：设计问题按内容高度 + 情境 2×2，超出可滚 -->
   <block wx:elif="{{isGameDetail}}">
-    <view class="game-detail-body">
+    <scroll-view class="game-detail-body" scroll-y enhanced show-scrollbar="{{false}}">
       <!-- 完整设计问题：与「选择设计问题」选中卡同款展示 -->
       <view class="design-problem-block">
         <view class="design-problem-indicator"></view>
@@ -35,7 +35,7 @@
       <view class="detail-context-wrap">
         <context-display items="{{categories}}" />
       </view>
-    </view>
+    </scroll-view>
 
     <page-footer extClass="footer footer-compact" showPrev="{{false}}">
       <button class="confirm-btn enabled" bindtap="handleReturnToGame">{{returnBtnText}}</button>

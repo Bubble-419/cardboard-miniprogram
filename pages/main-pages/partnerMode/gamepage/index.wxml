@@ -620,9 +620,15 @@
                       placeholder="说点什么…"
                       placeholder-class="spectator-express-placeholder"
                       bindfocus="onExpressComposerFocus"
+                      bindconfirm="onExpressConfirm"
                       bindinput="onExpressInput"
                       bindblur="onExpressComposerBlur"
                     />
+                    <button
+                      class="express-form-submit-hidden"
+                      form-type="submit"
+                      hover-class="none"
+                    ></button>
                   </view>
                 </form>
                 <view
@@ -808,9 +814,15 @@
                           placeholder="说点什么…"
                           placeholder-class="spectator-express-placeholder"
                           bindfocus="onExpressComposerFocus"
+                          bindconfirm="onExpressConfirm"
                           bindinput="onExpressInput"
                           bindblur="onExpressComposerBlur"
                         />
+                        <button
+                          class="express-form-submit-hidden"
+                          form-type="submit"
+                          hover-class="none"
+                        ></button>
                       </view>
                     </form>
                     <view
@@ -1031,16 +1043,22 @@
     </view>
     <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
       <button
-        class="end-discussion-btn end-discussion-btn-secondary"
+        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
+        disabled="{{discussionSwitching}}"
+        loading="{{discussionSwitching && discussionSwitchAction === 'end'}}"
+        hover-class="none"
         bindtap="handleEndDiscussion"
       >
-        结束讨论
+        {{discussionSwitching && discussionSwitchAction === 'end' ? '处理中' : '结束讨论'}}
       </button>
       <button
-        class="end-discussion-btn"
+        class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
+        disabled="{{discussionSwitching}}"
+        loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
+        hover-class="none"
         bindtap="handleAllPassFromDiscussion"
       >
-        全部通过
+        {{discussionSwitching && discussionSwitchAction === 'allPass' ? '处理中' : '全部通过'}}
       </button>
     </view>
     <view class="bottom-actions" wx:elif="{{showSpecialMoveBtn || isHost || (isCurrentPlayer && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing')}}">
@@ -1074,12 +1092,13 @@
       <view class="bottom-actions-gap" wx:if="{{(showSpecialMoveBtn || isCurrentPlayer) && isHost && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing'}}"></view>
       <view class="statement-btn-wrap" wx:if="{{isHost}}" id="hostStatementBtn">
         <button
-          class="statement-btn {{canStartStatement ? 'statement-btn-enabled' : ''}}"
-          disabled="{{!canStartStatement}}"
+          class="statement-btn {{canStartStatement && !statementSwitching ? 'statement-btn-enabled' : ''}} {{statementSwitching ? 'statement-btn-loading' : ''}}"
+          disabled="{{!canStartStatement || statementSwitching}}"
+          loading="{{statementSwitching}}"
           hover-class="none"
           bindtap="handleStartStatement"
         >
-          表态并讨论
+          {{statementSwitching ? '进入中' : '表态并讨论'}}
         </button>
       </view>
     </view>

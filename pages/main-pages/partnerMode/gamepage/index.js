@@ -222,7 +222,11 @@ Page({
     showHostStatementTip: false,
     hostStatementTipReady: false,
     hostStatementTipSpotStyle: '',
-    hostStatementTipTextStyle: ''
+    hostStatementTipTextStyle: '',
+    /** 表态并讨论：同步中禁止连点，避免未写完房间态被轮询打回出牌页 */
+    statementSwitching: false,
+    discussionSwitching: false,
+    discussionSwitchAction: ''
   },
 
   _applyTopBarSafeInset() {
@@ -1654,9 +1658,17 @@ Page({
         ? options.fallbackPlayerIndex
         : this.data.currentPlayerIndex
     );
-    const roomPhase = normalizePartnerGamePhase(
+    let roomPhase = normalizePartnerGamePhase(
       roomState.partnerGamePhase || this.data.gamepagePhase
     );
+    if (
+      (this.data.statementSwitching || this._startingStatement
+        || this.data.discussionSwitching || this._endingDiscussion)
+      && !isDiscussionPhase(roomPhase)
+      && !isClosingPhase(roomPhase)
+    ) {
+      roomPhase = this.data.gamepagePhase;
+    }
     const closingQuestionPlayers = Array.isArray(roomState.closingQuestionPlayers)
       ? roomState.closingQuestionPlayers
       : [];
@@ -3776,7 +3788,21 @@ Page({
   },
 
   onExpressFormSubmit(e) {
+    this._beginExpressSubmitGuard();
     this.submitExpress(e);
+  },
+
+  onExpressConfirm(e) {
+    this._beginExpressSubmitGuard();
+    this.submitExpress(e);
+  },
+
+  _beginExpressSubmitGuard() {
+    this._expressComposerIgnoreBlurUntil = Date.now() + 1200;
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
   },
 
   onExpressSendTap(e) {
@@ -4166,34 +4192,45 @@ Page({
 
   async handleStartStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
+    if (this.data.statementSwitching || this._startingStatement) return;
+    this._startingStatement = true;
+    this.setData({ statementSwitching: true, canStartStatement: false });
 
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-    await this._syncRoundContentToRoom();
+    this._syncRoundContentToRoom();
 
     const { currentPlayerIndex, currentPlayerName } = this.data;
-    let ok = false;
-    const cmd = await this._dispatchPartnerCommand('START_STATEMENT', {});
-    if (cmd && cmd.ok === true) {
-      ok = true;
-    } else {
-      ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+    try {
+      const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
         partnerGamePhase: PHASE_DISCUSSION,
         partnerMasterMode: false,
         skipArchive: true,
         partnerRoundStartedAt: Date.now(),
         syncPartnerTurnTimer: true
       });
-    }
-    if (!ok) {
+      if (!ok) {
+        this.setData({
+          statementSwitching: false,
+          canStartStatement: true
+        });
+        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        this._startStatePolling();
+        return;
+      }
+      this.setData({
+        gamepagePhase: PHASE_DISCUSSION,
+        statementSwitching: false,
+        canStartStatement: false
+      });
       this._startStatePolling();
-      wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
-      return;
+    } finally {
+      this._startingStatement = false;
+      if (this.data.statementSwitching) {
+        this.setData({ statementSwitching: false });
+      }
     }
-
-    this.setData({ gamepagePhase: PHASE_DISCUSSION });
-    this._startStatePolling();
   },
 
   _mergeStatementTurnRecord(result) {
@@ -4221,10 +4258,17 @@ Page({
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
     }
-    if (this._endingDiscussion) return;
+    if (this.data.discussionSwitching || this._endingDiscussion) return;
     this._endingDiscussion = true;
 
     const statementResult = (options && options.statementResult) || STATEMENT_ALL_QUESTION;
+    const action = statementResult === STATEMENT_ALL_PASS ? 'allPass' : 'end';
+    this.setData({
+      discussionSwitching: true,
+      discussionSwitchAction: action
+    });
+    this._stopStatePolling();
+    this._stopRoundTimerBurstPoll();
 
     try {
       const { roomId, members, currentPlayerIndex, currentPlayerName } = this.data;
@@ -4288,7 +4332,12 @@ Page({
         ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
       }
       if (!ok) {
+        this.setData({
+          discussionSwitching: false,
+          discussionSwitchAction: ''
+        });
         wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
+        this._startStatePolling();
         return;
       }
 
@@ -4334,7 +4383,9 @@ Page({
         playBlocks: [],
         discussionBlocks: [],
         voiceLines: [],
-        turnRecords: []
+        turnRecords: [],
+        discussionSwitching: false,
+        discussionSwitchAction: ''
       }, () => {
         this._roundSpeech && this._roundSpeech.stop();
         this._syncRoundSpeech();
@@ -4369,8 +4420,23 @@ Page({
           console.warn('endDiscussion force refresh', e);
         }
       }
+      this._startStatePolling();
+    } catch (err) {
+      console.warn('handleEndDiscussion', err);
+      this.setData({
+        discussionSwitching: false,
+        discussionSwitchAction: ''
+      });
+      wx.showToast({ title: '操作失败，请重试', icon: 'none' });
+      this._startStatePolling();
     } finally {
       this._endingDiscussion = false;
+      if (this.data.discussionSwitching) {
+        this.setData({
+          discussionSwitching: false,
+          discussionSwitchAction: ''
+        });
+      }
     }
   },
 
