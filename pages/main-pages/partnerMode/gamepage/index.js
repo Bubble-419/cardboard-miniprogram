@@ -11,6 +11,7 @@ const {
   getAvatarStableKey
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
@@ -1587,6 +1588,49 @@ Page({
     );
   },
 
+  _hydrateCloudRoundMedia(roundContent, displaySummaries, closingBlocks) {
+    const token = (this._cloudMediaToken || 0) + 1;
+    this._cloudMediaToken = token;
+    const summaries = Array.isArray(displaySummaries) ? displaySummaries : [];
+    const closing = Array.isArray(closingBlocks) ? closingBlocks : [];
+    Promise.all([
+      resolveRoundContentMedia(roundContent || {}),
+      Promise.all(summaries.map((item) => resolveRoundContentMedia(item || {}))),
+      closing.length
+        ? resolveRoundContentMedia({ playBlocks: closing })
+        : Promise.resolve(null)
+    ]).then(([content, resolvedSummaries, closingResolved]) => {
+      if (this._cloudMediaToken !== token || this._pageVisible === false) return;
+      const mediaPatch = {
+        playImages: content.playImages,
+        discussionImages: content.discussionImages,
+        playBlocks: content.playBlocks,
+        discussionBlocks: content.discussionBlocks
+      };
+      if (resolvedSummaries.length) {
+        const current = this.data.displayRoundSummaries || [];
+        mediaPatch.displayRoundSummaries = current.map((row, i) => {
+          const next = resolvedSummaries[i];
+          if (!next) return row;
+          const note = next.privateNote || row.privateNote || {};
+          return {
+            ...row,
+            playImages: next.playImages,
+            discussionImages: next.discussionImages,
+            playBlocks: next.playBlocks,
+            discussionBlocks: next.discussionBlocks,
+            privateNote: note
+          };
+        });
+      }
+      if (closingResolved && closingResolved.playBlocks) {
+        mediaPatch.closingCreativeBlocks = closingResolved.playBlocks;
+        Object.assign(mediaPatch, this._closingDeckImagePatch(closingResolved.playBlocks));
+      }
+      this.setData(mediaPatch);
+    }).catch((e) => console.warn('_hydrateCloudRoundMedia', e));
+  },
+
   _refreshCloudAvatarsIfNeeded(rawMembers, displayMembers) {
     const list = Array.isArray(rawMembers) ? rawMembers : [];
     if (!list.some(memberHasCloudAvatar)) return;
@@ -2156,6 +2200,11 @@ Page({
       if (isClosingPhase(roomPhase)) this._avatarTimerTurnKey = '';
     }
     this.setData(patch, () => {
+      this._hydrateCloudRoundMedia(
+        roundContent,
+        patch.displayRoundSummaries,
+        patch.closingCreativeBlocks
+      );
       if (this.data.isHistoryReview) return;
       this._persistHistoryReviewSnapshot(false);
       if (!isClosingPhase(roomPhase) && patch.partnerRoundStartedAt) {
@@ -5317,25 +5366,12 @@ Page({
   },
 
   async _resolveClosingCreativePreviewUrls(list, current) {
-    const cloudUrls = list.filter((u) => typeof u === 'string' && u.indexOf('cloud://') === 0);
-    if (!cloudUrls.length) {
-      return { list, current };
-    }
-    try {
-      const res = await wx.cloud.getTempFileURL({ fileList: cloudUrls });
-      const map = {};
-      ((res && res.fileList) || []).forEach((item) => {
-        if (item && item.fileID && item.tempFileURL) {
-          map[item.fileID] = item.tempFileURL;
-        }
-      });
-      const resolvedList = list.map((u) => map[u] || u);
-      const resolvedCurrent = map[current] || current;
-      return { list: resolvedList, current: resolvedCurrent };
-    } catch (e) {
-      console.warn('_resolveClosingCreativePreviewUrls', e);
-      return { list, current };
-    }
+    const resolvedList = await resolveCloudDisplayUrls(list || []);
+    const idx = (list || []).indexOf(current);
+    const resolvedCurrent = idx >= 0
+      ? (resolvedList[idx] || resolvedList[0] || current)
+      : (resolvedList[0] || current);
+    return { list: resolvedList.filter(Boolean), current: resolvedCurrent };
   },
 
   async _uploadClosingCreativePhotos(paths) {

@@ -53,7 +53,14 @@
           </view>
 
           <view class="card-content" wx:if="{{inspiration.type === 'image'}}">
-            <image class="card-image" src="{{inspiration.imageUrl}}" mode="widthFix" wx:if="{{inspiration.imageUrl}}"></image>
+            <image
+              class="card-image"
+              src="{{inspiration.imageUrl}}"
+              mode="widthFix"
+              wx:if="{{inspiration.imageUrl}}"
+              data-id="{{inspiration.id}}"
+              binderror="onInspirationImageError"
+            ></image>
             <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
           </view>
 

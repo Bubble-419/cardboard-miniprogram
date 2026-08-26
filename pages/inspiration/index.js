@@ -3,6 +3,7 @@ const { isAiFeatureEnabled } = require('../../utils/aiFeature');
 const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
 const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
+const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
 
 Page({
   data: {
@@ -257,7 +258,7 @@ Page({
         return;
       }
 
-      const inspirations = (result.inspirations || []).map((item, idx) => {
+      const rawList = (result.inspirations || []).map((item, idx) => {
         const imageUrls = Array.isArray(item.imageUrls) && item.imageUrls.length
           ? item.imageUrls
           : (item.imageUrl ? [item.imageUrl] : []);
@@ -265,9 +266,19 @@ Page({
         return {
           ...item,
           id,
+          imageFileID: imageUrls.find((u) => isCloudFileId(u)) || '',
           imageUrl: item.imageUrl || imageUrls[0] || '',
           imageUrls,
           referenced: this.data.referencedInspirations.includes(id)
+        };
+      });
+      const displays = await resolveCloudDisplayUrls(rawList.map((item) => item.imageUrl || ''));
+      const inspirations = rawList.map((item, i) => {
+        const display = displays[i];
+        return {
+          ...item,
+          imageUrl: display || '',
+          imageUrls: display ? [display] : []
         };
       });
 
@@ -282,6 +293,34 @@ Page({
       console.error('加载灵感列表失败:', err);
       wx.showToast({ title: '加载失败', icon: 'none' });
     }
+  },
+
+  onInspirationImageError(e) {
+    const id = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id;
+    if (!id) return;
+    const item = (this.data.inspirations || []).find((row) => row.id === id);
+    const fileID = item && item.imageFileID;
+    if (!fileID || !isCloudFileId(fileID)) return;
+    this._inspImageRetrying = this._inspImageRetrying || {};
+    if (this._inspImageRetrying[id]) return;
+    this._inspImageRetrying[id] = true;
+    invalidateCloudDisplayUrl(fileID);
+    resolveCloudDisplayUrls([fileID], { force: true, preferLocal: true })
+      .then((urls) => {
+        const nextUrl = urls && urls[0];
+        if (!nextUrl || !this._pageAlive) return;
+        const inspirations = (this.data.inspirations || []).map((row) => (
+          row.id === id
+            ? { ...row, imageUrl: nextUrl, imageUrls: [nextUrl] }
+            : row
+        ));
+        this.setData({ inspirations });
+        this._refreshDisplay();
+      })
+      .catch(() => {})
+      .then(() => {
+        this._inspImageRetrying[id] = false;
+      });
   },
 
   layoutWaterfall(inspirations) {

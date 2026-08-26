@@ -8,6 +8,8 @@ function buildUserListFromMembers(members) {
     nickName: m.nickName || `玩家${m.playerIndex || ''}`,
     avatar: m.avatarImage || m.avatarUrl || '',
     avatarImage: m.avatarImage || m.avatarUrl || '',
+    avatarFileID: m.avatarFileID || '',
+    userKey: m.userId || (m.playerIndex != null ? `p${m.playerIndex}` : ''),
     isMe: m.isMe === true
   }));
 }
@@ -24,6 +26,8 @@ async function buildUserListFromMembersAsync(members, prevMembers) {
     nickName: m.nickName || `玩家${m.playerIndex || ''}`,
     avatar: m.avatarImage || m.avatarUrl || '',
     avatarImage: m.avatarImage || m.avatarUrl || '',
+    avatarFileID: m.avatarFileID || '',
+    userKey: m.userId || (m.playerIndex != null ? `p${m.playerIndex}` : ''),
     isMe: m.isMe === true
   }));
 }

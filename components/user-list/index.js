@@ -4,6 +4,11 @@ const {
   getRoundTimerState
 } = require('../../utils/partnerRoundTimer');
 const { clearStickyAvatar, pickFallbackAvatarImage } = require('../../utils/avatars');
+const {
+  invalidateCloudDisplayUrl,
+  resolveCloudDisplayUrls,
+  isCloudFileId
+} = require('../../utils/cloudDisplayUrl');
 
 const REMAIN_COLOR = '#5ec159';
 const ELAPSED_COLOR = '#b0e0ae';
@@ -605,22 +610,35 @@ Component({
         this._avatarRetrying[retryKey] = true;
         const sourceList = Array.isArray(this.properties.avatarList) ? this.properties.avatarList : [];
         const source = sourceList.find((row) => row && String(row.id) === String(playerIndex));
-        const restore = (source && (source.avatar || source.avatarImage || source.url)) || current;
+        const fileID = (item && item.avatarFileID)
+          || (source && source.avatarFileID)
+          || '';
+        const restoreBroken = (source && (source.avatar || source.avatarImage || source.url)) || current;
+        const applyUrl = (url) => {
+          const next = (this.data.displayList || []).slice();
+          const j = next.findIndex((row) => row && String(row.id) === String(playerIndex));
+          if (j < 0) {
+            this._avatarRetrying[retryKey] = false;
+            return;
+          }
+          if (url) {
+            next[j] = { ...next[j], avatar: url, avatarImage: url };
+          }
+          this._avatarDisplayFingerprintCache = '';
+          this.setData({ displayList: next }, () => {
+            this._avatarRetrying[retryKey] = false;
+          });
+        };
+        if (fileID && isCloudFileId(fileID)) {
+          invalidateCloudDisplayUrl(fileID);
+          resolveCloudDisplayUrls([fileID], { force: true, preferLocal: true })
+            .then((urls) => applyUrl((urls && urls[0]) || restoreBroken))
+            .catch(() => applyUrl(restoreBroken));
+          return;
+        }
         list[index] = { ...item, avatar: '', avatarImage: '' };
         this.setData({ displayList: list }, () => {
-          setTimeout(() => {
-            const next = (this.data.displayList || []).slice();
-            const j = next.findIndex((row) => row && String(row.id) === String(playerIndex));
-            if (j < 0) {
-              this._avatarRetrying[retryKey] = false;
-              return;
-            }
-            next[j] = { ...next[j], avatar: restore, avatarImage: restore };
-            this._avatarDisplayFingerprintCache = '';
-            this.setData({ displayList: next }, () => {
-              this._avatarRetrying[retryKey] = false;
-            });
-          }, 60);
+          setTimeout(() => applyUrl(restoreBroken), 60);
         });
         return;
       }

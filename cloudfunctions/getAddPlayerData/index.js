@@ -181,42 +181,17 @@ function isLocalTempAvatar(url) {
 }
 
 async function resolveCloudAvatarUrls(members) {
-  const list = (members || []).map((m) => {
+  return (members || []).map((m) => {
     if (!m) return m;
     // 本机临时路径无法跨设备加载，返回前清掉，客户端回退 avatarIndex
     if (isLocalTempAvatar(m.avatarUrl)) {
       return { ...m, avatarUrl: null };
     }
+    if (typeof m.avatarUrl === 'string' && m.avatarUrl.startsWith('cloud://')) {
+      return { ...m, avatarFileID: m.avatarUrl };
+    }
     return m;
   });
-  const fileIds = [];
-  list.forEach((m) => {
-    const url = m && m.avatarUrl;
-    if (typeof url === 'string' && url.startsWith('cloud://') && !fileIds.includes(url)) {
-      fileIds.push(url);
-    }
-  });
-  if (!fileIds.length) return list;
-
-  try {
-    const res = await cloud.getTempFileURL({ fileList: fileIds });
-    const urlMap = {};
-    (res.fileList || []).forEach((item) => {
-      if (item.fileID && item.tempFileURL) {
-        urlMap[item.fileID] = item.tempFileURL;
-      }
-    });
-    return list.map((m) => {
-      if (m && m.avatarUrl && urlMap[m.avatarUrl]) {
-        return { ...m, avatarUrl: urlMap[m.avatarUrl] };
-      }
-      // 转换失败时保留 cloud://，交给客户端 sticky / 二次 resolve，避免直接抹空导致头像消失
-      return m;
-    });
-  } catch (e) {
-    console.warn('resolveCloudAvatarUrls failed', e);
-    return list;
-  }
 }
 
 /**
