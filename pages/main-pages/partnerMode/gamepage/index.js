@@ -1565,6 +1565,57 @@ Page({
     });
   },
 
+  _summaryHasContent(item) {
+    const has = (arr) => Array.isArray(arr) && arr.length > 0;
+    return !!(item && (
+      has(item.playHistory)
+      || has(item.discussionNotes)
+      || has(item.playImages)
+      || has(item.discussionImages)
+      || has(item.playBlocks)
+      || has(item.discussionBlocks)
+      || has(item.voiceLines)
+      || has(item.turnRecords)
+    ));
+  },
+
+  _resolveCardAvgScore(item, turnAvgLookup) {
+    if (!item) return null;
+    const records = Array.isArray(item.turnRecords) ? item.turnRecords : [];
+    const idx = item.playerIndex;
+    const matched = records.find((t) => (
+      t && t.avgScore != null && Number(t.playerIndex) === Number(idx)
+    ));
+    if (matched && matched.avgScore != null) {
+      const n = Number(matched.avgScore);
+      if (Number.isFinite(n)) return n;
+    }
+    if (item.avgScore != null) {
+      const n = Number(item.avgScore);
+      if (Number.isFinite(n)) return n;
+    }
+    const anyTurn = records.find((t) => t && t.avgScore != null);
+    if (anyTurn && anyTurn.avgScore != null) {
+      const n = Number(anyTurn.avgScore);
+      if (Number.isFinite(n)) return n;
+    }
+    if (turnAvgLookup && idx != null && item.round != null) {
+      const key = `r${Number(item.round)}_p${Number(idx)}`;
+      const n = Number(turnAvgLookup[key]);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  },
+
+  _attachCardAvgScore(item, turnAvgLookup) {
+    const avgScore = this._resolveCardAvgScore(item, turnAvgLookup);
+    return {
+      ...item,
+      avgScore,
+      avgScoreText: avgScore != null ? formatScoreDisplay(avgScore) : ''
+    };
+  },
+
   _scoreFields(score) {
     const normalized = score == null ? null : normalizeHalfStarScore(score);
     return {
@@ -1823,35 +1874,56 @@ Page({
         return (a.archivedAt || 0) - (b.archivedAt || 0);
       })
       // 只展示“已结束轮次”的纪要：当前轮进行中，不应出现当前/未来轮纪要卡
+      // 全局回顾 / 历史回顾需要展示全部轮次，并带上本轮获评均分
       .filter((item) => {
         const rd = Number(item && item.round);
-        if (!Number.isFinite(rd) || rd <= 0 || rd >= Number(currentRound || 1)) return false;
-        // 选定首位玩家时可能误归档一张空纪要：无任何内容则不展示
-        const has = (arr) => Array.isArray(arr) && arr.length > 0;
-        return has(item.playHistory)
-          || has(item.discussionNotes)
-          || has(item.playImages)
-          || has(item.discussionImages)
-          || has(item.playBlocks)
-          || has(item.discussionBlocks)
-          || has(item.voiceLines)
-          || has(item.turnRecords);
+        if (!Number.isFinite(rd) || rd <= 0) return false;
+        const isReview = this.data.isHistoryReview || this._isHistoryReview;
+        if (!isReview && rd >= Number(currentRound || 1)) return false;
+        return this._summaryHasContent(item);
       })
       .map((item) => {
         const lists = this._buildExpressListsForRound(expressMessages, item.round, currentRound);
-        return {
+        const decoratedTurns = this._decorateTurnRecords(
+          Array.isArray(item.turnRecords) ? item.turnRecords : [],
+          members
+        );
+        return this._attachCardAvgScore({
           ...item,
           voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
-          turnRecords: this._decorateTurnRecords(
-            Array.isArray(item.turnRecords) ? item.turnRecords : [],
-            members
-          ),
+          turnRecords: decoratedTurns,
           expressChatList: lists.expressChatList,
           playExpressChatList: lists.playExpressChatList,
           discussionExpressChatList: lists.discussionExpressChatList
-        };
+        }, roomState.turnAvgScores);
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
+    if (this.data.isHistoryReview || this._isHistoryReview) {
+      const actingIdx = player.currentPlayerIndex;
+      const already = roundSummaries.some((s) => (
+        Number(s.round) === Number(currentRound)
+        && Number(s.playerIndex) === Number(actingIdx)
+      ));
+      if (!already && actingIdx > 0 && this._summaryHasContent(roundContent)) {
+        const lists = this._buildExpressListsForRound(expressMessages, currentRound, currentRound);
+        roundSummaries.push(this._attachCardAvgScore({
+          round: currentRound,
+          playerIndex: actingIdx,
+          playerName: player.currentPlayerName || `玩家${actingIdx}`,
+          playHistory: roundContent.playHistory,
+          discussionNotes: roundContent.discussionNotes,
+          playImages: roundContent.playImages,
+          discussionImages: roundContent.discussionImages,
+          playBlocks: roundContent.playBlocks,
+          discussionBlocks: roundContent.discussionBlocks,
+          voiceLines: Array.isArray(roundContent.voiceLines) ? roundContent.voiceLines : [],
+          turnRecords: this._decorateTurnRecords(roundContent.turnRecords, members),
+          expressChatList: lists.expressChatList,
+          playExpressChatList: lists.playExpressChatList,
+          discussionExpressChatList: lists.discussionExpressChatList
+        }, roomState.turnAvgScores));
+      }
+    }
     // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
     this._ingestExpressMessages(expressMessages, {
       currentRound,
@@ -2312,7 +2384,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId, full: true }
+        data: { roomId, full: true, includeTurnScores: isHistoryReview }
       });
       result = (res && res.result) || {};
     } catch (e) {
@@ -4482,7 +4554,7 @@ Page({
 
       if (roomId) {
         try {
-          await wx.cloud.callFunction({
+          const finalizeRes = await wx.cloud.callFunction({
             name: 'finalizePartnerTurnRecord',
             data: {
               roomId,
@@ -4491,6 +4563,19 @@ Page({
               statementResult
             }
           });
+          const finalizeResult = (finalizeRes && finalizeRes.result) || {};
+          // 归档必须带上服务端算出的均分，避免客户端无 avgScore 的 turnRecords 盖掉
+          if (finalizeResult.ok === true && Array.isArray(finalizeResult.turnRecords)
+            && finalizeResult.turnRecords.length) {
+            extra.roundSummary.turnRecords = finalizeResult.turnRecords;
+            const mine = finalizeResult.turnRecord || finalizeResult.turnRecords.find(
+              (t) => t && Number(t.playerIndex) === Number(currentPlayerIndex)
+            );
+            if (mine && mine.avgScore != null) {
+              extra.roundSummary.avgScore = Number(mine.avgScore);
+            }
+            this.setData({ turnRecords: finalizeResult.turnRecords });
+          }
         } catch (err) {
           console.warn('finalizePartnerTurnRecord', err);
         }

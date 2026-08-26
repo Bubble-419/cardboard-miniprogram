@@ -1227,6 +1227,7 @@ game-card-timer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16rpx;
   padding: 24rpx 28rpx 12rpx;
   box-sizing: border-box;
 }
@@ -1240,6 +1241,17 @@ game-card-timer {
 
 .card-section-title-inline {
   margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-avg-score {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #5ec159;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .card-player-round {

@@ -375,6 +375,66 @@ exports.main = async (event, context) => {
         : { blocks: [], texts: [], images: [] };
     }
 
+    if (event && event.includeTurnScores === true) {
+      try {
+        const scoresRes = await db.collection(ROOM_SCORES_COLLECTION).where({ roomId }).get();
+        const buckets = {};
+        (scoresRes.data || []).forEach((row) => {
+          if (!row || row.score == null) return;
+          const n = Number(row.score);
+          if (!Number.isFinite(n)) return;
+          const roundNo = row.round != null ? Number(row.round) : 1;
+          const playerNo = Number(row.currentPlayerIndex);
+          if (!Number.isFinite(roundNo) || !Number.isFinite(playerNo)) return;
+          const key = `r${roundNo}_p${playerNo}`;
+          if (!buckets[key]) buckets[key] = { sum: 0, count: 0 };
+          buckets[key].sum += n;
+          buckets[key].count += 1;
+        });
+        const turnAvgScores = {};
+        Object.keys(buckets).forEach((key) => {
+          const b = buckets[key];
+          if (b.count > 0) {
+            turnAvgScores[key] = Math.round((b.sum / b.count) * 10) / 10;
+          }
+        });
+        roomState.turnAvgScores = turnAvgScores;
+        // 回顾态：把均分回填到纪要卡 / turnRecords，修复旧归档缺 avgScore 的情况
+        if (Array.isArray(roomState.partnerRoundSummaries)) {
+          roomState.partnerRoundSummaries = roomState.partnerRoundSummaries.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            const key = `r${Number(item.round)}_p${Number(item.playerIndex)}`;
+            const fromScores = turnAvgScores[key];
+            const turns = Array.isArray(item.turnRecords)
+              ? item.turnRecords.map((t) => {
+                if (!t || typeof t !== 'object') return t;
+                if (t.avgScore != null) return t;
+                const tKey = `r${Number(item.round)}_p${Number(t.playerIndex)}`;
+                if (turnAvgScores[tKey] == null) return t;
+                return { ...t, avgScore: turnAvgScores[tKey] };
+              })
+              : [];
+            let avgScore = item.avgScore != null ? Number(item.avgScore) : null;
+            if (avgScore == null) {
+              const matched = turns.find(
+                (t) => t && Number(t.playerIndex) === Number(item.playerIndex) && t.avgScore != null
+              ) || turns.find((t) => t && t.avgScore != null);
+              if (matched) avgScore = Number(matched.avgScore);
+              else if (fromScores != null) avgScore = fromScores;
+            }
+            return {
+              ...item,
+              turnRecords: turns.length ? turns : item.turnRecords,
+              avgScore
+            };
+          });
+        }
+      } catch (scoreErr) {
+        console.warn('getAddPlayerData turnAvgScores', scoreErr);
+        roomState.turnAvgScores = {};
+      }
+    }
+
     const members = rawMembers.map((m) => {
       const out = {
         playerIndex: m.playerIndex,

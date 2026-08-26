@@ -1640,6 +1640,36 @@ var require_room_domain = __commonJS({
         let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
         const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === "object" ? payload.roundSummary : null;
         const serverContent = room.partnerCurrentRoundContent;
+        const mergeTurnRecords = (clientList, serverList) => {
+          const map = /* @__PURE__ */ new Map();
+          const push = (rec) => {
+            if (!rec || typeof rec !== "object") return;
+            const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
+            const prev = map.get(key);
+            if (!prev) {
+              map.set(key, { ...rec });
+              return;
+            }
+            const merged = { ...prev, ...rec };
+            if (prev.avgScore != null && rec.avgScore == null) {
+              merged.avgScore = prev.avgScore;
+              if (prev.scoredCount != null && merged.scoredCount == null) {
+                merged.scoredCount = prev.scoredCount;
+              }
+            }
+            map.set(key, merged);
+          };
+          (Array.isArray(serverList) ? serverList : []).forEach(push);
+          (Array.isArray(clientList) ? clientList : []).forEach(push);
+          return Array.from(map.values());
+        };
+        const archivedTurnRecords = mergeTurnRecords(
+          clientSummary && clientSummary.turnRecords,
+          serverContent && serverContent.turnRecords
+        );
+        const matchedAvg = archivedTurnRecords.find(
+          (t) => t && Number(t.playerIndex) === Number(current) && t.avgScore != null
+        ) || archivedTurnRecords.find((t) => t && t.avgScore != null);
         partnerRoundSummaries.push({
           round: currentRound,
           ...clientSummary || {},
@@ -1654,7 +1684,8 @@ var require_room_domain = __commonJS({
           playBlocks: clientSummary && clientSummary.playBlocks || serverContent && serverContent.playBlocks || [],
           discussionBlocks: clientSummary && clientSummary.discussionBlocks || serverContent && serverContent.discussionBlocks || [],
           voiceLines: clientSummary && clientSummary.voiceLines || serverContent && serverContent.voiceLines || [],
-          turnRecords: clientSummary && clientSummary.turnRecords || serverContent && serverContent.turnRecords || []
+          turnRecords: archivedTurnRecords,
+          avgScore: matchedAvg && matchedAvg.avgScore != null ? Number(matchedAvg.avgScore) : clientSummary && clientSummary.avgScore != null ? Number(clientSummary.avgScore) : null
         });
         partnerCurrentRoundContent = {
           playHistory: [],

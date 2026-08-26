@@ -331,6 +331,7 @@
           <view class="game-card game-card-muted">
             <view class="card-header-row">
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
+              <text wx:if="{{isHistoryReview && item.avgScoreText}}" class="card-avg-score">均分 {{item.avgScoreText}}</text>
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{true}}">
               <view class="card-scroll-inner">
@@ -476,7 +477,7 @@
                   wx:for-item="turn"
                   wx:for-index="turnIdx"
                   wx:key="turnIdx"
-                >· <block wx:if="{{isHistoryReview && turn.avgScoreText}}">{{turn.playerLabel}} 均分 {{turn.avgScoreText}} · </block>{{turn.statementLabel || '未记录'}}</view>
+                >· <block wx:if="{{isHistoryReview && turn.avgScoreText}}">获评均分 {{turn.avgScoreText}} · </block>{{turn.statementLabel || '未记录'}}</view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
               </view>

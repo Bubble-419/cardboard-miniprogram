@@ -171,6 +171,31 @@ function pickPreferredList(clientList, serverList) {
   return Array.isArray(clientList) ? clientList : (Array.isArray(serverList) ? serverList : []);
 }
 
+/** 合并表态记录：优先保留带 avgScore 的服务端版本，避免客户端盖掉均分 */
+function mergeTurnRecords(clientList, serverList) {
+  const map = new Map();
+  const push = (rec) => {
+    if (!rec || typeof rec !== 'object') return;
+    const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, { ...rec });
+      return;
+    }
+    const merged = { ...prev, ...rec };
+    if (prev.avgScore != null && rec.avgScore == null) {
+      merged.avgScore = prev.avgScore;
+      if (prev.scoredCount != null && merged.scoredCount == null) {
+        merged.scoredCount = prev.scoredCount;
+      }
+    }
+    map.set(key, merged);
+  };
+  (Array.isArray(serverList) ? serverList : []).forEach(push);
+  (Array.isArray(clientList) ? clientList : []).forEach(push);
+  return Array.from(map.values());
+}
+
 function buildArchivedRoundSummary(currentRound, clientSummary, serverContent, meta) {
   const client = clientSummary ? normalizePartnerRoundContent(clientSummary) : null;
   const server = normalizePartnerRoundContent(serverContent);
@@ -207,13 +232,24 @@ function buildArchivedRoundSummary(currentRound, clientSummary, serverContent, m
     discussionBlocks,
     images: pickPreferredList(client && client.images, server.images),
     voiceLines: pickPreferredList(client && client.voiceLines, server.voiceLines),
-    turnRecords: pickPreferredList(client && client.turnRecords, server.turnRecords),
+    turnRecords: mergeTurnRecords(
+      client && client.turnRecords,
+      server.turnRecords
+    ),
     aiSummary: server.aiSummary || { status: 'pending' },
     archivedAt: (meta && meta.archivedAt) || Date.now()
   };
   if (Number.isFinite(playerIndex) && playerIndex > 0) {
     out.playerIndex = playerIndex;
     out.playerName = playerName;
+  }
+  const matchedTurn = (out.turnRecords || []).find(
+    (t) => t && Number(t.playerIndex) === Number(out.playerIndex) && t.avgScore != null
+  ) || (out.turnRecords || []).find((t) => t && t.avgScore != null);
+  if (matchedTurn && matchedTurn.avgScore != null) {
+    out.avgScore = Number(matchedTurn.avgScore);
+  } else if (clientSummary && clientSummary.avgScore != null) {
+    out.avgScore = Number(clientSummary.avgScore);
   }
   return out;
 }
@@ -550,20 +586,7 @@ exports.main = async (event, context) => {
           ? Number(currentPlayerIndex)
           : Number(room.currentPlayerIndex);
         updateData.progress = _.set(buildFreshScoreProgress(room, currentRound, actingIdx));
-        // 换人后清掉本房历史打分行，避免脏数据把 0 抬成满分
-        try {
-          const MAX_BATCH = 100;
-          let hasMore = true;
-          while (hasMore) {
-            const scoreRes = await db.collection('roomScores').where({ roomId }).limit(MAX_BATCH).get();
-            const docs = (scoreRes && scoreRes.data) || [];
-            if (!docs.length) break;
-            await Promise.all(docs.map((doc) => db.collection('roomScores').doc(doc._id).remove()));
-            if (docs.length < MAX_BATCH) hasMore = false;
-          }
-        } catch (clearScoreErr) {
-          console.warn('[updateRoomState] clear roomScores on turn change', clearScoreErr);
-        }
+        // 进度按当前回合查询，保留历史 roomScores 供回顾/排行榜读取均分
       }
     }
     if (passCount != null && Number.isFinite(Number(passCount))) {

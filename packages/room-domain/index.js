@@ -56,6 +56,30 @@ function normalizeHalfStarScore(raw, halfSteps) {
   return steps / 2;
 }
 
+function mergeTurnRecords(clientList, serverList) {
+  const map = new Map();
+  const push = (rec) => {
+    if (!rec || typeof rec !== 'object') return;
+    const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, { ...rec });
+      return;
+    }
+    const merged = { ...prev, ...rec };
+    if (prev.avgScore != null && rec.avgScore == null) {
+      merged.avgScore = prev.avgScore;
+      if (prev.scoredCount != null && merged.scoredCount == null) {
+        merged.scoredCount = prev.scoredCount;
+      }
+    }
+    map.set(key, merged);
+  };
+  (Array.isArray(serverList) ? serverList : []).forEach(push);
+  (Array.isArray(clientList) ? clientList : []).forEach(push);
+  return Array.from(map.values());
+}
+
 function buildCapabilities(room, actorUserId) {
   const seatNo = findSeatNo(room.seatMap, actorUserId);
   const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
@@ -750,6 +774,13 @@ function executeCommand({
       ? payload.roundSummary
       : null;
     const serverContent = room.partnerCurrentRoundContent;
+    const archivedTurnRecords = mergeTurnRecords(
+      clientSummary && clientSummary.turnRecords,
+      serverContent && serverContent.turnRecords
+    );
+    const matchedAvg = archivedTurnRecords.find(
+      (t) => t && Number(t.playerIndex) === Number(current) && t.avgScore != null
+    ) || archivedTurnRecords.find((t) => t && t.avgScore != null);
     partnerRoundSummaries.push({
       round: currentRound,
       ...(clientSummary || {}),
@@ -778,9 +809,12 @@ function executeCommand({
       voiceLines: (clientSummary && clientSummary.voiceLines)
         || (serverContent && serverContent.voiceLines)
         || [],
-      turnRecords: (clientSummary && clientSummary.turnRecords)
-        || (serverContent && serverContent.turnRecords)
-        || []
+      turnRecords: archivedTurnRecords,
+      avgScore: matchedAvg && matchedAvg.avgScore != null
+        ? Number(matchedAvg.avgScore)
+        : (clientSummary && clientSummary.avgScore != null
+          ? Number(clientSummary.avgScore)
+          : null)
     });
     partnerCurrentRoundContent = {
       playHistory: [],
