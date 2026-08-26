@@ -82,6 +82,12 @@ const {
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 const {
+  normalizeHalfStarScore,
+  clampSelectableScore,
+  formatScoreDisplay,
+  toHalfSteps
+} = require('../../../../utils/halfStarScore');
+const {
   buildReviewSnapshot,
   saveReviewSnapshot,
   getReviewSnapshot,
@@ -115,10 +121,14 @@ Page({
     discussionImages: [],
     playBlocks: [],
     discussionBlocks: [],
-    scoreOptions: [0, 1, 2, 3, 4, 5],
+    scoreOptions: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
     selectedScore: null,
+    selectedScoreText: '',
     scoredCount: 0,
     innerScrollLocked: false,
+    starRatingCollapsed: false,
+    starRatingGesturing: false,
+    scoreSubmitting: false,
     /** 打分抽屉：translateY=0 全展开；=max 仅露头部 */
     scorePanelExpanded: false,
     scoreSheetTranslateY: 120,
@@ -268,6 +278,9 @@ Page({
     this._cardSwipeBusy = false;
     this._scoreUiBusy = false;
     this._scoreUiBusyTimer = null;
+    this._starRatingPinnedOpen = false;
+    this._scoreSubmitting = false;
+    this._lastSubmittedScore = null;
     this._scoreFingerprint = '';
     this._pendingRoomContext = null;
     this._roomDataReady = false;
@@ -1520,9 +1533,44 @@ Page({
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'selectedScore')) {
       narrow.selectedScore = patch.selectedScore;
+      narrow.selectedScoreText = patch.selectedScore != null
+        ? formatScoreDisplay(patch.selectedScore)
+        : '';
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'starRatingCollapsed')) {
+      narrow.starRatingCollapsed = !!patch.starRatingCollapsed;
     }
     if (patch.scoreTurnKey != null) narrow.scoreTurnKey = patch.scoreTurnKey;
     return narrow;
+  },
+
+  _decorateTurnRecords(records, members) {
+    const list = Array.isArray(records) ? records : [];
+    const memberList = Array.isArray(members) && members.length
+      ? members
+      : (this.data.members || []);
+    return list.map((turn) => {
+      if (!turn || typeof turn !== 'object') return turn;
+      const idx = turn.playerIndex;
+      const member = memberList.find((m) => m && Number(m.playerIndex) === Number(idx));
+      const playerLabel = turn.playerName
+        || (member && (member.nickName || member.playerName))
+        || (idx != null ? `玩家${idx}` : '玩家');
+      const avg = turn.avgScore != null ? Number(turn.avgScore) : null;
+      return {
+        ...turn,
+        playerLabel,
+        avgScoreText: Number.isFinite(avg) ? formatScoreDisplay(avg) : ''
+      };
+    });
+  },
+
+  _scoreFields(score) {
+    const normalized = score == null ? null : normalizeHalfStarScore(score);
+    return {
+      selectedScore: normalized,
+      selectedScoreText: formatScoreDisplay(normalized)
+    };
   },
 
   _applyScoreProgressPatch(patch) {
@@ -1794,7 +1842,10 @@ Page({
         return {
           ...item,
           voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
-          turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
+          turnRecords: this._decorateTurnRecords(
+            Array.isArray(item.turnRecords) ? item.turnRecords : [],
+            members
+          ),
           expressChatList: lists.expressChatList,
           playExpressChatList: lists.playExpressChatList,
           discussionExpressChatList: lists.discussionExpressChatList
@@ -1961,10 +2012,16 @@ Page({
 
     if (playerChanged || phaseChanged || roundChanged || sessionChanged || options.resetTurnUi) {
       patch.selectedScore = null;
+      patch.selectedScoreText = '';
       patch.canStartStatement = false;
       patch.scoredCount = 0;
       patch.scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
       this._scoreProgressFromSnapshot = false;
+      this._starRatingPinnedOpen = false;
+      this._scoreSubmitting = false;
+      this._lastSubmittedScore = null;
+      patch.starRatingCollapsed = false;
+      patch.scoreSubmitting = false;
       patch.scorePanelExpanded = false;
       patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
       patch.scoreSheetVisiblePx = this.data.scoreSheetCollapsedPx || 72;
@@ -2040,11 +2097,21 @@ Page({
       // 用服务端 myScore 同步「已打分/未打分」；乐观提交中勿被 null 快照打回未打分
       if (Object.prototype.hasOwnProperty.call(roomState, 'myScore')) {
         if (roomState.myScore != null) {
-          patch.selectedScore = Number(roomState.myScore);
+          const restored = normalizeHalfStarScore(roomState.myScore);
+          patch.selectedScore = restored;
+          patch.selectedScoreText = formatScoreDisplay(restored);
           this._pendingScore = null;
-        } else if (this._pendingScore == null) {
+          this._lastSubmittedScore = restored;
+          if (!this._starRatingPinnedOpen && !this._scoreSubmitting) {
+            patch.starRatingCollapsed = true;
+          }
+        } else if (this._pendingScore == null && !this.data.starRatingGesturing) {
           // 无本地待提交分时，才接受服务端「未打分」
           patch.selectedScore = null;
+          patch.selectedScoreText = '';
+          if (!this._starRatingPinnedOpen) {
+            patch.starRatingCollapsed = false;
+          }
         }
       }
       const phaseForScore = roomPhase || this.data.gamepagePhase;
@@ -2172,10 +2239,6 @@ Page({
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
       // 仅评分进度变化：窄 setData，不动 displayRoundSummaries / cardIndex
       this._applyScoreProgressPatch(patch);
-      // 指纹未变也补测抽屉：首测失败时表达入口 bottom 依赖 visiblePx
-      if (!isClosingPhase(roomPhase) && !player.isCurrentPlayer && !this._scoreSheetMeasuredOk) {
-        setTimeout(() => this._measureScoreSheetHeights(), 80);
-      }
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
     this._roomContextFingerprint = contextFingerprint;
@@ -2237,10 +2300,6 @@ Page({
         this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
       }
       this._syncRoundSpeech();
-      // 非出牌玩家：测量打分抽屉可拖动行程（不挤压聊天区）
-      if (!patch.isCurrentPlayer) {
-        setTimeout(() => this._measureScoreSheetHeights(), 40);
-      }
     });
     return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
@@ -2426,7 +2485,7 @@ Page({
         membersRequired
       );
       const myScore = Object.prototype.hasOwnProperty.call(result, 'myScore')
-        ? (result.myScore != null ? Number(result.myScore) : null)
+        ? (result.myScore != null ? normalizeHalfStarScore(result.myScore) : null)
         : this.data.selectedScore;
       // 乐观打分未落地前，不要用 null myScore 盖掉本地已选分
       const effectiveMyScore = (myScore == null && this._pendingScore != null)
@@ -2450,8 +2509,14 @@ Page({
         scoreTurnKey: expectedKey
       };
       if (Object.prototype.hasOwnProperty.call(result, 'myScore')) {
-        if (myScore != null || this._pendingScore == null) {
-          patch.selectedScore = effectiveMyScore;
+        if (
+          !this.data.starRatingGesturing
+          && (myScore != null || this._pendingScore == null)
+        ) {
+          Object.assign(patch, this._scoreFields(effectiveMyScore));
+          if (effectiveMyScore != null && !this._starRatingPinnedOpen && !this._scoreSubmitting) {
+            patch.starRatingCollapsed = true;
+          }
         }
       }
       this.setData(patch);
@@ -3456,8 +3521,8 @@ Page({
   },
 
   onScoreBtnTouchStart(e) {
-    const score = parseInt(e.currentTarget.dataset.score, 10);
-    this._pendingScoreTap = Number.isFinite(score) ? score : null;
+    const score = clampSelectableScore(e.currentTarget.dataset.score);
+    this._pendingScoreTap = score;
   },
 
   onScoreButtonsTouchStart(e) {
@@ -3619,25 +3684,56 @@ Page({
     }, 80);
   },
 
-  onScoreTap(e) {
-    // 评分只选分，不联动面板；真实拖动手势忽略
-    this._scoreSheetInteractive = false;
-    if (this._scoreSheetDragging && !this._isScoreSheetTapGesture()) return;
-    if (this._scoreSheetDidDrag && !this._isScoreSheetTapGesture()) return;
-    const score = parseInt(e.currentTarget.dataset.score, 10);
-    if (!Number.isFinite(score)) return;
+  onStarGestureStart() {
+    this._markScoreUiBusy();
+    if (!this.data.starRatingGesturing) {
+      this.setData({ starRatingGesturing: true });
+    }
+  },
+
+  onStarGestureEnd() {
+    if (this.data.starRatingGesturing) {
+      this.setData({ starRatingGesturing: false });
+    }
+    if (!this._scoreSubmitting) {
+      this._releaseScoreUiBusy(80);
+    }
+  },
+
+  onStarRatingPreview(e) {
+    const score = e && e.detail ? clampSelectableScore(e.detail.score) : null;
+    if (score == null) return;
+    this.setData(this._scoreFields(score));
+  },
+
+  onStarRatingConfirm(e) {
+    const score = e && e.detail ? clampSelectableScore(e.detail.score) : null;
+    if (score == null) return;
     this._applyScoreTap(score);
   },
 
-  async _applyScoreTap(score) {
-    if (!Number.isFinite(score)) return;
-    // 防止 touchend 兜底与 tap 双发
-    if (this._scoreTapLockScore === score && Date.now() - (this._scoreTapLockAt || 0) < 400) {
+  onStarRatingChipTap() {
+    if (this.data.isCurrentPlayer) {
+      wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
       return;
     }
-    this._scoreTapLockScore = score;
-    this._scoreTapLockAt = Date.now();
-    this._scoreSheetDidDrag = false;
+    if (this.data.scoreSubmitting) return;
+    this._starRatingPinnedOpen = true;
+    this.setData({ starRatingCollapsed: false });
+  },
+
+  onScoreTap(e) {
+    const score = clampSelectableScore(e && e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.score
+      : null);
+    if (score == null) return;
+    this._applyScoreTap(score);
+  },
+
+  async _applyScoreTap(rawScore) {
+    const score = clampSelectableScore(rawScore);
+    if (score == null) return;
+    if (this._scoreSubmitting) return;
     this._markScoreUiBusy();
 
     if (this.data.isCurrentPlayer) {
@@ -3646,33 +3742,69 @@ Page({
       return;
     }
 
+    if (toHalfSteps(this._lastSubmittedScore) === toHalfSteps(score)) {
+      this._starRatingPinnedOpen = false;
+      this._scoreSubmitting = false;
+      this.setData({
+        ...this._scoreFields(score),
+        scoreSubmitting: false,
+        starRatingCollapsed: true
+      });
+      this._releaseScoreUiBusy(120);
+      return;
+    }
+
+    this._scoreSubmitting = true;
     this._pendingScore = score;
-    this.setData({ selectedScore: score });
+    this.setData({
+      ...this._scoreFields(score),
+      scoreSubmitting: true
+    });
 
     const { roomId, currentPlayerIndex } = this.data;
     try {
       const res = await wx.cloud.callFunction({
         name: 'submitGameScore',
-        data: { roomId, currentPlayerIndex, score }
+        data: {
+          roomId,
+          currentPlayerIndex,
+          score,
+          scoreHalfSteps: toHalfSteps(score)
+        }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) {
         this._pendingScore = null;
-        this.setData({ selectedScore: null });
+        this._scoreSubmitting = false;
+        this._starRatingPinnedOpen = true;
+        this.setData({
+          ...this._scoreFields(score),
+          scoreSubmitting: false,
+          starRatingCollapsed: false
+        });
         this._releaseScoreUiBusy(200);
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
         return;
       }
-      // 保持 _pendingScore 直到轮询/快照带回 myScore，避免真机短暂读到 null 回闪未打分
       const scoredCount = result.scoredCount || 0;
       const totalRequired = Math.max(
         result.totalRequired != null ? Number(result.totalRequired) || 0 : 0,
         Math.max(0, (this.data.members || []).length - 1)
       );
+      this._starRatingPinnedOpen = false;
+      this._scoreSubmitting = false;
+      const savedScore = result.myScore != null
+        ? (normalizeHalfStarScore(result.myScore) != null
+          ? normalizeHalfStarScore(result.myScore)
+          : score)
+        : score;
+      this._lastSubmittedScore = savedScore;
       const scorePatch = {
-        selectedScore: score,
+        ...this._scoreFields(savedScore),
         scoredCount,
         totalRequired,
+        scoreSubmitting: false,
+        starRatingCollapsed: true,
         canStartStatement: this.data.isHost
           && !isDiscussionPhase(this.data.gamepagePhase)
           && totalRequired > 0
@@ -3691,7 +3823,13 @@ Page({
     } catch (err) {
       console.warn('submitGameScore', err);
       this._pendingScore = null;
-      this.setData({ selectedScore: null });
+      this._scoreSubmitting = false;
+      this._starRatingPinnedOpen = true;
+      this.setData({
+        ...this._scoreFields(score),
+        scoreSubmitting: false,
+        starRatingCollapsed: false
+      });
       this._releaseScoreUiBusy(200);
       wx.showToast({ title: '提交失败', icon: 'none' });
     }
@@ -4407,6 +4545,9 @@ Page({
           ? (Number(this.data.currentRound) || 1) + 1
           : (this.data.currentRound != null ? this.data.currentRound : 1));
       this._scoreProgressFromSnapshot = false;
+      this._starRatingPinnedOpen = false;
+      this._scoreSubmitting = false;
+      this._lastSubmittedScore = null;
       this.setData({
         currentPlayerIndex: nextIndex,
         currentPlayerName: nextName,
@@ -4414,10 +4555,13 @@ Page({
         gamepagePhase: PHASE_PLAY,
         isMasterMode: false,
         selectedScore: null,
+        selectedScoreText: '',
         canStartStatement: false,
         scoredCount: 0,
         scoreTurnKey: `turn_r${nextRound}_s${nextIndex}`,
         scorePanelExpanded: false,
+        starRatingCollapsed: false,
+        scoreSubmitting: false,
         scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
         scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
         scoreSheetAnimating: false,

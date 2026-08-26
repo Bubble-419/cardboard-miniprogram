@@ -1,0 +1,16 @@
+<view
+  class="star-rating {{disabled ? 'star-rating-disabled' : ''}}"
+  catchtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  catchtouchend="onTouchEnd"
+  catchtouchcancel="onTouchEnd"
+>
+  <view class="star-track">
+    <view class="star-slot" wx:for="{{stars}}" wx:key="index">
+      <text class="star-glyph star-empty">★</text>
+      <view class="star-fill-clip star-fill-{{item.fill}}">
+        <text class="star-glyph star-full">★</text>
+      </view>
+    </view>
+  </view>
+</view>

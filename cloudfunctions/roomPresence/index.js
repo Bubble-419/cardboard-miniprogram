@@ -1368,7 +1368,11 @@ var require_room_domain = __commonJS({
             return fail(ERR.NOT_MEMBER);
           }
           if (type === COMMAND_TYPES.SUBMIT_SCORE) {
-            const score = parseInt(payload.score, 10);
+            const halfSteps = payload.scoreHalfSteps != null ? Number(payload.scoreHalfSteps) : NaN;
+            const scoreNum = Number.isFinite(halfSteps)
+              ? halfSteps / 2
+              : Number(payload.score);
+            const score = Number.isFinite(scoreNum) ? Math.round(scoreNum * 2) / 2 : NaN;
             if (!Number.isFinite(score) || score < 0 || score > 5) {
               return fail(ERR.INVALID_ARGUMENT, "score \u9700\u4E3A 0\uFF5E5");
             }

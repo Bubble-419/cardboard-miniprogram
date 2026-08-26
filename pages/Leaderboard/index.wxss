@@ -46,7 +46,7 @@
 
 .content {
   padding: 32rpx;
-  padding-bottom: 180rpx;
+  padding-bottom: 240rpx;
 }
 
 .loading-wrap,
@@ -157,6 +157,28 @@
   font-size: 24rpx;
   color: #5ec159;
   margin-left: 4rpx;
+}
+
+.review-entry {
+  margin-top: 12rpx;
+  height: 88rpx;
+  background-color: #ffffff;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 16rpx rgba(94, 193, 89, 0.12);
+}
+
+.review-entry:active {
+  opacity: 0.8;
+}
+
+.review-entry-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #5ec159;
+  letter-spacing: 2rpx;
 }
 
 /* 底部操作按钮 */

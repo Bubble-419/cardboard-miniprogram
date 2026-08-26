@@ -82,6 +82,51 @@ describe('Partner SUBMIT_SCORE / POST_MESSAGE / ADVANCE_TURN', () => {
     assert.equal(ok.head.progress.scoredCount, 1);
   });
 
+  it('accepts half-star scores and stores 3.5 without truncating', async () => {
+    const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
+    const app = createRoomApplication(repo);
+    await seedActivePartnerRoom(app, repo);
+
+    const ok = await app.execute(
+      envelope({
+        commandId: 'p5-score-half',
+        type: COMMAND_TYPES.SUBMIT_SCORE,
+        roomId: '30000001',
+        payload: { score: 3.5, activeSeatNo: 1 }
+      }),
+      { userId: 'p2' }
+    );
+    assert.equal(ok.ok, true, ok.errMsg);
+    const stored = Object.values(repo.rooms.get('30000001').scoresByKey || {});
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0].score, 3.5);
+
+    const fourHalf = await app.execute(
+      envelope({
+        commandId: 'p5-score-45',
+        type: COMMAND_TYPES.SUBMIT_SCORE,
+        roomId: '30000001',
+        payload: { score: 4, scoreHalfSteps: 9, activeSeatNo: 1 }
+      }),
+      { userId: 'p2' }
+    );
+    assert.equal(fourHalf.ok, true, fourHalf.errMsg);
+    const stored45 = Object.values(repo.rooms.get('30000001').scoresByKey || {});
+    assert.equal(stored45[0].score, 4.5);
+
+    const rejected = await app.execute(
+      envelope({
+        commandId: 'p5-score-bad',
+        type: COMMAND_TYPES.SUBMIT_SCORE,
+        roomId: '30000001',
+        payload: { score: 6, activeSeatNo: 1 }
+      }),
+      { userId: 'p2' }
+    );
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.errCode, ERR.INVALID_ARGUMENT);
+  });
+
   it('posts message without requiring expectedRevision', async () => {
     const repo = createInMemoryRoomRepository({ generateRoomId: () => '30000001' });
     const app = createRoomApplication(repo);

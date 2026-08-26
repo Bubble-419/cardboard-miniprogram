@@ -41,6 +41,21 @@ function pickAvatarColor(seatMap, membersByUserId) {
   return available.length ? available[0] : AVATAR_COLORS[0];
 }
 
+function normalizeHalfStarScore(raw, halfSteps) {
+  if (halfSteps != null && halfSteps !== '') {
+    const steps = parseInt(halfSteps, 10);
+    if (Number.isFinite(steps) && steps >= 0 && steps <= 10) {
+      return steps / 2;
+    }
+  }
+  if (raw == null || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const steps = Math.round(n * 2);
+  if (steps < 0 || steps > 10) return null;
+  return steps / 2;
+}
+
 function buildCapabilities(room, actorUserId) {
   const seatNo = findSeatNo(room.seatMap, actorUserId);
   const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
@@ -424,9 +439,9 @@ function executeCommand({
       }
 
       if (type === COMMAND_TYPES.SUBMIT_SCORE) {
-        const score = parseInt(payload.score, 10);
-        if (!Number.isFinite(score) || score < 0 || score > 5) {
-          return fail(ERR.INVALID_ARGUMENT, 'score 需为 0～5');
+        const score = normalizeHalfStarScore(payload.score, payload.scoreHalfSteps);
+        if (score == null) {
+          return fail(ERR.INVALID_ARGUMENT, 'score 需为 0～5，步进 0.5');
         }
         const activeSeatNo = room.workflow && room.workflow.activeSeatNo != null
           ? Number(room.workflow.activeSeatNo)
@@ -998,5 +1013,6 @@ module.exports = {
   authorizeRoomRead,
   allocateSeatNo,
   findSeatNo,
-  createRoomAggregate
+  createRoomAggregate,
+  normalizeHalfStarScore
 };

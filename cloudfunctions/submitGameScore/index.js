@@ -12,14 +12,29 @@ const db = cloud.database();
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
+function normalizeHalfStarScore(raw, halfSteps) {
+  if (halfSteps != null && halfSteps !== '') {
+    const steps = parseInt(halfSteps, 10);
+    if (Number.isFinite(steps) && steps >= 0 && steps <= 10) {
+      return steps / 2;
+    }
+  }
+  if (raw == null || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const steps = Math.round(n * 2);
+  if (steps < 0 || steps > 10) return null;
+  return steps / 2;
+}
+
 /**
- * 提交当前用户对当前出牌玩家的评分（0～5）
+ * 提交当前用户对当前出牌玩家的评分（0～5，步进 0.5）
  * 仅非出牌玩家可打分；返回合格成员口径的进度
  */
 exports.main = async (event, context) => {
   const { roomId, currentPlayerIndex, score } = event || {};
 
-  if (!roomId || currentPlayerIndex == null || score == null) {
+  if (!roomId || currentPlayerIndex == null || (score == null && (event.scoreHalfSteps == null || event.scoreHalfSteps === ''))) {
     return {
       ok: false,
       errCode: 'INVALID_PARAM',
@@ -27,12 +42,12 @@ exports.main = async (event, context) => {
     };
   }
 
-  const s = parseInt(score, 10);
-  if (isNaN(s) || s < 0 || s > 5) {
+  const s = normalizeHalfStarScore(score, event && event.scoreHalfSteps);
+  if (s == null) {
     return {
       ok: false,
       errCode: 'INVALID_PARAM',
-      errMsg: 'score 需为 0～5'
+      errMsg: 'score 需为 0～5，步进 0.5'
     };
   }
 

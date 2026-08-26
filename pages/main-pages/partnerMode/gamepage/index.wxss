@@ -577,25 +577,24 @@
   flex-shrink: 0;
 }
 
-/* 房主本人出牌时没有打分抽屉，进度与右下角表达按钮同一行垂直居中 */
-.host-score-progress {
-  flex: 1;
+/* 出牌玩家：同步显示打分人数（样式与旁观收起标签一致，不可自评） */
+.actor-score-chip {
+  flex: 0 1 auto;
   min-width: 0;
-  margin: 0;
-  padding: 0 16rpx 0 0;
+  margin: 0 16rpx 0 0;
   height: 60rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: #5ec159;
+  box-sizing: border-box;
   display: flex;
+  flex-direction: row;
   align-items: center;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #5ec159;
-  line-height: 1;
+  justify-content: center;
   white-space: nowrap;
-  overflow: hidden;
 }
 
-.host-score-progress text {
-  line-height: 1;
+.actor-score-chip .star-rating-chip-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -608,9 +607,8 @@
   height: 100%;
   min-height: 0;
   box-sizing: border-box;
-  padding: 36rpx 28rpx 0;
-  /* 允许底部打分抽屉向上展开，不裁切 */
-  overflow: visible;
+  padding: 36rpx 28rpx 12rpx;
+  overflow: hidden;
 }
 
 .score-sheet-backdrop {
@@ -626,22 +624,65 @@
   position: relative;
   flex-shrink: 0;
   align-self: stretch;
-  margin-left: -28rpx;
-  margin-right: -28rpx;
+  width: 100%;
+  height: 60rpx;
   z-index: 8;
-  overflow: visible;
+  overflow: hidden;
+}
+
+.spectator-bottom-stack-collapsed {
+  height: 60rpx;
+}
+
+/* 打开匿名输入时盖住打分区 */
+.spectator-bottom-stack-composing .spectator-express-slot-flow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  width: auto;
+  padding: 0 4rpx;
+  background: #fff;
+  pointer-events: auto;
+}
+
+.spectator-bottom-stack-composing .star-rating-shell {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .spectator-express-slot {
   position: absolute;
-  left: 0;
   right: 0;
+  top: 0;
+  bottom: 0;
   z-index: 6;
-  width: 100%;
-  padding: 0 44rpx 16rpx;
+  width: auto;
+  height: 60rpx;
+  padding: 0;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
   pointer-events: none;
   transition: none;
+}
+
+.spectator-express-slot-flow {
+  position: absolute;
+  left: auto;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  width: auto;
+  height: 60rpx;
+  padding: 0;
+  display: flex;
+  align-items: center;
 }
 
 .spectator-express-slot-animating {
@@ -659,8 +700,110 @@
 .spectator-express-fab-row {
   display: flex;
   flex-direction: row;
+  align-items: center;
   justify-content: flex-end;
+  width: auto;
+  height: 60rpx;
+}
+
+/* 固定高度；收起=左侧标签，展开=向右铺开星级 */
+.star-rating-shell {
+  position: relative;
   width: 100%;
+  height: 60rpx;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 0 72rpx 0 0;
+}
+
+.star-rating-shell-collapsed {
+  height: 60rpx;
+}
+
+.star-rating-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: #5ec159;
+  box-sizing: border-box;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate3d(-12rpx, 0, 0);
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.star-rating-shell-collapsed .star-rating-chip {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  pointer-events: auto;
+}
+
+.star-rating-chip-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.star-rating-body {
+  width: 100%;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transform-origin: left center;
+  transition: opacity 220ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.star-rating-shell-collapsed .star-rating-body {
+  opacity: 0;
+  transform: translate3d(-48rpx, 0, 0);
+  pointer-events: none;
+}
+
+.star-rating-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  height: 60rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+  gap: 12rpx;
+}
+
+/* 自定义组件宿主默认不参与 flex 撑开，需显式占满剩余宽度 */
+.star-rating-row > star-rating {
+  flex: 1 1 auto;
+  min-width: 300rpx;
+  width: 0;
+  height: 60rpx;
+}
+
+.star-rating-value-wrap {
+  flex: 0 0 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.star-rating-value {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #5ec159;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .spectator-express-form {
@@ -834,7 +977,7 @@
   align-items: flex-start;
   gap: 16rpx;
   margin-bottom: 20rpx;
-  padding-right: 80rpx;
+  padding-right: 24rpx;
   box-sizing: border-box;
 }
 
@@ -1398,7 +1541,6 @@ game-card-timer {
   padding: 0 4rpx;
 }
 
-.score-label,
 .score-progress {
   font-size: 24rpx;
   font-weight: 600;

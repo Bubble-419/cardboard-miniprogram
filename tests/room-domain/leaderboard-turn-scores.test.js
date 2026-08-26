@@ -36,6 +36,23 @@ describe('partner leaderboard turnRecords aggregation', () => {
     assert.equal(stats.scoreCount, 3);
   });
 
+  it('keeps half-star avgScore without rounding to integer', () => {
+    const byPlayer = aggregateTurnScores([
+      { playerIndex: 2, avgScore: 3.5, scoredCount: 3 }
+    ]);
+    const stats = statsForPlayer(byPlayer, 2);
+    assert.equal(stats.averageScore, 3.5);
+  });
+
+  it('aggregates half-star roomScores without truncating', () => {
+    const byPlayer = aggregateRoomScores([
+      { currentPlayerIndex: 1, score: 3.5 },
+      { currentPlayerIndex: 1, score: 4.5 }
+    ]);
+    const stats = statsForPlayer(byPlayer, 1);
+    assert.equal(stats.averageScore, 4);
+  });
+
   it('treats missing scoredCount as weight 1', () => {
     const byPlayer = aggregateTurnScores([
       { playerIndex: 2, avgScore: 3 },

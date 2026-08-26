@@ -301,7 +301,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
-        disable-touch="{{scoreSwipeLocked || innerScrollLocked}}"
+        disable-touch="{{scoreSwipeLocked || innerScrollLocked || starRatingGesturing}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
@@ -476,7 +476,7 @@
                   wx:for-item="turn"
                   wx:for-index="turnIdx"
                   wx:key="turnIdx"
-                >· {{turn.statementLabel || '未记录'}}</view>
+                >· <block wx:if="{{isHistoryReview && turn.avgScoreText}}">{{turn.playerLabel}} 均分 {{turn.avgScoreText}} · </block>{{turn.statementLabel || '未记录'}}</view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
               </view>
@@ -739,13 +739,6 @@
 
               <!-- 非出牌玩家：玩家正在出牌 -->
               <view class="spectator-card" wx:else>
-                <!-- 展开时点卡片空白处收起，不挡打分抽屉和表达按钮 -->
-                <view
-                  wx:if="{{scorePanelExpanded}}"
-                  class="score-sheet-backdrop"
-                  catchtap="onScoreSheetBackdropTap"
-                  catchtouchmove="preventMove"
-                ></view>
                 <view
                   wx:if="{{expressComposerOpen}}"
                   class="express-dismiss-mask"
@@ -791,11 +784,8 @@
                 </scroll-view>
                 </view>
 
-                <view class="spectator-bottom-stack">
-                  <view
-                    class="spectator-express-slot {{scoreSheetAnimating ? 'spectator-express-slot-animating' : ''}}"
-                    style="bottom: {{scoreSheetVisiblePx}}px;"
-                  >
+                <view class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}}">
+                  <view class="spectator-express-slot spectator-express-slot-flow">
                     <form
                       wx:if="{{expressComposerOpen}}"
                       class="spectator-express-form"
@@ -806,7 +796,7 @@
                           class="spectator-express-input"
                           name="expressText"
                           maxlength="40"
-                          confirm-type="send"
+                          confirm-type="done"
                           hold-keyboard="{{true}}"
                           adjust-position="{{true}}"
                           cursor-spacing="24"
@@ -843,73 +833,40 @@
                     </view>
                   </view>
 
-                  <!-- 占位：仅保留收起高度，避免上方内容随展开抖动 -->
-                  <view class="score-sheet-spacer" style="height: {{scoreSheetCollapsedPx}}px;"></view>
-
-                  <!--
-                    裁剪容器：高度随 translateY 连续变化，评分按钮渐显/渐隐
-                    内部 sheet 用 transform 跟手 / 吸附动画
-                  -->
-                  <view
-                    class="score-sheet-clip {{scoreSheetAnimating ? 'score-sheet-clip-animating' : ''}}"
-                    style="height: {{scoreSheetVisiblePx}}px;"
-                  >
+                  <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}}">
                     <view
-                      class="score-sheet {{scoreSheetAnimating ? 'score-sheet-animating' : ''}} {{!scorePanelExpanded && !scoreSheetAnimating && scoreSheetTranslateY >= scoreSheetMaxTranslateY ? 'score-sheet-collapsed' : ''}}"
-                      style="transform: translateY({{scoreSheetTranslateY}}px);"
+                      class="star-rating-chip"
+                      catchtap="onStarRatingChipTap"
                     >
-                      <!-- 仅头部响应拖拽/点击展开收起，避免吞掉评分按钮 tap -->
-                      <view
-                        class="score-sheet-header"
-                        data-sheet-hit="header"
-                        catchtouchstart="onScoreSheetTouchStart"
-                        catchtouchmove="onScoreSheetTouchMove"
-                        catchtouchend="onScoreSheetTouchEnd"
-                        catchtouchcancel="onScoreSheetTouchEnd"
-                      >
-                        <view class="score-sheet-handle-wrap">
-                          <view class="score-sheet-handle"></view>
-                        </view>
-                        <view class="score-sheet-head">
-                          <text class="score-label">{{selectedScore != null ? '已打分' : '未打分'}}</text>
-                          <text class="score-progress">完成打分人数：{{scoredCount}}/{{totalRequired}}</text>
-                        </view>
-                      </view>
-                      <view
-                        class="score-buttons"
-                        catchtouchstart="onScoreButtonsTouchStart"
-                        catchtouchmove="onScoreButtonsTouchMove"
-                        catchtouchend="onScoreButtonsTouchEnd"
-                        catchtouchcancel="onScoreButtonsTouchEnd"
-                      >
-                        <view
-                          class="score-btn {{selectedScore === item ? 'score-btn-active' : ''}}"
-                          wx:for="{{scoreOptions}}"
-                          wx:key="*this"
-                          data-score="{{item}}"
-                          bindtouchstart="onScoreBtnTouchStart"
-                          catchtap="onScoreTap"
-                        >
-                          <view class="score-btn-content">
-                            <view class="score-btn-label">
-                              <text class="score-num">{{item}}</text>
-                              <text class="score-unit">分</text>
-                            </view>
-                          </view>
-                        </view>
+                      <text class="star-rating-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
+                    </view>
+                    <view class="star-rating-body">
+                      <view class="star-rating-row">
+                        <star-rating
+                          value="{{selectedScore}}"
+                          disabled="{{scoreSubmitting}}"
+                          bind:preview="onStarRatingPreview"
+                          bind:scoreconfirm="onStarRatingConfirm"
+                          bind:gesturestart="onStarGestureStart"
+                          bind:gestureend="onStarGestureEnd"
+                        />
                       </view>
                     </view>
                   </view>
                 </view>
               </view>
 
-              <!-- 出牌玩家：匿名表达入口在卡片右下角；房主出牌时进度与按钮同一行垂直居中 -->
+              <!-- 出牌玩家：同步显示打分进度（不可自评）；匿名表达入口在右下角 -->
               <view
-                class="card-express-corner {{isHost && isCurrentPlayer && !expressChatPanelVisible ? 'card-express-corner-with-progress' : ''}}"
+                class="card-express-corner {{!expressChatPanelVisible ? 'card-express-corner-with-progress' : ''}}"
                 wx:if="{{isCurrentPlayer}}"
               >
-                <view class="host-score-progress" wx:if="{{isHost && isCurrentPlayer && !expressChatPanelVisible}}">
-                  <text>完成打分人数 {{scoredCount}}/{{totalRequired}}</text>
+                <view
+                  class="actor-score-chip"
+                  wx:if="{{!expressChatPanelVisible}}"
+                  catchtap="onStarRatingChipTap"
+                >
+                  <text class="star-rating-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
                 </view>
                 <view
                   class="express-fab-btn"

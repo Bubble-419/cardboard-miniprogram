@@ -78,10 +78,14 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok === true && result.leaderboard) {
-        const leaderboard = result.leaderboard.map((item, index) => ({
-          ...item,
-          rank: index + 1
-        }));
+        const leaderboard = result.leaderboard.map((item, index) => {
+          const avg = item && item.averageScore != null ? Number(item.averageScore) : 0;
+          return {
+            ...item,
+            rank: index + 1,
+            averageScoreText: Number.isFinite(avg) ? avg.toFixed(1) : '0.0'
+          };
+        });
         this.setData({
           leaderboard,
           loading: false
@@ -115,6 +119,17 @@ Page({
     } catch (e) {
       console.warn('leaderboard _loadHostStatus', e);
     }
+  },
+
+  handleGlobalReview() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) {
+      wx.showToast({ title: '房间信息缺失', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+    });
   },
 
   handleBack() {
