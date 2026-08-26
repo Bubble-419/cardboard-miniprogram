@@ -4,6 +4,21 @@ const {
   buildStarFills
 } = require('../../utils/halfStarScore');
 
+function mapStars(score, activeIndex) {
+  return buildStarFills(score).map((row, i) => ({
+    index: row.index,
+    fill: row.fill,
+    active: activeIndex === i
+  }));
+}
+
+function activeIndexFromScore(score) {
+  if (score == null || score === '') return -1;
+  const n = Number(score);
+  if (!Number.isFinite(n) || n <= 0) return -1;
+  return Math.min(4, Math.max(0, Math.ceil(n) - 1));
+}
+
 Component({
   properties: {
     value: {
@@ -17,7 +32,8 @@ Component({
   },
 
   data: {
-    stars: buildStarFills(null)
+    stars: mapStars(null, -1),
+    gesturing: false
   },
 
   lifetimes: {
@@ -39,10 +55,24 @@ Component({
   methods: {
     _syncFromValue(raw) {
       if (raw == null || raw === '') {
-        this.setData({ stars: buildStarFills(null) });
+        this.setData({
+          stars: mapStars(null, -1),
+          gesturing: false
+        });
         return;
       }
-      this.setData({ stars: buildStarFills(normalizeHalfStarScore(raw)) });
+      const score = normalizeHalfStarScore(raw);
+      this.setData({
+        stars: mapStars(score, -1),
+        gesturing: false
+      });
+    },
+
+    _paint(score) {
+      this.setData({
+        stars: mapStars(score, activeIndexFromScore(score)),
+        gesturing: true
+      });
     },
 
     _readClientX(e) {
@@ -60,7 +90,7 @@ Component({
       });
       if (this._previewScore === score) return score;
       this._previewScore = score;
-      this.setData({ stars: buildStarFills(score) });
+      this._paint(score);
       this.triggerEvent('preview', { score });
       return score;
     },
@@ -80,6 +110,7 @@ Component({
       if (this.properties.disabled) return;
       this._gesturing = true;
       this._previewScore = null;
+      this.setData({ gesturing: true });
       this.triggerEvent('gesturestart');
       const x = this._readClientX(e);
       this._lastX = x;
@@ -114,7 +145,10 @@ Component({
           ? this._previewScore
           : (this._trackRect ? this._applyClientX(this._lastX) : null);
         if (score != null) {
-          this.setData({ stars: buildStarFills(score) });
+          this.setData({
+            stars: mapStars(score, -1),
+            gesturing: false
+          });
           this.triggerEvent('scoreconfirm', { score });
         } else {
           this._syncFromValue(this.properties.value);

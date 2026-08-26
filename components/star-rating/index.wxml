@@ -1,15 +1,27 @@
 <view
-  class="star-rating {{disabled ? 'star-rating-disabled' : ''}}"
+  class="star-rating {{disabled ? 'star-rating-disabled' : ''}} {{gesturing ? 'star-rating-gesturing' : ''}}"
   catchtouchstart="onTouchStart"
   catchtouchmove="onTouchMove"
   catchtouchend="onTouchEnd"
   catchtouchcancel="onTouchEnd"
 >
   <view class="star-track">
-    <view class="star-slot" wx:for="{{stars}}" wx:key="index">
-      <text class="star-glyph star-empty">★</text>
+    <view
+      class="star-slot {{item.active ? 'star-slot-active' : ''}}"
+      wx:for="{{stars}}"
+      wx:key="index"
+    >
+      <image
+        class="star-icon"
+        src="/assets/partnerMode/icon-star-empty.png"
+        mode="aspectFit"
+      />
       <view class="star-fill-clip star-fill-{{item.fill}}">
-        <text class="star-glyph star-full">★</text>
+        <image
+          class="star-icon"
+          src="/assets/partnerMode/icon-star-full.png"
+          mode="aspectFit"
+        />
       </view>
     </view>
   </view>

@@ -1000,7 +1000,7 @@
     </view>
     <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
       <button
-        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
+        class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
         disabled="{{discussionSwitching}}"
         loading="{{discussionSwitching && discussionSwitchAction === 'end'}}"
         hover-class="none"
@@ -1009,7 +1009,7 @@
         {{discussionSwitching && discussionSwitchAction === 'end' ? '处理中' : '结束讨论'}}
       </button>
       <button
-        class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
+        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
         disabled="{{discussionSwitching}}"
         loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
         hover-class="none"
