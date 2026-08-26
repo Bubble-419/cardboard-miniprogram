@@ -107,8 +107,32 @@ function resolveScoreProgress({
     const myId = String(myUserId);
     if (eligibleIds.has(myId)) {
       const mine = (scoreRows || []).find((row) => row && String(row.userId) === myId);
-      if (mine && mine.score != null && !Number.isNaN(Number(mine.score))) {
-        myScore = Number(mine.score);
+      if (mine) {
+        // 优先半星步进字段，避免 score 曾被 parseInt 截成整数
+        const halfSteps = mine.scoreHalfSteps != null ? Number(mine.scoreHalfSteps) : NaN;
+        if (Number.isFinite(halfSteps) && halfSteps >= 0 && halfSteps <= 10) {
+          myScore = halfSteps / 2;
+        } else if (mine.score != null && !Number.isNaN(Number(mine.score))) {
+          const n = Number(mine.score);
+          myScore = Number.isFinite(n) ? Math.round(n * 2) / 2 : null;
+        }
+      }
+      if (myScore == null && scoresByKey && typeof scoresByKey === 'object') {
+        Object.keys(scoresByKey).forEach((key) => {
+          if (myScore != null) return;
+          const row = scoresByKey[key];
+          if (!row || row.turnId !== expectedTurnId) return;
+          if (String(row.scorerUserId) !== myId) return;
+          const halfSteps = row.scoreHalfSteps != null ? Number(row.scoreHalfSteps) : NaN;
+          if (Number.isFinite(halfSteps) && halfSteps >= 0 && halfSteps <= 10) {
+            myScore = halfSteps / 2;
+            return;
+          }
+          if (row.score != null && !Number.isNaN(Number(row.score))) {
+            const n = Number(row.score);
+            myScore = Number.isFinite(n) ? Math.round(n * 2) / 2 : null;
+          }
+        });
       }
     }
   }

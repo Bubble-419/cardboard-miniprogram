@@ -79,11 +79,9 @@ Page({
       const result = (res && res.result) || {};
       if (result.ok === true && result.leaderboard) {
         const leaderboard = result.leaderboard.map((item, index) => {
-          const avg = item && item.averageScore != null ? Number(item.averageScore) : 0;
           return {
             ...item,
-            rank: index + 1,
-            averageScoreText: Number.isFinite(avg) ? avg.toFixed(1) : '0.0'
+            rank: index + 1
           };
         });
         this.setData({

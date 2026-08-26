@@ -39,8 +39,12 @@
           <text class="meta">共 {{item.scoreCount}} 次评分</text>
         </view>
         <view class="score-wrap">
-          <text class="score-val">{{item.averageScoreText}}</text>
-          <text class="score-unit">分</text>
+          <star-rating
+            class="leaderboard-stars"
+            value="{{item.averageScore}}"
+            disabled="{{true}}"
+            size="compact"
+          />
         </view>
       </view>
       <view class="review-entry" bindtap="handleGlobalReview">

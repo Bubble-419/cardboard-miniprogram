@@ -41,6 +41,14 @@ function buildOne(name) {
   // 确保 workspace 包可通过 Node resolve（无 pnpm link 时用 register）
   require('./test-register');
 
+  const aliasArgs = [
+    `--alias:@cardboard/room-contracts=${path.join(ROOT, 'packages/room-contracts')}`,
+    `--alias:@cardboard/room-domain=${path.join(ROOT, 'packages/room-domain')}`,
+    `--alias:@cardboard/room-application=${path.join(ROOT, 'packages/room-application')}`,
+    `--alias:@cardboard/room-cloudbase-adapter=${path.join(ROOT, 'packages/room-cloudbase-adapter')}`,
+    `--alias:@cardboard/room-client=${path.join(ROOT, 'packages/room-client')}`
+  ];
+
   const result = runEsbuild([
     target.entry,
     '--bundle',
@@ -48,6 +56,7 @@ function buildOne(name) {
     '--target=node18',
     '--format=cjs',
     '--external:wx-server-sdk',
+    ...aliasArgs,
     `--outfile=${target.outfile}`
   ]);
   if (result.status !== 0) {

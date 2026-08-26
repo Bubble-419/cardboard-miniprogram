@@ -4,7 +4,7 @@
   align-items: center;
   width: 100%;
   min-width: 300rpx;
-  height: 60rpx;
+  height: 96rpx;
   padding: 0 10rpx;
   box-sizing: border-box;
   background: transparent;
@@ -12,7 +12,7 @@
 }
 
 .star-rating-disabled {
-  opacity: 0.55;
+  /* 提交中仍保持已选星色，避免刚打完分时发灰、与再次展开不一致 */
   pointer-events: none;
 }
 
@@ -23,7 +23,7 @@
   justify-content: space-between;
   width: 100%;
   min-width: 280rpx;
-  height: 60rpx;
+  height: 96rpx;
   box-sizing: border-box;
 }
 
@@ -31,7 +31,7 @@
   position: relative;
   flex: 1 1 0;
   min-width: 56rpx;
-  height: 60rpx;
+  height: 96rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -90,4 +90,88 @@
 
 .star-rating-gesturing .star-fill-clip {
   transition: none;
+}
+
+/* 排行榜 / 回顾只读展示，不占打分热区 */
+.star-rating-compact,
+.star-rating-mini {
+  min-width: 0;
+  padding: 0;
+}
+
+.star-rating-compact .star-track,
+.star-rating-mini .star-track {
+  min-width: 0;
+}
+
+.star-rating-compact {
+  height: 40rpx;
+}
+
+.star-rating-compact .star-track,
+.star-rating-compact .star-slot {
+  height: 40rpx;
+  min-width: 32rpx;
+}
+
+.star-rating-compact .star-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-left: -16rpx;
+  margin-top: -16rpx;
+}
+
+.star-rating-compact .star-fill-clip {
+  height: 32rpx;
+  margin-left: -16rpx;
+  margin-top: -16rpx;
+}
+
+.star-rating-compact .star-fill-clip .star-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.star-rating-compact .star-fill-50 {
+  width: 16rpx;
+}
+
+.star-rating-compact .star-fill-100 {
+  width: 32rpx;
+}
+
+.star-rating-mini {
+  height: 28rpx;
+}
+
+.star-rating-mini .star-track,
+.star-rating-mini .star-slot {
+  height: 28rpx;
+  min-width: 24rpx;
+}
+
+.star-rating-mini .star-icon {
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: -12rpx;
+  margin-top: -12rpx;
+}
+
+.star-rating-mini .star-fill-clip {
+  height: 24rpx;
+  margin-left: -12rpx;
+  margin-top: -12rpx;
+}
+
+.star-rating-mini .star-fill-clip .star-icon {
+  width: 24rpx;
+  height: 24rpx;
+}
+
+.star-rating-mini .star-fill-50 {
+  width: 12rpx;
+}
+
+.star-rating-mini .star-fill-100 {
+  width: 24rpx;
 }

@@ -36,6 +36,7 @@ async function endPartnerSessionAndGoRoom(roomId, options) {
           currentPage: 'addPlayer',
           partnerGamePhase: 'play',
           partnerMasterMode: false,
+          partnerSilentMode: false,
           resetClosingVotes: true,
           clearBrainstormProgress: true,
           brainstormSessionEnded: true

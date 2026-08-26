@@ -166,13 +166,28 @@ Page({
   },
 
   _returnToGamepage(markUsed = true) {
-    const { roomId, currentPlayerIndex, initiatorPlayerIndex } = this.data;
+    const {
+      roomId,
+      currentPlayerIndex,
+      initiatorPlayerIndex,
+      currentRound,
+      brainstormSessionSeq
+    } = this.data;
     const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
     const target = buildGamepageUrl(
       roomId,
       idx,
       'partner',
-      markUsed ? { specialMoveUsed: true } : {}
+      markUsed
+        ? {
+          specialMoveUsed: true,
+          currentRound,
+          brainstormSessionSeq
+        }
+        : {
+          currentRound,
+          brainstormSessionSeq
+        }
     );
     const { safeNavigateBack } = require('../../../../utils/pageNavigate');
     // 未标记已使用时可安全 pop；带 specialMoveUsed query 时必须 openUrl
@@ -192,22 +207,22 @@ Page({
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   },
 
-  startSilentTimer() {
+  startSilentTimer(startedAtOverride) {
     this.clearSilentTimer();
-    const startedAt = Date.now();
+    const startedAt = Number(startedAtOverride) > 0 ? Number(startedAtOverride) : Date.now();
     this.setData({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 房主：采样麦克风分贝并广播；非房主：轮询读取分贝
-    if (this.data.isHost) {
-      this._startSoundLevelSampling();
-    }
+    // 发起人采样麦克风分贝并广播；其他人从房间轮询读取
+    this._startSoundLevelSampling();
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
+    const elapsedMs = Math.max(0, Date.now() - startedAt);
+    const remainMs = Math.max(0, SILENT_DURATION_SEC * 1000 - elapsedMs) + 4000;
     this._silentTimer = setTimeout(() => {
       this._silentTimer = null;
       this.handleEndSilent();
-    }, (SILENT_DURATION_SEC + 4) * 1000);
+    }, remainMs);
   },
 
   clearSilentTimer() {
@@ -446,11 +461,10 @@ Page({
   },
 
   /**
-   * 房主：使用 RecorderManager 采样麦克风分贝，仅驱动本机音柱。
-   * 不写房间态：updateRoomState 会改 currentPage，曾把其他玩家打回房间页。
+   * 房主采样分贝 → 本地音柱；节流写入房间态供全员同步。
+   * 声贝快路径不传 currentPage，避免把其他玩家打回房间页。
    */
   _startSoundLevelSampling() {
-    if (!this.data.isHost) return;
     this._stopSoundLevelSampling();
 
     wx.authorize({ scope: 'scope.record' }).catch(() => {});
@@ -473,6 +487,7 @@ Page({
         // 映射：-60dB 以下→0，-10dB 以上→1
         const lv = Math.min(1, Math.max(0, (db + 60) / 50));
         this.setData({ soundLevel: lv });
+        this._broadcastSilentSoundLevel(lv);
       } catch (e) {
         // ignore PCM parse errors
       }
@@ -493,6 +508,21 @@ Page({
     });
   },
 
+  _broadcastSilentSoundLevel(level) {
+    const roomId = this.data.roomId || '';
+    if (!roomId || !this.data.silentTimerActive) return;
+    const now = Date.now();
+    if (this._lastSoundBroadcastAt && now - this._lastSoundBroadcastAt < 500) return;
+    this._lastSoundBroadcastAt = now;
+    wx.cloud.callFunction({
+      name: 'updateRoomState',
+      data: {
+        roomId,
+        partnerSilentSoundLevel: Math.min(1, Math.max(0, Number(level) || 0))
+      }
+    }).catch(() => {});
+  },
+
   _stopSoundLevelSampling() {
     if (this._recorderManager) {
       try { this._recorderManager.stop(); } catch (e) { /* ignore */ }
@@ -509,6 +539,12 @@ Page({
       if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
       if (extra && extra.partnerMasterMode != null) {
         data.partnerMasterMode = extra.partnerMasterMode;
+      }
+      if (extra && extra.partnerSilentMode != null) {
+        data.partnerSilentMode = extra.partnerSilentMode;
+      }
+      if (extra && extra.partnerSilentStartedAt != null) {
+        data.partnerSilentStartedAt = extra.partnerSilentStartedAt;
       }
       if (extra && extra.partnerGamePhase != null) {
         data.partnerGamePhase = extra.partnerGamePhase;
@@ -555,15 +591,28 @@ Page({
         }
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
-            // 非房主：同步房主的声贝等级到音柱
+            // 未本地采样时：从房间同步声贝等级到音柱
             if (
-              !this.data.isHost
+              !this._recorderManager
               && this.data.silentTimerActive
               && pollResult.roomState
               && pollResult.roomState.partnerSilentSoundLevel != null
             ) {
               const lv = Math.min(1, Math.max(0, Number(pollResult.roomState.partnerSilentSoundLevel) || 0));
-              this.setData({ soundLevel: lv });
+              if (Math.abs(lv - (this.data.soundLevel || 0)) > 0.02) {
+                this.setData({ soundLevel: lv });
+              }
+            }
+            // 房间静默已结束（他人清场/换轮）：退出静默视图
+            if (
+              this.data.viewMode === 'silent'
+              && this.data.silentTimerActive
+              && pollResult.roomState
+              && pollResult.roomState.partnerSilentMode === false
+            ) {
+              this._stopSilentTimerUi();
+              this._returnToGamepage();
+              return true;
             }
             // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
             if (page === 'closingstatement') {
@@ -575,7 +624,11 @@ Page({
               return true;
             }
             // 仍在 gamepage 且非 master：勿被旧 poll 打回 gamepage（防卡顿回跳）
-            if (page === 'gamepage' && (pollResult.roomState || {}).partnerMasterMode !== true) {
+            // 静默中同样留在 specialMove 控制页
+            if (
+              page === 'gamepage'
+              && (pollResult.roomState || {}).partnerMasterMode !== true
+            ) {
               return true;
             }
             return false;
@@ -648,7 +701,9 @@ Page({
       return;
     }
     if (viewMode === 'silent') {
+      // 返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
       this._stopSilentTimerUi();
+      this._clearSilentRoomState();
       this.setData({
         viewMode: 'wheel'
       });
@@ -692,8 +747,7 @@ Page({
     }
 
     if (selectedAction === 'silent') {
-      this.setData({ viewMode: 'silent' });
-      this.startSilentTimer();
+      this.activateSilentMode();
       return;
     }
 
@@ -720,6 +774,7 @@ Page({
       const result = await this._updateRoomState('closingStatement', null, null, {
         partnerGamePhase: 'closing',
         partnerMasterMode: false,
+        partnerSilentMode: false,
         resetClosingVotes: true
       });
       if (!result || result.ok !== true) {
@@ -757,6 +812,40 @@ Page({
     }
   },
 
+  async activateSilentMode() {
+    const { roomId, members } = this.data;
+    if (!roomId) return;
+    if (this._activatingSilent) return;
+    this._activatingSilent = true;
+
+    try {
+      const turnPlayerIndex = this.data.currentPlayerIndex != null
+        ? this.data.currentPlayerIndex
+        : this.data.initiatorPlayerIndex;
+      const turnPlayer = (members || []).find((m) => m.playerIndex === turnPlayerIndex);
+      const turnPlayerName = turnPlayer
+        ? (turnPlayer.nickName || `玩家${turnPlayerIndex}`)
+        : `玩家${turnPlayerIndex}`;
+      const startedAt = Date.now();
+
+      // 写入房间静默态，全员 gamepage 卡片切到声贝边框；保持 currentPage=gamepage 避免踢页
+      const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
+        partnerSilentMode: true,
+        partnerSilentStartedAt: startedAt,
+        partnerMasterMode: false
+      });
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        return;
+      }
+
+      this.setData({ viewMode: 'silent' });
+      this.startSilentTimer(startedAt);
+    } finally {
+      this._activatingSilent = false;
+    }
+  },
+
   async activateMasterMode() {
     const { roomId, members } = this.data;
     if (!roomId) return;
@@ -773,7 +862,8 @@ Page({
     this._markSpecialMoveUsedForGamepage();
 
     const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
-      partnerMasterMode: true
+      partnerMasterMode: true,
+      partnerSilentMode: false
     });
     if (!result || result.ok !== true) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
@@ -782,6 +872,18 @@ Page({
 
     this._stopStatePolling();
     this._returnToGamepage();
+  },
+
+  _clearSilentRoomState() {
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+    const turnPlayerIndex = this.data.currentPlayerIndex != null
+      ? this.data.currentPlayerIndex
+      : this.data.initiatorPlayerIndex;
+    // 异步清场，不阻塞 UI；失败时依赖换轮 / 下次 poll 兜底
+    this._updateRoomState('gamepage', turnPlayerIndex, null, {
+      partnerSilentMode: false
+    }).catch(() => {});
   },
 
   async handleCancelAdopt() {
@@ -821,6 +923,12 @@ Page({
         await this.loadRoomData();
       }
       this._markSpecialMoveUsedForGamepage();
+      const turnPlayerIndex = this.data.currentPlayerIndex != null
+        ? this.data.currentPlayerIndex
+        : this.data.initiatorPlayerIndex;
+      await this._updateRoomState('gamepage', turnPlayerIndex, null, {
+        partnerSilentMode: false
+      });
       this._returnToGamepage();
     } finally {
       this._endingSilent = false;

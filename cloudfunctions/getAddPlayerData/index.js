@@ -323,6 +323,13 @@ exports.main = async (event, context) => {
       memberCount: rawMembers.length,
       partnerGamePhase: room.partnerGamePhase || 'play',
       partnerMasterMode: room.partnerMasterMode === true,
+      partnerSilentMode: room.partnerSilentMode === true,
+      partnerSilentStartedAt: room.partnerSilentStartedAt != null
+        ? Number(room.partnerSilentStartedAt)
+        : null,
+      partnerSilentSoundLevel: room.partnerSilentSoundLevel != null
+        ? Math.min(1, Math.max(0, Number(room.partnerSilentSoundLevel) || 0))
+        : 0,
       partnerClosingStep: room.partnerClosingStep || 'rune',
       closingQuestionPlayers: Array.isArray(room.closingQuestionPlayers)
         ? room.closingQuestionPlayers
@@ -338,6 +345,9 @@ exports.main = async (event, context) => {
       scoredCount: scoreProgress.scoredCount,
       totalRequired: scoreProgress.totalRequired,
       myScore: scoreProgress.myScore,
+      myScoreHalfSteps: scoreProgress.myScore != null
+        ? Math.round(Number(scoreProgress.myScore) * 2)
+        : null,
       progress: {
         scoredCount: scoreProgress.scoredCount,
         requiredScoreCount: scoreProgress.totalRequired,

@@ -88,6 +88,12 @@ function patchSnapshotFromCommand(prev, result) {
     rawRoomState.partnerGamePhase = 'play';
     roomState.partnerMasterMode = false;
     rawRoomState.partnerMasterMode = false;
+    roomState.partnerSilentMode = false;
+    rawRoomState.partnerSilentMode = false;
+    roomState.partnerSilentStartedAt = null;
+    rawRoomState.partnerSilentStartedAt = null;
+    roomState.partnerSilentSoundLevel = 0;
+    rawRoomState.partnerSilentSoundLevel = 0;
     if (effects.activeSeatNo != null) {
       roomState.currentPlayerIndex = effects.activeSeatNo;
       rawRoomState.currentPlayerIndex = effects.activeSeatNo;

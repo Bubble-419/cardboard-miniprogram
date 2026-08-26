@@ -48,6 +48,9 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     if (options.currentRound != null && Number.isFinite(Number(options.currentRound))) {
       url += `&currentRound=${Number(options.currentRound)}`;
     }
+    if (options.brainstormSessionSeq != null && Number.isFinite(Number(options.brainstormSessionSeq))) {
+      url += `&brainstormSessionSeq=${Number(options.brainstormSessionSeq)}`;
+    }
     if (options.fromStatement) {
       url += '&fromStatement=1';
     }

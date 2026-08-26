@@ -607,7 +607,10 @@
   height: 100%;
   min-height: 0;
   box-sizing: border-box;
-  padding: 36rpx 28rpx 12rpx;
+  /* 底部操作区相对卡片：左 / 右 / 底同一间距 */
+  --spectator-action-inset: 28rpx;
+  --star-hit-height: 96rpx;
+  padding: 36rpx var(--spectator-action-inset) var(--spectator-action-inset);
   overflow: hidden;
 }
 
@@ -624,14 +627,18 @@
   position: relative;
   flex-shrink: 0;
   align-self: stretch;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   width: 100%;
-  height: 60rpx;
+  height: var(--star-hit-height);
   z-index: 8;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .spectator-bottom-stack-collapsed {
-  height: 60rpx;
+  height: var(--star-hit-height);
 }
 
 /* 打开匿名输入时盖住打分区 */
@@ -645,6 +652,7 @@
   display: flex;
   align-items: center;
   width: auto;
+  height: auto;
   padding: 0 4rpx;
   background: #fff;
   pointer-events: auto;
@@ -662,7 +670,7 @@
   bottom: 0;
   z-index: 6;
   width: auto;
-  height: 60rpx;
+  height: auto;
   padding: 0;
   box-sizing: border-box;
   display: flex;
@@ -679,7 +687,7 @@
   bottom: 0;
   z-index: 6;
   width: auto;
-  height: 60rpx;
+  height: auto;
   padding: 0;
   display: flex;
   align-items: center;
@@ -704,26 +712,31 @@
   justify-content: flex-end;
   width: auto;
   height: 60rpx;
+  line-height: 0;
 }
 
-/* 固定高度；收起=左侧标签，展开=向右铺开星级 */
+/* 热区高于星标视觉，减少与卡片横滑冲突；右侧预留聊天按钮宽度 */
 .star-rating-shell {
   position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
   width: 100%;
-  height: 60rpx;
+  min-width: 0;
+  height: var(--star-hit-height);
   overflow: hidden;
   box-sizing: border-box;
   padding: 0 72rpx 0 0;
 }
 
 .star-rating-shell-collapsed {
-  height: 60rpx;
+  height: var(--star-hit-height);
 }
 
 .star-rating-chip {
   position: absolute;
   left: 0;
-  top: 0;
+  top: 50%;
+  margin-top: -30rpx;
   z-index: 2;
   display: flex;
   flex-direction: row;
@@ -749,6 +762,26 @@
   pointer-events: auto;
 }
 
+/* 右滑展开过程中：chip 仅藏视觉，保持 pointer-events，避免 iOS 断触 */
+.star-rating-shell-swiping .star-rating-chip {
+  opacity: 0;
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 3;
+  /* 热区铺满 shell，手指右移仍落在原 touch 目标上更稳 */
+  right: 72rpx;
+  width: auto;
+  transition: none;
+}
+
+.star-rating-shell-swiping .star-rating-body {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, 0, 0);
+  pointer-events: none;
+  transition: none;
+}
+
 .star-rating-chip-text {
   font-size: 24rpx;
   font-weight: 600;
@@ -761,7 +794,7 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  height: 60rpx;
+  height: var(--star-hit-height);
   display: flex;
   align-items: center;
   opacity: 1;
@@ -784,18 +817,21 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 60rpx;
+  height: var(--star-hit-height);
   padding: 0;
   box-sizing: border-box;
 }
 
-/* 自定义组件宿主需显式占满宽度，否则五星会被压成不可见 */
+/* 自定义组件宿主按块级占满，避免 inline 基线导致与右侧按钮一高一低 */
 .star-rating-row > star-rating {
+  display: block;
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;
-  min-width: 300rpx;
-  height: 60rpx;
+  min-width: 0;
+  height: var(--star-hit-height);
+  line-height: 0;
+  overflow: visible;
 }
 
 .spectator-express-form {
@@ -1245,13 +1281,11 @@ game-card-timer {
   min-width: 0;
 }
 
-.card-avg-score {
+.card-avg-stars {
+  display: block;
   flex-shrink: 0;
-  font-size: 26rpx;
-  font-weight: 700;
-  color: #5ec159;
-  white-space: nowrap;
-  line-height: 1.2;
+  width: 180rpx;
+  height: 40rpx;
 }
 
 .card-player-round {
@@ -1518,6 +1552,21 @@ game-card-timer {
   color: #5f5f5f;
   line-height: 1.5;
   margin-bottom: 8rpx;
+}
+
+.card-turn-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.card-turn-stars {
+  display: block;
+  width: 140rpx;
+  height: 28rpx;
+  flex-shrink: 0;
 }
 
 .card-photo-wrap {

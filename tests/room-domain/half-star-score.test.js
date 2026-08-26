@@ -47,6 +47,14 @@ describe('half-star score helpers', () => {
     assert.equal(normalizeHalfStarScore(4, 9), 4.5);
   });
 
+  it('does not truncate half stars the way parseInt would', () => {
+    assert.equal(parseInt('4.5', 10), 4);
+    assert.equal(parseInt(4.5, 10), 4);
+    assert.equal(normalizeHalfStarScore('4.5'), 4.5);
+    assert.equal(normalizeHalfStarScore(4.5), 4.5);
+    assert.equal(clampSelectableScore('3.5'), 3.5);
+  });
+
   it('builds half-star fills', () => {
     assert.deepEqual(buildStarFills(3.5).map((s) => s.fill), [100, 100, 100, 50, 0]);
     assert.deepEqual(buildStarFills(4.5).map((s) => s.fill), [100, 100, 100, 100, 50]);

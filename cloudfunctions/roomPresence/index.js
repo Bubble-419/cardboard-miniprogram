@@ -1045,6 +1045,43 @@ var require_room_domain = __commonJS({
       const available = AVATAR_COLORS.filter((c) => !used.includes(c));
       return available.length ? available[0] : AVATAR_COLORS[0];
     }
+    function normalizeHalfStarScore(raw, halfSteps) {
+      if (halfSteps != null && halfSteps !== "") {
+        const steps2 = parseInt(halfSteps, 10);
+        if (Number.isFinite(steps2) && steps2 >= 0 && steps2 <= 10) {
+          return steps2 / 2;
+        }
+      }
+      if (raw == null || raw === "") return null;
+      const n = typeof raw === "number" ? raw : Number(raw);
+      if (!Number.isFinite(n)) return null;
+      const steps = Math.round(n * 2);
+      if (steps < 0 || steps > 10) return null;
+      return steps / 2;
+    }
+    function mergeTurnRecords(clientList, serverList) {
+      const map = /* @__PURE__ */ new Map();
+      const push = (rec) => {
+        if (!rec || typeof rec !== "object") return;
+        const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
+        const prev = map.get(key);
+        if (!prev) {
+          map.set(key, { ...rec });
+          return;
+        }
+        const merged = { ...prev, ...rec };
+        if (prev.avgScore != null && rec.avgScore == null) {
+          merged.avgScore = prev.avgScore;
+          if (prev.scoredCount != null && merged.scoredCount == null) {
+            merged.scoredCount = prev.scoredCount;
+          }
+        }
+        map.set(key, merged);
+      };
+      (Array.isArray(serverList) ? serverList : []).forEach(push);
+      (Array.isArray(clientList) ? clientList : []).forEach(push);
+      return Array.from(map.values());
+    }
     function buildCapabilities(room, actorUserId) {
       const seatNo = findSeatNo(room.seatMap, actorUserId);
       const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
@@ -1368,13 +1405,9 @@ var require_room_domain = __commonJS({
             return fail(ERR.NOT_MEMBER);
           }
           if (type === COMMAND_TYPES.SUBMIT_SCORE) {
-            const halfSteps = payload.scoreHalfSteps != null ? Number(payload.scoreHalfSteps) : NaN;
-            const scoreNum = Number.isFinite(halfSteps)
-              ? halfSteps / 2
-              : Number(payload.score);
-            const score = Number.isFinite(scoreNum) ? Math.round(scoreNum * 2) / 2 : NaN;
-            if (!Number.isFinite(score) || score < 0 || score > 5) {
-              return fail(ERR.INVALID_ARGUMENT, "score \u9700\u4E3A 0\uFF5E5");
+            const score = normalizeHalfStarScore(payload.score, payload.scoreHalfSteps);
+            if (score == null) {
+              return fail(ERR.INVALID_ARGUMENT, "score \u9700\u4E3A 0\uFF5E5\uFF0C\u6B65\u8FDB 0.5");
             }
             const activeSeatNo = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : payload.activeSeatNo != null ? Number(payload.activeSeatNo) : null;
             if (activeSeatNo != null && Number(actorSeat2) === Number(activeSeatNo)) {
@@ -1388,6 +1421,7 @@ var require_room_domain = __commonJS({
               scorerUserId: actorUserId,
               activeSeatNo,
               score,
+              scoreHalfSteps: Math.round(score * 2),
               updatedAt: ts
             };
             const required = Math.max(0, memberCount(room.seatMap) - 1);
@@ -1601,6 +1635,9 @@ var require_room_domain = __commonJS({
           brainstormProgressPage: "gamepage",
           partnerGamePhase: "discussion",
           partnerMasterMode: false,
+          partnerSilentMode: false,
+          partnerSilentStartedAt: null,
+          partnerSilentSoundLevel: 0,
           workflow,
           revision: room.revision + 1,
           domainRevisions: {
@@ -1640,29 +1677,6 @@ var require_room_domain = __commonJS({
         let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
         const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === "object" ? payload.roundSummary : null;
         const serverContent = room.partnerCurrentRoundContent;
-        const mergeTurnRecords = (clientList, serverList) => {
-          const map = /* @__PURE__ */ new Map();
-          const push = (rec) => {
-            if (!rec || typeof rec !== "object") return;
-            const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
-            const prev = map.get(key);
-            if (!prev) {
-              map.set(key, { ...rec });
-              return;
-            }
-            const merged = { ...prev, ...rec };
-            if (prev.avgScore != null && rec.avgScore == null) {
-              merged.avgScore = prev.avgScore;
-              if (prev.scoredCount != null && merged.scoredCount == null) {
-                merged.scoredCount = prev.scoredCount;
-              }
-            }
-            map.set(key, merged);
-          };
-          (Array.isArray(serverList) ? serverList : []).forEach(push);
-          (Array.isArray(clientList) ? clientList : []).forEach(push);
-          return Array.from(map.values());
-        };
         const archivedTurnRecords = mergeTurnRecords(
           clientSummary && clientSummary.turnRecords,
           serverContent && serverContent.turnRecords
@@ -1729,6 +1743,9 @@ var require_room_domain = __commonJS({
           currentRound,
           partnerGamePhase: "play",
           partnerMasterMode: false,
+          partnerSilentMode: false,
+          partnerSilentStartedAt: null,
+          partnerSilentSoundLevel: 0,
           partnerRoundSummaries,
           partnerCurrentRoundContent,
           partnerRoundStartedAt,
@@ -1908,7 +1925,8 @@ var require_room_domain = __commonJS({
       authorizeRoomRead,
       allocateSeatNo,
       findSeatNo,
-      createRoomAggregate
+      createRoomAggregate,
+      normalizeHalfStarScore
     };
   }
 });
@@ -2204,6 +2222,9 @@ var require_room_cloudbase_adapter = __commonJS({
           currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
           partnerGamePhase: roomDoc.partnerGamePhase || null,
           partnerMasterMode: roomDoc.partnerMasterMode === true,
+          partnerSilentMode: roomDoc.partnerSilentMode === true,
+          partnerSilentStartedAt: roomDoc.partnerSilentStartedAt != null ? Number(roomDoc.partnerSilentStartedAt) : null,
+          partnerSilentSoundLevel: roomDoc.partnerSilentSoundLevel != null ? Math.min(1, Math.max(0, Number(roomDoc.partnerSilentSoundLevel) || 0)) : 0,
           partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries) ? roomDoc.partnerRoundSummaries : null,
           partnerCurrentRoundContent: roomDoc.partnerCurrentRoundContent || null,
           partnerRoundStartedAt: roomDoc.partnerRoundStartedAt || null,
@@ -2318,6 +2339,9 @@ var require_room_cloudbase_adapter = __commonJS({
           currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
           partnerGamePhase: room.partnerGamePhase || null,
           partnerMasterMode: room.partnerMasterMode === true,
+          partnerSilentMode: room.partnerSilentMode === true,
+          partnerSilentStartedAt: room.partnerSilentStartedAt == null ? null : Number(room.partnerSilentStartedAt),
+          partnerSilentSoundLevel: room.partnerSilentSoundLevel != null ? Math.min(1, Math.max(0, Number(room.partnerSilentSoundLevel) || 0)) : 0,
           partnerRoundSummaries: room.partnerRoundSummaries || null,
           partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
           partnerRoundStartedAt: room.partnerRoundStartedAt || null,

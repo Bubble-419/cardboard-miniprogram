@@ -483,6 +483,7 @@ function executeCommand({
           scorerUserId: actorUserId,
           activeSeatNo,
           score,
+          scoreHalfSteps: Math.round(score * 2),
           updatedAt: ts
         };
         const required = Math.max(0, memberCount(room.seatMap) - 1);
@@ -715,6 +716,9 @@ function executeCommand({
       brainstormProgressPage: 'gamepage',
       partnerGamePhase: 'discussion',
       partnerMasterMode: false,
+      partnerSilentMode: false,
+      partnerSilentStartedAt: null,
+      partnerSilentSoundLevel: 0,
       workflow,
       revision: room.revision + 1,
       domainRevisions: {
@@ -861,6 +865,9 @@ function executeCommand({
       currentRound,
       partnerGamePhase: 'play',
       partnerMasterMode: false,
+      partnerSilentMode: false,
+      partnerSilentStartedAt: null,
+      partnerSilentSoundLevel: 0,
       partnerRoundSummaries,
       partnerCurrentRoundContent,
       partnerRoundStartedAt,

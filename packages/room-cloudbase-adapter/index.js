@@ -88,6 +88,13 @@ function createCloudBaseRoomRepository(deps) {
       currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
       partnerGamePhase: roomDoc.partnerGamePhase || null,
       partnerMasterMode: roomDoc.partnerMasterMode === true,
+      partnerSilentMode: roomDoc.partnerSilentMode === true,
+      partnerSilentStartedAt: roomDoc.partnerSilentStartedAt != null
+        ? Number(roomDoc.partnerSilentStartedAt)
+        : null,
+      partnerSilentSoundLevel: roomDoc.partnerSilentSoundLevel != null
+        ? Math.min(1, Math.max(0, Number(roomDoc.partnerSilentSoundLevel) || 0))
+        : 0,
       partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries)
         ? roomDoc.partnerRoundSummaries
         : null,
@@ -217,6 +224,13 @@ function createCloudBaseRoomRepository(deps) {
       currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
       partnerGamePhase: room.partnerGamePhase || null,
       partnerMasterMode: room.partnerMasterMode === true,
+      partnerSilentMode: room.partnerSilentMode === true,
+      partnerSilentStartedAt: room.partnerSilentStartedAt == null
+        ? null
+        : Number(room.partnerSilentStartedAt),
+      partnerSilentSoundLevel: room.partnerSilentSoundLevel != null
+        ? Math.min(1, Math.max(0, Number(room.partnerSilentSoundLevel) || 0))
+        : 0,
       partnerRoundSummaries: room.partnerRoundSummaries || null,
       partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
       partnerRoundStartedAt: room.partnerRoundStartedAt || null,

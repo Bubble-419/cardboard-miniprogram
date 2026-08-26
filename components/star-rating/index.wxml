@@ -1,5 +1,5 @@
 <view
-  class="star-rating {{disabled ? 'star-rating-disabled' : ''}} {{gesturing ? 'star-rating-gesturing' : ''}}"
+  class="star-rating star-rating-{{size}} {{disabled ? 'star-rating-disabled' : ''}} {{gesturing ? 'star-rating-gesturing' : ''}}"
   catchtouchstart="onTouchStart"
   catchtouchmove="onTouchMove"
   catchtouchend="onTouchEnd"

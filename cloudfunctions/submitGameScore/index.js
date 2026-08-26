@@ -96,9 +96,11 @@ exports.main = async (event, context) => {
         .limit(1)
         .get();
 
+      const halfSteps = Math.round(s * 2);
+      const scorePayload = { score: s, scoreHalfSteps: halfSteps, updatedAt: now };
       if (existing.data && existing.data.length > 0) {
         await transaction.collection(ROOM_SCORES_COLLECTION).doc(existing.data[0]._id).update({
-          data: { score: s, updatedAt: now }
+          data: scorePayload
         });
       } else {
         await transaction.collection(ROOM_SCORES_COLLECTION).add({
@@ -108,6 +110,7 @@ exports.main = async (event, context) => {
             round: currentRound,
             userId: currentUserId,
             score: s,
+            scoreHalfSteps: halfSteps,
             createdAt: now,
             updatedAt: now
           }
@@ -149,6 +152,7 @@ exports.main = async (event, context) => {
       scoredCount,
       totalRequired,
       myScore: s,
+      myScoreHalfSteps: Math.round(s * 2),
       turnId
     };
   } catch (e) {

@@ -143,20 +143,14 @@
 
 .score-wrap {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-shrink: 0;
 }
 
-.score-val {
-  font-size: 40rpx;
-  font-weight: 700;
-  color: #5ec159;
-}
-
-.score-unit {
-  font-size: 24rpx;
-  color: #5ec159;
-  margin-left: 4rpx;
+.leaderboard-stars {
+  display: block;
+  width: 200rpx;
+  height: 40rpx;
 }
 
 .review-entry {

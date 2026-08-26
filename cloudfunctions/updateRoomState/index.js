@@ -272,6 +272,8 @@ exports.main = async (event, context) => {
     selectedDesignProblem,
     partnerGamePhase,
     partnerMasterMode,
+    partnerSilentMode,
+    partnerSilentStartedAt,
     partnerClosingStep,
     closingQuestionPlayers,
     resetClosingVotes,
@@ -663,6 +665,23 @@ exports.main = async (event, context) => {
       updateData.partnerMasterMode = true;
     } else if (partnerMasterMode === false) {
       updateData.partnerMasterMode = false;
+    }
+    // 全场静默：边框/倒计时锚点同步到全员（与 MASTER 对称）
+    if (partnerSilentMode === true) {
+      updateData.partnerSilentMode = true;
+      const silentAt = partnerSilentStartedAt != null && Number.isFinite(Number(partnerSilentStartedAt))
+        ? Number(partnerSilentStartedAt)
+        : Date.now();
+      updateData.partnerSilentStartedAt = silentAt;
+    } else if (partnerSilentMode === false) {
+      updateData.partnerSilentMode = false;
+      updateData.partnerSilentStartedAt = null;
+      updateData.partnerSilentSoundLevel = 0;
+    } else if (
+      partnerSilentStartedAt != null
+      && Number.isFinite(Number(partnerSilentStartedAt))
+    ) {
+      updateData.partnerSilentStartedAt = Number(partnerSilentStartedAt);
     }
     if (partnerClosingStep != null && partnerClosingStep !== '') {
       const step = String(partnerClosingStep);

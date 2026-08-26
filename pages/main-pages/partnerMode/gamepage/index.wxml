@@ -331,7 +331,13 @@
           <view class="game-card game-card-muted">
             <view class="card-header-row">
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
-              <text wx:if="{{isHistoryReview && item.avgScoreText}}" class="card-avg-score">均分 {{item.avgScoreText}}</text>
+              <star-rating
+                wx:if="{{isHistoryReview && item.avgScore != null}}"
+                class="card-avg-stars"
+                value="{{item.avgScore}}"
+                disabled="{{true}}"
+                size="compact"
+              />
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{true}}">
               <view class="card-scroll-inner">
@@ -472,12 +478,22 @@
               <text class="card-section-title card-section-title-gap">表态记录</text>
               <view class="card-bullet-list">
                 <view
-                  class="card-bullet"
+                  class="card-bullet card-turn-row"
                   wx:for="{{item.turnRecords}}"
                   wx:for-item="turn"
                   wx:for-index="turnIdx"
                   wx:key="turnIdx"
-                >· <block wx:if="{{isHistoryReview && turn.avgScoreText}}">获评均分 {{turn.avgScoreText}} · </block>{{turn.statementLabel || '未记录'}}</view>
+                >
+                  <text>·</text>
+                  <star-rating
+                    wx:if="{{isHistoryReview && turn.avgScore != null}}"
+                    class="card-turn-stars"
+                    value="{{turn.avgScore}}"
+                    disabled="{{true}}"
+                    size="mini"
+                  />
+                  <text>{{turn.statementLabel || '未记录'}}</text>
+                </view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
               </view>
@@ -493,7 +509,8 @@
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
-            borderVariant="{{isMasterMode ? 'rainbow' : ''}}"
+            borderVariant="{{cardBorderVariant}}"
+            soundLevel="{{silentSoundLevel}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
@@ -653,7 +670,8 @@
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
-            borderVariant="{{isMasterMode ? 'rainbow' : ''}}"
+            borderVariant="{{cardBorderVariant}}"
+            soundLevel="{{silentSoundLevel}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >
@@ -739,7 +757,7 @@
               </view>
 
               <!-- 非出牌玩家：玩家正在出牌 -->
-              <view class="spectator-card" wx:else>
+              <view class="spectator-card" wx:else bindtap="onStarRatingBackdropTap">
                 <view
                   wx:if="{{expressComposerOpen}}"
                   class="express-dismiss-mask"
@@ -785,7 +803,7 @@
                 </scroll-view>
                 </view>
 
-                <view class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}}">
+                <view class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}}" catchtap="noop">
                   <view class="spectator-express-slot spectator-express-slot-flow">
                     <form
                       wx:if="{{expressComposerOpen}}"
@@ -834,16 +852,20 @@
                     </view>
                   </view>
 
-                  <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}}">
+                  <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}} {{starRatingChipSwiping ? 'star-rating-shell-swiping' : ''}}">
                     <view
                       class="star-rating-chip"
-                      catchtap="onStarRatingChipTap"
+                      catchtouchstart="onStarChipTouchStart"
+                      catchtouchmove="onStarChipTouchMove"
+                      catchtouchend="onStarChipTouchEnd"
+                      catchtouchcancel="onStarChipTouchEnd"
                     >
                       <text class="star-rating-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
                     </view>
                     <view class="star-rating-body">
                       <view class="star-rating-row">
                         <star-rating
+                          id="starRating"
                           value="{{selectedScore}}"
                           disabled="{{scoreSubmitting}}"
                           bind:preview="onStarRatingPreview"

@@ -63,8 +63,14 @@ exports.main = async (event, context) => {
     const mine = (scoresRes.data || []).find(
       (row) => row && String(row.userId) === String(currentUserId)
     );
-    if (mine && mine.score != null && eligibleIds.has(String(currentUserId))) {
-      myScore = Number(mine.score);
+    if (mine && eligibleIds.has(String(currentUserId))) {
+      const halfSteps = mine.scoreHalfSteps != null ? Number(mine.scoreHalfSteps) : NaN;
+      if (Number.isFinite(halfSteps) && halfSteps >= 0 && halfSteps <= 10) {
+        myScore = halfSteps / 2;
+      } else if (mine.score != null && !Number.isNaN(Number(mine.score))) {
+        const n = Number(mine.score);
+        myScore = Number.isFinite(n) ? Math.round(n * 2) / 2 : null;
+      }
     }
 
     return {
@@ -72,6 +78,7 @@ exports.main = async (event, context) => {
       scoredCount,
       totalRequired,
       myScore,
+      myScoreHalfSteps: myScore != null ? Math.round(myScore * 2) : null,
       currentPlayerIndex: actingPlayerIndex,
       currentRound,
       turnId: expectedTurnId

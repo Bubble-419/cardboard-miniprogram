@@ -128,6 +128,7 @@ Page({
     innerScrollLocked: false,
     starRatingCollapsed: false,
     starRatingGesturing: false,
+    starRatingChipSwiping: false,
     scoreSubmitting: false,
     /** 打分抽屉：translateY=0 全展开；=max 仅露头部 */
     scorePanelExpanded: false,
@@ -140,6 +141,10 @@ Page({
     totalRequired: 0,
     scoreTurnKey: '',
     isMasterMode: false,
+    isSilentMode: false,
+    /** default | rainbow | sound — 特殊行动卡片外框，全员同步 */
+    cardBorderVariant: '',
+    silentSoundLevel: 0,
     closingStep: CLOSING_STEP_RUNE,
     closingQuestionPlayers: [],
     reviewPhotos: [],
@@ -279,6 +284,7 @@ Page({
     this._scoreUiBusy = false;
     this._scoreUiBusyTimer = null;
     this._starRatingPinnedOpen = false;
+    this._starRatingDismissed = false;
     this._scoreSubmitting = false;
     this._lastSubmittedScore = null;
     this._scoreFingerprint = '';
@@ -313,6 +319,9 @@ Page({
     const initialRound = options && options.currentRound != null
       ? parseInt(options.currentRound, 10) || 1
       : 1;
+    const initialSessionSeq = options && options.brainstormSessionSeq != null
+      ? parseInt(options.brainstormSessionSeq, 10) || 0
+      : 0;
     this._isHistoryReview = isHistoryReview;
     const fromStatement = !!(options && (options.fromStatement === '1' || options.fromStatement === 1));
     // 从表态页回来后，短时间内忽略过期的 currentPage=statement，防止闪回后再点一次
@@ -322,6 +331,7 @@ Page({
       roomId,
       currentPlayerIndex,
       currentRound: initialRound,
+      brainstormSessionSeq: initialSessionSeq,
       gamepagePhase: initialPhase,
       closingStep: initialClosingStep,
       cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
@@ -1999,6 +2009,14 @@ Page({
       gamepagePhase: roomPhase,
       expressCanSend: this._computeExpressCanSend(player.isCurrentPlayer, roomPhase),
       isMasterMode: roomState.partnerMasterMode === true,
+      isSilentMode: roomState.partnerSilentMode === true,
+      cardBorderVariant: roomState.partnerMasterMode === true
+        ? 'rainbow'
+        : (roomState.partnerSilentMode === true ? 'sound' : ''),
+      silentSoundLevel: roomState.partnerSilentMode === true
+        && roomState.partnerSilentSoundLevel != null
+        ? Math.min(1, Math.max(0, Number(roomState.partnerSilentSoundLevel) || 0))
+        : 0,
       closingQuestionPlayers,
       closingStep,
       currentRound,
@@ -2090,9 +2108,11 @@ Page({
       patch.scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
       this._scoreProgressFromSnapshot = false;
       this._starRatingPinnedOpen = false;
+      this._starRatingDismissed = false;
       this._scoreSubmitting = false;
       this._lastSubmittedScore = null;
       patch.starRatingCollapsed = false;
+      patch.starRatingChipSwiping = false;
       patch.scoreSubmitting = false;
       patch.scorePanelExpanded = false;
       patch.scoreSheetTranslateY = this.data.scoreSheetMaxTranslateY || 120;
@@ -2169,11 +2189,22 @@ Page({
       // 用服务端 myScore 同步「已打分/未打分」；乐观提交中勿被 null 快照打回未打分
       if (Object.prototype.hasOwnProperty.call(roomState, 'myScore')) {
         if (roomState.myScore != null) {
-          const restored = normalizeHalfStarScore(roomState.myScore);
-          patch.selectedScore = restored;
-          patch.selectedScoreText = formatScoreDisplay(restored);
+          const restored = normalizeHalfStarScore(
+            roomState.myScore,
+            roomState.myScoreHalfSteps
+          );
+          // 轮询快照若把半星截成整数，且本地刚提交过同轮半星分，保留本地
+          const localSteps = toHalfSteps(this._lastSubmittedScore);
+          const remoteSteps = toHalfSteps(restored);
+          const keepLocal = localSteps != null
+            && remoteSteps != null
+            && localSteps !== remoteSteps
+            && Math.floor(this._lastSubmittedScore) === Math.floor(restored);
+          const effective = keepLocal ? this._lastSubmittedScore : restored;
+          patch.selectedScore = effective;
+          patch.selectedScoreText = formatScoreDisplay(effective);
           this._pendingScore = null;
-          this._lastSubmittedScore = restored;
+          this._lastSubmittedScore = effective;
           if (!this._starRatingPinnedOpen && !this._scoreSubmitting) {
             patch.starRatingCollapsed = true;
           }
@@ -2181,7 +2212,7 @@ Page({
           // 无本地待提交分时，才接受服务端「未打分」
           patch.selectedScore = null;
           patch.selectedScoreText = '';
-          if (!this._starRatingPinnedOpen) {
+          if (!this._starRatingPinnedOpen && !this._starRatingDismissed) {
             patch.starRatingCollapsed = false;
           }
         }
@@ -2720,6 +2751,12 @@ Page({
       }
       if (extra && extra.partnerMasterMode != null) {
         data.partnerMasterMode = extra.partnerMasterMode;
+      }
+      if (extra && extra.partnerSilentMode != null) {
+        data.partnerSilentMode = extra.partnerSilentMode;
+      }
+      if (extra && extra.partnerSilentStartedAt != null) {
+        data.partnerSilentStartedAt = extra.partnerSilentStartedAt;
       }
       if (extra && extra.partnerClosingStep != null) {
         data.partnerClosingStep = extra.partnerClosingStep;
@@ -3607,11 +3644,11 @@ Page({
     this._scoreSheetInteractive = true;
     this._pendingScoreTap = keptScore;
     if (this._pendingScoreTap == null) {
-      const score = parseInt(
-        (e.target && e.target.dataset && e.target.dataset.score),
-        10
+      // 不可用 parseInt：会把 "4.5" 截成 4
+      const score = clampSelectableScore(
+        e.target && e.target.dataset ? e.target.dataset.score : null
       );
-      if (Number.isFinite(score)) this._pendingScoreTap = score;
+      if (score != null) this._pendingScoreTap = score;
     }
   },
 
@@ -3764,8 +3801,11 @@ Page({
   },
 
   onStarGestureEnd() {
-    if (this.data.starRatingGesturing) {
-      this.setData({ starRatingGesturing: false });
+    if (this.data.starRatingGesturing || this.data.starRatingChipSwiping) {
+      this.setData({
+        starRatingGesturing: false,
+        starRatingChipSwiping: false
+      });
     }
     if (!this._scoreSubmitting) {
       this._releaseScoreUiBusy(80);
@@ -3784,6 +3824,60 @@ Page({
     this._applyScoreTap(score);
   },
 
+  _getStarChipSlopPx() {
+    if (this._starChipSlopPx != null) return this._starChipSlopPx;
+    try {
+      const sys = wx.getSystemInfoSync();
+      const w = (sys && sys.windowWidth) || 375;
+      this._starChipSlopPx = Math.max(8, Math.round((10 / 750) * w * 2));
+      this._starChipMinTravelPx = Math.max(20, Math.round((24 / 750) * w * 2));
+      this._starChipFabPadPx = Math.max(24, Math.round((72 / 750) * w));
+    } catch (e) {
+      this._starChipSlopPx = 10;
+      this._starChipMinTravelPx = 24;
+      this._starChipFabPadPx = 36;
+    }
+    return this._starChipSlopPx;
+  },
+
+  _getStarChipMinTravelPx() {
+    this._getStarChipSlopPx();
+    return this._starChipMinTravelPx || 24;
+  },
+
+  _getStarChipFabPadPx() {
+    this._getStarChipSlopPx();
+    return this._starChipFabPadPx || 36;
+  },
+
+  _measureStarShellTrack(done) {
+    wx.createSelectorQuery()
+      .in(this)
+      .select('.star-rating-shell')
+      .boundingClientRect((rect) => {
+        if (!rect || !(rect.width > 0)) {
+          if (typeof done === 'function') done(null);
+          return;
+        }
+        const pad = this._getStarChipFabPadPx();
+        const track = {
+          left: rect.left,
+          width: Math.max(40, rect.width - pad)
+        };
+        this._starShellTrackRect = track;
+        if (typeof done === 'function') done(track);
+      })
+      .exec();
+  },
+
+  _getStarRatingComp() {
+    try {
+      return this.selectComponent('#starRating');
+    } catch (e) {
+      return null;
+    }
+  },
+
   onStarRatingChipTap() {
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
@@ -3791,7 +3885,201 @@ Page({
     }
     if (this.data.scoreSubmitting) return;
     this._starRatingPinnedOpen = true;
-    this.setData({ starRatingCollapsed: false });
+    this._starRatingDismissed = false;
+    this.setData({
+      starRatingCollapsed: false,
+      starRatingChipSwiping: false
+    });
+  },
+
+  onStarChipTouchStart(e) {
+    if (this.data.isCurrentPlayer || this.data.scoreSubmitting) return;
+    if (!this.data.starRatingCollapsed) return;
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    this._getStarChipSlopPx();
+    this._chipGesture = {
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      axis: '',
+      scoring: false,
+      opened: false
+    };
+    this._measureStarShellTrack();
+  },
+
+  onStarChipTouchMove(e) {
+    const g = this._chipGesture;
+    if (!g) return;
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    g.lastX = t.clientX;
+    g.lastY = t.clientY;
+
+    const dx = t.clientX - g.startX;
+    const dy = t.clientY - g.startY;
+    const slop = this._getStarChipSlopPx();
+
+    if (!g.axis) {
+      if (Math.abs(dx) < slop && Math.abs(dy) < slop) return;
+      // 仅横向且向右：评分手势；纵向为主则放弃，避免挡上下滚动意图
+      if (Math.abs(dx) > Math.abs(dy) * 1.15 && dx > slop) {
+        g.axis = 'x';
+        g.scoring = true;
+        this._beginStarChipSwipeScore(t.clientX);
+      } else if (Math.abs(dy) >= Math.abs(dx)) {
+        g.axis = 'y';
+      }
+      return;
+    }
+
+    if (g.axis !== 'x' || !g.scoring) return;
+
+    const comp = this._getStarRatingComp();
+    if (comp && typeof comp.moveExternalGesture === 'function') {
+      comp.moveExternalGesture(t.clientX);
+    }
+  },
+
+  _beginStarChipSwipeScore(clientX) {
+    const g = this._chipGesture;
+    if (!g || g.opened) return;
+    g.opened = true;
+
+    this._starRatingPinnedOpen = true;
+    this._starRatingDismissed = false;
+    this._markScoreUiBusy();
+
+    const seedScore = this.data.selectedScore != null
+      ? this.data.selectedScore
+      : this._lastSubmittedScore;
+    const trackRect = this._starShellTrackRect;
+    const minTravel = this._getStarChipMinTravelPx();
+
+    this.setData({
+      starRatingCollapsed: false,
+      starRatingGesturing: true,
+      starRatingChipSwiping: true
+    }, () => {
+      const live = this._chipGesture;
+      if (!live || !live.scoring) return;
+      live.seedScore = seedScore;
+      const comp = this._getStarRatingComp();
+      if (!comp || typeof comp.beginExternalGesture !== 'function') return;
+      const x = live.lastX != null ? live.lastX : clientX;
+      comp.beginExternalGesture(x, {
+        seedScore,
+        trackRect,
+        minTravelPx: minTravel
+      });
+      // 展开后再量一次 shell，校正轨道坐标
+      this._measureStarShellTrack((rect) => {
+        if (!this._chipGesture || !this._chipGesture.scoring) return;
+        const c = this._getStarRatingComp();
+        if (!c || !rect) return;
+        if (typeof c.setTrackRect === 'function') c.setTrackRect(rect);
+        if (typeof c.moveExternalGesture === 'function') {
+          c.moveExternalGesture(this._chipGesture.lastX);
+        }
+      });
+    });
+  },
+
+  onStarChipTouchEnd(e) {
+    const g = this._chipGesture;
+    this._chipGesture = null;
+    if (!g) return;
+
+    const t = (e.changedTouches && e.changedTouches[0])
+      || (e.touches && e.touches[0]);
+    const endX = t && Number.isFinite(t.clientX) ? t.clientX : g.lastX;
+    const endY = t && Number.isFinite(t.clientY) ? t.clientY : g.lastY;
+    const dx = endX - g.startX;
+    const dy = endY - g.startY;
+    const slop = this._getStarChipSlopPx();
+
+    // 未形成横向评分：视为点击展开
+    if (!g.scoring) {
+      if (Math.abs(dx) <= slop && Math.abs(dy) <= slop) {
+        this.onStarRatingChipTap();
+      }
+      return;
+    }
+
+    const restoreScore = g.seedScore !== undefined
+      ? g.seedScore
+      : (this._lastSubmittedScore != null ? this._lastSubmittedScore : null);
+
+    const comp = this._getStarRatingComp();
+    if (comp && typeof comp.endExternalGesture === 'function') {
+      const result = comp.endExternalGesture(endX);
+      this.setData({ starRatingChipSwiping: false });
+      if (result && result.confirmed && result.score != null) {
+        // scoreconfirm → _applyScoreTap，成功后收起
+        return;
+      }
+      if (typeof comp.cancelExternalGesture === 'function') {
+        // end 内部已 cancel；再刷一次页面态确保不残留预览分
+      }
+    } else {
+      this.setData({ starRatingChipSwiping: false });
+    }
+
+    // 滑动不足：恢复收起，不提交、不记 0 星
+    this._starRatingPinnedOpen = false;
+    this._starRatingDismissed = true;
+    this.setData({
+      ...this._scoreFields(restoreScore),
+      starRatingCollapsed: true,
+      starRatingGesturing: false,
+      starRatingChipSwiping: false
+    });
+    this._releaseScoreUiBusy(120);
+  },
+
+  onStarRatingBackdropTap() {
+    if (this.data.starRatingCollapsed) return;
+    if (this.data.expressComposerOpen) return;
+    if (this.data.scoreSubmitting) return;
+    if (this.data.starRatingChipSwiping) return;
+    this._dismissStarRatingPanel();
+  },
+
+  _dismissStarRatingPanel() {
+    this._starRatingPinnedOpen = false;
+    this._starRatingDismissed = true;
+    this._chipGesture = null;
+    const restoreScore = this._lastSubmittedScore != null
+      ? this._lastSubmittedScore
+      : null;
+    try {
+      const comp = this.selectComponent('#starRating');
+      if (comp && typeof comp.cancelExternalGesture === 'function') {
+        comp.cancelExternalGesture(restoreScore);
+      } else if (comp && typeof comp.blur === 'function') {
+        comp.blur();
+      }
+    } catch (e) {
+      // ignore
+    }
+    this.setData({
+      ...this._scoreFields(restoreScore),
+      starRatingCollapsed: true,
+      starRatingGesturing: false,
+      starRatingChipSwiping: false
+    });
+    this._releaseScoreUiBusy(120);
+  },
+
+  _blurStarRating() {
+    try {
+      const comp = this.selectComponent('#starRating');
+      if (comp && typeof comp.blur === 'function') comp.blur();
+    } catch (e) {
+      // ignore
+    }
   },
 
   onScoreTap(e) {
@@ -3865,11 +4153,16 @@ Page({
       );
       this._starRatingPinnedOpen = false;
       this._scoreSubmitting = false;
-      const savedScore = result.myScore != null
-        ? (normalizeHalfStarScore(result.myScore) != null
-          ? normalizeHalfStarScore(result.myScore)
-          : score)
-        : score;
+      const savedScore = (() => {
+        const fromServer = result.myScore != null
+          ? normalizeHalfStarScore(result.myScore, result.myScoreHalfSteps)
+          : null;
+        // 服务端若仍把 4.5 截成 4，保留本次提交的半星分
+        if (fromServer != null && toHalfSteps(fromServer) === toHalfSteps(score)) {
+          return fromServer;
+        }
+        return score;
+      })();
       this._lastSubmittedScore = savedScore;
       const scorePatch = {
         ...this._scoreFields(savedScore),
@@ -4465,6 +4758,7 @@ Page({
       const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
         partnerGamePhase: PHASE_DISCUSSION,
         partnerMasterMode: false,
+        partnerSilentMode: false,
         skipArchive: true,
         partnerRoundStartedAt: Date.now(),
         syncPartnerTurnTimer: true
@@ -4536,6 +4830,7 @@ Page({
       const extra = {
         partnerGamePhase: PHASE_PLAY,
         partnerMasterMode: false,
+        partnerSilentMode: false,
         incrementRound
       };
       const ctx = await this._syncRoomContext();
@@ -4631,6 +4926,7 @@ Page({
           : (this.data.currentRound != null ? this.data.currentRound : 1));
       this._scoreProgressFromSnapshot = false;
       this._starRatingPinnedOpen = false;
+      this._starRatingDismissed = false;
       this._scoreSubmitting = false;
       this._lastSubmittedScore = null;
       this.setData({
@@ -4639,6 +4935,9 @@ Page({
         currentRound: nextRound,
         gamepagePhase: PHASE_PLAY,
         isMasterMode: false,
+        isSilentMode: false,
+        cardBorderVariant: '',
+        silentSoundLevel: 0,
         selectedScore: null,
         selectedScoreText: '',
         canStartStatement: false,
@@ -4646,6 +4945,7 @@ Page({
         scoreTurnKey: `turn_r${nextRound}_s${nextIndex}`,
         scorePanelExpanded: false,
         starRatingCollapsed: false,
+        starRatingChipSwiping: false,
         scoreSubmitting: false,
         scoreSheetTranslateY: this.data.scoreSheetMaxTranslateY || 120,
         scoreSheetVisiblePx: this.data.scoreSheetCollapsedPx || 72,
