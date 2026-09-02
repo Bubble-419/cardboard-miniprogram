@@ -301,7 +301,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
-        disable-touch="{{scoreSwipeLocked || innerScrollLocked || starRatingGesturing}}"
+        disable-touch="{{scoreSwipeLocked || innerScrollLocked || starRatingGesturing || starRatingChipSwiping || chipTouchActive || (!starRatingCollapsed && !isCurrentPlayer && !isHistoryReview)}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
@@ -326,19 +326,19 @@
         <swiper-item
           class="card-swiper-item"
           wx:for="{{displayRoundSummaries}}"
-          wx:key="round"
+          wx:key="reviewCardKey"
         >
           <view class="game-card game-card-muted {{isHistoryReview && index === cardIndex ? reviewCardAnim : ''}} {{isHistoryReview && index === cardIndex && reviewFocusAnim ? 'review-card-focus' : ''}}">
             <view class="card-header-row">
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
             </view>
             <view
-              wx:if="{{isHistoryReview && item.totalStars > 0}}"
+              wx:if="{{isHistoryReview && index === cardIndex && item.totalStars > 0}}"
               class="card-earned-stars-wrap"
             >
               <earned-stars
                 totalStars="{{item.totalStars}}"
-                motion="{{index === cardIndex ? reviewStarMotion : 'none'}}"
+                motion="{{reviewStarMotion}}"
               />
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{true}}">
@@ -797,7 +797,10 @@
                 </scroll-view>
                 </view>
 
-                <view class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}}" catchtap="noop">
+                <view
+                  class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}} {{chipTouchActive || starRatingChipSwiping ? 'spectator-bottom-stack-scoring' : ''}}"
+                  catchtap="noop"
+                >
                   <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}} {{starRatingChipSwiping ? 'star-rating-shell-swiping' : ''}}">
                     <!-- 收起/右滑中：全宽透明热区，避免手指右移离开 chip 后断触、被卡片 swiper 抢走 -->
                     <view

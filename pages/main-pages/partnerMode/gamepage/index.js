@@ -98,6 +98,11 @@ const {
 
 /** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
 const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
+/** 「已打分」chip 长按后右滑展开并接手的阈值 */
+const STAR_CHIP_LONG_PRESS_MS = 380;
+const STAR_CHIP_MOVE_CANCEL_PX = 12;
+const STAR_CHIP_SWIPE_EXPAND_PX = 20;
+const STAR_CHIP_SCORE_MIN_TRAVEL_PX = 24;
 
 Page({
   data: {
@@ -134,6 +139,8 @@ Page({
     starRatingCollapsed: false,
     starRatingGesturing: false,
     starRatingChipSwiping: false,
+    /** chip 热区按下期间锁定卡片横滑（setData 比 touchstart 晚一拍，需单独标记） */
+    chipTouchActive: false,
     scoreSubmitting: false,
     /** 打分抽屉：translateY=0 全展开；=max 仅露头部 */
     scorePanelExpanded: false,
@@ -631,6 +638,11 @@ Page({
     this._scoreUiBusy = false;
     this._pendingRoomContext = null;
     this._cancelReviewMotion();
+    if (this._chipLongPressTimer) {
+      clearTimeout(this._chipLongPressTimer);
+      this._chipLongPressTimer = null;
+    }
+    this._setChipTouchActive(false);
     if (this._expressAnchorClearTimer) {
       clearTimeout(this._expressAnchorClearTimer);
       this._expressAnchorClearTimer = null;
@@ -907,7 +919,10 @@ Page({
         : 0
     }, () => {
       this._checkProblemTextOverflow();
-      this._playReviewCardMotion('enter');
+      // 等页面首帧渲染完成再播星星动效，避免与进页 setData 叠加导致真机闪退
+      this._scheduleReviewTimeout(() => {
+        this._playReviewCardMotion('enter');
+      }, 80);
     });
     this._refreshInspirationCount();
     if (!summaryCount) {
@@ -1635,7 +1650,41 @@ Page({
     return null;
   },
 
-  _attachCardStarStats(item, lookup) {
+  _isHistoryReviewMode() {
+    return !!(this.data.isHistoryReview || this._isHistoryReview);
+  },
+
+  _reviewCardKey(item, summaryIdx) {
+    if (!item || item.round == null || item.playerIndex == null) {
+      return summaryIdx != null ? `i${summaryIdx}` : '';
+    }
+    const archived = item.archivedAt != null ? Number(item.archivedAt) : 0;
+    const base = `r${Number(item.round)}_p${Number(item.playerIndex)}_${archived}`;
+    return summaryIdx != null ? `i${summaryIdx}_${base}` : base;
+  },
+
+  /** 回顾态大 patch 拆成两次 setData，避免真机单次超 1MB 闪退 */
+  _applyReviewRoomPatch(patch, callback) {
+    const heavy = {};
+    const light = Object.assign({}, patch);
+    ['displayRoundSummaries', 'roundSummaries'].forEach((key) => {
+      if (light[key]) {
+        heavy[key] = light[key];
+        delete light[key];
+      }
+    });
+    this.setData(light, () => {
+      if (!Object.keys(heavy).length) {
+        if (typeof callback === 'function') callback();
+        return;
+      }
+      wx.nextTick(() => {
+        this.setData(heavy, callback);
+      });
+    });
+  },
+
+  _attachCardStarStats(item, lookup, summaryIdx) {
     const statsLookup = lookup || {};
     const avgScore = this._resolveCardAvgScore(item, statsLookup.turnAvgScores);
     const records = Array.isArray(item.turnRecords) ? item.turnRecords : [];
@@ -1655,6 +1704,7 @@ Page({
     }, statsLookup.turnStarStats);
     return {
       ...item,
+      reviewCardKey: item.reviewCardKey || this._reviewCardKey(item, summaryIdx),
       avgScore,
       avgScoreText: avgScore != null ? formatScoreDisplay(avgScore) : '',
       scoredCount,
@@ -1733,7 +1783,42 @@ Page({
     );
   },
 
+  _mergeResolvedSummaryRow(row, resolved) {
+    if (!resolved) return row;
+    const note = resolved.privateNote || row.privateNote || {};
+    return {
+      ...row,
+      playImages: resolved.playImages,
+      discussionImages: resolved.discussionImages,
+      playBlocks: resolved.playBlocks,
+      discussionBlocks: resolved.discussionBlocks,
+      privateNote: note
+    };
+  },
+
+  _hydrateReviewCardMedia(cardIndex) {
+    const summaries = this.data.displayRoundSummaries || [];
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= summaries.length) return;
+    const item = summaries[idx];
+    if (!item) return;
+    const token = (this._cloudMediaToken || 0) + 1;
+    this._cloudMediaToken = token;
+    resolveRoundContentMedia(item).then((resolved) => {
+      if (this._cloudMediaToken !== token || this._pageVisible === false) return;
+      if (!resolved) return;
+      const row = (this.data.displayRoundSummaries || [])[idx] || item;
+      this.setData({
+        [`displayRoundSummaries[${idx}]`]: this._mergeResolvedSummaryRow(row, resolved)
+      });
+    }).catch((e) => console.warn('_hydrateReviewCardMedia', e));
+  },
+
   _hydrateCloudRoundMedia(roundContent, displaySummaries, closingBlocks) {
+    if (this._isHistoryReviewMode()) {
+      this._hydrateReviewCardMedia(this.data.cardIndex || 0);
+      return;
+    }
     const token = (this._cloudMediaToken || 0) + 1;
     this._cloudMediaToken = token;
     const summaries = Array.isArray(displaySummaries) ? displaySummaries : [];
@@ -1754,19 +1839,9 @@ Page({
       };
       if (resolvedSummaries.length) {
         const current = this.data.displayRoundSummaries || [];
-        mediaPatch.displayRoundSummaries = current.map((row, i) => {
-          const next = resolvedSummaries[i];
-          if (!next) return row;
-          const note = next.privateNote || row.privateNote || {};
-          return {
-            ...row,
-            playImages: next.playImages,
-            discussionImages: next.discussionImages,
-            playBlocks: next.playBlocks,
-            discussionBlocks: next.discussionBlocks,
-            privateNote: note
-          };
-        });
+        mediaPatch.displayRoundSummaries = current.map((row, i) => (
+          this._mergeResolvedSummaryRow(row, resolvedSummaries[i])
+        ));
       }
       if (closingResolved && closingResolved.playBlocks) {
         mediaPatch.closingCreativeBlocks = closingResolved.playBlocks;
@@ -1929,7 +2004,7 @@ Page({
         if (!isReview && rd >= Number(currentRound || 1)) return false;
         return this._summaryHasContent(item);
       })
-      .map((item) => {
+      .map((item, summaryIdx) => {
         const lists = this._buildExpressListsForRound(expressMessages, item.round, currentRound);
         const decoratedTurns = this._decorateTurnRecords(
           Array.isArray(item.turnRecords) ? item.turnRecords : [],
@@ -1945,7 +2020,7 @@ Page({
         }, {
           turnAvgScores: roomState.turnAvgScores,
           turnStarStats: roomState.turnStarStats
-        });
+        }, summaryIdx);
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
     if (this.data.isHistoryReview || this._isHistoryReview) {
@@ -1974,7 +2049,7 @@ Page({
         }, {
           turnAvgScores: roomState.turnAvgScores,
           turnStarStats: roomState.turnStarStats
-        }));
+        }, roundSummaries.length));
       }
     }
     // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
@@ -2410,7 +2485,7 @@ Page({
       // turnChanged 时下面会用新锚点重锁
       if (isClosingPhase(roomPhase)) this._avatarTimerTurnKey = '';
     }
-    this.setData(patch, () => {
+    const applyPatchCallback = () => {
       this._hydrateCloudRoundMedia(
         roundContent,
         patch.displayRoundSummaries,
@@ -2448,7 +2523,12 @@ Page({
         this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
       }
       this._syncRoundSpeech();
-    });
+    };
+    if (this._isHistoryReviewMode() && forcePatch) {
+      this._applyReviewRoomPatch(patch, applyPatchCallback);
+    } else {
+      this.setData(patch, applyPatchCallback);
+    }
     return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
   },
 
@@ -2883,11 +2963,6 @@ Page({
     }
   },
 
-  _reviewCardKey(item) {
-    if (!item || item.round == null || item.playerIndex == null) return '';
-    return `r${Number(item.round)}_p${Number(item.playerIndex)}`;
-  },
-
   _prefersReducedMotion() {
     try {
       const sys = typeof wx.getSystemInfoSync === 'function'
@@ -3019,6 +3094,7 @@ Page({
     if ((this.data.isHistoryReview || this._isHistoryReview) && source === 'touch' && cardIndex !== prevIndex) {
       this._reviewSwitchDir = cardIndex > prevIndex ? 'next' : 'prev';
       this._playReviewCardMotion('switch', patch);
+      this._hydrateReviewCardMedia(cardIndex);
     } else {
       this.setData(patch);
     }
@@ -4045,6 +4121,19 @@ Page({
     }
   },
 
+  _setChipTouchActive(active) {
+    if (!!this.data.chipTouchActive === !!active) return;
+    this.setData({ chipTouchActive: !!active });
+  },
+
+  _endChipTouchSession(options) {
+    const keepSwiperLocked = !!(options && options.keepSwiperLocked);
+    this._setChipTouchActive(false);
+    if (!keepSwiperLocked && !this._scoreSubmitting) {
+      this._releaseScoreUiBusy(80);
+    }
+  },
+
   onStarRatingChipTap() {
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
@@ -4064,8 +4153,15 @@ Page({
     if (!this.data.starRatingCollapsed && !this.data.starRatingChipSwiping) return;
     const t = e.touches && e.touches[0];
     if (!t) return;
-    // 一按下就锁卡片横滑，避免右滑手势被 swiper 抢走
+
+    // 一按下就锁 swiper，避免右滑尚未触发长按时被卡片抢走
     this._markScoreUiBusy();
+    this._setChipTouchActive(true);
+
+    if (this._chipLongPressTimer) {
+      clearTimeout(this._chipLongPressTimer);
+      this._chipLongPressTimer = null;
+    }
     this._getStarChipSlopPx();
     this._chipGesture = {
       startX: t.clientX,
@@ -4074,9 +4170,23 @@ Page({
       lastY: t.clientY,
       axis: '',
       scoring: false,
-      opened: false
+      opened: false,
+      longPressReady: false,
+      longPressFired: false
     };
     this._measureStarShellTrack();
+    this._chipLongPressTimer = setTimeout(() => {
+      this._chipLongPressTimer = null;
+      const g = this._chipGesture;
+      if (!g) return;
+      g.longPressReady = true;
+      g.longPressFired = true;
+      try {
+        wx.vibrateShort({ type: 'light' });
+      } catch (err) {
+        // ignore
+      }
+    }, STAR_CHIP_LONG_PRESS_MS);
   },
 
   onStarChipTouchMove(e) {
@@ -4090,15 +4200,31 @@ Page({
     const dx = t.clientX - g.startX;
     const dy = t.clientY - g.startY;
     const slop = this._getStarChipSlopPx();
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (!g.longPressReady) {
+      // 右滑意图不取消长按；仅纵向或左滑才视为误触/滚屏
+      if (absDy > STAR_CHIP_MOVE_CANCEL_PX && absDy > absDx) {
+        if (this._chipLongPressTimer) {
+          clearTimeout(this._chipLongPressTimer);
+          this._chipLongPressTimer = null;
+        }
+      } else if (dx < -STAR_CHIP_MOVE_CANCEL_PX) {
+        if (this._chipLongPressTimer) {
+          clearTimeout(this._chipLongPressTimer);
+          this._chipLongPressTimer = null;
+        }
+      }
+      return;
+    }
 
     if (!g.axis) {
-      if (Math.abs(dx) < slop && Math.abs(dy) < slop) return;
-      // 横向为主且向右：评分手势；纵向为主则放弃
-      if (dx > slop && Math.abs(dx) >= Math.abs(dy)) {
+      if (dx >= STAR_CHIP_SWIPE_EXPAND_PX && Math.abs(dx) >= Math.abs(dy)) {
         g.axis = 'x';
         g.scoring = true;
         this._beginStarChipSwipeScore(t.clientX);
-      } else if (Math.abs(dy) > Math.abs(dx)) {
+      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > slop) {
         g.axis = 'y';
         if (!this._scoreSubmitting) this._releaseScoreUiBusy(80);
       }
@@ -4120,13 +4246,12 @@ Page({
 
     this._starRatingPinnedOpen = true;
     this._starRatingDismissed = false;
-    this._markScoreUiBusy();
 
     const seedScore = this.data.selectedScore != null
       ? this.data.selectedScore
       : this._lastSubmittedScore;
     const trackRect = this._starShellTrackRect;
-    const minTravel = this._getStarChipMinTravelPx();
+    const minTravel = Math.max(this._getStarChipMinTravelPx(), STAR_CHIP_SCORE_MIN_TRAVEL_PX);
 
     this.setData({
       starRatingCollapsed: false,
@@ -4158,9 +4283,17 @@ Page({
   },
 
   onStarChipTouchEnd(e) {
+    if (this._chipLongPressTimer) {
+      clearTimeout(this._chipLongPressTimer);
+      this._chipLongPressTimer = null;
+    }
+
     const g = this._chipGesture;
     this._chipGesture = null;
-    if (!g) return;
+    if (!g) {
+      this._endChipTouchSession();
+      return;
+    }
 
     const t = (e.changedTouches && e.changedTouches[0])
       || (e.touches && e.touches[0]);
@@ -4170,12 +4303,16 @@ Page({
     const dy = endY - g.startY;
     const slop = this._getStarChipSlopPx();
 
-    // 未形成横向评分：视为点击展开
+    // 未形成横向评分：轻触/长按松手展开；误触则释放 swiper 锁
     if (!g.scoring) {
       if (Math.abs(dx) <= slop && Math.abs(dy) <= slop) {
         this.onStarRatingChipTap();
-      } else if (!this._scoreSubmitting) {
-        this._releaseScoreUiBusy(80);
+        this._endChipTouchSession({ keepSwiperLocked: true });
+      } else if (g.longPressFired) {
+        this.onStarRatingChipTap();
+        this._endChipTouchSession({ keepSwiperLocked: true });
+      } else {
+        this._endChipTouchSession();
       }
       return;
     }
@@ -4188,12 +4325,14 @@ Page({
     if (comp && typeof comp.endExternalGesture === 'function') {
       const result = comp.endExternalGesture(endX);
       this.setData({ starRatingChipSwiping: false });
+      this._endChipTouchSession({ keepSwiperLocked: true });
       if (result && result.confirmed && result.score != null) {
-        // scoreconfirm → _applyScoreTap，成功后收起
+        // scoreconfirm → _applyScoreTap，成功后收起并释放锁
         return;
       }
     } else {
       this.setData({ starRatingChipSwiping: false });
+      this._endChipTouchSession();
     }
 
     // 滑动不足：恢复收起，不提交、不记 0 星
@@ -4220,6 +4359,7 @@ Page({
     this._starRatingPinnedOpen = false;
     this._starRatingDismissed = true;
     this._chipGesture = null;
+    this._setChipTouchActive(false);
     const restoreScore = this._lastSubmittedScore != null
       ? this._lastSubmittedScore
       : null;

@@ -19,12 +19,6 @@ function activeIndexFromScore(score) {
   return Math.min(4, Math.max(0, Math.ceil(n) - 1));
 }
 
-function readClientX(e) {
-  const t = (e && e.touches && e.touches[0])
-    || (e && e.changedTouches && e.changedTouches[0]);
-  return t && Number.isFinite(t.clientX) ? t.clientX : null;
-}
-
 Component({
   properties: {
     value: {
@@ -34,10 +28,6 @@ Component({
     disabled: {
       type: Boolean,
       value: false
-    },
-    size: {
-      type: String,
-      value: 'default'
     }
   },
 
@@ -52,6 +42,7 @@ Component({
       this._previewScore = null;
       this._trackRect = null;
       this._startClientX = null;
+      this._lastX = null;
       this._hasActivePreview = false;
       this._seedScore = null;
       this._minTravelPx = 24;
@@ -90,7 +81,9 @@ Component({
     },
 
     _readClientX(e) {
-      return readClientX(e);
+      const t = (e && e.touches && e.touches[0])
+        || (e && e.changedTouches && e.changedTouches[0]);
+      return t && Number.isFinite(t.clientX) ? t.clientX : null;
     },
 
     _applyClientX(clientX, options) {
@@ -100,11 +93,11 @@ Component({
       const force = !!(options && options.force);
       const startX = this._startClientX;
       const travel = startX != null ? Math.abs(clientX - startX) : 0;
-      if (!force && !this._hasActivePreview && travel < this._minTravelPx) {
+      const minTravel = this._minTravelPx != null ? this._minTravelPx : 24;
+      if (!force && !this._hasActivePreview && travel < minTravel) {
         return this._previewScore;
       }
 
-      // 手指仍在轨道左侧：保留种子分，避免一展开就跳成 0.5
       if (!force && this._seedScore != null && !this._hasActivePreview && clientX < rect.left) {
         return this._previewScore;
       }
@@ -132,7 +125,6 @@ Component({
         .exec();
     },
 
-    /** 外部手势可直接注入轨道尺寸（收起态 chip 滑动时 star-track 可能尚未可见） */
     setTrackRect(rect) {
       if (rect && rect.width > 0) {
         this._trackRect = {
@@ -142,16 +134,13 @@ Component({
       }
     },
 
-    /**
-     * 由「打分人数」chip 右滑接手：同一指不松手，延续为评分。
-     * @param {number} clientX
-     * @param {{ seedScore?: number|null, trackRect?: {left:number,width:number}, minTravelPx?: number }} [options]
-     */
     beginExternalGesture(clientX, options) {
       if (this.properties.disabled) return;
       const opts = options || {};
       if (opts.trackRect) this.setTrackRect(opts.trackRect);
-      if (opts.minTravelPx != null) this._minTravelPx = Number(opts.minTravelPx) || 24;
+      if (opts.minTravelPx != null) {
+        this._minTravelPx = Number(opts.minTravelPx) || 24;
+      }
 
       this._gesturing = true;
       this._startClientX = clientX;
@@ -172,9 +161,13 @@ Component({
 
       this._measureTrack((rect) => {
         if (!this._gesturing) return;
-        if (rect && this._lastX != null) this._applyClientX(this._lastX);
+        if (rect && this._lastX != null) {
+          this._applyClientX(this._lastX, { force: true });
+        }
       });
-      if (this._trackRect) this._applyClientX(clientX);
+      if (this._trackRect) {
+        this._applyClientX(clientX, { force: true });
+      }
     },
 
     moveExternalGesture(clientX) {
@@ -201,9 +194,6 @@ Component({
       this.triggerEvent('gestureend');
     },
 
-    /**
-     * @returns {{ confirmed: boolean, score: number|null }}
-     */
     endExternalGesture(clientX) {
       if (!this._gesturing) {
         return { confirmed: false, score: null };
@@ -213,9 +203,10 @@ Component({
       const travel = this._startClientX != null && this._lastX != null
         ? Math.abs(this._lastX - this._startClientX)
         : 0;
+      const minTravel = this._minTravelPx != null ? this._minTravelPx : 24;
       const canConfirm = this._hasActivePreview
         && this._previewScore != null
-        && travel >= this._minTravelPx;
+        && travel >= minTravel;
 
       if (canConfirm) {
         const score = this._previewScore;
@@ -236,11 +227,6 @@ Component({
       const restore = this._seedScore;
       this.cancelExternalGesture(restore);
       return { confirmed: false, score: null };
-    },
-
-    blur() {
-      if (!this._gesturing && !this.data.gesturing) return;
-      this.cancelExternalGesture();
     },
 
     onTouchStart(e) {

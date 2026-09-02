@@ -39,6 +39,12 @@ Component({
     motionClass: 'none'
   },
 
+  lifetimes: {
+    attached() {
+      this._sync(this.properties.totalStars, this.properties.motion);
+    }
+  },
+
   observers: {
     'totalStars, motion': function (totalStars, motion) {
       this._sync(totalStars, motion);

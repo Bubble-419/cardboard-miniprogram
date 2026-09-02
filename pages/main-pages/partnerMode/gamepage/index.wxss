@@ -655,6 +655,11 @@
   height: var(--star-hit-height);
 }
 
+/* chip 打分手势进行中：抬高层级，避免底层卡片 swiper 参与同一指手势 */
+.spectator-bottom-stack-scoring {
+  z-index: 12;
+}
+
 /* 打开匿名输入时盖住打分区 */
 .spectator-bottom-stack-composing .spectator-express-slot-flow {
   position: absolute;
