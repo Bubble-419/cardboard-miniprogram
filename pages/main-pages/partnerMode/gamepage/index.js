@@ -1796,6 +1796,30 @@ Page({
     };
   },
 
+  _hydrateReviewCardExpress(cardIndex) {
+    const summaries = this.data.displayRoundSummaries || [];
+    const idx = Number(cardIndex);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= summaries.length) return;
+    const item = summaries[idx];
+    if (!item || item.round == null) return;
+    const lists = this._buildExpressListsForRound(
+      this._expressMessagesAll || [],
+      item.round,
+      item.round
+    );
+    if (!lists.playExpressChatList.length && !lists.discussionExpressChatList.length) return;
+    this.setData({
+      [`displayRoundSummaries[${idx}].expressChatList`]: lists.expressChatList,
+      [`displayRoundSummaries[${idx}].playExpressChatList`]: lists.playExpressChatList,
+      [`displayRoundSummaries[${idx}].discussionExpressChatList`]: lists.discussionExpressChatList
+    });
+  },
+
+  _hydrateReviewCardDetail(cardIndex) {
+    this._hydrateReviewCardMedia(cardIndex);
+    this._hydrateReviewCardExpress(cardIndex);
+  },
+
   _hydrateReviewCardMedia(cardIndex) {
     const summaries = this.data.displayRoundSummaries || [];
     const idx = Number(cardIndex);
@@ -1816,7 +1840,7 @@ Page({
 
   _hydrateCloudRoundMedia(roundContent, displaySummaries, closingBlocks) {
     if (this._isHistoryReviewMode()) {
-      this._hydrateReviewCardMedia(this.data.cardIndex || 0);
+      this._hydrateReviewCardDetail(this.data.cardIndex || 0);
       return;
     }
     const token = (this._cloudMediaToken || 0) + 1;
@@ -2010,13 +2034,14 @@ Page({
           Array.isArray(item.turnRecords) ? item.turnRecords : [],
           members
         );
+        const isReviewBuild = this._isHistoryReviewMode();
         return this._attachCardStarStats({
           ...item,
           voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
           turnRecords: decoratedTurns,
-          expressChatList: lists.expressChatList,
-          playExpressChatList: lists.playExpressChatList,
-          discussionExpressChatList: lists.discussionExpressChatList
+          expressChatList: isReviewBuild ? [] : lists.expressChatList,
+          playExpressChatList: isReviewBuild ? [] : lists.playExpressChatList,
+          discussionExpressChatList: isReviewBuild ? [] : lists.discussionExpressChatList
         }, {
           turnAvgScores: roomState.turnAvgScores,
           turnStarStats: roomState.turnStarStats
@@ -2598,26 +2623,28 @@ Page({
 
       if (isHistoryReview) {
         this._lastHistorySnapshotAt = 0;
-        try {
-          const snapshot = buildReviewSnapshot({
-            selectedProblemText,
-            selectedDesignProblem: selectedProblem || { text: selectedProblemText },
-            members: result.members,
-            roundSummaries: this.data.roundSummaries,
-            expressMessages: this._expressMessagesAll || [],
-            currentRound: this.data.currentRound,
-            brainstormSessionSeq: this.data.brainstormSessionSeq,
-            currentPlayerIndex: this.data.currentPlayerIndex,
-            isMasterMode: this.data.isMasterMode,
-            workshopName: (app.globalData && app.globalData.workshopName) || ''
-          });
-          saveReviewSnapshot(roomId, snapshot, {
-            name: snapshot.workshopName
-          });
-        } catch (e) {
-          console.warn('history review refresh snapshot', e);
-        }
         this._finalizeHistoryReviewUi(selectedProblemText);
+        wx.nextTick(() => {
+          try {
+            const snapshot = buildReviewSnapshot({
+              selectedProblemText,
+              selectedDesignProblem: selectedProblem || { text: selectedProblemText },
+              members: result.members,
+              roundSummaries: this.data.roundSummaries,
+              expressMessages: this._expressMessagesAll || [],
+              currentRound: this.data.currentRound,
+              brainstormSessionSeq: this.data.brainstormSessionSeq,
+              currentPlayerIndex: this.data.currentPlayerIndex,
+              isMasterMode: this.data.isMasterMode,
+              workshopName: (app.globalData && app.globalData.workshopName) || ''
+            });
+            saveReviewSnapshot(roomId, snapshot, {
+              name: snapshot.workshopName
+            });
+          } catch (e) {
+            console.warn('history review refresh snapshot', e);
+          }
+        });
         return;
       }
 
@@ -3094,7 +3121,7 @@ Page({
     if ((this.data.isHistoryReview || this._isHistoryReview) && source === 'touch' && cardIndex !== prevIndex) {
       this._reviewSwitchDir = cardIndex > prevIndex ? 'next' : 'prev';
       this._playReviewCardMotion('switch', patch);
-      this._hydrateReviewCardMedia(cardIndex);
+      this._hydrateReviewCardDetail(cardIndex);
     } else {
       this.setData(patch);
     }

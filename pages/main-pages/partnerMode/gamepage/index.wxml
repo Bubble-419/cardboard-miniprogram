@@ -341,7 +341,7 @@
                 motion="{{reviewStarMotion}}"
               />
             </view>
-            <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{true}}">
+            <scroll-view class="card-scroll" scroll-y enhanced="{{!isHistoryReview}}" show-scrollbar="{{true}}">
               <view class="card-scroll-inner">
               <text class="card-section-title">出牌解释</text>
               <view class="card-section-flow">
