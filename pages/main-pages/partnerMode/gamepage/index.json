@@ -3,7 +3,8 @@
     "user-list": "/components/user-list/index",
     "partner-avatar": "/components/partner-avatar/index",
     "game-card-timer": "/components/game-card-timer/index",
-    "star-rating": "/components/star-rating/index"
+    "star-rating": "/components/star-rating/index",
+    "earned-stars": "/components/earned-stars/index"
   },
   "navigationStyle": "custom",
   "disableSwipeBack": true,

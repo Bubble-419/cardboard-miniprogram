@@ -402,46 +402,74 @@ exports.main = async (event, context) => {
           buckets[key].count += 1;
         });
         const turnAvgScores = {};
+        const turnStarStats = {};
         Object.keys(buckets).forEach((key) => {
           const b = buckets[key];
           if (b.count > 0) {
-            turnAvgScores[key] = Math.round((b.sum / b.count) * 10) / 10;
+            const avgScore = Math.round((b.sum / b.count) * 10) / 10;
+            const totalStars = Math.round(b.sum * 2) / 2;
+            turnAvgScores[key] = avgScore;
+            turnStarStats[key] = {
+              avgScore,
+              scoredCount: b.count,
+              totalStars
+            };
           }
         });
         roomState.turnAvgScores = turnAvgScores;
-        // 回顾态：把均分回填到纪要卡 / turnRecords，修复旧归档缺 avgScore 的情况
+        roomState.turnStarStats = turnStarStats;
+        // 回顾态：回填均分与累计总星星，修复旧归档缺字段的情况
         if (Array.isArray(roomState.partnerRoundSummaries)) {
           roomState.partnerRoundSummaries = roomState.partnerRoundSummaries.map((item) => {
             if (!item || typeof item !== 'object') return item;
             const key = `r${Number(item.round)}_p${Number(item.playerIndex)}`;
-            const fromScores = turnAvgScores[key];
+            const fromStats = turnStarStats[key];
             const turns = Array.isArray(item.turnRecords)
               ? item.turnRecords.map((t) => {
                 if (!t || typeof t !== 'object') return t;
-                if (t.avgScore != null) return t;
                 const tKey = `r${Number(item.round)}_p${Number(t.playerIndex)}`;
-                if (turnAvgScores[tKey] == null) return t;
-                return { ...t, avgScore: turnAvgScores[tKey] };
+                const ts = turnStarStats[tKey];
+                if (!ts) return t;
+                const next = { ...t };
+                if (next.avgScore == null) next.avgScore = ts.avgScore;
+                if (next.scoredCount == null) next.scoredCount = ts.scoredCount;
+                return next;
               })
               : [];
             let avgScore = item.avgScore != null ? Number(item.avgScore) : null;
+            let scoredCount = item.scoredCount != null ? Number(item.scoredCount) : null;
+            let totalStars = item.totalStars != null ? Number(item.totalStars) : null;
+            const matched = turns.find(
+              (t) => t && Number(t.playerIndex) === Number(item.playerIndex)
+            ) || turns.find((t) => t && t.avgScore != null);
             if (avgScore == null) {
-              const matched = turns.find(
-                (t) => t && Number(t.playerIndex) === Number(item.playerIndex) && t.avgScore != null
-              ) || turns.find((t) => t && t.avgScore != null);
-              if (matched) avgScore = Number(matched.avgScore);
-              else if (fromScores != null) avgScore = fromScores;
+              if (matched && matched.avgScore != null) avgScore = Number(matched.avgScore);
+              else if (fromStats) avgScore = fromStats.avgScore;
+            }
+            if (scoredCount == null || !(scoredCount > 0)) {
+              if (matched && matched.scoredCount != null) scoredCount = Number(matched.scoredCount);
+              else if (fromStats) scoredCount = fromStats.scoredCount;
+            }
+            if (totalStars == null || !Number.isFinite(totalStars)) {
+              if (fromStats) totalStars = fromStats.totalStars;
+              else if (avgScore != null) {
+                const weight = scoredCount > 0 ? scoredCount : 1;
+                totalStars = Math.round(avgScore * weight * 2) / 2;
+              }
             }
             return {
               ...item,
               turnRecords: turns.length ? turns : item.turnRecords,
-              avgScore
+              avgScore,
+              scoredCount,
+              totalStars
             };
           });
         }
       } catch (scoreErr) {
         console.warn('getAddPlayerData turnAvgScores', scoreErr);
         roomState.turnAvgScores = {};
+        roomState.turnStarStats = {};
       }
     }
 

@@ -1,0 +1,111 @@
+.earned-stars {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12rpx 16rpx;
+  border-radius: 16rpx;
+  background: #eef7ee;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.earned-stars-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: center;
+  max-width: 100%;
+  gap: 12rpx;
+}
+
+.earned-star-slot {
+  position: relative;
+  width: 40rpx;
+  height: 40rpx;
+  flex: 0 0 40rpx;
+  transform-origin: center center;
+}
+
+.earned-star-slot-gap {
+  margin-right: 12rpx;
+}
+
+.earned-star-icon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40rpx;
+  height: 40rpx;
+  display: block;
+}
+
+.earned-star-clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20rpx;
+  height: 40rpx;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.earned-star-clip .earned-star-icon {
+  left: 0;
+  top: 0;
+}
+
+.earned-stars-pending .earned-star-slot,
+.earned-stars-stagger .earned-star-slot {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.earned-stars-stagger .earned-star-slot,
+.earned-stars-fade .earned-star-slot {
+  animation: earnedStarIn 140ms ease forwards;
+}
+
+.earned-stars-fade .earned-star-slot {
+  animation-delay: 0ms !important;
+}
+
+.earned-stars-wave .earned-star-slot {
+  animation: earnedStarWave 280ms ease both;
+}
+
+.earned-stars-none .earned-star-slot {
+  opacity: 1;
+  transform: scale(1);
+  animation: none;
+}
+
+@keyframes earnedStarIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes earnedStarWave {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .earned-stars-stagger .earned-star-slot,
+  .earned-stars-wave .earned-star-slot {
+    animation: earnedStarIn 160ms ease forwards;
+    animation-delay: 0ms !important;
+  }
+}

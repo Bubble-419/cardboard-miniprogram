@@ -933,12 +933,23 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   gap: 18rpx;
 }
 
+/* 主按钮决定列宽，退出按钮随主按钮同宽 */
+.footer-actions {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18rpx;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .primary-btn {
-  width: 100%;
+  width: auto !important;
+  min-width: 360rpx;
   height: 92rpx;
   line-height: 92rpx;
   background: linear-gradient(135deg, #5ec159 0%, #4db84a 100%);
@@ -952,8 +963,8 @@
   border: none;
   letter-spacing: 2rpx;
   box-shadow: 0 8rpx 24rpx rgba(94, 193, 89, 0.28);
-  margin: 0;
-  padding: 0;
+  margin: 0 !important;
+  padding: 0 96rpx !important;
   box-sizing: border-box;
 }
 

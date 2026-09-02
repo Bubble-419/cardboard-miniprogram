@@ -1,7 +1,5 @@
 {
   "navigationBarTitleText": "排行榜",
   "navigationStyle": "custom",
-  "usingComponents": {
-    "star-rating": "/components/star-rating/index"
-  }
+  "usingComponents": {}
 }

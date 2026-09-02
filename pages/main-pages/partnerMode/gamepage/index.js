@@ -85,7 +85,9 @@ const {
   normalizeHalfStarScore,
   clampSelectableScore,
   formatScoreDisplay,
-  toHalfSteps
+  toHalfSteps,
+  resolveCardTotalStars,
+  earnedStarStaggerDelays
 } = require('../../../../utils/halfStarScore');
 const {
   buildReviewSnapshot,
@@ -116,6 +118,9 @@ Page({
     gamepagePhase: PHASE_PLAY,
     /** 历史工作坊回顾模式：只看纪要卡片、可记灵感，不推进游戏/轮询 */
     isHistoryReview: false,
+    reviewCardAnim: '',
+    reviewStarMotion: 'none',
+    reviewFocusAnim: false,
     cardIndex: 0,
     playImages: [],
     discussionImages: [],
@@ -323,6 +328,13 @@ Page({
       ? parseInt(options.brainstormSessionSeq, 10) || 0
       : 0;
     this._isHistoryReview = isHistoryReview;
+    this._reviewEnterPlayed = false;
+    this._reviewStarRevealed = {};
+    this._reviewSelfFocusPlayed = false;
+    this._reviewAnimGen = 0;
+    this._reviewMotionTimers = [];
+    this._reviewMyPlayerIndex = 0;
+    this._reviewSwitchDir = 'next';
     const fromStatement = !!(options && (options.fromStatement === '1' || options.fromStatement === 1));
     // 从表态页回来后，短时间内忽略过期的 currentPage=statement，防止闪回后再点一次
     this._suppressStatementFollowUntil = fromStatement ? Date.now() + 12000 : 0;
@@ -336,7 +348,10 @@ Page({
       closingStep: initialClosingStep,
       cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
       specialMoveUsedThisTurn: !!specialMoveUsedFromUrl,
-      isHistoryReview
+      isHistoryReview,
+      reviewCardAnim: isHistoryReview ? 'review-card-prep' : '',
+      reviewStarMotion: isHistoryReview ? 'pending' : 'none',
+      reviewFocusAnim: false
     });
 
     this._applyTopBarSafeInset();
@@ -615,6 +630,7 @@ Page({
     this._cardSwipeBusy = false;
     this._scoreUiBusy = false;
     this._pendingRoomContext = null;
+    this._cancelReviewMotion();
     if (this._expressAnchorClearTimer) {
       clearTimeout(this._expressAnchorClearTimer);
       this._expressAnchorClearTimer = null;
@@ -839,7 +855,8 @@ Page({
     if (!snapshot) return null;
     const members = Array.isArray(snapshot.members) ? snapshot.members.slice() : [];
     if (!members.length) return null;
-    // 回顾态不强调「我是谁」，统一关掉 isMe / 出牌态
+    this._captureReviewMyPlayerIndex(members);
+    // 回顾态头像不强调「我是谁」，但累计星星聚焦仍使用上面记下的座位
     const normalizedMembers = members.map((m) => ({
       ...m,
       isMe: false
@@ -890,6 +907,7 @@ Page({
         : 0
     }, () => {
       this._checkProblemTextOverflow();
+      this._playReviewCardMotion('enter');
     });
     this._refreshInspirationCount();
     if (!summaryCount) {
@@ -1617,12 +1635,30 @@ Page({
     return null;
   },
 
-  _attachCardAvgScore(item, turnAvgLookup) {
-    const avgScore = this._resolveCardAvgScore(item, turnAvgLookup);
+  _attachCardStarStats(item, lookup) {
+    const statsLookup = lookup || {};
+    const avgScore = this._resolveCardAvgScore(item, statsLookup.turnAvgScores);
+    const records = Array.isArray(item.turnRecords) ? item.turnRecords : [];
+    const idx = item.playerIndex;
+    const matched = records.find((t) => t && Number(t.playerIndex) === Number(idx));
+    let scoredCount = item.scoredCount != null ? Number(item.scoredCount) : null;
+    if (!(scoredCount > 0) && matched && matched.scoredCount != null) {
+      scoredCount = Number(matched.scoredCount);
+    }
+    const totalStars = resolveCardTotalStars({
+      totalStars: item.totalStars,
+      starSum: item.starSum,
+      avgScore,
+      scoredCount,
+      round: item.round,
+      playerIndex: item.playerIndex
+    }, statsLookup.turnStarStats);
     return {
       ...item,
       avgScore,
-      avgScoreText: avgScore != null ? formatScoreDisplay(avgScore) : ''
+      avgScoreText: avgScore != null ? formatScoreDisplay(avgScore) : '',
+      scoredCount,
+      totalStars
     };
   },
 
@@ -1803,6 +1839,7 @@ Page({
       .map((m) => `${m.userId || m.playerIndex}:${getMemberAvatarFingerprint(m)}`)
       .join('|');
     this._refreshCloudAvatarsIfNeeded(result.members || members, members);
+    this._captureReviewMyPlayerIndex(members);
     const roomState = result.roomState || {};
     const player = resolveCurrentPlayerFromRoom(
       members,
@@ -1898,14 +1935,17 @@ Page({
           Array.isArray(item.turnRecords) ? item.turnRecords : [],
           members
         );
-        return this._attachCardAvgScore({
+        return this._attachCardStarStats({
           ...item,
           voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
           turnRecords: decoratedTurns,
           expressChatList: lists.expressChatList,
           playExpressChatList: lists.playExpressChatList,
           discussionExpressChatList: lists.discussionExpressChatList
-        }, roomState.turnAvgScores);
+        }, {
+          turnAvgScores: roomState.turnAvgScores,
+          turnStarStats: roomState.turnStarStats
+        });
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
     if (this.data.isHistoryReview || this._isHistoryReview) {
@@ -1916,7 +1956,7 @@ Page({
       ));
       if (!already && actingIdx > 0 && this._summaryHasContent(roundContent)) {
         const lists = this._buildExpressListsForRound(expressMessages, currentRound, currentRound);
-        roundSummaries.push(this._attachCardAvgScore({
+        roundSummaries.push(this._attachCardStarStats({
           round: currentRound,
           playerIndex: actingIdx,
           playerName: player.currentPlayerName || `玩家${actingIdx}`,
@@ -1931,7 +1971,10 @@ Page({
           expressChatList: lists.expressChatList,
           playExpressChatList: lists.playExpressChatList,
           discussionExpressChatList: lists.discussionExpressChatList
-        }, roomState.turnAvgScores));
+        }, {
+          turnAvgScores: roomState.turnAvgScores,
+          turnStarStats: roomState.turnStarStats
+        }));
       }
     }
     // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
@@ -1987,9 +2030,11 @@ Page({
       filteredPlayerIndex: nextFilteredPlayerIndex,
       isPlayerFilterActive: nextFilterActive,
       currentPlayerIndex: player.currentPlayerIndex,
-      preferredCardIndex: (roundChanged || sessionChanged || options.resetTurnUi)
-        ? undefined
-        : this.data.cardIndex,
+      preferredCardIndex: (this.data.isHistoryReview || this._isHistoryReview)
+        ? (options.resetTurnUi ? 0 : this.data.cardIndex)
+        : ((roundChanged || sessionChanged || options.resetTurnUi)
+          ? undefined
+          : this.data.cardIndex),
       roomId: this.data.roomId,
       brainstormSessionSeq
     });
@@ -2830,6 +2875,120 @@ Page({
     }
   },
 
+  _captureReviewMyPlayerIndex(members) {
+    if (this._reviewMyPlayerIndex > 0) return;
+    const me = (members || []).find((m) => m && m.isMe === true);
+    if (me && me.playerIndex != null) {
+      this._reviewMyPlayerIndex = toPlayerIndex(me.playerIndex, 0);
+    }
+  },
+
+  _reviewCardKey(item) {
+    if (!item || item.round == null || item.playerIndex == null) return '';
+    return `r${Number(item.round)}_p${Number(item.playerIndex)}`;
+  },
+
+  _prefersReducedMotion() {
+    try {
+      const sys = typeof wx.getSystemInfoSync === 'function'
+        ? wx.getSystemInfoSync()
+        : {};
+      return !!(sys && sys.reduceMotion === true);
+    } catch (e) {
+      return false;
+    }
+  },
+
+  _cancelReviewMotion() {
+    this._reviewAnimGen = (this._reviewAnimGen || 0) + 1;
+    (this._reviewMotionTimers || []).forEach((id) => clearTimeout(id));
+    this._reviewMotionTimers = [];
+  },
+
+  _scheduleReviewTimeout(fn, ms) {
+    const gen = this._reviewAnimGen;
+    const timer = setTimeout(() => {
+      if (gen !== this._reviewAnimGen) return;
+      fn();
+    }, ms);
+    if (!this._reviewMotionTimers) this._reviewMotionTimers = [];
+    this._reviewMotionTimers.push(timer);
+    return timer;
+  },
+
+  _playReviewSelfFocus() {
+    if (this._reviewSelfFocusPlayed) return;
+    this._reviewSelfFocusPlayed = true;
+    this.setData({
+      reviewFocusAnim: true,
+      reviewStarMotion: this._prefersReducedMotion() ? 'none' : 'wave'
+    });
+    this._scheduleReviewTimeout(() => {
+      this.setData({
+        reviewFocusAnim: false,
+        reviewStarMotion: 'none'
+      });
+    }, 620);
+  },
+
+  _playReviewCardMotion(reason, extraPatch) {
+    if (!(this.data.isHistoryReview || this._isHistoryReview)) return;
+    const cardIndex = extraPatch && extraPatch.cardIndex != null
+      ? extraPatch.cardIndex
+      : this.data.cardIndex;
+    const list = this.data.displayRoundSummaries || [];
+    const card = list[cardIndex] || null;
+    const key = this._reviewCardKey(card);
+    if (reason === 'enter' && this._reviewEnterPlayed) return;
+    if (reason === 'switch' && !this._reviewEnterPlayed) return;
+
+    this._cancelReviewMotion();
+    const reduced = this._prefersReducedMotion();
+    const revealed = !!(key && this._reviewStarRevealed[key]);
+    const isMine = !!(card && this._reviewMyPlayerIndex > 0
+      && Number(card.playerIndex) === Number(this._reviewMyPlayerIndex));
+    const shouldFocus = isMine && !this._reviewSelfFocusPlayed && !reduced;
+    const starSteps = card && card.totalStars != null
+      ? Math.round(Number(card.totalStars) * 2)
+      : 0;
+    const starCount = starSteps > 0 ? Math.ceil(starSteps / 2) : 0;
+
+    let cardAnim = '';
+    if (reason === 'enter') {
+      this._reviewEnterPlayed = true;
+      cardAnim = reduced ? 'review-card-fade' : 'review-card-enter';
+    } else {
+      const dir = this._reviewSwitchDir === 'prev' ? 'prev' : 'next';
+      cardAnim = reduced ? 'review-card-fade' : (
+        dir === 'prev' ? 'review-card-switch-prev' : 'review-card-switch-next'
+      );
+    }
+
+    const hideStarsFirst = !revealed && !reduced;
+    this.setData(Object.assign({}, extraPatch || {}, {
+      reviewCardAnim: cardAnim,
+      reviewStarMotion: hideStarsFirst ? 'pending' : (reduced && !revealed ? 'fade' : 'none'),
+      reviewFocusAnim: false
+    }));
+
+    const cardMs = reason === 'enter' ? 300 : 260;
+    const delays = hideStarsFirst ? earnedStarStaggerDelays(starCount) : [];
+    const lastDelay = delays.length ? delays[delays.length - 1] : 0;
+    const staggerMs = hideStarsFirst ? lastDelay + 140 : (reduced && !revealed ? 160 : 0);
+
+    this._scheduleReviewTimeout(() => {
+      if (key) this._reviewStarRevealed[key] = true;
+      this.setData({
+        reviewCardAnim: '',
+        reviewStarMotion: hideStarsFirst ? 'stagger' : 'none'
+      });
+      this._scheduleReviewTimeout(() => {
+        this.setData({ reviewStarMotion: 'none' });
+        if (shouldFocus) this._playReviewSelfFocus();
+      }, staggerMs || 0);
+    }, cardMs);
+  },
+
   onCardSwiperTransition() {
     this._cardSwipeBusy = true;
   },
@@ -2851,11 +3010,18 @@ Page({
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
     const maxIndex = Math.max(0, (this.data.cardCount || 1) - 1);
     const cardIndex = Math.min(index, maxIndex);
-    this.setData({
+    const prevIndex = this.data.cardIndex;
+    const patch = {
       cardIndex,
       paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
       indicatorPlayerIndex: this._resolveIndicatorPlayerIndex(cardIndex)
-    });
+    };
+    if ((this.data.isHistoryReview || this._isHistoryReview) && source === 'touch' && cardIndex !== prevIndex) {
+      this._reviewSwitchDir = cardIndex > prevIndex ? 'next' : 'prev';
+      this._playReviewCardMotion('switch', patch);
+    } else {
+      this.setData(patch);
+    }
     // 历史纪要卡自带 play/discussionExpressChatList；页面级列表始终对应当前轮，
     // 切卡时不得改写，否则滑动预览当前卡会短暂串出上一轮聊天记录。
     // 部分基础库无 animationfinish：短延迟后释放锁并冲刷排队的房间补丁
@@ -3831,11 +3997,12 @@ Page({
       const w = (sys && sys.windowWidth) || 375;
       this._starChipSlopPx = Math.max(8, Math.round((10 / 750) * w * 2));
       this._starChipMinTravelPx = Math.max(20, Math.round((24 / 750) * w * 2));
-      this._starChipFabPadPx = Math.max(24, Math.round((72 / 750) * w));
+      // 聊天钮已在 shell 外侧 flex 排布，轨道不再内扣预留宽度
+      this._starChipFabPadPx = 0;
     } catch (e) {
       this._starChipSlopPx = 10;
       this._starChipMinTravelPx = 24;
-      this._starChipFabPadPx = 36;
+      this._starChipFabPadPx = 0;
     }
     return this._starChipSlopPx;
   },
@@ -3847,7 +4014,7 @@ Page({
 
   _getStarChipFabPadPx() {
     this._getStarChipSlopPx();
-    return this._starChipFabPadPx || 36;
+    return this._starChipFabPadPx || 0;
   },
 
   _measureStarShellTrack(done) {
@@ -3894,9 +4061,11 @@ Page({
 
   onStarChipTouchStart(e) {
     if (this.data.isCurrentPlayer || this.data.scoreSubmitting) return;
-    if (!this.data.starRatingCollapsed) return;
+    if (!this.data.starRatingCollapsed && !this.data.starRatingChipSwiping) return;
     const t = e.touches && e.touches[0];
     if (!t) return;
+    // 一按下就锁卡片横滑，避免右滑手势被 swiper 抢走
+    this._markScoreUiBusy();
     this._getStarChipSlopPx();
     this._chipGesture = {
       startX: t.clientX,
@@ -3924,13 +4093,14 @@ Page({
 
     if (!g.axis) {
       if (Math.abs(dx) < slop && Math.abs(dy) < slop) return;
-      // 仅横向且向右：评分手势；纵向为主则放弃，避免挡上下滚动意图
-      if (Math.abs(dx) > Math.abs(dy) * 1.15 && dx > slop) {
+      // 横向为主且向右：评分手势；纵向为主则放弃
+      if (dx > slop && Math.abs(dx) >= Math.abs(dy)) {
         g.axis = 'x';
         g.scoring = true;
         this._beginStarChipSwipeScore(t.clientX);
-      } else if (Math.abs(dy) >= Math.abs(dx)) {
+      } else if (Math.abs(dy) > Math.abs(dx)) {
         g.axis = 'y';
+        if (!this._scoreSubmitting) this._releaseScoreUiBusy(80);
       }
       return;
     }
@@ -4004,6 +4174,8 @@ Page({
     if (!g.scoring) {
       if (Math.abs(dx) <= slop && Math.abs(dy) <= slop) {
         this.onStarRatingChipTap();
+      } else if (!this._scoreSubmitting) {
+        this._releaseScoreUiBusy(80);
       }
       return;
     }
@@ -4019,9 +4191,6 @@ Page({
       if (result && result.confirmed && result.score != null) {
         // scoreconfirm → _applyScoreTap，成功后收起
         return;
-      }
-      if (typeof comp.cancelExternalGesture === 'function') {
-        // end 内部已 cancel；再刷一次页面态确保不残留预览分
       }
     } else {
       this.setData({ starRatingChipSwiping: false });
@@ -4868,6 +5037,11 @@ Page({
             );
             if (mine && mine.avgScore != null) {
               extra.roundSummary.avgScore = Number(mine.avgScore);
+              extra.roundSummary.scoredCount = Number(mine.scoredCount) || 0;
+              extra.roundSummary.totalStars = resolveCardTotalStars({
+                avgScore: mine.avgScore,
+                scoredCount: mine.scoredCount
+              });
             }
             this.setData({ turnRecords: finalizeResult.turnRecords });
           }

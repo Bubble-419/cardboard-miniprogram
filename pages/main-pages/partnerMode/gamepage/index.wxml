@@ -328,15 +328,17 @@
           wx:for="{{displayRoundSummaries}}"
           wx:key="round"
         >
-          <view class="game-card game-card-muted">
+          <view class="game-card game-card-muted {{isHistoryReview && index === cardIndex ? reviewCardAnim : ''}} {{isHistoryReview && index === cardIndex && reviewFocusAnim ? 'review-card-focus' : ''}}">
             <view class="card-header-row">
               <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
-              <star-rating
-                wx:if="{{isHistoryReview && item.avgScore != null}}"
-                class="card-avg-stars"
-                value="{{item.avgScore}}"
-                disabled="{{true}}"
-                size="compact"
+            </view>
+            <view
+              wx:if="{{isHistoryReview && item.totalStars > 0}}"
+              class="card-earned-stars-wrap"
+            >
+              <earned-stars
+                totalStars="{{item.totalStars}}"
+                motion="{{index === cardIndex ? reviewStarMotion : 'none'}}"
               />
             </view>
             <scroll-view class="card-scroll" scroll-y enhanced show-scrollbar="{{true}}">
@@ -484,15 +486,7 @@
                   wx:for-index="turnIdx"
                   wx:key="turnIdx"
                 >
-                  <text>·</text>
-                  <star-rating
-                    wx:if="{{isHistoryReview && turn.avgScore != null}}"
-                    class="card-turn-stars"
-                    value="{{turn.avgScore}}"
-                    disabled="{{true}}"
-                    size="mini"
-                  />
-                  <text>{{turn.statementLabel || '未记录'}}</text>
+                  <text>· {{turn.statementLabel || '未记录'}}</text>
                 </view>
                 <view class="card-bullet card-bullet-empty" wx:if="{{!item.turnRecords || !item.turnRecords.length}}">· 暂无记录</view>
               </view>
@@ -804,6 +798,34 @@
                 </view>
 
                 <view class="spectator-bottom-stack {{starRatingCollapsed ? 'spectator-bottom-stack-collapsed' : ''}} {{expressComposerOpen ? 'spectator-bottom-stack-composing' : ''}}" catchtap="noop">
+                  <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}} {{starRatingChipSwiping ? 'star-rating-shell-swiping' : ''}}">
+                    <!-- 收起/右滑中：全宽透明热区，避免手指右移离开 chip 后断触、被卡片 swiper 抢走 -->
+                    <view
+                      wx:if="{{starRatingCollapsed || starRatingChipSwiping}}"
+                      class="star-rating-chip-hit"
+                      catchtouchstart="onStarChipTouchStart"
+                      catchtouchmove="onStarChipTouchMove"
+                      catchtouchend="onStarChipTouchEnd"
+                      catchtouchcancel="onStarChipTouchEnd"
+                    ></view>
+                    <view class="star-rating-chip">
+                      <text class="star-rating-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
+                    </view>
+                    <view class="star-rating-body">
+                      <view class="star-rating-row">
+                        <star-rating
+                          id="starRating"
+                          value="{{selectedScore}}"
+                          disabled="{{scoreSubmitting}}"
+                          bind:preview="onStarRatingPreview"
+                          bind:scoreconfirm="onStarRatingConfirm"
+                          bind:gesturestart="onStarGestureStart"
+                          bind:gestureend="onStarGestureEnd"
+                        />
+                      </view>
+                    </view>
+                  </view>
+
                   <view class="spectator-express-slot spectator-express-slot-flow">
                     <form
                       wx:if="{{expressComposerOpen}}"
@@ -847,31 +869,6 @@
                           class="spectator-express-fab-bubble"
                           src="/assets/partnerMode/icon-express-bubble.svg"
                           mode="aspectFit"
-                        />
-                      </view>
-                    </view>
-                  </view>
-
-                  <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}} {{starRatingChipSwiping ? 'star-rating-shell-swiping' : ''}}">
-                    <view
-                      class="star-rating-chip"
-                      catchtouchstart="onStarChipTouchStart"
-                      catchtouchmove="onStarChipTouchMove"
-                      catchtouchend="onStarChipTouchEnd"
-                      catchtouchcancel="onStarChipTouchEnd"
-                    >
-                      <text class="star-rating-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
-                    </view>
-                    <view class="star-rating-body">
-                      <view class="star-rating-row">
-                        <star-rating
-                          id="starRating"
-                          value="{{selectedScore}}"
-                          disabled="{{scoreSubmitting}}"
-                          bind:preview="onStarRatingPreview"
-                          bind:scoreconfirm="onStarRatingConfirm"
-                          bind:gesturestart="onStarGestureStart"
-                          bind:gestureend="onStarGestureEnd"
                         />
                       </view>
                     </view>

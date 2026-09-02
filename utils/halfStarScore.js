@@ -80,16 +80,134 @@ function buildStarFills(score) {
   });
 }
 
+/** 回顾卡累计星：内部上限，界面不得按此预留格子 */
+const MAX_EARNED_STARS = 25;
+const EARNED_STAR_STAGGER_MS = 22;
+const EARNED_STAR_STAGGER_MAX_MS = 680;
+
+function roundToHalfStar(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 2) / 2;
+}
+
+function capEarnedStars(total) {
+  const n = roundToHalfStar(total);
+  if (n <= 0) return 0;
+  if (n > MAX_EARNED_STARS) return MAX_EARNED_STARS;
+  return n;
+}
+
+function lookupTurnStarStat(lookup, round, playerIndex) {
+  if (!lookup || round == null || playerIndex == null) return null;
+  return lookup[`r${Number(round)}_p${Number(playerIndex)}`] || null;
+}
+
+function resolveCardTotalStars(source, lookup) {
+  if (!source || typeof source !== 'object') {
+    if (typeof source === 'number') return capEarnedStars(source);
+    return 0;
+  }
+  if (source.totalStars != null && Number.isFinite(Number(source.totalStars))) {
+    return capEarnedStars(source.totalStars);
+  }
+  if (source.starSum != null && Number.isFinite(Number(source.starSum))) {
+    return capEarnedStars(source.starSum);
+  }
+  const fromLookup = lookupTurnStarStat(lookup, source.round, source.playerIndex);
+  if (fromLookup) {
+    if (typeof fromLookup === 'number') return capEarnedStars(fromLookup);
+    if (fromLookup.totalStars != null) return capEarnedStars(fromLookup.totalStars);
+    if (fromLookup.starSum != null) return capEarnedStars(fromLookup.starSum);
+    if (fromLookup.avgScore != null) {
+      const counted = Number(fromLookup.scoredCount);
+      const weight = Number.isFinite(counted) && counted > 0 ? counted : 1;
+      return capEarnedStars(Number(fromLookup.avgScore) * weight);
+    }
+  }
+  const avg = source.avgScore != null ? Number(source.avgScore) : NaN;
+  if (Number.isFinite(avg)) {
+    const counted = source.scoredCount != null ? Number(source.scoredCount) : 0;
+    const weight = Number.isFinite(counted) && counted > 0 ? counted : 1;
+    return capEarnedStars(avg * weight);
+  }
+  return 0;
+}
+
+function buildEarnedStarSlots(totalStars) {
+  const capped = capEarnedStars(totalStars);
+  const steps = Math.round(capped * 2);
+  if (steps <= 0) return [];
+  const full = Math.floor(steps / 2);
+  const hasHalf = steps % 2 === 1;
+  const total = full + (hasHalf ? 1 : 0);
+  const slots = [];
+  for (let i = 0; i < full; i += 1) {
+    const n = i + 1;
+    slots.push({
+      key: `f${n}`,
+      fill: 100,
+      groupGap: n % 5 === 0 && n < total
+    });
+  }
+  if (hasHalf) {
+    slots.push({
+      key: 'h',
+      fill: 50,
+      groupGap: false
+    });
+  }
+  return slots;
+}
+
+function earnedStarStaggerDelays(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (n <= 0) return [];
+  let gap = EARNED_STAR_STAGGER_MS;
+  if (n > 1 && gap * (n - 1) > EARNED_STAR_STAGGER_MAX_MS) {
+    gap = EARNED_STAR_STAGGER_MAX_MS / (n - 1);
+  }
+  if (gap < 20) gap = 20;
+  if (gap > 25) gap = 25;
+  const delays = [];
+  for (let i = 0; i < n; i += 1) {
+    delays.push(Math.round(i * gap));
+  }
+  return delays;
+}
+
+function earnedStarWaveDelays(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (n <= 0) return [];
+  const animMs = 280;
+  const totalMs = 600;
+  const gap = n > 1 ? Math.min(24, (totalMs - animMs) / (n - 1)) : 0;
+  const delays = [];
+  for (let i = 0; i < n; i += 1) {
+    delays.push(Math.round(i * gap));
+  }
+  return delays;
+}
+
 module.exports = {
   MIN_SCORE,
   MAX_SCORE,
   STEP,
   MAX_HALF_STEPS,
+  MAX_EARNED_STARS,
+  EARNED_STAR_STAGGER_MS,
+  EARNED_STAR_STAGGER_MAX_MS,
   toHalfSteps,
   fromHalfSteps,
   normalizeHalfStarScore,
   clampSelectableScore,
   scoreFromTrackX,
   formatScoreDisplay,
-  buildStarFills
+  buildStarFills,
+  roundToHalfStar,
+  capEarnedStars,
+  resolveCardTotalStars,
+  buildEarnedStarSlots,
+  earnedStarStaggerDelays,
+  earnedStarWaveDelays
 };

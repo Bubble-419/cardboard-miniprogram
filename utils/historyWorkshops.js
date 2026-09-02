@@ -57,6 +57,8 @@ function _slimSummary(item) {
     turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
     statementSummary: item.statementSummary || '',
     avgScore: item.avgScore,
+    scoredCount: item.scoredCount,
+    totalStars: item.totalStars,
     allPassed: item.allPassed
   };
 }

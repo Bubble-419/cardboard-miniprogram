@@ -145,12 +145,22 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 8rpx;
 }
 
-.leaderboard-stars {
-  display: block;
-  width: 200rpx;
-  height: 40rpx;
+.total-star-icon {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+}
+
+.total-star-num {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #333;
+  line-height: 1;
+  min-width: 1em;
+  text-align: right;
 }
 
 .review-entry {

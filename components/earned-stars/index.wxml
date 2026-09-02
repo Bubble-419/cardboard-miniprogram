@@ -1,0 +1,35 @@
+<view
+  wx:if="{{slots.length}}"
+  class="earned-stars earned-stars-{{motionClass}}"
+>
+  <view class="earned-stars-inner">
+    <view
+      wx:for="{{slots}}"
+      wx:key="key"
+      class="earned-star-slot {{item.groupGap ? 'earned-star-slot-gap' : ''}} {{item.fill === 50 ? 'is-half' : 'is-full'}}"
+      style="animation-delay: {{item.delayMs}}ms;"
+    >
+      <block wx:if="{{item.fill === 100}}">
+        <image
+          class="earned-star-icon"
+          src="/assets/partnerMode/icon-star-full.png"
+          mode="aspectFit"
+        />
+      </block>
+      <block wx:else>
+        <image
+          class="earned-star-icon earned-star-outline"
+          src="/assets/partnerMode/icon-star-empty.png"
+          mode="aspectFit"
+        />
+        <view class="earned-star-clip">
+          <image
+            class="earned-star-icon"
+            src="/assets/partnerMode/icon-star-full.png"
+            mode="aspectFit"
+          />
+        </view>
+      </block>
+    </view>
+  </view>
+</view>

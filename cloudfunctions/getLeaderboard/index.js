@@ -15,7 +15,7 @@ const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 const ROOM_SCORES_COLLECTION = 'roomScores';
 
 /**
- * 获取房间排行榜：每个玩家的平均分。
+ * 获取房间排行榜：每个玩家获得的总星星数。
  * 优先聚合合伙人表态归档（turnRecords）；无归档时回退 roomScores。
  */
 exports.main = async (event, context) => {
@@ -68,12 +68,12 @@ exports.main = async (event, context) => {
         nickName: m.nickName,
         avatarUrl: m.avatarUrl,
         avatarColor: m.avatarColor,
-        averageScore: stats.averageScore,
+        totalStars: stats.totalStars,
         scoreCount: stats.scoreCount
       };
     });
 
-    leaderboard.sort((a, b) => b.averageScore - a.averageScore);
+    leaderboard.sort((a, b) => b.totalStars - a.totalStars);
 
     return {
       ok: true,

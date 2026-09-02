@@ -39,12 +39,12 @@
           <text class="meta">共 {{item.scoreCount}} 次评分</text>
         </view>
         <view class="score-wrap">
-          <star-rating
-            class="leaderboard-stars"
-            value="{{item.averageScore}}"
-            disabled="{{true}}"
-            size="compact"
+          <image
+            class="total-star-icon"
+            src="/assets/partnerMode/icon-star-full.png"
+            mode="aspectFit"
           />
+          <text class="total-star-num">{{item.totalStars}}</text>
         </view>
       </view>
       <view class="review-entry" bindtap="handleGlobalReview">

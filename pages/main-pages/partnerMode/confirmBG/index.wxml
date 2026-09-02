@@ -21,13 +21,11 @@
   <!-- 游戏页进入：设计问题按内容高度 + 情境 2×2，超出可滚 -->
   <block wx:elif="{{isGameDetail}}">
     <scroll-view class="game-detail-body" scroll-y enhanced show-scrollbar="{{false}}">
-      <!-- 完整设计问题：与「选择设计问题」选中卡同款展示 -->
+      <!-- 完整设计问题：结构/排版与「选择设计问题」选中卡一致（text 须单行紧贴，避免空白行盒） -->
       <view class="design-problem-block">
         <view class="design-problem-indicator"></view>
         <view class="design-problem-text-wrap">
-          <text class="design-problem-text {{fullProblemText ? '' : 'design-problem-text-empty'}}">
-            {{fullProblemText || '暂无设计问题'}}
-          </text>
+          <text class="design-problem-text {{fullProblemText ? '' : 'design-problem-text-empty'}}">{{fullProblemText || '暂无设计问题'}}</text>
         </view>
       </view>
 
