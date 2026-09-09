@@ -15,6 +15,11 @@ const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames'
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  isPageInteractionLocked,
+  runPageInteraction,
+  runPageNavigation
+} = require('../../../utils/pageInteractionLock');
 
 const MODE_META = {
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
@@ -36,7 +41,10 @@ Page({
     offlineScenario: null,
     customScenarios: [],
     selectedScenarioId: null,
-    actionMode: 'add'
+    actionMode: 'add',
+    interactionLocked: false,
+    interactionLoading: false,
+    interactionLoadingText: '加载中…'
   },
 
   onLoad(options) {
@@ -196,6 +204,7 @@ Page({
   },
 
   onTapScenario(e) {
+    if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
     if (!id) return;
@@ -208,6 +217,7 @@ Page({
 
   /** 新设计：点击卡片箭头直接选中并确认 */
   onCardArrow(e) {
+    if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
     if (!id) return;
@@ -217,11 +227,13 @@ Page({
 
   /** 新增情境入口 */
   handleAddScenario() {
+    if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     this._goAddScenario();
   },
 
   handleFooterAction() {
+    if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     if (this.data.actionMode === 'select' && this.data.selectedScenarioId) {
       this._confirmSelectedScenario();
@@ -231,22 +243,27 @@ Page({
   },
 
   async _goAddScenario() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
-    getApp().globalData.gameMode = mode;
-    getApp().globalData.selectedBGSource = 'custom';
-    if (roomId) {
-      const ok = await this._updateRoomState('selectBG');
-      if (!ok) {
-        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-        return;
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+      getApp().globalData.gameMode = mode;
+      getApp().globalData.selectedBGSource = 'custom';
+      if (roomId) {
+        const ok = await this._updateRoomState('selectBG');
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
       }
-    }
-    const query = roomId
-      ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
-      : `?mode=${mode}`;
-    wx.navigateTo({
-      url: `/pages/main-pages/selectBG/index${query}`
+      const query = roomId
+        ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
+        : `?mode=${mode}`;
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/selectBG/index${query}`
+      };
+    }, {
+      loadingText: '正在打开…'
     });
   },
 
@@ -265,80 +282,91 @@ Page({
       return;
     }
 
-    const app = getApp();
-    app.globalData = app.globalData || {};
-    app.globalData.selectedBGSource = scenario.type || 'case';
-    const roomIdEnc = encodeURIComponent(roomId);
-    this._navPending = true;
+    return runPageNavigation(this, async () => {
+      const app = getApp();
+      app.globalData = app.globalData || {};
+      app.globalData.selectedBGSource = scenario.type || 'case';
+      const roomIdEnc = encodeURIComponent(roomId);
+      this._navPending = true;
 
-    try {
-      // 线下情境：跳过情境填写，直接进入选玩家
-      if (scenario.isOffline || scenario.id === 'offline') {
-        const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
-        app.globalData.gameMode = offlineMode;
-        const ok = await this._updateRoomState('selectPlayer');
+      try {
+        // 线下情境：跳过情境填写，直接进入选玩家
+        if (scenario.isOffline || scenario.id === 'offline') {
+          const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+          app.globalData.gameMode = offlineMode;
+          const ok = await this._updateRoomState('selectPlayer');
+          if (!ok) {
+            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+            return;
+          }
+          return {
+            method: 'redirectTo',
+            url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
+          };
+        }
+
+        if (!scenario.bg) {
+          wx.showToast({ title: '情境数据无效', icon: 'none' });
+          return;
+        }
+
+        // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
+        if (this.data.modeId === 'partner') {
+          app.globalData.selectedBG = { ...scenario.bg };
+          app.globalData.gameMode = 'partner';
+          const ok = await this._updateRoomState('confirmBG', app.globalData.selectedBG);
+          if (!ok) {
+            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+            return;
+          }
+          return {
+            method: 'navigateTo',
+            url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
+          };
+        }
+
+        // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
+        const bg = { ...scenario.bg };
+        if (this.data.modeId === 'halliGalli') {
+          delete bg.platform;
+        }
+        app.globalData.selectedBG = bg;
+        app.globalData.gameMode = this.data.modeId;
+        const ok = await this._updateRoomState('selectPlayer', bg);
         if (!ok) {
           wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
           return;
         }
-        wx.redirectTo({
+        return {
+          method: 'redirectTo',
           url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-        });
-        return;
+        };
+      } finally {
+        this._navPending = false;
       }
-
-      if (!scenario.bg) {
-        wx.showToast({ title: '情境数据无效', icon: 'none' });
-        return;
-      }
-
-      // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
-      if (this.data.modeId === 'partner') {
-        app.globalData.selectedBG = { ...scenario.bg };
-        app.globalData.gameMode = 'partner';
-        const ok = await this._updateRoomState('confirmBG', app.globalData.selectedBG);
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-          return;
-        }
-        wx.navigateTo({
-          url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
-        });
-        return;
-      }
-
-      // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
-      const bg = { ...scenario.bg };
-      if (this.data.modeId === 'halliGalli') {
-        delete bg.platform;
-      }
-      app.globalData.selectedBG = bg;
-      app.globalData.gameMode = this.data.modeId;
-      const ok = await this._updateRoomState('selectPlayer', bg);
-      if (!ok) {
-        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-        return;
-      }
-      wx.redirectTo({
-        url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-      });
-    } finally {
-      this._navPending = false;
-    }
-  },
-
-  handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/brainstormMode/index';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/brainstormMode/index',
-      fallbackUrl
+    }, {
+      loadingText: '正在进入…'
     });
   },
 
+  handleGoBack() {
+    if (isPageInteractionLocked(this)) return;
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/brainstormMode/index';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/brainstormMode/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
+  },
+
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    if (isPageInteractionLocked(this)) return;
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   }
 });

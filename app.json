@@ -57,6 +57,9 @@
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
   },
+  "usingComponents": {
+    "interaction-lock-layer": "/components/interaction-lock-layer/index"
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

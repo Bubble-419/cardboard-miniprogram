@@ -8,6 +8,11 @@ const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecial
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl, openPartnerPage } = require('../../../../utils/pageNavigate');
 const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
@@ -62,7 +67,7 @@ const REVERSE_STEPS = [
   { label: 'step4.通过覆膜垂直翻面卡组' }
 ];
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     initiatorPlayerIndex: 1,
@@ -189,16 +194,29 @@ Page({
           brainstormSessionSeq
         }
     );
-    const { safeNavigateBack } = require('../../../../utils/pageNavigate');
-    // 未标记已使用时可安全 pop；带 specialMoveUsed query 时必须 openUrl
-    if (!markUsed) {
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
-        fallbackUrl: target
-      });
-      return;
-    }
-    safeOpenUrl(target);
+    return new Promise((resolve) => {
+      const finish = (ok, error) => resolve({ ok, error });
+      const reLaunch = () => {
+        wx.reLaunch({
+          url: target,
+          success: () => finish(true),
+          fail: (error) => finish(false, error)
+        });
+      };
+      const redirect = () => {
+        wx.redirectTo({
+          url: target,
+          success: () => finish(true),
+          fail: reLaunch
+        });
+      };
+      // 未标记已使用时优先回退；失败则用明确 URL 恢复游戏页。
+      if (!markUsed) {
+        wx.navigateBack({ success: () => finish(true), fail: redirect });
+        return;
+      }
+      redirect();
+    });
   },
 
   formatSilentTime(sec) {
@@ -248,31 +266,17 @@ Page({
   },
 
   handleGoInspirationCenter() {
-    // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
-    this._stopStatePolling();
-    const roomId = this.data.roomId || '';
-    const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
-    let url = '/pages/inspiration/index?scope=workshop';
-    if (roomId) {
-      url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
-    }
-    const opened = openPartnerPage(url);
-    if (!opened) {
-      wx.navigateTo({
-        url,
-        fail: (err) => {
-          console.warn('navigateTo inspiration fail', err);
-          wx.redirectTo({
-            url,
-            fail: (err2) => {
-              console.warn('redirectTo inspiration fail', err2);
-              this._startStatePolling();
-              wx.showToast({ title: '打开灵感空间失败', icon: 'none' });
-            }
-          });
-        }
-      });
-    }
+    return runPageNavigation(this, async () => {
+      // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
+      this._stopStatePolling();
+      const roomId = this.data.roomId || '';
+      const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+      let url = '/pages/inspiration/index?scope=workshop';
+      if (roomId) {
+        url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
+      }
+      return { method: 'navigateTo', url };
+    }, { loadingText: '正在打开灵感空间…' });
   },
 
   _isDevtools() {
@@ -650,7 +654,9 @@ Page({
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   handleToggleProblemExpand() {
@@ -703,14 +709,15 @@ Page({
     if (viewMode === 'silent') {
       // 返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
       this._stopSilentTimerUi();
-      this._clearSilentRoomState();
-      this.setData({
-        viewMode: 'wheel'
-      });
-      return;
+      return runPageInteraction(this, async () => {
+        await this._clearSilentRoomState();
+        this.setData({ viewMode: 'wheel' });
+      }, { loadingText: '正在结束静默…' });
     }
     // 转盘选择页：返回脑暴主流程（未确认行动，不标记已使用）
-    this._returnToGamepage(false);
+    return runPageInteraction(this, () => this._returnToGamepage(false), {
+      loadingText: '正在返回游戏…'
+    });
   },
 
   onSelectAction(e) {
@@ -747,18 +754,21 @@ Page({
     }
 
     if (selectedAction === 'silent') {
-      this.activateSilentMode();
-      return;
+      return runPageInteraction(this, () => this.activateSilentMode(), {
+        loadingText: '正在开启静默模式…'
+      });
     }
 
     if (selectedAction === 'master') {
-      this.activateMasterMode();
-      return;
+      return runPageInteraction(this, () => this.activateMasterMode(), {
+        loadingText: '正在开启 MASTER 模式…'
+      });
     }
 
     if (selectedAction === 'closing') {
-      this.activateClosing();
-      return;
+      return runPageInteraction(this, () => this.activateClosing(), {
+        loadingText: '正在进入收尾阶段…'
+      });
     }
 
     wx.showToast({ title: '该特殊行动敬请期待', icon: 'none' });
@@ -786,27 +796,12 @@ Page({
         closingVoteSessionId: result.closingVoteSessionId || '',
         _t: Date.now()
       });
-      // 先跳转再停轮询：失败时仍可靠 poll 自救到 closingStatement
-      const opened = openUrl(url, { immediate: true });
-      if (opened) {
-        this._stopStatePolling();
-        return;
+      this._stopStatePolling();
+      const navigation = await this._returnToClosingStatement(url);
+      if (!navigation.ok) {
+        this._startStatePolling();
+        wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
       }
-      // openUrl 防抖/同路由失败时强制 redirectTo，避免卡死在特殊行动页
-      wx.redirectTo({
-        url,
-        success: () => this._stopStatePolling(),
-        fail: () => {
-          wx.reLaunch({
-            url,
-            success: () => this._stopStatePolling(),
-            fail: () => {
-              this._startStatePolling();
-              wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
-            }
-          });
-        }
-      });
     } finally {
       this._activatingClosing = false;
     }
@@ -871,22 +866,28 @@ Page({
     }
 
     this._stopStatePolling();
-    this._returnToGamepage();
+    await this._returnToGamepage();
   },
 
   _clearSilentRoomState() {
     const roomId = this.data.roomId || '';
-    if (!roomId) return;
+    if (!roomId) return Promise.resolve();
     const turnPlayerIndex = this.data.currentPlayerIndex != null
       ? this.data.currentPlayerIndex
       : this.data.initiatorPlayerIndex;
     // 异步清场，不阻塞 UI；失败时依赖换轮 / 下次 poll 兜底
-    this._updateRoomState('gamepage', turnPlayerIndex, null, {
+    return this._updateRoomState('gamepage', turnPlayerIndex, null, {
       partnerSilentMode: false
     }).catch(() => {});
   },
 
-  async handleCancelAdopt() {
+  handleCancelAdopt() {
+    return runPageInteraction(this, () => this._cancelAdopt(), {
+      loadingText: '正在返回游戏…'
+    });
+  },
+
+  async _cancelAdopt() {
     if (!this.data.roomId) return;
     if (this.data.currentRound == null) {
       await this.loadRoomData();
@@ -894,10 +895,16 @@ Page({
     // 取消采用：特殊行动仍记为已使用，回 gamepage 继续倒计时
     this._markSpecialMoveUsedForGamepage();
     this._stopStatePolling();
-    this._returnToGamepage();
+    await this._returnToGamepage();
   },
 
-  async handleAdoptDeck() {
+  handleAdoptDeck() {
+    return runPageInteraction(this, () => this._adoptDeck(), {
+      loadingText: '正在采用卡组…'
+    });
+  },
+
+  async _adoptDeck() {
     if (!this.data.roomId) return;
     if (this.data.currentRound == null) {
       await this.loadRoomData();
@@ -910,10 +917,16 @@ Page({
       at: Date.now()
     };
     this._stopStatePolling();
-    this._returnToGamepage();
+    await this._returnToGamepage();
   },
 
-  async handleEndSilent() {
+  handleEndSilent() {
+    return runPageInteraction(this, () => this._endSilent(), {
+      loadingText: '正在结束静默…'
+    });
+  },
+
+  async _endSilent() {
     if (this._endingSilent) return;
     this._endingSilent = true;
     this._stopSilentTimerUi();
@@ -929,7 +942,7 @@ Page({
       await this._updateRoomState('gamepage', turnPlayerIndex, null, {
         partnerSilentMode: false
       });
-      this._returnToGamepage();
+      await this._returnToGamepage();
     } finally {
       this._endingSilent = false;
     }
@@ -940,7 +953,9 @@ Page({
       this.setData({ showChat: false });
       return;
     }
-    this._returnToGamepage();
+    return runPageInteraction(this, () => this._returnToGamepage(), {
+      loadingText: '正在返回游戏…'
+    });
   },
 
   onChatInput(e) {
@@ -978,5 +993,42 @@ Page({
       chatInput: '',
       chatMessages: [...this.data.chatMessages, userMsg, reply]
     });
+  },
+
+  _returnToClosingStatement(url) {
+    return new Promise((resolve) => {
+      wx.redirectTo({
+        url,
+        success: () => resolve({ ok: true }),
+        fail: () => {
+          wx.reLaunch({
+            url,
+            success: () => resolve({ ok: true }),
+            fail: (error) => resolve({ ok: false, error })
+          });
+        }
+      });
+    });
   }
-});
+}, [
+  'handleGoRoom',
+  'handleToggleProblemExpand',
+  'handleGoBack',
+  'onSelectAction',
+  'onSelectHelpMethod',
+  'handleConfirm',
+  'handleCancelAdopt',
+  'handleAdoptDeck',
+  'handleEndSilent',
+  'handleSilentTimerExpire',
+  'handleGoInspirationCenter',
+  'onInspirationActionTap',
+  'onInspirationInput',
+  'onInspirationFocus',
+  'onInspirationBlur',
+  'onInspirationKeyboardHeightChange',
+  'handleCloseChat',
+  'onChatInput',
+  'onTapSuggestion',
+  'handleSendChat'
+]));

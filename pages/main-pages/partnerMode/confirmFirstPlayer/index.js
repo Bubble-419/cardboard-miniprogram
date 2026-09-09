@@ -12,8 +12,13 @@ const {
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     memberSlots: [],
@@ -208,34 +213,37 @@ Page({
       return;
     }
 
-    this._confirmPending = true;
-    wx.showLoading({ title: '开始脑暴…' });
-    try {
-      const ok = await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
-      wx.hideLoading();
-      if (!ok) {
-        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+    return runPageNavigation(this, async () => {
+      this._confirmPending = true;
+      try {
+        const ok = await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        return {
+          method: 'redirectTo',
+          url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
+        };
+      } catch (e) {
+        wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
         return;
+      } finally {
+        this._confirmPending = false;
       }
-      wx.redirectTo({
-        url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
-      });
-    } catch (e) {
-      wx.hideLoading();
-      wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
-    } finally {
-      this._confirmPending = false;
-    }
+    }, { loadingText: '正在开始脑暴…' });
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-      : '/pages/main-pages/selectPlayer/index?modeId=partner';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/selectPlayer/index',
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+        : '/pages/main-pages/selectPlayer/index?modeId=partner';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/selectPlayer/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, ['onSlotTap', 'handleConfirm', 'handleGoBack']));

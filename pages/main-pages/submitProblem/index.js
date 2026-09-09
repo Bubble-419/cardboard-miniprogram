@@ -12,8 +12,13 @@ const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { getCurrentRoute, openUrl, safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     workshopName: '脑暴工作坊',
@@ -229,36 +234,42 @@ Page({
   },
 
   handleOpenCase() {
-    // 从“设计问题示例”跳转到案例页（展示四维度与多条设计问题）
-    this._pauseFollowForOverlay();
-    const roomIdEnc = this.data.roomId ? encodeURIComponent(this.data.roomId) : '';
-    wx.navigateTo({
-      url: roomIdEnc
-        ? `/pages/main-pages/case/index?roomId=${roomIdEnc}`
-        : '/pages/main-pages/case/index'
-      ,
-      fail: (err) => {
-        console.warn('navigateTo case page fail', err);
-        this._pageVisible = true;
-        this._startPolling();
-        wx.showToast({ title: '打开案例页失败', icon: 'none' });
-      }
-    });
+    return runPageNavigation(this, async () => {
+      // 从“设计问题示例”跳转到案例页（展示四维度与多条设计问题）
+      this._pauseFollowForOverlay();
+      const roomIdEnc = this.data.roomId ? encodeURIComponent(this.data.roomId) : '';
+      return {
+        method: 'navigateTo',
+        url: roomIdEnc
+          ? `/pages/main-pages/case/index?roomId=${roomIdEnc}`
+          : '/pages/main-pages/case/index',
+        fail: (err) => {
+          console.warn('navigateTo case page fail', err);
+          this._pageVisible = true;
+          this._startPolling();
+          wx.showToast({ title: '打开案例页失败', icon: 'none' });
+        }
+      };
+    }, { loadingText: '正在打开案例…' });
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/partnerMode/confirmBG/index';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/partnerMode/confirmBG/index',
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/partnerMode/confirmBG/index';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/partnerMode/confirmBG/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   /** 打开回看叠层前先停跟随，避免在途轮询把用户拉回主流程 */
@@ -270,21 +281,24 @@ Page({
 
   /** 点击情境格：只读回看确认情境页，不推进房间状态 */
   handleViewContext() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) {
-      wx.showToast({ title: '缺少房间信息', icon: 'none' });
-      return;
-    }
-    this._pauseFollowForOverlay();
-    wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=submit`,
-      fail: (err) => {
-        console.warn('submitProblem viewContext', err);
-        this._pageVisible = true;
-        this._startPolling();
-        wx.showToast({ title: '打开失败', icon: 'none' });
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) {
+        wx.showToast({ title: '缺少房间信息', icon: 'none' });
+        return null;
       }
-    });
+      this._pauseFollowForOverlay();
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=submit`,
+        fail: (err) => {
+          console.warn('submitProblem viewContext', err);
+          this._pageVisible = true;
+          this._startPolling();
+          wx.showToast({ title: '打开失败', icon: 'none' });
+        }
+      };
+    }, { loadingText: '正在查看情境…' });
   },
 
   selectCategory(e) {
@@ -339,39 +353,49 @@ Page({
       return;
     }
 
-    this.setData({ isSubmitting: true });
-    wx.showLoading({ title: '提交中...', mask: true });
-    try {
-      await saveProblem(this.data.roomId, {
-        playerIndex: this.data.myPlayerIndex,
-        nickName: this.data.myNickName,
-        text: problemText
-      });
+    return runPageNavigation(this, async () => {
+      this.setData({ isSubmitting: true });
+      try {
+        await saveProblem(this.data.roomId, {
+          playerIndex: this.data.myPlayerIndex,
+          nickName: this.data.myNickName,
+          text: problemText
+        });
 
-      const status = await getSubmitStatus(
-        this.data.roomId,
-        this.data.myPlayerIndex,
-        this.data.totalMembers
-      );
+        const status = await getSubmitStatus(
+          this.data.roomId,
+          this.data.myPlayerIndex,
+          this.data.totalMembers
+        );
 
-      wx.hideLoading();
-      wx.showToast({ title: '提交成功', icon: 'success', duration: 1200 });
-      this.setData({
-        hasSubmitted: true,
-        submittedCount: status.submittedCount || 0,
-        totalMembers: status.totalMembers || this.data.totalMembers
-      });
+        wx.showToast({ title: '提交成功', icon: 'success', duration: 1200 });
+        this.setData({
+          hasSubmitted: true,
+          submittedCount: status.submittedCount || 0,
+          totalMembers: status.totalMembers || this.data.totalMembers
+        });
 
-      if (status.allSubmitted) {
+        if (!status.allSubmitted) return;
         await this._updateRoomState('selectProblem');
-        setTimeout(() => this._goSelectProblem(), 500);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        this._navigating = true;
+        this._stopPolling();
+        clearPendingNavigation();
+        return {
+          method: 'navigateTo',
+          url: `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(this.data.roomId)}`
+        };
+      } catch (e) {
+        console.error('submitProblem', e);
+        wx.showToast({ title: e.message || '提交失败，请重试', icon: 'none' });
+        return;
+      } finally {
+        this.setData({ isSubmitting: false });
       }
-    } catch (e) {
-      wx.hideLoading();
-      console.error('submitProblem', e);
-      wx.showToast({ title: e.message || '提交失败，请重试', icon: 'none' });
-    } finally {
-      this.setData({ isSubmitting: false });
-    }
+    }, { loadingText: '正在提交问题…' });
   }
-});
+}, [
+  'handleOpenCase', 'handleGoBack', 'handleGoRoom', 'handleViewContext',
+  'selectCategory', 'onInputFocus', 'onInputBlur', 'onInput', 'preventTouchMove',
+  'submitProblem'
+]));

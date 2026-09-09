@@ -8,6 +8,10 @@ const { buildAvatarListAsync } = require('../../../utils/avatars');
 const { callCloudFunction } = require('../../../utils/cloudApi');
 const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 const BRAINSTORM_MODES = [
   {
@@ -62,7 +66,7 @@ function computeScrollHeight() {
   }
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     isHost: false,
@@ -233,7 +237,13 @@ Page({
     this.setData({ selectedModeId: modeId });
   },
 
-  async onConfirmMode() {
+  onConfirmMode() {
+    return runPageInteraction(this, () => this._confirmMode(), {
+      loadingText: '正在进入模式…'
+    });
+  },
+
+  async _confirmMode() {
     if (!this.data.isHost) return;
     if (this.data.isSelecting) return;
 
@@ -247,7 +257,6 @@ Page({
     if (!mode) return;
 
     this.setData({ isSelecting: true });
-    wx.showLoading({ title: '进入模式…' });
 
     try {
       const callRes = await callCloudFunction('roomSetBrainstormMode', {
@@ -257,11 +266,9 @@ Page({
         selectedModeDesc: mode.description
       });
       const result = (callRes && callRes.result) || {};
-      wx.hideLoading();
 
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '选择失败', icon: 'none' });
-        this.setData({ isSelecting: false });
         return;
       }
 
@@ -273,21 +280,23 @@ Page({
       clearPartnerSpecialMoveUsedFlag(this.data.roomId);
 
       const targetUrl = `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`;
-      const openModePage = () => {
+      const openModePage = () => new Promise((resolve) => {
         // 谁是卧底：统一 redirectTo，避免与后续跟页叠栈导致不同步
         if (mode.id === 'spy') {
-          const { openUrl } = require('../../../utils/pageNavigate');
-          const navigated = openUrl(targetUrl, { immediate: true, noReLaunch: true });
-          if (this._pageAlive) {
-            this.setData({ isSelecting: false });
-          }
-          if (!navigated) {
-            wx.showToast({ title: '打开失败，请重试', icon: 'none' });
-          }
+          wx.redirectTo({
+            url: targetUrl,
+            success: () => resolve({ ok: true }),
+            fail: (err) => {
+              console.error('redirectTo spy modeIndex fail:', err && err.errMsg, err);
+              wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+              resolve({ ok: false, error: err });
+            }
+          });
           return;
         }
         wx.navigateTo({
           url: targetUrl,
+          success: () => resolve({ ok: true }),
           fail: (err) => {
             const msg = (err && err.errMsg) || '';
             console.error('navigateTo modeIndex fail:', msg, err);
@@ -295,9 +304,11 @@ Page({
               setTimeout(() => {
                 wx.reLaunch({
                   url: targetUrl,
+                  success: () => resolve({ ok: true }),
                   fail: (err2) => {
                     console.error('reLaunch modeIndex fail:', err2 && err2.errMsg, err2);
                     wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+                    resolve({ ok: false, error: err2 });
                   }
                 });
               }, 320);
@@ -305,45 +316,46 @@ Page({
             }
             wx.redirectTo({
               url: targetUrl,
+              success: () => resolve({ ok: true }),
               fail: (err2) => {
                 console.error('redirectTo modeIndex fail:', err2 && err2.errMsg, err2);
                 wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+                resolve({ ok: false, error: err2 });
               }
             });
-          },
-          complete: () => {
-            if (this._pageAlive) {
-              this.setData({ isSelecting: false });
-            }
           }
         });
-      };
-      openModePage();
+      });
+      await openModePage();
     } catch (err) {
-      wx.hideLoading();
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });
+    } finally {
       this.setData({ isSelecting: false });
     }
   },
 
   handleGoBack() {
-    if (this.data.isHost === true) {
-      this._updateRoomState('addPlayer');
-    }
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/addPlayer/index';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/addPlayer/index',
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      if (this.data.isHost === true) {
+        await this._updateRoomState('addPlayer');
+      }
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/addPlayer/index';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/addPlayer/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    if (this.data.isHost === true) {
-      this._updateRoomState('addPlayer');
-    }
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      if (this.data.isHost === true) {
+        await this._updateRoomState('addPlayer');
+      }
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   }
-});
+}, ['onTapMode', 'onConfirmMode', 'handleGoBack', 'handleGoRoom']));

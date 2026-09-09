@@ -1,5 +1,10 @@
 const { buildAvatarList } = require('../../../utils/avatars');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 const CASE_BG = {
   scene: '多任务导致学习拖延',
@@ -17,7 +22,7 @@ const CASE_PROBLEMS = [
   '如何帮助用户回顾任务完成情况，并逐渐改善拖延和时间安排问题？'
 ];
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     avatarList: [],
@@ -50,12 +55,17 @@ Page({
   },
 
   goBack() {
-    wx.navigateBack({ delta: 1 });
+    return runPageNavigation(this, async () => ({
+      method: 'navigateBack',
+      delta: 1
+    }), { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
     if (!this.data.roomId) return;
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   async _loadRoomMembers(roomId) {
@@ -100,5 +110,4 @@ Page({
   onUnload() {
     this._pageAlive = false;
   }
-});
-
+}, ['goBack', 'handleGoRoom']));

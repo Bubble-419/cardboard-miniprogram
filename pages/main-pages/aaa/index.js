@@ -31,6 +31,11 @@ const {
   upsertHistoryWorkshop,
   formatTime: formatHistoryTime
 } = require('../../../utils/historyWorkshops');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
@@ -43,7 +48,7 @@ function _hasCompleteLocalProfile(stored) {
   return hasNick && hasAvatar;
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     headerPaddingTop: 24,
     userNickName: '微信用户',
@@ -102,10 +107,13 @@ Page({
   onTapHistoryCard(e) {
     const roomId = e.currentTarget.dataset.roomId;
     if (!roomId) return;
-    getApp().globalData.roomId = roomId;
-    wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
-    });
+    return runPageNavigation(this, async () => {
+      getApp().globalData.roomId = roomId;
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+      };
+    }, { loadingText: '正在打开历史…' });
   },
 
   handleViewRoom() {
@@ -114,19 +122,22 @@ Page({
       wx.showToast({ title: '房间信息缺失', icon: 'none' });
       return;
     }
-    // stayLobby：游戏进行中从首页再进大厅时，避免轮询立刻拉回游戏页
-    try {
-      const { setSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
-      const { clearPendingNavigation } = require('../../../utils/pageNavigate');
-      setSpyLobbyStay(roomId);
-      clearSpyFollowLock();
-      clearPendingNavigation();
-    } catch (e) {
-      // ignore
-    }
-    wx.navigateTo({
-      url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&stayLobby=1`
-    });
+    return runPageNavigation(this, async () => {
+      // stayLobby：游戏进行中从首页再进大厅时，避免轮询立刻拉回游戏页
+      try {
+        const { setSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
+        const { clearPendingNavigation } = require('../../../utils/pageNavigate');
+        setSpyLobbyStay(roomId);
+        clearSpyFollowLock();
+        clearPendingNavigation();
+      } catch (e) {
+        // ignore
+      }
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&stayLobby=1`
+      };
+    }, { loadingText: '正在进入房间…' });
   },
 
   async loadJoinedRoomState() {
@@ -407,16 +418,31 @@ Page({
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`;
-    wx.redirectTo({
-      url,
-      fail: (err) => {
-        console.warn('redirectTo addPlayer failed, try reLaunch', err);
-        wx.reLaunch({ url });
-      }
+    return new Promise((resolve) => {
+      wx.redirectTo({
+        url,
+        success: (result) => resolve({ ok: true, result }),
+        fail: (err) => {
+          console.warn('redirectTo addPlayer failed, try reLaunch', err);
+          wx.reLaunch({
+            url,
+            success: (result) => resolve({ ok: true, result }),
+            fail: (error) => resolve({ ok: false, error })
+          });
+        }
+      });
     });
   },
 
-  async handleCreateRoom() {
+  handleCreateRoom() {
+    return runPageInteraction(
+      this,
+      () => this._handleCreateRoom(),
+      { loadingText: '正在创建房间…' }
+    );
+  },
+
+  async _handleCreateRoom() {
     if (this.data.loading) return;
 
     this.setData({ loading: true });
@@ -447,7 +473,7 @@ Page({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      this._goToRoomPage(roomId);
+      await this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
       wx.showToast({
@@ -464,7 +490,15 @@ Page({
     this.setData({ debugRoomIdInput: value });
   },
 
-  async handleJoinByRoomId() {
+  handleJoinByRoomId() {
+    return runPageInteraction(
+      this,
+      () => this._handleJoinByRoomId(),
+      { loadingText: '正在加入房间…' }
+    );
+  },
+
+  async _handleJoinByRoomId() {
     if (this.data.loading) return;
     const roomId = (this.data.debugRoomIdInput || '').trim();
     if (!this._isValidRoomId(roomId)) {
@@ -479,7 +513,15 @@ Page({
     }
   },
 
-  async handleScanJoin() {
+  handleScanJoin() {
+    return runPageInteraction(
+      this,
+      () => this._handleScanJoin(),
+      { loadingText: '正在扫码加入…' }
+    );
+  },
+
+  async _handleScanJoin() {
     try {
       const res = await wx.scanCode({
         onlyFromCamera: true
@@ -729,39 +771,42 @@ Page({
       time: formatHistoryTime(Date.now())
     });
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}&fromScan=1`;
-    wx.redirectTo({
-      url,
-      success: () => {
-        // 跳转成功后短暂保留标记，避免本页 onShow 抢跑
-        setTimeout(() => {
-          if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
-        }, 800);
-      },
-      fail: (err) => {
-        console.warn('redirectTo addPlayer failed, try reLaunch', err);
-        wx.reLaunch({
-          url,
-          complete: () => {
-            setTimeout(() => {
-              if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
-            }, 800);
-          }
-        });
-      }
+    return new Promise((resolve) => {
+      wx.redirectTo({
+        url,
+        success: (result) => {
+          // 跳转成功后短暂保留标记，避免本页 onShow 抢跑
+          setTimeout(() => {
+            if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+          }, 800);
+          resolve({ ok: true, result });
+        },
+        fail: (err) => {
+          console.warn('redirectTo addPlayer failed, try reLaunch', err);
+          wx.reLaunch({
+            url,
+            success: (result) => resolve({ ok: true, result }),
+            fail: (error) => resolve({ ok: false, error }),
+            complete: () => {
+              setTimeout(() => {
+                if (_scanJoinNavigatingRoomId === roomId) _scanJoinNavigatingRoomId = '';
+              }, 800);
+            }
+          });
+        }
+      });
     });
   },
 
   async _joinRoomAndGo(roomId) {
     const profile = await getOptionalProfileForRoom();
 
-    wx.showLoading({ title: '加入中…' });
     try {
       const res = await wx.cloud.callFunction({
         name: 'roomJoin',
         data: buildRoomJoinPayload(profile, { roomId })
       });
       const result = (res && res.result) || {};
-      wx.hideLoading();
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
@@ -773,9 +818,8 @@ Page({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      this._goToScanJoinRoom(roomId);
+      await this._goToScanJoinRoom(roomId);
     } catch (err) {
-      wx.hideLoading();
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }
   },
@@ -785,7 +829,15 @@ Page({
     this.setData({ devJoinRoomIdInput: (e.detail.value || '').trim() });
   },
 
-  async handleDevJoinByRoomId() {
+  handleDevJoinByRoomId() {
+    return runPageInteraction(
+      this,
+      () => this._handleDevJoinByRoomId(),
+      { loadingText: '正在加入房间…' }
+    );
+  },
+
+  async _handleDevJoinByRoomId() {
     const roomId = (this.data.devJoinRoomIdInput || '').trim();
     if (!this._isValidRoomId(roomId)) {
       wx.showToast({ title: '请输入8位房间号', icon: 'none' });
@@ -794,4 +846,10 @@ Page({
     await this._joinRoomAndGo(roomId);
   }
   /* DEV_TEST_END */
-});
+}, [
+  'onTapHistoryCard', 'handleViewRoom', 'onProfileAuthAvatarTap',
+  'onProfileAuthChooseAvatar', 'onProfileAuthNickInput', 'onConfirmProfileAuth',
+  'onSkipProfileAuth', 'onAvatarAuthTap', 'onChooseAvatar', 'onNickNameInput',
+  'handleCreateRoom', 'onDebugRoomIdInput', 'handleJoinByRoomId', 'handleScanJoin',
+  'onDevJoinRoomIdInput', 'handleDevJoinByRoomId'
+]));

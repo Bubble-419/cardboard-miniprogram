@@ -10,6 +10,11 @@ const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
 const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 /** 已在选择设计问题页时，这些滞后 currentPage 不应把成员拉走 */
 const SELECT_PROBLEM_STALE_PAGES = {
@@ -22,7 +27,7 @@ const SELECT_PROBLEM_STALE_PAGES = {
   brainstormmode: true
 };
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     workshopName: '脑暴工作坊',
@@ -487,12 +492,14 @@ Page({
     this._syncEditingProblemId('');
 
     if (!text) return;
-    try {
-      await updateProblemText(id, text);
-    } catch (err) {
-      console.error('更新设计问题失败', err);
-      wx.showToast({ title: '更新失败', icon: 'none' });
-    }
+    return runPageInteraction(this, async () => {
+      try {
+        await updateProblemText(id, text);
+      } catch (err) {
+        console.error('更新设计问题失败', err);
+        wx.showToast({ title: '更新失败', icon: 'none' });
+      }
+    }, { loadingText: '正在保存…' });
   },
 
   onProblemInput(e) {
@@ -534,81 +541,92 @@ Page({
       return;
     }
 
-    const problem = this.data.problems.find((p) => p.id === this.data.selectedProblemId);
-    getApp().globalData.selectedProblem = problem;
+    return runPageNavigation(this, async () => {
+      const problem = this.data.problems.find((p) => p.id === this.data.selectedProblemId);
+      getApp().globalData.selectedProblem = problem;
 
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (this.data.editingProblemId) {
-      this.setData({ editingProblemId: '' });
-    }
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          currentPage: 'selectPlayer',
-          editingProblemId: '',
-          selectedDesignProblem: {
-            id: problem.id,
-            text: problem.text
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (this.data.editingProblemId) {
+        this.setData({ editingProblemId: '' });
+      }
+      try {
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: {
+            roomId,
+            currentPage: 'selectPlayer',
+            editingProblemId: '',
+            selectedDesignProblem: {
+              id: problem.id,
+              text: problem.text
+            }
           }
-        }
-      });
-    } catch (e) {
-      console.warn('updateRoomState selectedDesignProblem', e);
-      wx.showToast({ title: '保存设计问题失败', icon: 'none' });
-      return;
-    }
+        });
+      } catch (e) {
+        console.warn('updateRoomState selectedDesignProblem', e);
+        wx.showToast({ title: '保存设计问题失败', icon: 'none' });
+        return;
+      }
 
-    const query = roomId
-      ? `?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-      : '?modeId=partner';
-    wx.navigateTo({
-      url: `/pages/main-pages/selectPlayer/index${query}`
-    });
+      const query = roomId
+        ? `?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+        : '?modeId=partner';
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/selectPlayer/index${query}`
+      };
+    }, { loadingText: '正在确认问题…' });
   },
 
   goBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/submitProblem/index';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/submitProblem/index',
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/submitProblem/index';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/submitProblem/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   /** 点击情境格：回看完整情境（confirmBG，只读），不推进房间状态 */
   handleViewContext() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) {
-      wx.showToast({ title: '缺少房间信息', icon: 'none' });
-      return;
-    }
-    this._pageVisible = false;
-    this._stopStatePolling();
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
-      this.problemCheckTimer = null;
-    }
-    clearPendingNavigation();
-    wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=select`,
-      fail: (err) => {
-        console.warn('selectProblem viewContext', err);
-        this._pageVisible = true;
-        if (this.data.isHost) {
-          this.startProblemCheck();
-        } else {
-          this._startStatePolling();
-        }
-        wx.showToast({ title: '打开失败', icon: 'none' });
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) {
+        wx.showToast({ title: '缺少房间信息', icon: 'none' });
+        return null;
       }
-    });
+      this._pageVisible = false;
+      this._stopStatePolling();
+      if (this.problemCheckTimer) {
+        clearInterval(this.problemCheckTimer);
+        this.problemCheckTimer = null;
+      }
+      clearPendingNavigation();
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=select`,
+        fail: (err) => {
+          console.warn('selectProblem viewContext', err);
+          this._pageVisible = true;
+          if (this.data.isHost) this.startProblemCheck();
+          else this._startStatePolling();
+          wx.showToast({ title: '打开失败', icon: 'none' });
+        }
+      };
+    }, { loadingText: '正在查看情境…' });
   }
-});
+}, [
+  'handleViewContext', 'selectProblem', 'stopPropagation', 'onSaveEdit',
+  'onEditProblem', 'onProblemInput', 'onProblemBlur', 'confirmSelection',
+  'goBack', 'handleGoRoom'
+]));

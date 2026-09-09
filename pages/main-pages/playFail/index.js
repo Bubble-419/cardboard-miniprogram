@@ -1,6 +1,11 @@
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     currentPlayerIndex: 1,
@@ -157,39 +162,44 @@ Page({
     const { roomId, currentPlayerIndex, members } = this.data;
     if (!roomId || !members || !members.length) return;
 
-    const count = members.length;
-    const nextIndex = (currentPlayerIndex % count) + 1;
-    const nextMember = members.find(m => m.playerIndex === nextIndex);
-    const nextPlayerName = nextMember ? (nextMember.nickName || `玩家${nextIndex}`) : `玩家${nextIndex}`;
-    const isCyclingBack = nextIndex === 1;
+    return runPageNavigation(this, async () => {
+      const count = members.length;
+      const nextIndex = (currentPlayerIndex % count) + 1;
+      const nextMember = members.find(m => m.playerIndex === nextIndex);
+      const nextPlayerName = nextMember ? (nextMember.nickName || `玩家${nextIndex}`) : `玩家${nextIndex}`;
+      const isCyclingBack = nextIndex === 1;
 
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          currentPage: 'gamepage',
-          currentPlayerIndex: nextIndex,
-          currentPlayerName: nextPlayerName,
-          incrementRound: isCyclingBack
-        }
-      });
-    } catch (e) {
-      console.warn('playFail handleContinue updateRoomState', e);
-    }
+      try {
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: {
+            roomId,
+            currentPage: 'gamepage',
+            currentPlayerIndex: nextIndex,
+            currentPlayerName: nextPlayerName,
+            incrementRound: isCyclingBack
+          }
+        });
+      } catch (e) {
+        console.warn('playFail handleContinue updateRoomState', e);
+      }
 
-    wx.redirectTo({
-      url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
-    });
+      return {
+        method: 'redirectTo',
+        url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${nextIndex}`
+      };
+    }, { loadingText: '正在继续…' });
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
-      fallbackUrl: roomId
-        ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/addPlayer/index'
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
+        fallbackUrl: roomId
+          ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/main-pages/addPlayer/index'
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, ['handleContinue', 'handleGoBack']));

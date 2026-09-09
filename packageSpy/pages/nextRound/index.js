@@ -10,9 +10,13 @@ const {
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
 const { followSpyRoomState } = require('../../../utils/spyFollow');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 /** 旧下一轮准备页：任意玩家可继续，或自动跟随 */
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     acting: false
@@ -68,7 +72,13 @@ Page({
     });
   },
 
-  async onStartNext() {
+  onStartNext() {
+    return runPageInteraction(this, () => this._startNext(), {
+      loadingText: '正在开始下一轮…'
+    });
+  },
+
+  async _startNext() {
     if (this.data.acting) return;
     this.setData({ acting: true });
     try {
@@ -89,8 +99,10 @@ Page({
   },
 
   handleGoRoom() {
-    this._pageAlive = false;
-    this.stopPolling();
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._pageAlive = false;
+      this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   }
-});
+}, ['onStartNext', 'handleGoRoom']));

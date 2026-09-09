@@ -2,6 +2,10 @@ const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('.
 const { listLibraryCards, getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 /** 分词开始后不允许查阅牌库 */
 function isLibraryLocked(spyGame) {
@@ -17,7 +21,7 @@ function isLibraryLocked(spyGame) {
   );
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     groupCount: 0,
@@ -102,17 +106,21 @@ Page({
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      expectedPrev: 'packageSpy/pages/modeIndex/index',
-      fallbackUrl: buildSpyPageUrl('intro', roomId)
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      safeNavigateBack({
+        expectedPrev: 'packageSpy/pages/modeIndex/index',
+        fallbackUrl: buildSpyPageUrl('intro', roomId)
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    this._pageAlive = false;
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._pageAlive = false;
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   },
 
   noop() {}
-});
+}, ['onTapCard', 'onCloseViewer', 'handleGoBack', 'handleGoRoom']));

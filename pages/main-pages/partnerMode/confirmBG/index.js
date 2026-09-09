@@ -7,6 +7,11 @@ const { buildAvatarListAsync } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
 const PARTNER_CARD_DEFS = [
   { type: 'scene', label: '场景' },
@@ -15,7 +20,7 @@ const PARTNER_CARD_DEFS = [
   { type: 'function', label: '功能' }
 ];
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     cards: [],
@@ -339,6 +344,12 @@ Page({
 
   /** 按来源页返回：game → 对局；submit/select → 设计问题流程页 */
   handleReturnToGame() {
+    return runPageInteraction(this, () => this._returnToGame(), {
+      loadingText: '正在返回…'
+    });
+  },
+
+  _returnToGame() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     const roomEnc = roomId ? encodeURIComponent(roomId) : '';
     const from = this._fromSource || '';
@@ -368,7 +379,13 @@ Page({
     });
   },
 
-  async handleConfirm() {
+  handleConfirm() {
+    return runPageNavigation(this, () => this._confirm(), {
+      loadingText: '正在进入提交…'
+    });
+  },
+
+  async _confirm() {
     if (this.data.fromGameView) return;
     if (!this.data.isHost || !this.data.canConfirm) return;
 
@@ -389,7 +406,6 @@ Page({
       return;
     }
 
-    wx.showLoading({ title: '进入提交…' });
     try {
       const res = await wx.cloud.callFunction({
         name: 'updateRoomState',
@@ -401,7 +417,6 @@ Page({
         }
       });
       const result = (res && res.result) || {};
-      wx.hideLoading();
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
@@ -411,49 +426,57 @@ Page({
       } catch (clearErr) {
         console.warn('clearRoomProblems', clearErr);
       }
-      safeOpenUrl(
-        `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-      );
+      return {
+        method: 'redirectTo',
+        url: `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
+      };
     } catch (e) {
-      wx.hideLoading();
       console.error('handleConfirm', e);
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
     }
   },
 
   handleCardTap(e) {
-    if (this.data.fromGameView) return;
-    const index = parseInt(e.currentTarget.dataset.index || '0', 10);
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    let url = `/pages/main-pages/selectBG/index?mode=partner&step=${index}`;
-    if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
-    wx.redirectTo({ url });
+    return runPageNavigation(this, async () => {
+      if (this.data.fromGameView) return null;
+      const index = parseInt(e.currentTarget.dataset.index || '0', 10);
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      let url = `/pages/main-pages/selectBG/index?mode=partner&step=${index}`;
+      if (roomId) url += `&roomId=${encodeURIComponent(roomId)}`;
+      return { method: 'redirectTo', url };
+    }, { loadingText: '正在打开情境…' });
   },
 
   handleGoBack() {
     if (this.data.fromGameView) {
-      this.handleReturnToGame();
-      return;
+      return runPageInteraction(this, () => this._returnToGame(), {
+        loadingText: '正在返回…'
+      });
     }
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-      : '/pages/main-pages/modeIndex/index?modeId=partner';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/modeIndex/index',
-        'pages/main-pages/selectBG/index'
-      ],
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+        : '/pages/main-pages/modeIndex/index?modeId=partner';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/modeIndex/index',
+          'pages/main-pages/selectBG/index'
+        ],
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
     if (this.data.fromGameView) {
       // 回看情境时点房间入口：先回到游戏再进大厅，避免弄丢游戏页栈
-      this.handleReturnToGame();
-      return;
+      return runPageInteraction(this, () => this._returnToGame(), {
+        loadingText: '正在返回游戏…'
+      });
     }
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   }
-});
+}, ['handleReturnToGame', 'handleCardTap', 'handleConfirm', 'handleGoBack', 'handleGoRoom']));

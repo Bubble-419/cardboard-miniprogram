@@ -4,8 +4,13 @@ const { clearLocalBrainstormProgress } = require('../../utils/roomBrainstormProg
 const { clearPartnerSpecialMoveUsedFlag } = require('../../utils/partnerSpecialMove');
 const { safeOpenUrl } = require('../../utils/pageNavigate');
 const { buildGamepageUrl } = require('../../utils/modeRoutes');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     isSubScreen: false,
@@ -120,41 +125,53 @@ Page({
   },
 
   handleGlobalReview() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) {
-      wx.showToast({ title: '房间信息缺失', icon: 'none' });
-      return;
-    }
-    wx.navigateTo({
-      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
-    });
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) {
+        wx.showToast({ title: '房间信息缺失', icon: 'none' });
+        return null;
+      }
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+      };
+    }, { loadingText: '正在打开回顾…' });
   },
 
   handleBack() {
     if (this.data.from === 'closingEnd') {
       // 返回房间时清除当前模式，允许重新选择其他模式
-      this.handleReturnRoom();
-      return;
+      return runPageInteraction(this, () => this._returnRoom(), {
+        loadingText: '正在返回房间…'
+      });
     }
-    this._exitHalliModeToRoom();
+    return runPageInteraction(this, () => this._exitHalliModeToRoom(), {
+      loadingText: '正在返回房间…'
+    });
   },
 
-  async handleNewGame() {
+  handleNewGame() {
     if (this.data.from === 'closingEnd') {
-      await this.handleAnotherRound();
-      return;
+      return this.handleAnotherRound();
     }
-    await this._exitHalliModeToRoom();
+    return runPageInteraction(this, () => this._exitHalliModeToRoom(), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   /** 保留当前模式、情境和设计问题，清空本局记录后直接再开一轮 */
-  async handleAnotherRound() {
+  handleAnotherRound() {
+    return runPageNavigation(this, () => this._prepareAnotherRound(), {
+      loadingText: '正在准备新一轮…'
+    });
+  },
+
+  async _prepareAnotherRound() {
     if (this.data.actioning) return;
     const roomId = this.data.roomId || '';
     if (!roomId) return;
 
     this.setData({ actioning: true });
-    wx.showLoading({ title: '准备新一轮…', mask: true });
     try {
       const checkRes = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
@@ -221,20 +238,23 @@ Page({
 
       this._stopStatePolling();
       const url = buildGamepageUrl(roomId, idx, modeId);
-      if (!safeOpenUrl(url, { immediate: true })) {
-        wx.reLaunch({ url });
-      }
+      return { method: 'redirectTo', url };
     } catch (e) {
       console.warn('leaderboard handleAnotherRound', e);
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
     } finally {
-      wx.hideLoading();
       this.setData({ actioning: false });
     }
   },
 
   /** 清除当前模式后回房间，恢复“选择模式”入口 */
-  async handleReturnRoom() {
+  handleReturnRoom() {
+    return runPageInteraction(this, () => this._returnRoom(), {
+      loadingText: '正在返回房间…'
+    });
+  },
+
+  async _returnRoom() {
     if (this.data.actioning) return;
     this.setData({ actioning: true });
     try {
@@ -250,23 +270,21 @@ Page({
     if (this._exitingMode) return;
     const roomId = this.data.roomId || '';
     if (!roomId) {
-      goRoomPage('');
+      await goRoomPage('');
       return;
     }
     if (this.data.isSubScreen) {
-      goRoomPage(roomId);
+      await goRoomPage(roomId);
       return;
     }
 
     this._exitingMode = true;
-    wx.showLoading({ title: '处理中…', mask: true });
     try {
       const callRes = await wx.cloud.callFunction({
         name: 'roomClearBrainstormMode',
         data: { roomId }
       });
       const result = (callRes && callRes.result) || {};
-      wx.hideLoading();
       if (result.ok !== true) {
         this._exitingMode = false;
         wx.showToast({ title: result.errMsg || '退出模式失败', icon: 'none' });
@@ -286,11 +304,16 @@ Page({
       } catch (e) {
         // ignore
       }
-      goRoomPage(roomId);
+      await goRoomPage(roomId);
     } catch (e) {
-      wx.hideLoading();
       this._exitingMode = false;
       wx.showToast({ title: (e && e.errMsg) || '退出模式失败', icon: 'none' });
     }
   }
-});
+}, [
+  'handleBack',
+  'handleGlobalReview',
+  'handleReturnRoom',
+  'handleAnotherRound',
+  'handleNewGame'
+]));

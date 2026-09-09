@@ -44,3 +44,9 @@
     <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onContinue">进入下一轮</view>
   </page-footer>
 </view>
+
+<interaction-lock-layer
+  locked="{{interactionLocked}}"
+  loading="{{interactionLoading}}"
+  text="{{interactionLoadingText}}"
+/>

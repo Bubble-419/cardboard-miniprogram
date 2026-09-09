@@ -1,7 +1,12 @@
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage, endPartnerSessionAndGoRoom } = require('../../../../utils/goRoomPage');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     isHost: false
@@ -95,20 +100,20 @@ Page({
   },
 
   onBackToRoom() {
-    this._goToRoom();
+    return runPageInteraction(this, () => this._goToRoom(), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   onViewLeaderboard() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    wx.navigateTo({
-      url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`,
-      fail: () => {
-        wx.redirectTo({
-          url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`
-        });
-      }
-    });
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) return null;
+      return {
+        method: 'navigateTo',
+        url: `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=closingEnd`
+      };
+    }, { loadingText: '正在打开排行榜…' });
   },
 
   async _goToRoom() {
@@ -124,4 +129,4 @@ Page({
     }
     await endPartnerSessionAndGoRoom(this.data.roomId, { isHost: this.data.isHost });
   }
-});
+}, ['onBackToRoom', 'onViewLeaderboard']));

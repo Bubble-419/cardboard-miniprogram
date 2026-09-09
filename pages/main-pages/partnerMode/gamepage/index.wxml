@@ -1103,3 +1103,9 @@
   </view>
 
 </view>
+
+<interaction-lock-layer
+  locked="{{interactionLocked}}"
+  loading="{{interactionLoading}}"
+  text="{{interactionLoadingText}}"
+/>

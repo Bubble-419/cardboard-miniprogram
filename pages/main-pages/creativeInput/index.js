@@ -1,7 +1,12 @@
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     members: [],
@@ -119,53 +124,58 @@ Page({
       return;
     }
 
-    this._submitting = true;
-    this._stopStatePolling();
-    wx.showLoading({ title: '提交中…', mask: true });
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'submitCreativeIdea',
-        data: { roomId, ideaText }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+    return runPageNavigation(this, async () => {
+      this._submitting = true;
+      this._stopStatePolling();
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'submitCreativeIdea',
+          data: { roomId, ideaText }
+        });
+        const result = (res && res.result) || {};
+        if (result.ok !== true) {
+          wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+          this._startStatePolling();
+          return;
+        }
+
+        this.setData({ submitted: true });
+        return {
+          method: 'redirectTo',
+          url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
+        };
+      } catch (e) {
+        console.error('creativeInput handleSubmit', e);
+        wx.showToast({ title: '提交失败', icon: 'none' });
         this._startStatePolling();
         return;
+      } finally {
+        this._submitting = false;
       }
-
-      this.setData({ submitted: true });
-      wx.redirectTo({
-        url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
-      });
-    } catch (e) {
-      console.error('creativeInput handleSubmit', e);
-      wx.showToast({ title: '提交失败', icon: 'none' });
-      this._startStatePolling();
-    } finally {
-      this._submitting = false;
-      wx.hideLoading();
-    }
+    }, { loadingText: '正在提交创意…' });
   },
 
   async handleViewSummary() {
     if (!this.data.canViewSummary) return;
     const roomId = this.data.roomId || '';
     if (!roomId) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          currentPage: 'creativeSummary'
-        }
-      });
-    } catch (e) {
-      console.warn('creativeInput handleViewSummary updateRoomState', e);
-    }
-    wx.redirectTo({
-      url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
-    });
+    return runPageNavigation(this, async () => {
+      try {
+        await wx.cloud.callFunction({
+          name: 'updateRoomState',
+          data: {
+            roomId,
+            currentPage: 'creativeSummary'
+          }
+        });
+      } catch (e) {
+        console.warn('creativeInput handleViewSummary updateRoomState', e);
+      }
+      return {
+        method: 'redirectTo',
+        url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
+      };
+    }, { loadingText: '正在打开汇总…' });
   },
 
   _startStatePolling() {
@@ -214,12 +224,14 @@ Page({
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
-      fallbackUrl: roomId
-        ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
+        fallbackUrl: roomId
+          ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, ['handleGoBack', 'onIdeaInput', 'handleSubmit', 'handleViewSummary']));

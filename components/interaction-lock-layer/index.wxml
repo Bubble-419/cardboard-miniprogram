@@ -1,0 +1,15 @@
+<view
+  wx:if="{{locked}}"
+  class="interaction-lock-layer"
+  catchtap="noop"
+  catchlongpress="noop"
+  catchtouchstart="noop"
+  catchtouchmove="noop"
+  catchtouchend="noop"
+  catchtouchcancel="noop"
+>
+  <view wx:if="{{loading}}" class="interaction-loading-card">
+    <view class="interaction-loading-spinner"></view>
+    <text class="interaction-loading-text">{{text}}</text>
+  </view>
+</view>

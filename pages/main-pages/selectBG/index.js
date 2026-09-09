@@ -13,6 +13,11 @@ const STEPS_WITHOUT_PLATFORM = [
 
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  isPageInteractionLocked,
+  runPageInteraction,
+  runPageNavigation
+} = require('../../../utils/pageInteractionLock');
 
 Page({
   data: {
@@ -26,7 +31,10 @@ Page({
       function: ''
     },
     canConfirm: false,
-    avatarList: []
+    avatarList: [],
+    interactionLocked: false,
+    interactionLoading: false,
+    interactionLoadingText: '加载中…'
   },
 
   onLoad(options) {
@@ -74,28 +82,36 @@ Page({
   },
 
   goBack() {
-    const roomId = getApp().globalData.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-      : '/pages/main-pages/modeIndex/index?modeId=partner';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/modeIndex/index',
-        'pages/main-pages/partnerMode/confirmBG/index'
-      ],
-      fallbackUrl
-    });
+    if (isPageInteractionLocked(this)) return;
+    return runPageInteraction(this, async () => {
+      const roomId = getApp().globalData.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
+        : '/pages/main-pages/modeIndex/index?modeId=partner';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/modeIndex/index',
+          'pages/main-pages/partnerMode/confirmBG/index'
+        ],
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    goRoomPage(getApp().globalData.roomId);
+    if (isPageInteractionLocked(this)) return;
+    return runPageInteraction(this, () => goRoomPage(getApp().globalData.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   onSwiperChange(e) {
+    if (isPageInteractionLocked(this)) return;
     this.setData({ currentStep: e.detail.current });
   },
 
   onTapStep(e) {
+    if (isPageInteractionLocked(this)) return;
     const step = Number(e.currentTarget.dataset.step || 0);
     const maxStep = (this.data.steps || []).length - 1;
     if (step < 0 || step > maxStep) return;
@@ -103,12 +119,14 @@ Page({
   },
 
   onNextCard() {
+    if (isPageInteractionLocked(this)) return;
     const maxStep = (this.data.steps || []).length - 1;
     const next = Math.min(maxStep, this.data.currentStep + 1);
     this.setData({ currentStep: next });
   },
 
   onCardInput(e) {
+    if (isPageInteractionLocked(this)) return;
     const { type, value } = e.detail || {};
     if (!type) return;
     const val = (value || '').trim();
@@ -127,58 +145,66 @@ Page({
   },
 
   async confirmBG() {
+    if (isPageInteractionLocked(this)) return;
     if (!this.data.canConfirm) return;
     if (this._confirmPending) return;
-    const app = getApp();
-    app.globalData = app.globalData || {};
-    const bg = { ...this.data.bg };
-    if (!this.data.includePlatform) {
-      delete bg.platform;
-    }
-    app.globalData.selectedBG = bg;
-    app.globalData.selectedBGSource = 'custom';
+    return runPageNavigation(this, async () => {
+      const app = getApp();
+      app.globalData = app.globalData || {};
+      const bg = { ...this.data.bg };
+      if (!this.data.includePlatform) {
+        delete bg.platform;
+      }
+      app.globalData.selectedBG = bg;
+      app.globalData.selectedBGSource = 'custom';
 
-    const roomId = app.globalData.roomId || '';
-    this._confirmPending = true;
-    try {
-      if (roomId) {
-        try {
-          const res = await wx.cloud.callFunction({
-            name: 'updateRoomState',
-            data: {
-              roomId,
-              currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
-              selectedBG: bg
+      const roomId = app.globalData.roomId || '';
+      this._confirmPending = true;
+      try {
+        if (roomId) {
+          try {
+            const res = await wx.cloud.callFunction({
+              name: 'updateRoomState',
+              data: {
+                roomId,
+                currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
+                selectedBG: bg
+              }
+            });
+            const result = (res && res.result) || {};
+            if (result.ok !== true) {
+              wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
+              return;
             }
-          });
-          const result = (res && res.result) || {};
-          if (result.ok !== true) {
-            wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
+          } catch (e) {
+            console.warn('updateRoomState selectedBG', e);
+            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
             return;
           }
-        } catch (e) {
-          console.warn('updateRoomState selectedBG', e);
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-          return;
         }
-      }
 
-      if (this.data.includePlatform) {
-        const query = roomId
+        if (this.data.includePlatform) {
+          const query = roomId
+            ? `?roomId=${encodeURIComponent(roomId)}`
+            : '';
+          return {
+            method: 'redirectTo',
+            url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
+          };
+        }
+
+        const url = roomId
           ? `?roomId=${encodeURIComponent(roomId)}`
           : '';
-        wx.redirectTo({
-          url: `/pages/main-pages/partnerMode/confirmBG/index${query}`
-        });
-        return;
+        return {
+          method: 'redirectTo',
+          url: `/pages/main-pages/selectPlayer/index${url}`
+        };
+      } finally {
+        this._confirmPending = false;
       }
-
-      const url = roomId
-        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/selectPlayer/index';
-      wx.redirectTo({ url });
-    } finally {
-      this._confirmPending = false;
-    }
+    }, {
+      loadingText: '正在确认情境…'
+    });
   }
 });

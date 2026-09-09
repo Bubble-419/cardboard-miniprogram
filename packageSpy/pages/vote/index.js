@@ -20,6 +20,10 @@ const {
   isTieReturnPending,
   showTieReturnModal
 } = require('../../../utils/spyTiePrompt');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 function buildCircleSlots(players, memberByIndex, tiedIndexSet) {
   const list = (players || []).filter((p) => p.alive !== false);
@@ -44,7 +48,7 @@ function buildCircleSlots(players, memberByIndex, tiedIndexSet) {
   });
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     avatarList: [],
@@ -252,17 +256,21 @@ Page({
     this.setData({ selectedIndex: index });
   },
 
-  async onConfirmVote() {
-    if (!this.data.selectedIndex) {
-      wx.showToast({ title: '请先选择怀疑对象', icon: 'none' });
-      return;
-    }
-    await this.submitVote({ abstain: false });
+  onConfirmVote() {
+    return runPageInteraction(this, async () => {
+      if (!this.data.selectedIndex) {
+        wx.showToast({ title: '请先选择怀疑对象', icon: 'none' });
+        return;
+      }
+      await this.submitVote({ abstain: false });
+    }, { loadingText: '正在提交投票…' });
   },
 
-  async onAbstain() {
-    if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
-    await this.submitVote({ abstain: true });
+  onAbstain() {
+    return runPageInteraction(this, async () => {
+      if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
+      await this.submitVote({ abstain: true });
+    }, { loadingText: '正在提交投票…' });
   },
 
   async submitVote({ abstain = false } = {}) {
@@ -315,8 +323,10 @@ Page({
   },
 
   handleGoRoom() {
-    this._pageAlive = false;
-    if (typeof this.stopPolling === 'function') this.stopPolling();
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._pageAlive = false;
+      if (typeof this.stopPolling === 'function') this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   }
-});
+}, ['onSelectTarget', 'onConfirmVote', 'onAbstain', 'handleGoRoom']));

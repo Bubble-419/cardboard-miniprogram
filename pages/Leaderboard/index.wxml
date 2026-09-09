@@ -77,3 +77,9 @@
     >再来一局</button>
   </view>
 </view>
+
+<interaction-lock-layer
+  locked="{{interactionLocked}}"
+  loading="{{interactionLoading}}"
+  text="{{interactionLoadingText}}"
+/>
