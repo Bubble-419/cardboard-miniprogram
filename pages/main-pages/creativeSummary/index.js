@@ -3,8 +3,12 @@ const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { clearLocalBrainstormProgress } = require('../../../utils/roomBrainstormProgress');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     members: [],
@@ -164,38 +168,37 @@ Page({
     const roomId = this.data.roomId || '';
     if (!roomId) return;
 
-    this._exitingMode = true;
-    wx.showLoading({ title: '处理中…', mask: true });
-    try {
-      const callRes = await wx.cloud.callFunction({
-        name: 'roomClearBrainstormMode',
-        data: { roomId }
-      });
-      const result = (callRes && callRes.result) || {};
-      wx.hideLoading();
-      if (result.ok !== true) {
-        this._exitingMode = false;
-        wx.showToast({ title: result.errMsg || '退出模式失败', icon: 'none' });
-        return;
-      }
-      clearLocalBrainstormProgress(roomId);
-      clearPartnerSpecialMoveUsedFlag(roomId);
+    return runPageInteraction(this, async () => {
+      this._exitingMode = true;
       try {
-        const app = getApp();
-        if (app.globalData) {
-          app.globalData.gameMode = '';
-          app.globalData.selectedMode = null;
-          app.globalData.selectedBG = null;
+        const callRes = await wx.cloud.callFunction({
+          name: 'roomClearBrainstormMode',
+          data: { roomId }
+        });
+        const result = (callRes && callRes.result) || {};
+        if (result.ok !== true) {
+          this._exitingMode = false;
+          wx.showToast({ title: result.errMsg || '退出模式失败', icon: 'none' });
+          return;
         }
-      } catch (e) {
-        // ignore
+        clearLocalBrainstormProgress(roomId);
+        clearPartnerSpecialMoveUsedFlag(roomId);
+        try {
+          const app = getApp();
+          if (app.globalData) {
+            app.globalData.gameMode = '';
+            app.globalData.selectedMode = null;
+            app.globalData.selectedBG = null;
+          }
+        } catch (e) {
+          // ignore
+        }
+        await goRoomPage(roomId);
+      } catch (err) {
+        this._exitingMode = false;
+        wx.showToast({ title: (err && err.errMsg) || '退出模式失败', icon: 'none' });
       }
-      goRoomPage(roomId);
-    } catch (err) {
-      wx.hideLoading();
-      this._exitingMode = false;
-      wx.showToast({ title: (err && err.errMsg) || '退出模式失败', icon: 'none' });
-    }
+    }, { loadingText: '正在返回房间…' });
   },
 
   async handleFinish() {
@@ -214,12 +217,14 @@ Page({
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/creativeInput/index',
-      fallbackUrl: roomId
-        ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/creativeInput/index',
+        fallbackUrl: roomId
+          ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, ['handleFinish', 'handleGoRoom', 'handleGoBack']));

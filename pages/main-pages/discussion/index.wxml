@@ -20,3 +20,5 @@
     <button class="continue-btn" bindtap="handleContinue">继续游戏</button>
   </view>
 </view>
+
+<interaction-lock-layer locked="{{interactionLocked}}" loading="{{interactionLoading}}" text="{{interactionLoadingText}}" />

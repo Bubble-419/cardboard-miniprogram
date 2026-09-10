@@ -4,8 +4,12 @@ const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
 const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     workshopOnly: false,
@@ -92,13 +96,15 @@ Page({
   },
 
   goBack() {
-    this._syncCountToOpener({ refreshCloud: true });
-    const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      fallbackUrl: roomId
-        ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/aaa/index'
-    });
+    return runPageInteraction(this, async () => {
+      this._syncCountToOpener({ refreshCloud: true });
+      const roomId = this.data.roomId || '';
+      safeNavigateBack({
+        fallbackUrl: roomId
+          ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/main-pages/aaa/index'
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   /** 把当前列表数量写回上一页灯泡角标，避免返回后仍显示旧数字 */
@@ -167,7 +173,15 @@ Page({
     this._refreshDisplay();
   },
 
-  async generateAIInspiration() {
+  generateAIInspiration() {
+    return runPageInteraction(
+      this,
+      () => this._generateAIInspiration(),
+      { loadingText: 'AI生成中…' }
+    );
+  },
+
+  async _generateAIInspiration() {
     if (!isAiFeatureEnabled()) {
       wx.showToast({ title: 'AI 功能暂未开放', icon: 'none' });
       return;
@@ -180,8 +194,6 @@ Page({
     }
 
     this.setData({ isGenerating: true });
-    wx.showLoading({ title: 'AI生成中…', mask: true });
-
     try {
       const referencedContents = (this.data.inspirations || [])
         .filter((item) => this.data.referencedInspirations.includes(item.id))
@@ -235,7 +247,6 @@ Page({
       wx.showToast({ title: error.message || '生成失败，请重试', icon: 'none' });
     } finally {
       this.setData({ isGenerating: false });
-      wx.hideLoading();
     }
   },
 
@@ -635,7 +646,15 @@ Page({
     return results;
   },
 
-  async onInspirationSave() {
+  onInspirationSave() {
+    return runPageInteraction(
+      this,
+      () => this._saveInspiration(),
+      { loadingText: '正在保存灵感…' }
+    );
+  },
+
+  async _saveInspiration() {
     if (this.data.inspirationSaving) return;
     const content = (this.data.inspirationDraftText || '').trim();
     const draftPhotos = this.data.inspirationDraftPhotos || [];
@@ -645,7 +664,6 @@ Page({
     }
 
     this.setData({ inspirationSaving: true });
-    wx.showLoading({ title: '保存中…', mask: true });
     try {
       const imageUrls = draftPhotos.length
         ? await this._uploadInspirationPhotos(draftPhotos)
@@ -678,7 +696,12 @@ Page({
       wx.showToast({ title: e.message || '保存失败', icon: 'none' });
     } finally {
       this.setData({ inspirationSaving: false });
-      wx.hideLoading();
     }
   }
-});
+}, [
+  'goBack', 'onAIInput', 'generateAIInspiration', 'toggleReference',
+  'onInspirationImageError', 'onInspirationDismissFocus', 'onInspirationComposerTap',
+  'onInspirationPreviewPhoto', 'onInspirationRemovePhoto', 'onInspirationFocus',
+  'onInspirationBlur', 'onInspirationInput', 'onInspirationKeyboardHeightChange',
+  'onInspirationActionTap'
+]));

@@ -2,12 +2,16 @@ const { buildGamepageUrl, buildClosingEndUrl } = require('../../../../utils/mode
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { openUrl } = require('../../../../utils/pageNavigate');
 const { PHASE_CLOSING } = require('../../../../utils/partnerGamePhase');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
 function isValidClosingVote(vote) {
   return vote === 'pass' || vote === 'question';
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     hasVoted: false,
@@ -267,7 +271,13 @@ Page({
     }
   },
 
-  async handleVote(e) {
+  handleVote(e) {
+    return runPageInteraction(this, () => this._submitVote(e), {
+      loadingText: '正在提交表态…'
+    });
+  },
+
+  async _submitVote(e) {
     if (this.data.hasVoted || this.data.isInitiator || this.data.isSubmitting) return;
     const vote = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.vote;
     if (!vote) return;
@@ -330,14 +340,16 @@ Page({
   },
 
   handleGoBack() {
-    if (!this._canLeaveClosingStatement()) {
-      wx.showToast({ title: '请先完成收尾表态', icon: 'none' });
-      return;
-    }
-    const roomId = this.data.roomId || '';
-    openUrl(roomId ? buildGamepageUrl(roomId, 1, 'partner') : '/pages/main-pages/addPlayer/index', {
-      immediate: true,
-      preferReLaunch: true
-    });
+    return runPageInteraction(this, async () => {
+      if (!this._canLeaveClosingStatement()) {
+        wx.showToast({ title: '请先完成收尾表态', icon: 'none' });
+        return;
+      }
+      const roomId = this.data.roomId || '';
+      openUrl(roomId ? buildGamepageUrl(roomId, 1, 'partner') : '/pages/main-pages/addPlayer/index', {
+        immediate: true,
+        preferReLaunch: true
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, ['handleVote', 'handleGoBack']));

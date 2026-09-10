@@ -86,3 +86,5 @@
     <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
   </page-footer>
 </view>
+
+<interaction-lock-layer locked="{{interactionLocked}}" loading="{{interactionLoading}}" text="{{interactionLoadingText}}" />

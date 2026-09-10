@@ -1,0 +1,56 @@
+.interaction-lock-layer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.interaction-loading-card {
+  min-width: 208rpx;
+  min-height: 208rpx;
+  padding: 32rpx;
+  box-sizing: border-box;
+  border-radius: 20rpx;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+}
+
+.interaction-loading-spinner {
+  width: 56rpx;
+  height: 56rpx;
+  box-sizing: border-box;
+  border: 6rpx solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: interaction-loading-spin 0.8s linear infinite;
+}
+
+.interaction-loading-text {
+  max-width: 280rpx;
+  color: #ffffff;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  text-align: center;
+}
+
+@keyframes interaction-loading-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

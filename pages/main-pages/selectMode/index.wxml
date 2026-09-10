@@ -81,3 +81,5 @@
     <button class="next-btn" bindtap="nextStep">下一步</button>
   </page-footer>
 </view>
+
+<interaction-lock-layer locked="{{interactionLocked}}" loading="{{interactionLoading}}" text="{{interactionLoadingText}}" />

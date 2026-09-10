@@ -6,8 +6,13 @@ const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { prepareMembersForDisplay } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     members: [],
@@ -148,28 +153,33 @@ Page({
       return;
     }
     const roomIdEnc = encodeURIComponent(roomId);
-    wx.showLoading({ title: '请稍候…', mask: true });
-    this._updateRoomState('creativeInput', null, null, { startCreativeSession: true }).then(() => {
-      wx.hideLoading();
-      wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-    }).catch(() => {
-      wx.hideLoading();
-      wx.redirectTo({ url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}` });
-    });
+    return runPageNavigation(this, async () => {
+      try {
+        await this._updateRoomState('creativeInput', null, null, { startCreativeSession: true });
+      } catch (e) {
+        console.warn('handleEndGame updateRoomState', e);
+      }
+      return {
+        method: 'redirectTo',
+        url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`
+      };
+    }, { loadingText: '正在结束游戏…' });
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
-      : '/pages/main-pages/addPlayer/index';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/selectPlayer/index',
-        'pages/main-pages/addPlayer/index'
-      ],
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
+        : '/pages/main-pages/addPlayer/index';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/selectPlayer/index',
+          'pages/main-pages/addPlayer/index'
+        ],
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   onStepImgError(e) {
@@ -191,6 +201,8 @@ Page({
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   }
-});
+}, ['handleEndGame', 'handleGoBack', 'handleGoRoom', 'onStepImgError']));

@@ -21,6 +21,10 @@ const {
   isTieReturnPending,
   showTieReturnModal
 } = require('../../../utils/spyTiePrompt');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 const SWIPE_THRESHOLD_PX = 48;
 
@@ -42,7 +46,7 @@ function getWindowMetrics() {
   }
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     compactMode: false,
@@ -287,7 +291,13 @@ Page({
     });
   },
 
-  async onStartVote() {
+  onStartVote() {
+    return runPageInteraction(this, () => this._startVote(), {
+      loadingText: '正在开始投票…'
+    });
+  },
+
+  async _startVote() {
     if (!this.data.isHost || this.data.acting) return;
     this.setData({ acting: true });
     try {
@@ -324,10 +334,20 @@ Page({
   },
 
   handleGoRoom() {
-    this._pageAlive = false;
-    if (typeof this.stopPolling === 'function') this.stopPolling();
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._pageAlive = false;
+      if (typeof this.stopPolling === 'function') this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   },
 
   noop() {}
-});
+}, [
+  'onTapContentTab',
+  'onPanelTouchStart',
+  'onPanelTouchEnd',
+  'onTapLibraryCard',
+  'onCloseViewer',
+  'onStartVote',
+  'handleGoRoom'
+]));

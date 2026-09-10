@@ -8,8 +8,12 @@ const {
   STATEMENT_ALL_PASS
 } = require('../../../../utils/partnerGamePhase');
 const { getNextPlayerTurn } = require('../../../../utils/partnerPlayerTurn');
+const {
+  runPageInteraction,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     currentPlayerIndex: 1,
@@ -270,16 +274,23 @@ Page({
   },
 
   _navigateToGamepage(url) {
-    if (!url) return;
+    if (!url) return Promise.resolve({ ok: false });
     clearPendingNavigation();
-    wx.redirectTo({
-      url,
-      fail: () => {
-        wx.reLaunch({
-          url,
-          fail: (err) => console.warn('statement leave to gamepage', err, url)
-        });
-      }
+    return new Promise((resolve) => {
+      wx.redirectTo({
+        url,
+        success: () => resolve({ ok: true }),
+        fail: () => {
+          wx.reLaunch({
+            url,
+            success: () => resolve({ ok: true }),
+            fail: (err) => {
+              console.warn('statement leave to gamepage', err, url);
+              resolve({ ok: false, error: err });
+            }
+          });
+        }
+      });
     });
   },
 
@@ -333,17 +344,25 @@ Page({
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
-      : '';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
-      fallbackUrl
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
+        : '';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
+  },
+
+  handleStatementResult(e) {
+    return runPageInteraction(this, () => this._submitStatementResult(e), {
+      loadingText: '正在提交表态…'
     });
   },
 
-  async handleStatementResult(e) {
+  async _submitStatementResult(e) {
     // 仅主屏可选择表态结果
     if (this.data.isWaiting || this.data.isHost !== true) {
       wx.showToast({ title: '请等待主屏表态', icon: 'none' });
@@ -458,7 +477,7 @@ Page({
         currentRound: destCurrentRound,
         fromStatement: true
       });
-      this._navigateToGamepage(destUrl);
+      await this._navigateToGamepage(destUrl);
     } catch (err) {
       console.warn('handleStatementResult', err);
       this._statementTurnCommitted = false;
@@ -472,4 +491,4 @@ Page({
       wx.showToast({ title: '表态失败', icon: 'none' });
     }
   }
-});
+}, ['handleGoBack', 'handleStatementResult']));

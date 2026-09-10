@@ -1,3 +1,9 @@
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
+
 const MIN_CROP = 64;
 const HANDLE_HIT = 28;
 const MAX_H_OVER_W = 1;
@@ -38,7 +44,7 @@ function getStatusBarHeight() {
   }
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     src: '',
     statusBarHeight: 20,
@@ -320,10 +326,19 @@ Page({
 
   onCancel() {
     this._emitCancelIfNeeded();
-    wx.navigateBack({ fail: () => {} });
+    return runPageNavigation(this, async () => ({
+      method: 'navigateBack',
+      fail: () => {}
+    }), { loadingText: '正在返回…' });
   },
 
-  async onConfirm() {
+  onConfirm() {
+    return runPageInteraction(this, () => this._confirmCrop(), {
+      loadingText: '正在处理图片…'
+    });
+  },
+
+  async _confirmCrop() {
     if (this.data.exporting) return;
     if (!this._crop || !this._layout || !this.data.src) return;
     this.setData({ exporting: true });
@@ -408,4 +423,11 @@ Page({
         });
     });
   }
-});
+}, [
+  'onCancel',
+  'onConfirm',
+  'onSelectPreset',
+  'onStageTouchEnd',
+  'onStageTouchMove',
+  'onStageTouchStart'
+]));

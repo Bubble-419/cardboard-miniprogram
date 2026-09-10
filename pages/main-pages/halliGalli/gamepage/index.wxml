@@ -137,3 +137,5 @@
     <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
   </view>
 </view>
+
+<interaction-lock-layer locked="{{interactionLocked}}" loading="{{interactionLoading}}" text="{{interactionLoadingText}}" />

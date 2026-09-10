@@ -12,7 +12,13 @@ function goRoomPage(roomId) {
   const url = id
     ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(id)}&stayLobby=1`
     : '/pages/main-pages/addPlayer/index?stayLobby=1';
-  wx.reLaunch({ url });
+  return new Promise((resolve) => {
+    wx.reLaunch({
+      url,
+      success: (result) => resolve({ ok: true, result }),
+      fail: (error) => resolve({ ok: false, error })
+    });
+  });
 }
 
 /**
@@ -22,8 +28,7 @@ function goRoomPage(roomId) {
 async function endPartnerSessionAndGoRoom(roomId, options) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) {
-    goRoomPage('');
-    return;
+    return goRoomPage('');
   }
   clearLocalBrainstormProgress(id);
   const isHost = !!(options && options.isHost);
@@ -46,7 +51,7 @@ async function endPartnerSessionAndGoRoom(roomId, options) {
       console.warn('endPartnerSessionAndGoRoom updateRoomState', e);
     }
   }
-  goRoomPage(id);
+  return goRoomPage(id);
 }
 
 module.exports = {

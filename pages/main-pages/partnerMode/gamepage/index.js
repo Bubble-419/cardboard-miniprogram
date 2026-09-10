@@ -95,6 +95,11 @@ const {
   getReviewSnapshot,
   getHistoryWorkshopByRoomId
 } = require('../../../../utils/historyWorkshops');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../../utils/pageInteractionLock');
 
 /** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
 const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
@@ -105,7 +110,7 @@ const STAR_CHIP_SCORE_MIN_TRAVEL_PX = 24;
 /** 星星面板离手后自动收起并提交前的宽限期；此期间再次操作会重置计时 */
 const STAR_PANEL_COLLAPSE_DELAY_MS = 360;
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     isHost: false,
@@ -1882,7 +1887,9 @@ Page({
       this._pendingScore = null;
       return;
     }
-    await this._submitScoreToServer(score);
+    await runPageInteraction(this, () => this._submitScoreToServer(score), {
+      loadingText: '正在提交评分…'
+    });
   },
 
   _flushPendingRoomContextIfIdle() {
@@ -3784,12 +3791,11 @@ Page({
               ? await this._prepareDiscussionImages(paths)
               : paths;
             if (!ready.length) return;
-            wx.showLoading({ title: '上传中…', mask: true });
-            try {
-              await this._appendSharedSectionContent(target, { photos: ready });
-            } finally {
-              wx.hideLoading();
-            }
+            await runPageInteraction(
+              this,
+              () => this._appendSharedSectionContent(target, { photos: ready }),
+              { loadingText: '正在上传图片…' }
+            );
           },
           fail: () => {
             wx.showToast({ title: '选择图片失败', icon: 'none' });
@@ -4898,12 +4904,16 @@ Page({
 
   onExpressFormSubmit(e) {
     this._beginExpressSubmitGuard();
-    this.submitExpress(e);
+    return runPageInteraction(this, () => this.submitExpress(e), {
+      loadingText: '正在发送…'
+    });
   },
 
   onExpressConfirm(e) {
     this._beginExpressSubmitGuard();
-    this.submitExpress(e);
+    return runPageInteraction(this, () => this.submitExpress(e), {
+      loadingText: '正在发送…'
+    });
   },
 
   _beginExpressSubmitGuard() {
@@ -5248,58 +5258,55 @@ Page({
   },
 
   onTapSpecialMove() {
-    // 仅当前出牌轮次玩家可进入；房主不可代操作
-    const canSpecial = this.data.showSpecialMoveBtn
-      || (
-        !!this.data.isCurrentPlayer
-        && !isDiscussionPhase(this.data.gamepagePhase)
-        && !isClosingPhase(this.data.gamepagePhase)
-      );
-    if (!canSpecial) {
-      wx.showToast({ title: '请等待您的轮次', icon: 'none' });
-      return;
-    }
-    if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) {
-      wx.showToast({ title: '本轮特殊行动已使用', icon: 'none' });
-      return;
-    }
-    const roomId = this.data.roomId;
-    const currentPlayerIndex = this.data.currentPlayerIndex != null
-      ? this.data.currentPlayerIndex
-      : 1;
-    if (!roomId) {
-      wx.showToast({ title: '缺少房间信息', icon: 'none' });
-      return;
-    }
-    // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
-    this._stopStatePolling();
-    this._stopRoundTimerBurstPoll();
-    const url = buildSpecialMoveUrl(roomId, currentPlayerIndex);
-    const opened = safeOpenUrl(url, { preferNavigate: true, immediate: true });
-    if (!opened) {
-      wx.navigateTo({
-        url,
-        fail: (err) => {
-          console.warn('navigateTo specialMove fail', err);
-          // 栈满或并发冲突时降级 redirect
-          wx.redirectTo({
-            url,
-            fail: (err2) => {
-              console.warn('redirectTo specialMove fail', err2);
-              this._startStatePolling();
-              wx.showToast({ title: '打开特殊行动失败', icon: 'none' });
-            }
-          });
+    return runPageNavigation(this, async () => {
+      // 仅当前出牌轮次玩家可进入；房主不可代操作
+      const canSpecial = this.data.showSpecialMoveBtn
+        || (
+          !!this.data.isCurrentPlayer
+          && !isDiscussionPhase(this.data.gamepagePhase)
+          && !isClosingPhase(this.data.gamepagePhase)
+        );
+      if (!canSpecial) {
+        wx.showToast({ title: '请等待您的轮次', icon: 'none' });
+        return null;
+      }
+      if (this.data.isMasterMode || this.data.specialMoveUsedThisTurn) {
+        wx.showToast({ title: '本轮特殊行动已使用', icon: 'none' });
+        return null;
+      }
+      const roomId = this.data.roomId;
+      const currentPlayerIndex = this.data.currentPlayerIndex != null
+        ? this.data.currentPlayerIndex
+        : 1;
+      if (!roomId) {
+        wx.showToast({ title: '缺少房间信息', icon: 'none' });
+        return null;
+      }
+      // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
+      this._stopStatePolling();
+      this._stopRoundTimerBurstPoll();
+      return {
+        method: 'navigateTo',
+        url: buildSpecialMoveUrl(roomId, currentPlayerIndex),
+        fail: () => {
+          this._startStatePolling();
+          wx.showToast({ title: '打开特殊行动失败', icon: 'none' });
         }
-      });
-    }
+      };
+    }, { loadingText: '正在打开特殊行动…' });
   },
 
   handleSpecialMove() {
     this.onTapSpecialMove();
   },
 
-  async handleStartStatement() {
+  handleStartStatement() {
+    return runPageInteraction(this, () => this._startStatement(), {
+      loadingText: '正在开始讨论…'
+    });
+  },
+
+  async _startStatement() {
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
     if (this.data.statementSwitching || this._startingStatement) return;
     this._startingStatement = true;
@@ -5372,10 +5379,16 @@ Page({
   },
 
   handleAllPassFromDiscussion() {
-    this.handleEndDiscussion({ statementResult: STATEMENT_ALL_PASS });
+    return this.handleEndDiscussion({ statementResult: STATEMENT_ALL_PASS });
   },
 
-  async handleEndDiscussion(options) {
+  handleEndDiscussion(options) {
+    return runPageInteraction(this, () => this._endDiscussion(options), {
+      loadingText: '正在结束讨论…'
+    });
+  },
+
+  async _endDiscussion(options) {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
@@ -5577,61 +5590,61 @@ Page({
   },
 
   handleGoRoom() {
-    this._prepareLeavePage();
     if (this.data.isHistoryReview) {
-      wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
-      return;
+      return runPageNavigation(this, async () => {
+        this._prepareLeavePage();
+        return { method: 'reLaunch', url: '/pages/main-pages/aaa/index' };
+      }, { loadingText: '正在返回首页…' });
     }
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._prepareLeavePage();
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   },
 
   /** 点击设计问题：回看情境详情（confirmBG），navigateTo 保留本页实例与进度 */
   handleViewSituation() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) {
-      wx.showToast({ title: '缺少房间信息', icon: 'none' });
-      return;
-    }
-    // 仅暂停本页轮询/本地计时展示；房间锚点 partnerRoundStartedAt 保留，返回后 onShow 续上
-    this._prepareLeavePage();
-    const problemText = (this.data.selectedProblemText || '').trim();
-    const app = getApp();
-    if (problemText && app.globalData) {
-      const prev = app.globalData.selectedProblem || {};
-      app.globalData.selectedProblem = {
-        id: prev.id || '',
-        text: problemText
-      };
-    }
-    let url = `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`;
-    if (problemText) {
-      url += `&problemText=${encodeURIComponent(problemText)}`;
-    }
-    wx.navigateTo({
-      url,
-      success: (res) => {
-        try {
-          const ec = res && res.eventChannel;
-          if (ec && typeof ec.emit === 'function') {
-            ec.emit('initGameDetail', {
-              problemText,
-              problemId: (app.globalData.selectedProblem && app.globalData.selectedProblem.id) || '',
-              selectedBG: app.globalData.selectedBG || null
-            });
-          }
-        } catch (e) {
-          console.warn('emit initGameDetail', e);
-        }
-      },
-      fail: () => {
-        this._pageVisible = true;
-        this._startStatePolling();
-        if (!this._scoreProgressFromSnapshot) {
-          this._startScorePolling();
-        }
-        this._syncRoundSpeech();
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      if (!roomId) {
+        wx.showToast({ title: '缺少房间信息', icon: 'none' });
+        return null;
       }
-    });
+      // 仅暂停本页轮询/本地计时展示；房间锚点 partnerRoundStartedAt 保留，返回后 onShow 续上
+      this._prepareLeavePage();
+      const problemText = (this.data.selectedProblemText || '').trim();
+      const app = getApp();
+      if (problemText && app.globalData) {
+        const prev = app.globalData.selectedProblem || {};
+        app.globalData.selectedProblem = { id: prev.id || '', text: problemText };
+      }
+      let url = `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=game`;
+      if (problemText) url += `&problemText=${encodeURIComponent(problemText)}`;
+      return {
+        method: 'navigateTo',
+        url,
+        success: (res) => {
+          try {
+            const ec = res && res.eventChannel;
+            if (ec && typeof ec.emit === 'function') {
+              ec.emit('initGameDetail', {
+                problemText,
+                problemId: (app.globalData.selectedProblem && app.globalData.selectedProblem.id) || '',
+                selectedBG: app.globalData.selectedBG || null
+              });
+            }
+          } catch (e) {
+            console.warn('emit initGameDetail', e);
+          }
+        },
+        fail: () => {
+          this._pageVisible = true;
+          this._startStatePolling();
+          if (!this._scoreProgressFromSnapshot) this._startScorePolling();
+          this._syncRoundSpeech();
+        }
+      };
+    }, { loadingText: '正在查看情境…' });
   },
 
   handleToggleProblemExpand() {
@@ -5989,7 +6002,13 @@ Page({
     return results;
   },
 
-  async onInspirationSave() {
+  onInspirationSave() {
+    return runPageInteraction(this, () => this._saveInspiration(), {
+      loadingText: '正在保存灵感…'
+    });
+  },
+
+  async _saveInspiration() {
     if (this.data.inspirationSaving) return;
     const content = (this.data.inspirationDraftText || '').trim();
     const draftPhotos = this.data.inspirationDraftPhotos || [];
@@ -5999,7 +6018,6 @@ Page({
     }
 
     this.setData({ inspirationSaving: true });
-    wx.showLoading({ title: '保存中…', mask: true });
     try {
       const imageUrls = draftPhotos.length
         ? await this._uploadInspirationPhotos(draftPhotos)
@@ -6031,41 +6049,37 @@ Page({
       wx.showToast({ title: e.message || '保存失败', icon: 'none' });
     } finally {
       this.setData({ inspirationSaving: false });
-      wx.hideLoading();
     }
   },
 
   handleGoInspirationCenter() {
-    // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
-    this._stopStatePolling();
-    this._stopRoundTimerBurstPoll();
-    const roomId = this.data.roomId || '';
-    const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
-    // scope=workshop：列出本人在本房间的全部灵感（与灯泡角标一致）
-    let url = '/pages/inspiration/index?scope=workshop';
-    if (roomId) {
-      url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
-    }
-    const opened = openPartnerPage(url);
-    if (!opened) {
-      wx.navigateTo({
+    return runPageNavigation(this, async () => {
+      this._stopStatePolling();
+      this._stopRoundTimerBurstPoll();
+      const roomId = this.data.roomId || '';
+      const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+      let url = '/pages/inspiration/index?scope=workshop';
+      if (roomId) {
+        url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
+      }
+      return {
+        method: 'navigateTo',
         url,
-        fail: (err) => {
-          console.warn('navigateTo inspiration fail', err);
-          wx.redirectTo({
-            url,
-            fail: (err2) => {
-              console.warn('redirectTo inspiration fail', err2);
-              this._startStatePolling();
-              wx.showToast({ title: '打开灵感空间失败', icon: 'none' });
-            }
-          });
+        fail: () => {
+          this._startStatePolling();
+          wx.showToast({ title: '打开灵感空间失败', icon: 'none' });
         }
-      });
-    }
+      };
+    }, { loadingText: '正在打开灵感空间…' });
   },
 
-  async handleClosingNextStep() {
+  handleClosingNextStep() {
+    return runPageInteraction(this, () => this._advanceClosingStep(), {
+      loadingText: '正在同步收尾进度…'
+    });
+  },
+
+  async _advanceClosingStep() {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主操作', icon: 'none' });
       return;
@@ -6098,25 +6112,33 @@ Page({
   },
 
   handleGlobalReview() {
-    const roomId = this.data.roomId || '';
-    if (!roomId) {
-      wx.showToast({ title: '房间信息缺失', icon: 'none' });
-      return;
-    }
-    this._persistHistoryReviewSnapshot(true);
-    this._prepareLeavePage();
-    const url = `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`;
-    wx.navigateTo({
-      url,
-      fail: () => {
-        this._pageVisible = true;
-        this._startStatePolling();
-        wx.showToast({ title: '打开全局回顾失败', icon: 'none' });
+    return runPageNavigation(this, async () => {
+      const roomId = this.data.roomId || '';
+      if (!roomId) {
+        wx.showToast({ title: '房间信息缺失', icon: 'none' });
+        return null;
       }
+      this._persistHistoryReviewSnapshot(true);
+      this._prepareLeavePage();
+      return {
+        method: 'navigateTo',
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`,
+        fail: () => {
+          this._pageVisible = true;
+          this._startStatePolling();
+          wx.showToast({ title: '打开全局回顾失败', icon: 'none' });
+        }
+      };
+    }, { loadingText: '正在打开全局回顾…' });
+  },
+
+  handleEndBrainstorm() {
+    return runPageNavigation(this, () => this._endBrainstorm(), {
+      loadingText: '正在结束脑暴…'
     });
   },
 
-  async handleEndBrainstorm() {
+  async _endBrainstorm() {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主结束脑暴', icon: 'none' });
       return;
@@ -6129,7 +6151,10 @@ Page({
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }
-    safeOpenUrl(buildLeaderboardUrl(roomId, { from: 'closingEnd' }));
+    return {
+      method: 'redirectTo',
+      url: buildLeaderboardUrl(roomId, { from: 'closingEnd' })
+    };
   },
 
   handleClosingPhoto() {
@@ -6212,7 +6237,9 @@ Page({
     }
     const formVal = e && e.detail && e.detail.value && e.detail.value.closingCreativeText;
     const text = typeof formVal === 'string' ? formVal : undefined;
-    this._commitClosingCreativeEdit({ text });
+    return runPageInteraction(this, () => this._commitClosingCreativeEdit({ text }), {
+      loadingText: '正在保存创意点…'
+    });
   },
 
   async onClosingCreativeBlur() {
@@ -6228,12 +6255,22 @@ Page({
       if (this._closingPickingImage) return;
       if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
       this._closingNativeFocused = false;
-      this._commitClosingCreativeEdit({ allowEmptyExit: true });
+      runPageInteraction(
+        this,
+        () => this._commitClosingCreativeEdit({ allowEmptyExit: true }),
+        { loadingText: '正在保存创意点…' }
+      );
     }, 200);
   },
 
   /** 点击已记录文字 → 拉回输入态编辑；清空后失焦即删除 */
-  async onClosingCreativeTextTap(e) {
+  onClosingCreativeTextTap(e) {
+    return runPageInteraction(this, () => this._editClosingCreativeText(e), {
+      loadingText: '正在保存创意点…'
+    });
+  },
+
+  async _editClosingCreativeText(e) {
     if (!this.data.isHost) return;
     if (this.data.closingCreativeSaving) return;
     const key = e.currentTarget && e.currentTarget.dataset
@@ -6420,8 +6457,7 @@ Page({
               });
               return;
             }
-            wx.showLoading({ title: '上传中…', mask: true });
-            try {
+            await runPageInteraction(this, async () => {
               // 先落盘当前输入态（编辑中的文字/草稿），再插图
               await this._commitClosingCreativeEdit();
               const ok = await this._appendClosingCreativeContent({
@@ -6437,9 +6473,7 @@ Page({
                   closingKeyboardHeight: 0
                 });
               }
-            } finally {
-              wx.hideLoading();
-            }
+            }, { loadingText: '正在上传图片…' });
           },
           fail: () => {
             this._closingPickingImage = false;
@@ -6493,7 +6527,13 @@ Page({
     this.onClosingCreativePreview(e);
   },
 
-  async onClosingCreativeRemoveBlock(e) {
+  onClosingCreativeRemoveBlock(e) {
+    return runPageInteraction(this, () => this._removeClosingCreativeBlock(e), {
+      loadingText: '正在删除图片…'
+    });
+  },
+
+  async _removeClosingCreativeBlock(e) {
     if (!this.data.isHost) return;
     if (this.data.closingCreativeSaving) return;
     const key = e.currentTarget && e.currentTarget.dataset
@@ -6628,20 +6668,79 @@ Page({
   },
 
   handleGoBack() {
-    this._prepareLeavePage();
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/aaa/index';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/partnerMode/confirmFirstPlayer/index',
-        'pages/main-pages/selectPlayer/index',
-        'pages/main-pages/partnerMode/statement/index',
-        'pages/main-pages/partnerMode/specialMove/index',
-        'pages/main-pages/discussion/index'
-      ],
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      this._prepareLeavePage();
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/aaa/index';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/partnerMode/confirmFirstPlayer/index',
+          'pages/main-pages/selectPlayer/index',
+          'pages/main-pages/partnerMode/statement/index',
+          'pages/main-pages/partnerMode/specialMove/index',
+          'pages/main-pages/discussion/index'
+        ],
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   }
-});
+}, [
+  'closeExpressComposer',
+  'dismissHostStatementTip',
+  'handleAllPassFromDiscussion',
+  'handleAvatarTap',
+  'handleClosingNextStep',
+  'handleEndBrainstorm',
+  'handleEndDiscussion',
+  'handleGlobalReview',
+  'handleGoInspirationCenter',
+  'handleGoBack',
+  'handleGoRoom',
+  'handleRoundTimerExpire',
+  'handleStartStatement',
+  'handleViewSituation',
+  'onCardImagePreview',
+  'onCardSectionAddImage',
+  'onCardSwiperAnimationFinish',
+  'onCardSwiperChange',
+  'onCardSwiperTransition',
+  'onClosingCreativeAddImage',
+  'onClosingCreativeBlur',
+  'onClosingCreativeFocus',
+  'onClosingCreativeFormSubmit',
+  'onClosingCreativeImageLongPress',
+  'onClosingCreativeImageTap',
+  'onClosingCreativeInput',
+  'onClosingCreativeKeyboardHeightChange',
+  'onClosingCreativeRemoveBlock',
+  'onClosingCreativeTextTap',
+  'onExpressComposerBlur',
+  'onExpressComposerFocus',
+  'onExpressConfirm',
+  'onExpressFormSubmit',
+  'onExpressInput',
+  'onInnerScrollTouchEnd',
+  'onInnerScrollTouchStart',
+  'onInspirationActionTap',
+  'onInspirationBlur',
+  'onInspirationFocus',
+  'onInspirationInput',
+  'onInspirationKeyboardHeightChange',
+  'onInspirationPreviewPhoto',
+  'onInspirationRemovePhoto',
+  'onRoundPrivateInsertPreview',
+  'onStarChipTouchEnd',
+  'onStarChipTouchMove',
+  'onStarChipTouchStart',
+  'onStarGestureEnd',
+  'onStarGestureStart',
+  'onStarRatingBackdropTap',
+  'onStarRatingChipTap',
+  'onStarRatingConfirm',
+  'onStarRatingPreview',
+  'onTapSpecialMove',
+  'openExpressComposer',
+  'toggleExpressChatInCard'
+]));

@@ -55,3 +55,9 @@
     <view class="section-body" style="text-align: center">你已出局，本轮无需投票，请等待结果公布</view>
   </view>
 </view>
+
+<interaction-lock-layer
+  locked="{{interactionLocked}}"
+  loading="{{interactionLoading}}"
+  text="{{interactionLoadingText}}"
+/>

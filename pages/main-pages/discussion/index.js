@@ -2,8 +2,13 @@ const { buildGamepageUrl } = require('../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     currentPlayerIndex: 1,
@@ -147,21 +152,25 @@ Page({
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
-      : '/pages/main-pages/addPlayer/index';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/partnerMode/gamepage/index',
-        'pages/main-pages/partnerMode/statement/index'
-      ],
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? buildGamepageUrl(roomId, this.data.currentPlayerIndex, 'partner')
+        : '/pages/main-pages/addPlayer/index';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/partnerMode/gamepage/index',
+          'pages/main-pages/partnerMode/statement/index'
+        ],
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   },
 
   // 房主点击“继续游戏”
@@ -179,21 +188,24 @@ Page({
       : `玩家${nextIndex}`;
     const isCyclingBack = nextIndex === 1;
 
-    try {
-      await this._updateRoomState(
-        'gamepage',
-        nextIndex,
-        nextPlayerName,
-        isCyclingBack
-      );
-    } catch (e) {
-      console.warn('updateRoomState error:', e);
-    }
+    return runPageNavigation(this, async () => {
+      try {
+        await this._updateRoomState(
+          'gamepage',
+          nextIndex,
+          nextPlayerName,
+          isCyclingBack
+        );
+      } catch (e) {
+        console.warn('updateRoomState error:', e);
+      }
 
-    const modeId = getApp().globalData.gameMode || 'partner';
-    wx.redirectTo({
-      url: buildGamepageUrl(roomId, nextIndex, modeId)
-    });
+      const modeId = getApp().globalData.gameMode || 'partner';
+      return {
+        method: 'redirectTo',
+        url: buildGamepageUrl(roomId, nextIndex, modeId)
+      };
+    }, { loadingText: '正在继续…' });
   },
 
   async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, incrementRound) {
@@ -210,4 +222,4 @@ Page({
       data
     });
   }
-});
+}, ['onDiscussionImageError', 'handleGoBack', 'handleGoRoom', 'handleContinue']));

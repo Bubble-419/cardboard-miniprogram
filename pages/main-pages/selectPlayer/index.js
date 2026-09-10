@@ -4,6 +4,11 @@ const {
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  isPageInteractionLocked,
+  runPageInteraction,
+  runPageNavigation
+} = require('../../../utils/pageInteractionLock');
 
 Page({
   data: {
@@ -17,7 +22,10 @@ Page({
     members: [],
     selectedModeId: '',
     isHost: false,
-    isWaiting: false // 普通玩家等待房主在主屏抽取首位玩家
+    isWaiting: false, // 普通玩家等待房主在主屏抽取首位玩家
+    interactionLocked: false,
+    interactionLoading: false,
+    interactionLoadingText: '加载中…'
   },
 
   onLoad(options) {
@@ -172,6 +180,7 @@ Page({
 
   // 触摸开始
   onTouchStart(e) {
+    if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
     const touches = e.touches;
     const now = Date.now();
@@ -209,6 +218,7 @@ Page({
 
   // 触摸移动（选中后不处理）
   onTouchMove(e) {
+    if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
     const touches = e.touches;
     
@@ -229,6 +239,7 @@ Page({
 
   // 触摸结束（选中后不处理，水波纹不会因手指离开而停止）
   onTouchEnd(e) {
+    if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
     const changedTouches = e.changedTouches;
 
@@ -249,6 +260,7 @@ Page({
 
   // 触摸取消
   onTouchCancel(e) {
+    if (isPageInteractionLocked(this)) return;
     this.onTouchEnd(e);
   },
 
@@ -379,17 +391,13 @@ Page({
 
   /** 跳过：partner 模式直接进入「选择首位出牌玩家」页；其他模式随机后进入 gamepage */
   handleSkip() {
+    if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
     const { members, roomId } = this.data;
     const resolvedRoomId = roomId || getApp().globalData.roomId || '';
 
     if (this._isPartnerMode()) {
-      getApp().globalData.selectedPlayer = {};
-      this._updateRoomState('confirmFirstPlayer');
-      wx.redirectTo({
-        url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(resolvedRoomId)}`
-      });
-      return;
+      return this.navigateToConfirmFirstPlayer(resolvedRoomId);
     }
 
     let currentPlayerIndex = 1;
@@ -404,20 +412,21 @@ Page({
       selectionAnimationDone: true,
       isSelecting: false
     });
-    this.navigateToGamepage(resolvedRoomId, currentPlayerIndex);
+    return this.navigateToGamepage(resolvedRoomId, currentPlayerIndex);
   },
 
   confirmSelection() {
+    if (isPageInteractionLocked(this)) return;
     const { selectedPlayerIndex, roomId } = this.data;
     if (selectedPlayerIndex == null) return;
     if (this._isPartnerMode()) {
-      this.navigateToConfirmFirstPlayer(roomId);
-    } else {
-      this.navigateToGamepage(roomId, selectedPlayerIndex);
+      return this.navigateToConfirmFirstPlayer(roomId);
     }
+    return this.navigateToGamepage(roomId, selectedPlayerIndex);
   },
 
   reselectSelection() {
+    if (isPageInteractionLocked(this)) return;
     this._clearLongPressTimer();
     if (this.animationDoneTimer) {
       clearTimeout(this.animationDoneTimer);
@@ -443,21 +452,27 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    if (isPageInteractionLocked(this)) return;
     if (this._navPending) return;
-    this._navPending = true;
-    getApp().globalData.selectedPlayer = {};
-    try {
-      const ok = await this._updateRoomState('confirmFirstPlayer');
-      if (!ok) {
-        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-        return;
+    return runPageNavigation(this, async () => {
+      this._navPending = true;
+      getApp().globalData.selectedPlayer = {};
+      try {
+        const ok = await this._updateRoomState('confirmFirstPlayer');
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        return {
+          method: 'redirectTo',
+          url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        };
+      } finally {
+        this._navPending = false;
       }
-      wx.redirectTo({
-        url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      });
-    } finally {
-      this._navPending = false;
-    }
+    }, {
+      loadingText: '正在确认玩家…'
+    });
   },
 
   async navigateToGamepage(roomId, currentPlayerIndex) {
@@ -468,27 +483,34 @@ Page({
       wx.showToast({ title: '缺少房间信息', icon: 'none' });
       return;
     }
+    if (isPageInteractionLocked(this)) return;
     if (this._navPending) return;
-    this._navPending = true;
-    const members = this.data.members || [];
-    const current = members.find(m => m.playerIndex === currentPlayerIndex);
-    const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
-    try {
-      const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
-      if (!ok) {
-        wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-        return;
+    return runPageNavigation(this, async () => {
+      this._navPending = true;
+      const members = this.data.members || [];
+      const current = members.find(m => m.playerIndex === currentPlayerIndex);
+      const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
+      try {
+        const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
+        if (!ok) {
+          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        return {
+          method: 'redirectTo',
+          url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
+        };
+      } finally {
+        this._navPending = false;
       }
-      wx.redirectTo({
-        url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
-      });
-    } finally {
-      this._navPending = false;
-    }
+    }, {
+      loadingText: '正在确认玩家…'
+    });
   },
 
   // 添加玩家
   addPlayer() {
+    if (isPageInteractionLocked(this)) return;
     wx.showToast({
       title: '添加玩家功能',
       icon: 'none'
@@ -497,6 +519,13 @@ Page({
 
   // 返回
   goBack() {
+    if (isPageInteractionLocked(this)) return;
+    return runPageInteraction(this, () => this._goBack(), {
+      loadingText: '正在返回…'
+    });
+  },
+
+  _goBack() {
     const roomId = this.data.roomId || '';
     const modeId = this.data.selectedModeId || getApp().globalData.gameMode || 'partner';
     if (this._fromModeIndex) {
@@ -532,4 +561,3 @@ Page({
     });
   }
 });
-

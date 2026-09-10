@@ -5,6 +5,11 @@ const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 const {
   DEFAULT_CATEGORIES,
@@ -13,7 +18,7 @@ const {
   normalizeBG
 } = scenarioCategories;
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     workshopName: '脑暴工作坊',
@@ -202,35 +207,41 @@ Page({
       return;
     }
 
-    const selectedMode = this.data.brainstormModes.find((m) => m.id === this.data.selectedModeId);
-    getApp().globalData.selectedMode = {
-      mode: selectedMode,
-      goalValue: this.data.goalSliderValue
-    };
+    return runPageNavigation(this, async () => {
+      const selectedMode = this.data.brainstormModes.find((m) => m.id === this.data.selectedModeId);
+      getApp().globalData.selectedMode = {
+        mode: selectedMode,
+        goalValue: this.data.goalSliderValue
+      };
 
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    const selectPlayerUrl = roomId
-      ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/selectPlayer/index';
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      const selectPlayerUrl = roomId
+        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/selectPlayer/index';
 
-    await this._updateRoomState('selectPlayer');
-    wx.navigateTo({ url: selectPlayerUrl });
+      await this._updateRoomState('selectPlayer');
+      return { method: 'navigateTo', url: selectPlayerUrl };
+    }, { loadingText: '正在进入…' });
   },
 
   goBack() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/selectProblem/index',
-        'pages/main-pages/modeIndex/index'
-      ],
-      fallbackUrl: roomId
-        ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/selectProblem/index'
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || getApp().globalData.roomId || '';
+      safeNavigateBack({
+        expectedPrev: [
+          'pages/main-pages/selectProblem/index',
+          'pages/main-pages/modeIndex/index'
+        ],
+        fallbackUrl: roomId
+          ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
+          : '/pages/main-pages/selectProblem/index'
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
   }
-});
+}, ['selectCategory', 'selectMode', 'onSliderChange', 'nextStep', 'goBack', 'handleGoRoom']));

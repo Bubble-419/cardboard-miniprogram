@@ -18,6 +18,11 @@ const { followSpyRoomState } = require('../../../utils/spyFollow');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const {
+  runPageInteraction,
+  runPageNavigation,
+  withPageInteractionLock
+} = require('../../../utils/pageInteractionLock');
 
 function shouldShowLibrary(spyGame) {
   if (!spyGame || !spyGame.phase) return true;
@@ -31,7 +36,7 @@ function shouldShowLibrary(spyGame) {
   );
 }
 
-Page({
+Page(withPageInteractionLock({
   data: {
     roomId: '',
     isHost: false,
@@ -159,9 +164,10 @@ Page({
       wx.showToast({ title: '对局中不可查阅牌库', icon: 'none' });
       return;
     }
-    wx.navigateTo({
+    return runPageNavigation(this, async () => ({
+      method: 'navigateTo',
       url: buildSpyPageUrl('cardLibrary', this.data.roomId)
-    });
+    }), { loadingText: '正在打开牌库…' });
   },
 
   onToggleRules() {
@@ -201,17 +207,21 @@ Page({
     });
   },
 
-  async onStartGame() {
+  onStartGame() {
+    return runPageInteraction(this, () => this._startGame(), {
+      loadingText: '正在分配词语…'
+    });
+  },
+
+  async _startGame() {
     if (!this.data.isHost) {
       wx.showToast({ title: '仅房主可开始游戏', icon: 'none' });
       return;
     }
     if (!this.data.canStart || this.data.starting) return;
     this.setData({ starting: true, showLibraryEntry: false });
-    wx.showLoading({ title: '分配词语中…' });
     try {
       const result = await callSpyAction('startAssign', { roomId: this.data.roomId });
-      wx.hideLoading();
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '开始失败', icon: 'none' });
         this.setData({ starting: false, showLibraryEntry: true });
@@ -226,26 +236,29 @@ Page({
         this.setData({ starting: false });
       }
     } catch (e) {
-      wx.hideLoading();
       wx.showToast({ title: (e && e.errMsg) || '开始失败', icon: 'none' });
       if (this._pageAlive) this.setData({ starting: false, showLibraryEntry: true });
     }
   },
 
   handleGoBack() {
-    const roomId = this.data.roomId || '';
-    const fallbackUrl = roomId
-      ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-      : '/pages/main-pages/brainstormMode/index';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/brainstormMode/index',
-      fallbackUrl
-    });
+    return runPageInteraction(this, async () => {
+      const roomId = this.data.roomId || '';
+      const fallbackUrl = roomId
+        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
+        : '/pages/main-pages/brainstormMode/index';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/brainstormMode/index',
+        fallbackUrl
+      });
+    }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
-    this._pageAlive = false;
-    if (typeof this.stopPolling === 'function') this.stopPolling();
-    goRoomPage(this.data.roomId);
+    return runPageInteraction(this, async () => {
+      this._pageAlive = false;
+      if (typeof this.stopPolling === 'function') this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    }, { loadingText: '正在返回房间…' });
   }
-});
+}, ['onOpenLibrary', 'onToggleRules', 'onStartGame', 'handleGoBack', 'handleGoRoom']));
