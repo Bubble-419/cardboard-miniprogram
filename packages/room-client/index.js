@@ -127,6 +127,17 @@ function patchSnapshotFromCommand(prev, result) {
     rawRoomState.progress = { ...freshProgress };
   }
 
+  if (effects.startedStatement === true) {
+    roomState.partnerGamePhase = 'discussion';
+    rawRoomState.partnerGamePhase = 'discussion';
+    roomState.partnerMasterMode = false;
+    rawRoomState.partnerMasterMode = false;
+    roomState.partnerSilentMode = false;
+    rawRoomState.partnerSilentMode = false;
+    roomState.currentPage = 'gamepage';
+    rawRoomState.currentPage = 'gamepage';
+  }
+
   if (nextRev > 0) {
     roomState.revision = nextRev;
     rawRoomState.revision = nextRev;

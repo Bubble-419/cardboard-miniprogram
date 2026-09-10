@@ -5303,43 +5303,55 @@ Page({
     if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
     if (this.data.statementSwitching || this._startingStatement) return;
     this._startingStatement = true;
-    this.setData({ statementSwitching: true, canStartStatement: false });
 
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-    this._syncRoundContentToRoom();
 
     const { currentPlayerIndex, currentPlayerName } = this.data;
+    // 先切讨论页，避免等云函数期间一直停在「进入中」
+    this.setData({
+      statementSwitching: false,
+      canStartStatement: false,
+      gamepagePhase: PHASE_DISCUSSION
+    }, () => {
+      this._syncRoundSpeech();
+    });
+
     try {
-      const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
-        partnerGamePhase: PHASE_DISCUSSION,
-        partnerMasterMode: false,
-        partnerSilentMode: false,
-        skipArchive: true,
-        partnerRoundStartedAt: Date.now(),
-        syncPartnerTurnTimer: true
-      });
+      let cmd = null;
+      cmd = await this._dispatchPartnerCommand('START_STATEMENT', {}, { deferPull: true });
+      let ok = !!(cmd && cmd.ok === true);
+      if (!ok) {
+        ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName, {
+          partnerGamePhase: PHASE_DISCUSSION,
+          partnerMasterMode: false,
+          partnerSilentMode: false,
+          skipArchive: true,
+          partnerRoundStartedAt: Date.now(),
+          syncPartnerTurnTimer: true
+        });
+      }
       if (!ok) {
         this.setData({
-          statementSwitching: false,
+          gamepagePhase: PHASE_PLAY,
           canStartStatement: true
         });
-        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
         this._startStatePolling();
         return;
       }
+      this._startStatePolling();
+    } catch (err) {
+      console.warn('handleStartStatement', err);
       this.setData({
-        gamepagePhase: PHASE_DISCUSSION,
-        statementSwitching: false,
-        canStartStatement: false
+        gamepagePhase: PHASE_PLAY,
+        canStartStatement: true
       });
+      wx.showToast({ title: '进入讨论失败', icon: 'none' });
       this._startStatePolling();
     } finally {
       this._startingStatement = false;
-      if (this.data.statementSwitching) {
-        this.setData({ statementSwitching: false });
-      }
     }
   },
 
