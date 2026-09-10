@@ -1,6 +1,6 @@
 <view
   class="player-top-bar-wrap"
-  style="padding-top: {{padTop}}px; padding-right: {{padRightPx}}px;"
+  style="padding-top: {{padTop}}px; padding-right: {{padRightPx}}px; padding-left: {{padLeftRpx}}rpx;"
 >
   <view
     class="top-bar"
@@ -27,12 +27,16 @@
           isFold="{{true}}"
           showName="{{false}}"
           layout="stack"
+          visualMode="{{visualMode}}"
+          onActionPage="{{onActionPage}}"
+          specialMoveActive="{{specialMoveActive}}"
           showActingFrame="{{showActingFrame}}"
           enableSelectedFrame="{{enableSelectedFrame}}"
           enableAvatarTap="{{enableAvatarTap}}"
           roundStartedAt="{{roundStartedAt}}"
           roundTimerActive="{{roundTimerActive}}"
           roundTimerKey="{{roundTimerKey}}"
+          bind:timerexpire="onTimerExpire"
           bind:addtap="onAddTap"
           bind:avatartap="onAvatarTap"
         />

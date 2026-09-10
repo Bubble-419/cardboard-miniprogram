@@ -14,6 +14,7 @@ const REGISTERED_ROUTES = new Set([
   'pages/main-pages/partnerMode/confirmBG/index',
   'pages/main-pages/partnerMode/confirmFirstPlayer/index',
   'pages/main-pages/partnerMode/gamepage/index',
+  'pages/main-pages/partnerMode/imageCrop/index',
   'pages/main-pages/partnerMode/specialMove/index',
   'pages/main-pages/partnerMode/statement/index',
   'pages/main-pages/partnerMode/closingStatement/index',
@@ -48,7 +49,8 @@ function getCurrentRoute() {
 /** 回看案例 / 只读情境等叠层页：跟随跳转不得拆掉当前页 */
 const FLOW_OVERLAY_ROUTES = new Set([
   'pages/main-pages/case/index',
-  'pages/inspiration/index'
+  'pages/inspiration/index',
+  'pages/main-pages/partnerMode/imageCrop/index'
 ]);
 
 function isFlowOverlayRoute() {
@@ -59,6 +61,10 @@ function isFlowOverlayRoute() {
   if (FLOW_OVERLAY_ROUTES.has(route)) return true;
   if (route === 'pages/main-pages/partnerMode/confirmBG/index') {
     return !!(current._fromGameView || (current.data && current.data.fromGameView));
+  }
+  // 全局回顾与主流程同路由，必须按回顾态识别，否则副屏轮询会把成员从回顾页拉走
+  if (route === 'pages/main-pages/partnerMode/gamepage/index') {
+    return !!(current._isHistoryReview || (current.data && current.data.isHistoryReview));
   }
   return false;
 }
@@ -110,6 +116,7 @@ function _releaseNav() {
  * @param {string} url
  * @param {object} [options]
  * @param {boolean} [options.preferNavigate] 子页面栈内优先 navigateTo
+ * @param {boolean} [options.preferReLaunch] 结算/收尾回局等场景清空页面栈，避免 navigateBack 退到选情境
  * @param {boolean} [options.immediate] 跳过首跳延迟
  * @param {number} [options.retryCount] 内部重试计数
  * @param {boolean} [options._fromQueue] 内部排队调用
@@ -212,6 +219,15 @@ function _runNav(url, targetRoute, options, retryCount) {
     console.warn('[pageNavigate] 跳转失败', err, url);
     _releaseNav();
   };
+
+  if (options.preferReLaunch && retryCount === 0) {
+    wx.reLaunch({
+      url,
+      success: onSuccess,
+      fail: (e) => onFail(e, 'navigateTo')
+    });
+    return;
+  }
 
   if (options.preferNavigate && retryCount === 0) {
     wx.navigateTo({ url, success: onSuccess, fail: (e) => onFail(e, 'navigateTo') });

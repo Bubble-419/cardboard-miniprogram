@@ -10,6 +10,151 @@ const ELAPSED_COLOR = '#b0e0ae';
 const BORDER_RADIUS_RPX = 28;
 const EXPIRE_ANIM_MS = 2000;
 
+/** 静默边框：0–80 dB 走完整半周；40 dB 为黄绿阈值 */
+const SOUND_MAX_DB = 80;
+const SOUND_WARN_DB = 40;
+const SOUND_EASE_MS = 420;
+const SOUND_TICK_MS = 32;
+const SOUND_WARN_HOLD_MS = 700;
+const SOUND_COLOR_STOPS = [
+  { t: 0, rgb: [62, 198, 201] },
+  { t: 0.18, rgb: [126, 240, 208] },
+  { t: 0.36, rgb: [94, 193, 89] },
+  { t: 0.5, rgb: [198, 224, 90] },
+  { t: 0.62, rgb: [240, 210, 74] },
+  { t: 0.78, rgb: [245, 160, 58] },
+  { t: 1, rgb: [240, 90, 74] }
+];
+
+function clamp01(n) {
+  return Math.min(1, Math.max(0, n));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function mixRgb(a, b, t) {
+  return [
+    Math.round(lerp(a[0], b[0], t)),
+    Math.round(lerp(a[1], b[1], t)),
+    Math.round(lerp(a[2], b[2], t))
+  ];
+}
+
+function colorAtPathT(t) {
+  const x = clamp01(t);
+  for (let i = 1; i < SOUND_COLOR_STOPS.length; i++) {
+    if (x <= SOUND_COLOR_STOPS[i].t) {
+      const prev = SOUND_COLOR_STOPS[i - 1];
+      const span = SOUND_COLOR_STOPS[i].t - prev.t || 1;
+      return mixRgb(prev.rgb, SOUND_COLOR_STOPS[i].rgb, (x - prev.t) / span);
+    }
+  }
+  return SOUND_COLOR_STOPS[SOUND_COLOR_STOPS.length - 1].rgb;
+}
+
+function rgba(rgb, a) {
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.max(0, Math.min(1, a))})`;
+}
+
+function addLinePoints(pts, x1, y1, x2, y2, steps) {
+  const n = Math.max(1, steps);
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    pts.push({ x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t });
+  }
+}
+
+function addArcPoints(pts, cx, cy, r, start, end, ccw, steps) {
+  const twoPi = Math.PI * 2;
+  let delta;
+  if (ccw) {
+    delta = end - start;
+    if (delta <= 0) delta += twoPi;
+  } else {
+    delta = start - end;
+    if (delta <= 0) delta += twoPi;
+    delta = -delta;
+  }
+  const n = Math.max(2, steps);
+  for (let i = 1; i <= n; i++) {
+    const a = start + delta * (i / n);
+    pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+}
+
+function buildSoundHalfPath(w, h, r, pad, goRight) {
+  const xL = pad;
+  const yT = pad;
+  const xR = w - pad;
+  const yB = h - pad;
+  const cx = (xL + xR) / 2;
+  const pts = [{ x: cx, y: yB }];
+  const lineSteps = (len) => Math.max(3, Math.round(Math.abs(len) / 10));
+  const arcSteps = Math.max(5, Math.round((Math.PI / 2) * r / 7));
+  if (goRight) {
+    addLinePoints(pts, cx, yB, xR - r, yB, lineSteps(xR - r - cx));
+    addArcPoints(pts, xR - r, yB - r, r, Math.PI / 2, 0, false, arcSteps);
+    addLinePoints(pts, xR, yB - r, xR, yT + r, lineSteps(yB - yT - 2 * r));
+    addArcPoints(pts, xR - r, yT + r, r, 0, -Math.PI / 2, false, arcSteps);
+    addLinePoints(pts, xR - r, yT, cx, yT, lineSteps(xR - r - cx));
+  } else {
+    addLinePoints(pts, cx, yB, xL + r, yB, lineSteps(cx - (xL + r)));
+    addArcPoints(pts, xL + r, yB - r, r, Math.PI / 2, Math.PI, true, arcSteps);
+    addLinePoints(pts, xL, yB - r, xL, yT + r, lineSteps(yB - yT - 2 * r));
+    addArcPoints(pts, xL + r, yT + r, r, Math.PI, Math.PI * 1.5, true, arcSteps);
+    addLinePoints(pts, xL + r, yT, cx, yT, lineSteps(cx - (xL + r)));
+  }
+  return pts;
+}
+
+function strokeSoundBand(ctx, pts, progress, lineWidth) {
+  if (!pts || pts.length < 2 || progress <= 0.004) return;
+  let totalLen = 0;
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    const seg = Math.hypot(dx, dy);
+    segs.push({ dx, dy, seg, x1: pts[i - 1].x, y1: pts[i - 1].y });
+    totalLen += seg;
+  }
+  if (totalLen < 1) return;
+  const drawLen = totalLen * clamp01(progress);
+  const fadeStart = drawLen * 0.86;
+  const passes = [
+    { w: lineWidth * 3.2, a: 0.15 },
+    { w: lineWidth * 1.75, a: 0.3 },
+    { w: lineWidth, a: 1 }
+  ];
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  passes.forEach((pass) => {
+    let traveled = 0;
+    ctx.lineWidth = pass.w;
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (s.seg < 0.01) continue;
+      if (traveled >= drawLen) break;
+      const next = Math.min(drawLen, traveled + s.seg);
+      const tMid = ((traveled + next) / 2) / totalLen;
+      let alpha = pass.a;
+      if (next > fadeStart) {
+        const fadeT = (next - fadeStart) / Math.max(0.001, drawLen - fadeStart);
+        alpha *= 1 - fadeT * fadeT;
+      }
+      const cut = (next - traveled) / s.seg;
+      ctx.beginPath();
+      ctx.strokeStyle = rgba(colorAtPathT(tMid), alpha);
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x1 + s.dx * cut, s.y1 + s.dy * cut);
+      ctx.stroke();
+      traveled = next;
+    }
+  });
+}
+
 Component({
   properties: {
     startedAt: {
@@ -39,8 +184,8 @@ Component({
       value: ''
     },
     /**
-     * 声贝等级 0~1（用于 sound variant 音柱高度驱动）
-     * 0 = 静音，1 = 最大；由外部页面传入（房主本地采样或轮询同步值）
+     * 声贝等级 0~1：1 ≈ 80 dB，0.5 ≈ 40 dB。
+     * 由外部页面传入（发起者本地采样或轮询同步值）
      */
     soundLevel: {
       type: Number,
@@ -51,17 +196,18 @@ Component({
   data: {
     borderVisible: false,
     displayMode: 'idle',
-    /** 8 个音柱的高度百分比字符串，用于 sound variant */
-    soundBarHeights: ['20%', '40%', '60%', '30%', '70%', '50%', '35%', '55%']
+    soundTooLoud: false
   },
 
   lifetimes: {
     ready() {
       this._syncDisplayMode();
+      this._syncSoundVisual();
     },
     detached() {
       this._stopLocalTimer();
       this._clearExpireTimer();
+      this._stopSoundVisual();
     }
   },
 
@@ -76,11 +222,13 @@ Component({
       this._clearExpireTimer();
       this._syncDisplayMode();
       this._restartLocalTimer();
+      this._syncSoundVisual();
     },
     hide() {
       // 只停绘制，保持最后一帧视觉态，避免转场时卡片框布局突变
       this._stopLocalTimer();
       this._clearExpireTimer();
+      this._stopSoundVisual();
     }
   },
 
@@ -109,15 +257,11 @@ Component({
         this._localCycleStartedAt = 0;
       }
       this._syncDisplayMode();
+      this._syncSoundVisual();
     },
     soundLevel(level) {
-      if (this.properties.borderVariant !== 'sound') return;
-      const lv = Math.min(1, Math.max(0, Number(level) || 0));
-      // 按等级生成 8 个音柱高度（中间柱更高，两侧较低，模拟频谱形状）
-      const SHAPE = [0.5, 0.7, 0.9, 1.0, 1.0, 0.9, 0.7, 0.5];
-      const MIN_H = 0.08; // 静音时的最低高度
-      const soundBarHeights = SHAPE.map((s) => `${Math.round((MIN_H + (1 - MIN_H) * lv * s) * 100)}%`);
-      this.setData({ soundBarHeights });
+      this._soundTarget = clamp01(Number(level) || 0);
+      this._syncSoundVisual();
     }
   },
 
@@ -420,8 +564,156 @@ Component({
     },
 
     _useCssBorder() {
-      const variant = this.properties.borderVariant;
-      return variant === 'rainbow' || variant === 'sound';
+      return this.properties.borderVariant === 'rainbow';
+    },
+
+    _syncSoundVisual() {
+      if (this.properties.borderVariant === 'sound' && this.data.displayMode !== 'expiring') {
+        this._startSoundVisual();
+        return;
+      }
+      this._stopSoundVisual();
+      if (this.data.soundTooLoud) {
+        this.setData({ soundTooLoud: false });
+      }
+    },
+
+    _startSoundVisual() {
+      if (this._soundTimer || this._soundStarting) return;
+      this._soundStarting = true;
+      this._soundToken = (this._soundToken || 0) + 1;
+      const token = this._soundToken;
+      this._soundTarget = clamp01(
+        this._soundTarget != null ? this._soundTarget : (Number(this.properties.soundLevel) || 0)
+      );
+      if (this._soundSmooth == null) this._soundSmooth = this._soundTarget;
+      this._ensureSoundCanvas(() => {
+        this._soundStarting = false;
+        if (token !== this._soundToken) return;
+        if (this.properties.borderVariant !== 'sound') return;
+        const tick = () => {
+          if (token !== this._soundToken) return;
+          this._tickSoundVisual();
+          if (token !== this._soundToken) return;
+          this._soundTimer = setTimeout(tick, SOUND_TICK_MS);
+        };
+        tick();
+      });
+    },
+
+    _stopSoundVisual() {
+      this._soundStarting = false;
+      this._soundToken = (this._soundToken || 0) + 1;
+      this._over40Since = 0;
+      if (this._soundTimer) {
+        clearTimeout(this._soundTimer);
+        this._soundTimer = null;
+      }
+      this._soundCtx = null;
+      this._soundCanvas = null;
+    },
+
+    _ensureSoundCanvas(done) {
+      if (this.properties.borderVariant !== 'sound') {
+        this._soundStarting = false;
+        return;
+      }
+      if (this._soundCtx && this._soundW && this._soundH) {
+        if (done) done();
+        return;
+      }
+      const query = this.createSelectorQuery().in(this);
+      query.select('#gctSoundCanvas')
+        .fields({ node: true, size: true })
+        .exec((res) => {
+          if (this.properties.borderVariant !== 'sound') {
+            this._soundStarting = false;
+            return;
+          }
+          if (!res || !res[0] || !res[0].node) {
+            setTimeout(() => this._ensureSoundCanvas(done), 80);
+            return;
+          }
+          const canvas = res[0].node;
+          const ctx = canvas.getContext('2d');
+          const dpr = (wx.getWindowInfo && wx.getWindowInfo().pixelRatio) || 2;
+          const width = res[0].width;
+          const height = res[0].height;
+          if (!width || !height) {
+            setTimeout(() => this._ensureSoundCanvas(done), 80);
+            return;
+          }
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(dpr, dpr);
+          this._soundCanvas = canvas;
+          this._soundCtx = ctx;
+          this._soundW = width;
+          this._soundH = height;
+          if (done) done();
+        });
+    },
+
+    _tickSoundVisual() {
+      if (this.properties.borderVariant !== 'sound' || this.data.displayMode === 'expiring') {
+        this._stopSoundVisual();
+        return;
+      }
+      const ctx = this._soundCtx;
+      const w = this._soundW;
+      const h = this._soundH;
+      if (!ctx || !w || !h) {
+        this._soundCtx = null;
+        this._ensureSoundCanvas();
+        return;
+      }
+      const target = clamp01(
+        this._soundTarget != null ? this._soundTarget : (Number(this.properties.soundLevel) || 0)
+      );
+      const k = 1 - Math.exp(-SOUND_TICK_MS / SOUND_EASE_MS);
+      this._soundSmooth = (this._soundSmooth || 0) + (target - (this._soundSmooth || 0)) * k;
+      const db = this._soundSmooth * SOUND_MAX_DB;
+      const progress = clamp01(db / SOUND_MAX_DB);
+
+      ctx.clearRect(0, 0, w, h);
+      const rpxToPx = this._getRpxToPx();
+      const thick = 8 * rpxToPx;
+      const pad = thick / 2 + 0.5;
+      const xL = pad;
+      const yT = pad;
+      const xR = w - pad;
+      const yB = h - pad;
+      const iw = xR - xL;
+      const ih = yB - yT;
+      const r = Math.max(0, Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2));
+
+      this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
+      ctx.strokeStyle = 'rgba(176, 224, 174, 0.38)';
+      ctx.lineWidth = 4 * rpxToPx;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      const bandWidth = 5.5 * rpxToPx;
+      const rightPath = buildSoundHalfPath(w, h, r, pad, true);
+      const leftPath = buildSoundHalfPath(w, h, r, pad, false);
+      strokeSoundBand(ctx, rightPath, progress, bandWidth);
+      strokeSoundBand(ctx, leftPath, progress, bandWidth);
+
+      const now = Date.now();
+      if (db >= SOUND_WARN_DB) {
+        if (!this._over40Since) this._over40Since = now;
+        const loud = now - this._over40Since >= SOUND_WARN_HOLD_MS;
+        if (loud !== this.data.soundTooLoud) {
+          this.setData({ soundTooLoud: loud });
+        }
+      } else {
+        this._over40Since = 0;
+        if (this.data.soundTooLoud && db < SOUND_WARN_DB - 2) {
+          this.setData({ soundTooLoud: false });
+        }
+      }
     },
 
     _drawBorder() {

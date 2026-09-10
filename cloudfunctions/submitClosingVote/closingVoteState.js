@@ -2,11 +2,34 @@ function getBrainstormSessionSeq(room) {
   return room && room.brainstormSessionSeq != null ? room.brainstormSessionSeq : 0;
 }
 
+function toPlayerIndex(value) {
+  const idx = value != null ? Number(value) : NaN;
+  return Number.isFinite(idx) && idx > 0 ? idx : null;
+}
+
+function isClosingVoteInitiator(playerIndex, initiatorPlayerIndex) {
+  const player = toPlayerIndex(playerIndex);
+  const initiator = toPlayerIndex(initiatorPlayerIndex);
+  return player != null && initiator != null && player === initiator;
+}
+
+function applyInitiatorDefaultPass(votes, initiatorPlayerIndex) {
+  const next = votes && typeof votes === 'object' ? { ...votes } : {};
+  const idx = toPlayerIndex(initiatorPlayerIndex);
+  if (idx != null) {
+    const key = String(idx);
+    if (!next[key]) next[key] = 'pass';
+  }
+  return next;
+}
+
 function buildEmptyClosingVoteState(brainstormSessionSeq) {
   return {
     sessionId: 0,
     seq: 0,
     brainstormSessionSeq: brainstormSessionSeq != null ? brainstormSessionSeq : 0,
+    // 云库不能写 null；0 对 toPlayerIndex 视为无效，空会话仍会因 sessionId/seq 被丢掉
+    initiatorPlayerIndex: 0,
     votes: {}
   };
 }
@@ -18,25 +41,32 @@ function normalizeClosingVoteState(raw, brainstormSessionSeq) {
   const seq = src.seq != null ? src.seq : 0;
   const sessionId = src.sessionId != null ? src.sessionId : 0;
   if (sessionSeq !== brainstormSessionSeq || seq < 1 || sessionId < 1) return null;
+  const initiatorPlayerIndex = toPlayerIndex(src.initiatorPlayerIndex);
   return {
     sessionId,
     seq,
     brainstormSessionSeq: sessionSeq,
-    votes: src.votes && typeof src.votes === 'object' ? { ...src.votes } : {}
+    initiatorPlayerIndex,
+    votes: applyInitiatorDefaultPass(
+      src.votes && typeof src.votes === 'object' ? src.votes : {},
+      initiatorPlayerIndex
+    )
   };
 }
 
-function buildNewClosingVoteState(room, brainstormSessionSeq) {
+function buildNewClosingVoteState(room, brainstormSessionSeq, initiatorPlayerIndex) {
   const sessionSeq = brainstormSessionSeq != null
     ? brainstormSessionSeq
     : getBrainstormSessionSeq(room);
   const prev = normalizeClosingVoteState(room && room.closingVoteState, sessionSeq);
   const prevSeq = prev ? prev.seq : 0;
+  const initiator = toPlayerIndex(initiatorPlayerIndex);
   return {
     sessionId: Date.now(),
     seq: prevSeq + 1,
     brainstormSessionSeq: sessionSeq,
-    votes: {}
+    initiatorPlayerIndex: initiator != null ? initiator : 0,
+    votes: applyInitiatorDefaultPass({}, initiator)
   };
 }
 
@@ -48,15 +78,18 @@ function resolveActiveClosingVotes(room) {
       ? room.closingVotes
       : {};
     const stateVotes = state.votes || {};
-    // 顶层已空而 state.votes 仍有值：云库浅合并残留，忽略
-    const votes = (Object.keys(topVotes).length === 0 && Object.keys(stateVotes).length > 0)
-      ? {}
-      : stateVotes;
+    // 有效会话以 state.votes 为准；顶层有票时合并。发起者始终默认通过。
+    let votes = { ...stateVotes };
+    if (Object.keys(topVotes).length > 0) {
+      votes = { ...votes, ...topVotes };
+    }
+    votes = applyInitiatorDefaultPass(votes, state.initiatorPlayerIndex);
     return {
       votes,
       seq: state.seq,
       sessionId: state.sessionId,
       brainstormSessionSeq: sessionSeq,
+      initiatorPlayerIndex: state.initiatorPlayerIndex,
       state: { ...state, votes }
     };
   }
@@ -65,12 +98,16 @@ function resolveActiveClosingVotes(room) {
     seq: 0,
     sessionId: 0,
     brainstormSessionSeq: sessionSeq,
+    initiatorPlayerIndex: null,
     state: null
   };
 }
 
 module.exports = {
   getBrainstormSessionSeq,
+  toPlayerIndex,
+  isClosingVoteInitiator,
+  applyInitiatorDefaultPass,
   buildEmptyClosingVoteState,
   normalizeClosingVoteState,
   buildNewClosingVoteState,

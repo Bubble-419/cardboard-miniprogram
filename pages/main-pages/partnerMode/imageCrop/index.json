@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+    "interaction-lock-layer": "/components/interaction-lock-layer/index"
+  },
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "disableSwipeBack": true
+}

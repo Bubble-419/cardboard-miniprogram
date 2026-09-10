@@ -68,10 +68,28 @@ Component({
       type: String,
       value: ''
     },
+    /** Master/静默等特殊行动：倒计时强制画在行动者头像 */
+    specialMoveActive: {
+      type: Boolean,
+      value: false
+    },
+    visualMode: {
+      type: String,
+      value: 'default'
+    },
+    onActionPage: {
+      type: Boolean,
+      value: true
+    },
     /** 额外右侧插槽占位（rpx），一般不必再传——组件已按胶囊宽度预留 */
     extraRightRpx: {
       type: Number,
       value: 0
+    },
+    /** 左侧内边距（rpx）。用属性+内联样式，避免页面 wxss 打不到自定义组件宿主 */
+    padLeftRpx: {
+      type: Number,
+      value: 40
     }
   },
 
@@ -129,6 +147,10 @@ Component({
 
     onAvatarTap(e) {
       this.triggerEvent('avatartap', (e && e.detail) || {});
+    },
+
+    onTimerExpire(e) {
+      this.triggerEvent('timerexpire', (e && e.detail) || {});
     }
   }
 });

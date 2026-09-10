@@ -48,13 +48,55 @@
   flex-direction: column;
 }
 
-/* 设计问题 chip 行：位于 player-top-bar 下方 */
-.problem-chip-row {
+.top-bar {
   display: flex;
-  align-items: center;
-  padding: 8rpx 30rpx 12rpx;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding-left: 30rpx;
+  padding-bottom: 12rpx;
   flex-shrink: 0;
   box-sizing: border-box;
+}
+
+.top-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.room-entry {
+  border-radius: 9999rpx;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.room-entry-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.problem-chip {
+  flex: none;
+  width: 432rpx;
+  max-width: 432rpx;
+  min-width: 0;
+  min-height: 64rpx;
+  padding: 10rpx 20rpx;
+  background: #e9f5e9;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  position: relative;
+  box-sizing: border-box;
+  z-index: 2;
 }
 
 /* 与主流程 gamepage 一致：灵感栏与底部按钮间距 18rpx */
@@ -64,49 +106,6 @@
   box-sizing: border-box;
   position: relative;
   z-index: 60;
-}
-
-
-.top-bar {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 8rpx 30rpx 12rpx;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-.room-entry {
-  width: 74rpx;
-  height: 74rpx;
-  border-radius: 9999rpx;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.room-entry-icon {
-  width: 74rpx;
-  height: 74rpx;
-}
-
-.problem-chip {
-  flex: none;
-  width: 432rpx;
-  max-width: 432rpx;
-  min-width: 432rpx;
-  min-height: 74rpx;
-  padding: 14rpx 20rpx;
-  background: #e9f5e9;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  position: relative;
-  box-sizing: border-box;
-  z-index: 2;
 }
 
 .problem-chip-expanded {
@@ -1237,4 +1236,138 @@
 .chat-send-icon {
   width: 32rpx;
   height: 32rpx;
+}
+
+.game-card-muted {
+  border: 4rpx solid #d4e0d4;
+  background: #f7faf7;
+}
+
+.card-header-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 24rpx 28rpx 12rpx;
+  box-sizing: border-box;
+}
+
+.card-section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #5ec159;
+  margin-bottom: 16rpx;
+}
+
+.card-section-title-inline {
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-section-title-gap {
+  margin-top: 28rpx;
+}
+
+.card-section-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 12rpx;
+}
+
+.card-section-flow .card-bullet {
+  margin: 0;
+}
+
+.card-scroll {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-scroll-inner {
+  padding: 0 28rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.card-bullet-list {
+  margin-bottom: 20rpx;
+}
+
+.card-bullet {
+  font-size: 28rpx;
+  color: #5f5f5f;
+  line-height: 1.5;
+  margin-bottom: 8rpx;
+}
+
+.card-bullet-empty {
+  color: #b0b0b0;
+}
+
+.card-media-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.card-media-thumb {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+}
+
+.card-media-thumb-flow {
+  width: 200rpx;
+  height: 200rpx;
+  flex-shrink: 0;
+}
+
+/* 疑问讨论插图：占满卡片内容区宽度，保留容器内边距，高度按原比例自适应 */
+.card-media-flow-fit {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  flex-shrink: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+  line-height: 0;
+}
+
+.card-media-flow-fit-img {
+  width: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+.dot-lg {
+  width: 18rpx;
+  height: 18rpx;
+}
+
+.dot-md {
+  width: 14rpx;
+  height: 14rpx;
+}
+
+.dot-sm {
+  width: 10rpx;
+  height: 10rpx;
+  opacity: 0.7;
+}
+
+.dot-xs {
+  width: 8rpx;
+  height: 8rpx;
+  opacity: 0.5;
 }

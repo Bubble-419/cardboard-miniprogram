@@ -1,12 +1,14 @@
 <view class="container">
+  <player-top-bar
+    avatarList="{{avatarList}}"
+    currentUser="{{currentUser}}"
+    maxVisible="{{5}}"
+    padLeftRpx="{{48}}"
+    bind:goroom="handleGoRoom"
+  />
+
   <!-- 顶部标题区 -->
   <view class="header-section">
-    <player-top-bar
-      avatarList="{{avatarList}}"
-      currentUser="{{currentUser}}"
-      maxVisible="{{5}}"
-      bind:goroom="handleGoRoom"
-    />
     <view class="title-block">
       <text class="page-title">脑暴模式</text>
       <text class="page-subtitle">

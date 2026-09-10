@@ -1,6 +1,6 @@
 const { buildGamepageUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { openUrl, safeNavigateBack } = require('../../../../utils/pageNavigate');
+const { openUrl } = require('../../../../utils/pageNavigate');
 const { PHASE_CLOSING } = require('../../../../utils/partnerGamePhase');
 const {
   runPageInteraction,
@@ -15,6 +15,7 @@ Page(withPageInteractionLock({
   data: {
     roomId: '',
     hasVoted: false,
+    isInitiator: false,
     isSubmitting: false,
     voteResult: '',
     closingVoteSessionId: 0,
@@ -36,10 +37,14 @@ Page(withPageInteractionLock({
       ? expectedSessionId
       : 0;
     this._settlementNavigating = false;
+    this._sawLiveClosingSession = false;
+    this._enteredAt = Date.now();
+    const isInitiator = options && (options.isInitiator === '1' || options.isInitiator === 'true');
     this.setData({
       roomId,
-      hasVoted: false,
-      voteResult: '',
+      hasVoted: !!isInitiator,
+      isInitiator: !!isInitiator,
+      voteResult: isInitiator ? 'pass' : '',
       isSubmitting: false,
       closingVoteSessionId: 0,
       closingVoteSeq: 0
@@ -65,10 +70,30 @@ Page(withPageInteractionLock({
 
   /**
    * 未表态时绝不离页（避免进页瞬间读到旧 gamepage/closingend 被踢走）
-   * 仅本人已表态，或提交接口确认本会话已结算时，才跟随跳转
+   * 发起人默认已通过；其余玩家须本人已表态或接口确认已结算
    */
   _canLeaveClosingStatement() {
-    return this.data.hasVoted === true || this._settlementNavigating === true;
+    return this.data.hasVoted === true
+      || this.data.isInitiator === true
+      || this._settlementNavigating === true;
+  },
+
+  _isConfirmedSettlement(page, state) {
+    const p = String(page || '').toLowerCase();
+    if (p === 'closingend') return true;
+    if (p !== 'gamepage') return false;
+    if (this._settlementNavigating) return true;
+    const roomState = state || {};
+    if (roomState.partnerGamePhase === PHASE_CLOSING) return true;
+    if (Array.isArray(roomState.closingQuestionPlayers)
+      && roomState.closingQuestionPlayers.length > 0) {
+      return true;
+    }
+    if (this._sawLiveClosingSession) return true;
+    const startedAt = Number(roomState.partnerRoundStartedAt) || 0;
+    const enteredAt = this._enteredAt || 0;
+    // 结算会刷新回合锚点；进表态页之后才刷新的，视为已结算而非旧出牌快照
+    return enteredAt > 0 && startedAt >= enteredAt;
   },
 
   _navigateAfterVoteSettlement(result) {
@@ -78,11 +103,13 @@ Page(withPageInteractionLock({
 
     const page = String(result.currentPage || '').toLowerCase();
     if (!page || page === 'closingstatement') return false;
+    if (!this._isConfirmedSettlement(page, result)) return false;
 
     this._stopStatePolling();
     this._settlementNavigating = true;
+    const navOpts = { immediate: true, preferReLaunch: true };
     if (page === 'closingend') {
-      return openUrl(buildClosingEndUrl(roomId), { immediate: true });
+      return openUrl(buildClosingEndUrl(roomId), navOpts);
     }
     if (page === 'gamepage') {
       const phase = result.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
@@ -90,7 +117,7 @@ Page(withPageInteractionLock({
       return openUrl(buildGamepageUrl(roomId, idx, 'partner', {
         phase,
         closingStep: result.partnerClosingStep || undefined
-      }), { immediate: true });
+      }), navOpts);
     }
     return false;
   },
@@ -116,36 +143,38 @@ Page(withPageInteractionLock({
       && sessionId > 0
       && sessionId !== this._expectedSessionId
     ) {
+      this._sawLiveClosingSession = true;
       this.setData({
         closingVoteSessionId: sessionId,
-        closingVoteSeq: seq,
-        hasVoted: false,
-        voteResult: ''
+        closingVoteSeq: seq
       });
       return;
     }
 
     if (sessionId > 0) {
       this._expectedSessionId = sessionId;
+      this._sawLiveClosingSession = true;
     }
 
     const votes = (result.roomState && result.roomState.closingVotes) || {};
     const myVote = votes[String(me.playerIndex)];
-    if (sessionId > 0 && isValidClosingVote(myVote)) {
-      this.setData({
-        closingVoteSessionId: sessionId,
-        closingVoteSeq: seq,
-        hasVoted: true,
-        voteResult: myVote
-      });
-    } else {
-      this.setData({
-        closingVoteSessionId: sessionId || 0,
-        closingVoteSeq: seq || 0,
-        hasVoted: false,
-        voteResult: ''
-      });
-    }
+    const initiatorIdx = result.roomState && result.roomState.closingVoteInitiatorIndex != null
+      ? Number(result.roomState.closingVoteInitiatorIndex)
+      : null;
+    const serverIsInitiator = initiatorIdx != null && initiatorIdx === Number(me.playerIndex);
+    const isInitiator = serverIsInitiator || (initiatorIdx == null && this.data.isInitiator);
+    const hasVoted = this.data.hasVoted
+      || serverIsInitiator
+      || (sessionId > 0 && isValidClosingVote(myVote));
+    this.setData({
+      closingVoteSessionId: sessionId || 0,
+      closingVoteSeq: seq || 0,
+      hasVoted,
+      isInitiator,
+      voteResult: isInitiator
+        ? (isValidClosingVote(myVote) ? myVote : 'pass')
+        : (isValidClosingVote(myVote) ? myVote : '')
+    });
   },
 
   async _refreshVoteStatus() {
@@ -169,12 +198,16 @@ Page(withPageInteractionLock({
       if (!this._canLeaveClosingStatement()) {
         return;
       }
+      if (!this._isConfirmedSettlement(page, result.roomState)) {
+        return;
+      }
 
       this._navigateAfterVoteSettlement({
         currentPage: page,
         partnerGamePhase: result.roomState.partnerGamePhase,
         partnerClosingStep: result.roomState.partnerClosingStep,
-        currentPlayerIndex: result.roomState.currentPlayerIndex
+        currentPlayerIndex: result.roomState.currentPlayerIndex,
+        closingQuestionPlayers: result.roomState.closingQuestionPlayers
       });
     } catch (e) {
       console.warn('closingStatement _refreshVoteStatus', e);
@@ -203,9 +236,12 @@ Page(withPageInteractionLock({
             if (!this._canLeaveClosingStatement()) {
               return true;
             }
+            if (!this._isConfirmedSettlement(page, pollResult.roomState)) {
+              return true;
+            }
 
             if (page === 'closingend') {
-              openUrl(buildClosingEndUrl(roomId), { immediate: true });
+              openUrl(buildClosingEndUrl(roomId), { immediate: true, preferReLaunch: true });
               return true;
             }
             if (page === 'gamepage') {
@@ -215,10 +251,14 @@ Page(withPageInteractionLock({
               openUrl(buildGamepageUrl(roomId, idx, 'partner', {
                 phase,
                 closingStep: state.partnerClosingStep || undefined
-              }), { immediate: true });
+              }), { immediate: true, preferReLaunch: true });
               return true;
             }
-            return false;
+            if (pollResult.roomState && pollResult.roomState.brainstormSessionEnded === true) {
+              return false;
+            }
+            // 表态期间忽略情境/大厅等回跳，避免页面栈退回「重新选择情境」
+            return true;
           }
         });
       } catch (e) {
@@ -243,7 +283,7 @@ Page(withPageInteractionLock({
   },
 
   async _submitVote(e) {
-    if (this.data.hasVoted || this.data.isSubmitting) return;
+    if (this.data.hasVoted || this.data.isInitiator || this.data.isSubmitting) return;
     const vote = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.vote;
     if (!vote) return;
 
@@ -258,7 +298,20 @@ Page(withPageInteractionLock({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) {
-        wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+        if (result.errCode === 'INITIATOR_EXEMPT') {
+          this.setData({
+            hasVoted: true,
+            isInitiator: true,
+            voteResult: 'pass',
+            isSubmitting: false
+          });
+          return;
+        }
+        wx.showToast({
+          title: result.errMsg || result.errCode || '提交失败',
+          icon: 'none',
+          duration: 2500
+        });
         this.setData({ isSubmitting: false });
         this._refreshVoteStatus();
         return;
@@ -267,6 +320,7 @@ Page(withPageInteractionLock({
       if (result.closingVoteSessionId) {
         this._expectedSessionId = Number(result.closingVoteSessionId) || this._expectedSessionId;
       }
+      this._sawLiveClosingSession = true;
 
       this.setData({
         hasVoted: true,
@@ -279,7 +333,7 @@ Page(withPageInteractionLock({
       });
 
       const settledPage = String(result.currentPage || '').toLowerCase();
-      if (settledPage && settledPage !== 'closingstatement') {
+      if (result.settled === true || (settledPage && settledPage !== 'closingstatement')) {
         this._settlementNavigating = true;
         this._navigateAfterVoteSettlement(result);
       }
@@ -292,10 +346,14 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
+      if (!this._canLeaveClosingStatement()) {
+        wx.showToast({ title: '请先完成收尾表态', icon: 'none' });
+        return;
+      }
       const roomId = this.data.roomId || '';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
-        fallbackUrl: roomId ? buildGamepageUrl(roomId, 1, 'partner') : ''
+      openUrl(roomId ? buildGamepageUrl(roomId, 1, 'partner') : '/pages/main-pages/addPlayer/index', {
+        immediate: true,
+        preferReLaunch: true
       });
     }, { loadingText: '正在返回…' });
   }

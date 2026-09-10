@@ -109,6 +109,11 @@ Component({
     onActionPage: {
       type: Boolean,
       value: true
+    },
+    /** Master/静默等特殊行动：卡片仅装饰外圈，倒计时强制画在行动者头像 */
+    specialMoveActive: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -144,7 +149,7 @@ Component({
         overflowCount: nextOverflow
       });
     },
-    'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame, visualMode, onActionPage': function syncFrameUsers() {
+    'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame, visualMode, onActionPage, specialMoveActive': function syncFrameUsers() {
       this._syncFrameUsers();
       this._syncActingFrameMode();
     },
@@ -298,9 +303,10 @@ Component({
       });
     },
 
-    /** 合伙人页仅在查看历史卡时把倒计时绘制到行动者头像；通用模式保持原行为 */
+    /** 合伙人页仅在查看历史卡或特殊行动时把倒计时绘制到行动者头像；通用模式保持原行为 */
     _shouldUseAvatarTimerFx() {
       if (!this._isPartnerGameVisual()) return true;
+      if (this.properties.specialMoveActive === true) return true;
       return this.properties.onActionPage === false;
     },
 
@@ -375,6 +381,7 @@ Component({
       this._expireAnimPlayed = true;
       this._stopActingTimerDraw();
       this.setData({ actingFrameMode: 'expiring' });
+      this.triggerEvent('timerexpire', { loop: true });
       this._expireTimer = setTimeout(() => {
         this._expireTimer = null;
         this._expiringTriggered = false;

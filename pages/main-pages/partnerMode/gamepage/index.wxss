@@ -250,6 +250,30 @@
   height: 100%;
 }
 
+/* 非房主讨论：无底栏时卡片不得盖住页码/灵感栏，并给屏幕底边留白 */
+.container-discussion-guest .card-area-discussion-guest {
+  gap: 16rpx;
+  padding-bottom: 8rpx;
+}
+
+.container-discussion-guest .card-swiper {
+  height: 0;
+}
+
+.container-discussion-guest .card-swiper-item {
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.container-discussion-guest .card-pagination {
+  min-height: 44rpx;
+  padding: 8rpx 30rpx;
+}
+
+.container-discussion-guest .inspiration-bar {
+  margin-top: 24rpx;
+}
+
 .card-swiper-item {
   box-sizing: border-box;
   padding: 0 6rpx;
@@ -618,8 +642,8 @@
   --spectator-action-inset: 30rpx;
   --spectator-fab-size: 60rpx;
   --spectator-action-gap: 16rpx;
-  /* 与按钮同高，避免垂直居中后再多出空白导致底边偏大 */
-  --star-hit-height: 60rpx;
+  /* 热区高于 chip 视觉(60rpx)，便于点按与长按右滑 */
+  --star-hit-height: 104rpx;
   padding: 36rpx var(--spectator-action-inset) var(--spectator-action-inset);
   overflow: hidden;
 }
@@ -751,8 +775,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
-  bottom: 0;
+  top: -16rpx;
+  bottom: -16rpx;
   z-index: 5;
   background: transparent;
 }
@@ -1422,7 +1446,8 @@ game-card-timer {
 .card-section-flow {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: 100%;
   gap: 12rpx;
 }
 
@@ -1436,6 +1461,25 @@ game-card-timer {
   border-radius: 12rpx;
   background: #f3f4f6;
   flex-shrink: 0;
+}
+
+/* 疑问讨论插图：占满卡片内容区宽度，保留容器内边距，高度按原比例自适应 */
+.card-media-flow-fit {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  flex-shrink: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+  line-height: 0;
+}
+
+.card-media-flow-fit-img {
+  width: 100%;
+  display: block;
+  pointer-events: none;
 }
 
 .card-section-head {

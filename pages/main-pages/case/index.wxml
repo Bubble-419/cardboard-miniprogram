@@ -1,8 +1,7 @@
 <view class="container">
   <view class="header-section" id="caseHeader">
     <player-top-bar
-      avatarList="{{avatarList}}"
-      maxVisible="{{5}}"
+      showAvatars="{{false}}"
       showRoomEntry="{{!!roomId}}"
       bind:goroom="handleGoRoom"
     />
@@ -21,7 +20,7 @@
     <view class="case-content">
       <view class="title-section">
         <text class="page-title">案例展示</text>
-        <text class="page-subtitle">参考下面四维度与设计问题示例</text>
+        <text class="page-subtitle">参考下面的设计问题示例</text>
       </view>
       <view class="problem-list">
         <view
@@ -42,6 +41,7 @@
   <page-footer
     extClass="footer"
     showPrimary="{{false}}"
+    prevText="返回"
     bind:prev="goBack"
   ></page-footer>
 </view>

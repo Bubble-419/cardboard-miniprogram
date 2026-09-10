@@ -1,8 +1,7 @@
 <view class="container {{isGameDetail ? 'container-game-detail' : ''}}">
   <!-- 顶部：房间入口 + 堆叠头像（与胶囊水平居中对齐） -->
   <player-top-bar
-    avatarList="{{avatarList}}"
-    maxVisible="{{5}}"
+    showAvatars="{{false}}"
     bind:goroom="handleGoRoom"
   />
 

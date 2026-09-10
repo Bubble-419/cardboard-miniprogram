@@ -104,11 +104,10 @@
   border-radius: 20rpx;
 }
 
-/* 静默：底边声贝识别槽 + 青色外框 */
+/* 静默：浅灰绿基础边框 + 周长渐变光带（canvas），不挤占卡片内容 */
 .gct-wrap-sound:not(.gct-wrap-expiring) {
   overflow: hidden;
-  background: #3ec6c9;
-  box-shadow: 0 0 18rpx rgba(62, 198, 201, 0.35);
+  background: transparent;
 }
 
 .gct-wrap-sound:not(.gct-wrap-expiring) .gct-inner {
@@ -116,38 +115,37 @@
   left: 8rpx;
   top: 8rpx;
   right: 8rpx;
-  bottom: 36rpx;
+  bottom: 8rpx;
   border-radius: 20rpx;
-}
-
-.gct-sound-bars {
-  position: absolute;
-  left: 20rpx;
-  right: 20rpx;
-  bottom: 6rpx;
   z-index: 3;
-  height: 24rpx;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+}
+
+.gct-sound-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 2;
 }
 
-.gct-sound-bar {
-  width: 8rpx;
-  border-radius: 8rpx;
-  background: linear-gradient(180deg, #7ef0f3 0%, #3ec6c9 100%);
-  transition: height 0.18s ease-out;
+.gct-sound-warn {
+  position: absolute;
+  left: 50%;
+  bottom: 28rpx;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 8rpx 18rpx;
+  border-radius: 10rpx;
+  background: rgba(255, 248, 230, 0.94);
+  color: #e08a2a;
+  font-size: 22rpx;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4rpx 12rpx rgba(224, 138, 42, 0.12);
 }
-
-.gct-sound-bar-1 { animation-delay: 0s; }
-.gct-sound-bar-2 { animation-delay: 0.08s; }
-.gct-sound-bar-3 { animation-delay: 0.16s; }
-.gct-sound-bar-4 { animation-delay: 0.24s; }
-.gct-sound-bar-5 { animation-delay: 0.1s; }
-.gct-sound-bar-6 { animation-delay: 0.2s; }
-.gct-sound-bar-7 { animation-delay: 0.04s; }
-.gct-sound-bar-8 { animation-delay: 0.14s; }
 
 @keyframes gct-rainbow-shift {
   0% { background-position: 0% 50%; }
