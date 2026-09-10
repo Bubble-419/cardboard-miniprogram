@@ -3,9 +3,6 @@
     <view class="crop-navbar-inner">
       <view class="crop-nav-btn" catchtap="onCancel">取消</view>
       <text class="crop-nav-title">裁剪图片</text>
-      <view class="crop-nav-btn crop-nav-btn-confirm {{exporting ? 'crop-nav-btn-disabled' : ''}}" catchtap="onConfirm">
-        {{exporting ? '处理中' : '完成'}}
-      </view>
     </view>
   </view>
 
@@ -58,6 +55,10 @@
       >自由</view>
     </view>
     <text class="crop-ratio-label">当前 {{ratioLabel}}</text>
+    <view
+      class="crop-confirm-btn {{exporting ? 'crop-confirm-btn-disabled' : ''}}"
+      catchtap="onConfirm"
+    >{{exporting ? '处理中' : '完成'}}</view>
   </view>
 
   <canvas type="2d" id="cropExportCanvas" class="crop-export-canvas"></canvas>

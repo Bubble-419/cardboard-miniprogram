@@ -297,7 +297,11 @@ Page({
           });
           return;
         }
-        wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
+        wx.showToast({
+          title: result.errMsg || result.errCode || '提交失败',
+          icon: 'none',
+          duration: 2500
+        });
         this.setData({ isSubmitting: false });
         this._refreshVoteStatus();
         return;

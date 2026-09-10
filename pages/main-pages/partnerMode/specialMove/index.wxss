@@ -1273,7 +1273,8 @@
 .card-section-flow {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: 100%;
   gap: 12rpx;
 }
 
@@ -1330,19 +1331,21 @@
   flex-shrink: 0;
 }
 
-/* 疑问讨论插图：定宽、按原比例自适应高度；允许横向，高宽最大 1:1 */
+/* 疑问讨论插图：占满卡片内容区宽度，保留容器内边距，高度按原比例自适应 */
 .card-media-flow-fit {
-  width: 200rpx;
-  max-height: 200rpx;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   border-radius: 12rpx;
   background: #f3f4f6;
   flex-shrink: 0;
+  align-self: stretch;
+  box-sizing: border-box;
   line-height: 0;
 }
 
 .card-media-flow-fit-img {
-  width: 200rpx;
+  width: 100%;
   display: block;
   pointer-events: none;
 }

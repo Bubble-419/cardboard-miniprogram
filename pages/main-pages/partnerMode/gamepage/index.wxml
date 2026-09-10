@@ -1,4 +1,4 @@
-<view class="container {{isHistoryReview ? 'container-history-review' : ''}}">
+<view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}">
   <view class="page-body">
     <!-- 顶部：房间入口 + 设计问题（与微信胶囊垂直齐平） -->
     <view
@@ -299,7 +299,7 @@
 
     <!-- 常规出牌 / 讨论 -->
     <block wx:else>
-    <view class="card-area">
+    <view class="card-area {{!isHost && gamepagePhase === 'discussion' ? 'card-area-discussion-guest' : ''}}">
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
@@ -934,7 +934,7 @@
 
     <!-- 灵感记录：图标进灵感空间 + 底栏快捷输入 -->
     <view
-      class="inspiration-bar {{isHistoryReview ? 'inspiration-bar-history' : ''}} {{inspirationKeyboardHeight > 0 && isHistoryReview ? 'inspiration-bar-history-lifted' : ''}}"
+      class="inspiration-bar {{isHistoryReview ? 'inspiration-bar-history' : ''}} {{inspirationKeyboardHeight > 0 && isHistoryReview ? 'inspiration-bar-history-lifted' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'inspiration-bar-safe-bottom' : ''}}"
       style="{{inspirationLiftStyle}}"
     >
       <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">

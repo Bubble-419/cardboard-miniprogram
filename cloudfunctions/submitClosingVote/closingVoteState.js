@@ -28,7 +28,8 @@ function buildEmptyClosingVoteState(brainstormSessionSeq) {
     sessionId: 0,
     seq: 0,
     brainstormSessionSeq: brainstormSessionSeq != null ? brainstormSessionSeq : 0,
-    initiatorPlayerIndex: null,
+    // 云库不能写 null；0 对 toPlayerIndex 视为无效，空会话仍会因 sessionId/seq 被丢掉
+    initiatorPlayerIndex: 0,
     votes: {}
   };
 }
@@ -64,7 +65,7 @@ function buildNewClosingVoteState(room, brainstormSessionSeq, initiatorPlayerInd
     sessionId: Date.now(),
     seq: prevSeq + 1,
     brainstormSessionSeq: sessionSeq,
-    initiatorPlayerIndex: initiator,
+    initiatorPlayerIndex: initiator != null ? initiator : 0,
     votes: applyInitiatorDefaultPass({}, initiator)
   };
 }

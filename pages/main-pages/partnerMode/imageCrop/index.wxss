@@ -12,11 +12,11 @@
 }
 
 .crop-navbar-inner {
+  position: relative;
   height: 88rpx;
   padding: 0 24rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 
 .crop-nav-btn {
@@ -24,22 +24,18 @@
   font-size: 30rpx;
   color: #fff;
   line-height: 1;
-}
-
-.crop-nav-btn-confirm {
-  color: #5ec159;
-  font-weight: 600;
-  text-align: right;
-}
-
-.crop-nav-btn-disabled {
-  opacity: 0.45;
+  z-index: 1;
 }
 
 .crop-nav-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
   font-size: 32rpx;
   font-weight: 600;
   color: #fff;
+  pointer-events: none;
 }
 
 .crop-stage {
@@ -184,6 +180,29 @@
   font-size: 22rpx;
   color: #808080;
   text-align: center;
+}
+
+.crop-confirm-btn {
+  margin-top: 24rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  background: #5ec159;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 600;
+  letter-spacing: 4rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crop-confirm-btn:active {
+  opacity: 0.85;
+}
+
+.crop-confirm-btn-disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .crop-export-canvas {

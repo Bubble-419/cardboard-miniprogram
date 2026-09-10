@@ -28,6 +28,25 @@ function findMemberBySeat(members, seat) {
   return (members || []).find((m) => toPlayerIndex(m && m.playerIndex) === seat) || null;
 }
 
+/** 云库 update/_.set 不能带 null/undefined，否则整次提交会失败 */
+function omitNulls(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== null && item !== undefined)
+      .map((item) => omitNulls(item));
+  }
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.keys(value).forEach((key) => {
+      const item = value[key];
+      if (item === null || item === undefined) return;
+      out[key] = omitNulls(item);
+    });
+    return out;
+  }
+  return value;
+}
+
 /** 发起人默认通过，其余座位都有票即可结算 */
 function allRequiredVotesIn(votes, seats, initiatorPlayerIndex) {
   const map = votes || {};
@@ -82,7 +101,10 @@ exports.main = async (event, context) => {
     if (!myMember) {
       return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
     }
-    const playerIndex = myMember.playerIndex;
+    const playerIndex = toPlayerIndex(myMember.playerIndex);
+    if (playerIndex == null) {
+      return { ok: false, errCode: 'NO_SEAT', errMsg: '未分配座位' };
+    }
     const voteKey = String(playerIndex);
 
     const membersRes = await db
@@ -138,10 +160,11 @@ exports.main = async (event, context) => {
       }
 
       closingVotes[voteKey] = normalizedVote;
-      const nextState = {
+      const nextState = omitNulls({
         ...voteState,
+        initiatorPlayerIndex: voteState.initiatorPlayerIndex || 0,
         votes: closingVotes
-      };
+      });
 
       const updateData = {
         closingVotes: _.set(closingVotes),
@@ -149,10 +172,16 @@ exports.main = async (event, context) => {
         updatedAt: Date.now()
       };
 
-      let resolvedQuestionPlayers = Array.isArray(room.closingQuestionPlayers)
-        ? room.closingQuestionPlayers.slice()
-        : [];
-      if (normalizedVote === 'question' && !resolvedQuestionPlayers.includes(playerIndex)) {
+      let resolvedQuestionPlayers = (Array.isArray(room.closingQuestionPlayers)
+        ? room.closingQuestionPlayers
+        : []
+      )
+        .map((seat) => toPlayerIndex(seat))
+        .filter((seat) => seat != null);
+      if (
+        normalizedVote === 'question'
+        && resolvedQuestionPlayers.indexOf(playerIndex) < 0
+      ) {
         resolvedQuestionPlayers.push(playerIndex);
         updateData.closingQuestionPlayers = _.set(resolvedQuestionPlayers);
       }
@@ -169,16 +198,17 @@ exports.main = async (event, context) => {
         const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');
         const questionIndices = Object.entries(closingVotes)
           .filter(([, voteValue]) => voteValue === 'question')
-          .map(([key]) => parseInt(key, 10))
-          .filter((n) => Number.isFinite(n))
+          .map(([key]) => toPlayerIndex(key))
+          .filter((seat) => seat != null)
           .sort((a, b) => a - b);
 
+        const prevRev = Number(room.revision);
         updateData.closingVotes = _.set({});
-        updateData.closingVoteState = _.set(buildEmptyClosingVoteState(sessionSeq));
+        updateData.closingVoteState = _.set(omitNulls(buildEmptyClosingVoteState(sessionSeq)));
         updateData.partnerMasterMode = false;
         updateData.currentPage = 'gamepage';
         updateData.brainstormProgressPage = 'gamepage';
-        updateData.revision = (room.revision != null ? Number(room.revision) : 0) + 1;
+        updateData.revision = (Number.isFinite(prevRev) ? prevRev : 0) + 1;
 
         const now = Date.now();
         updateData.partnerRoundStartedAt = now;
@@ -188,10 +218,11 @@ exports.main = async (event, context) => {
           const firstQuestionIndex = questionIndices[0];
           if (firstQuestionIndex != null) {
             const member = findMemberBySeat(roomMembers, firstQuestionIndex);
-            updateData.currentPlayerIndex = firstQuestionIndex;
-            updateData.currentPlayerName = member
-              ? (member.nickName || `玩家${firstQuestionIndex}`)
+            const playerName = member && member.nickName
+              ? String(member.nickName)
               : `玩家${firstQuestionIndex}`;
+            updateData.currentPlayerIndex = firstQuestionIndex;
+            updateData.currentPlayerName = playerName;
             settledCurrentPlayerIndex = firstQuestionIndex;
           }
           updateData.closingQuestionPlayers = _.set(questionIndices);
