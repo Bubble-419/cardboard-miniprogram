@@ -260,10 +260,11 @@ exports.main = async (event, context) => {
     return result;
   } catch (e) {
     console.error('submitClosingVote error', e);
+    const err = e || {};
     return {
       ok: false,
-      errCode: e.errCode || e.code || 'SUBMIT_ERROR',
-      errMsg: e.errMsg || e.message || '提交失败'
+      errCode: err.errCode || err.code || 'SUBMIT_ERROR',
+      errMsg: err.errMsg || err.message || '提交失败'
     };
   }
 };
