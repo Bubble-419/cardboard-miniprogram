@@ -1,7 +1,7 @@
 const STORAGE_PREFIX = 'brainstormProgress_';
 
-/** 不应被 brainstormProgressPage / 本地缓存恢复的页面（收尾过渡态 / 选模式） */
-const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement', 'brainstormmode'];
+/** 不应被 brainstormProgressPage / 本地缓存恢复的页面（收尾结束过渡态 / 选模式） */
+const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'brainstormmode'];
 
 function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());

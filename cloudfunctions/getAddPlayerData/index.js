@@ -14,7 +14,7 @@ const ROOM_SCORES_COLLECTION = 'roomScores';
 /** 未刷新超过该时长视为离线（仅标记，不删除成员、不释放席位） */
 const PRESENCE_TIMEOUT_MS = 90 * 1000;
 
-const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'closingstatement', 'brainstormmode'];
+const NON_RESUMABLE_PROGRESS_PAGES = ['closingend', 'brainstormmode'];
 
 function isNonResumableProgressPage(page) {
   return NON_RESUMABLE_PROGRESS_PAGES.includes((page || '').toLowerCase());
@@ -314,6 +314,7 @@ exports.main = async (event, context) => {
       selectedDesignProblem: room.selectedDesignProblem || null,
       editingProblemId: room.editingProblemId || '',
       currentPage,
+      brainstormProgressPage: room.brainstormProgressPage || null,
       brainstormSessionEnded,
       brainstormSessionSeq,
       currentRound: room.currentRound != null ? room.currentRound : 1,

@@ -412,16 +412,20 @@
                 <block wx:if="{{item.privateNote.discussionBlocks && item.privateNote.discussionBlocks.length}}">
                   <block wx:for="{{item.privateNote.discussionBlocks}}" wx:for-item="block" wx:key="key">
                     <view wx:if="{{block.type === 'text'}}" class="card-bullet">· {{block.text}}</view>
-                    <image
+                    <view
                       wx:elif="{{block.type === 'image'}}"
-                      class="card-media-thumb card-media-thumb-flow"
-                      src="{{block.url}}"
-                      mode="aspectFill"
+                      class="card-media-flow-fit"
                       data-url="{{block.url}}"
                       data-round="{{item.round}}"
                       data-scope="discussion"
                       bindtap="onRoundPrivateInsertPreview"
-                    />
+                    >
+                      <image
+                        class="card-media-flow-fit-img"
+                        src="{{block.url}}"
+                        mode="widthFix"
+                      />
+                    </view>
                   </block>
                 </block>
                 <block wx:else>
@@ -574,15 +578,19 @@
                     <view class="card-section-flow" wx:if="{{discussionBlocks.length}}">
                       <block wx:for="{{discussionBlocks}}" wx:key="key">
                         <view wx:if="{{item.type === 'text'}}" class="card-bullet">· {{item.text}}</view>
-                        <image
+                        <view
                           wx:elif="{{item.type === 'image'}}"
-                          class="card-media-thumb card-media-thumb-flow"
-                          src="{{item.url}}"
-                          mode="aspectFill"
+                          class="card-media-flow-fit"
                           data-url="{{item.url}}"
                           data-scope="discussion"
                           catchtap="onCardImagePreview"
-                        />
+                        >
+                          <image
+                            class="card-media-flow-fit-img"
+                            src="{{item.url}}"
+                            mode="widthFix"
+                          />
+                        </view>
                       </block>
                     </view>
                     <view class="discussion-express-list" wx:if="{{discussionExpressChatList.length}}">

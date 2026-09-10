@@ -43,7 +43,7 @@
         isFold="{{true}}"
         showName="{{false}}"
         visualMode="partner-game"
-        onActionPage="{{cardIndex >= displayRoundSummaries.length}}"
+        onActionPage="{{viewMode === 'wheel' || cardIndex >= displayRoundSummaries.length}}"
         specialMoveActive="{{true}}"
         showActingFrame="{{true}}"
         roundStartedAt="{{avatarRoundStartedAt}}"
@@ -55,29 +55,74 @@
 
     <view class="divider-line"></view>
 
-    <!-- 选择特殊行动 / 反面随机拼 / 全场静默：左侧可滑看历史轮次卡 -->
-    <view class="main-content main-content-fill {{viewMode === 'reverseRandom' ? 'reverse-main' : ''}} {{viewMode === 'silent' ? 'silent-main' : ''}} {{viewMode === 'wheel' ? 'wheel-main' : ''}}">
-      <view class="section-head" wx:if="{{viewMode === 'wheel'}}">
+    <!-- 选择特殊行动：不展示历史卡片 -->
+    <view class="main-content" wx:if="{{viewMode === 'wheel'}}">
+      <view class="section-head">
         <image class="section-back" src="/assets/partnerMode/icon-special-back.svg" mode="aspectFit" bindtap="handleGoBack" />
         <text class="section-title">选择特殊行动</text>
         <view class="section-head-spacer"></view>
       </view>
-      <view class="card-area {{viewMode === 'reverseRandom' ? 'reverse-card-area' : ''}} {{viewMode === 'silent' ? 'silent-card-area' : ''}} {{viewMode === 'wheel' ? 'wheel-card-area' : ''}}">
+      <view class="wheel-wrap">
+        <view class="wheel">
+          <view
+            class="wheel-slice wheel-slice-{{item.zone}} {{selectedAction === item.id ? 'wheel-slice-active' : ''}}"
+            wx:for="{{wheelPieces}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="onSelectAction"
+          ></view>
+          <image class="wheel-cross" src="/assets/partnerMode/special-wheel-cross.svg" mode="aspectFit" />
+          <view class="wheel-label wheel-label-top {{selectedAction === 'master' ? 'wheel-label-active' : ''}}" data-id="master" bindtap="onSelectAction">
+            <text class="wheel-label-sub">开启</text>
+            <view class="wheel-label-quoted">
+              <text class="wheel-label-quote">“</text>
+              <text class="wheel-label-main">MASTER</text>
+              <text class="wheel-label-quote">”</text>
+            </view>
+            <text class="wheel-label-sub">模式</text>
+          </view>
+          <view class="wheel-label wheel-label-left {{selectedAction === 'helpLuck' ? 'wheel-label-active' : ''}}" data-id="helpLuck" bindtap="onSelectAction">
+            <!-- AI_TEMP_DISABLED: 恢复 AI 后改回「求助AI或运气」 -->
+            <text class="wheel-label-vertical">{{aiFeatureEnabled ? '求助AI或运气' : '求助运气'}}</text>
+            <view class="wheel-side-icon wheel-help-icon">
+              <image class="wheel-help-arrows" src="/assets/partnerMode/special-wheel-help-arrows.svg" mode="aspectFit" />
+              <image class="wheel-help-text" src="/assets/partnerMode/special-wheel-help-text.svg" mode="aspectFit" />
+            </view>
+          </view>
+          <view class="wheel-label wheel-label-right {{selectedAction === 'silent' ? 'wheel-label-active' : ''}}" data-id="silent" bindtap="onSelectAction">
+            <image class="wheel-side-icon wheel-silent-icon" src="/assets/partnerMode/special-wheel-silent-icon.svg" mode="aspectFit" />
+            <text class="wheel-label-vertical">全场静默</text>
+          </view>
+          <view class="wheel-label wheel-label-bottom {{selectedAction === 'closing' ? 'wheel-label-active' : ''}}" data-id="closing" bindtap="onSelectAction">
+            <text class="wheel-label-sub">进入</text>
+            <view class="wheel-label-quoted">
+              <text class="wheel-label-quote">“</text>
+              <text class="wheel-label-main wheel-label-main-sm">收尾阶段</text>
+              <text class="wheel-label-quote">”</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 反面随机拼 / 全场静默：可左右滑看历史卡片 -->
+    <view class="main-content main-content-fill {{viewMode === 'reverseRandom' ? 'reverse-main' : ''}} {{viewMode === 'silent' ? 'silent-main' : ''}}" wx:else>
+      <view class="card-area {{viewMode === 'reverseRandom' ? 'reverse-card-area' : ''}} {{viewMode === 'silent' ? 'silent-card-area' : ''}}">
         <swiper
           class="card-swiper"
           current="{{cardIndex}}"
           disable-touch="{{innerScrollLocked}}"
           bindchange="onCardSwiperChange"
-          previous-margin="{{viewMode === 'wheel' && !displayRoundSummaries.length ? '0' : '56rpx'}}"
-          next-margin="{{viewMode === 'wheel' && !displayRoundSummaries.length ? '0' : '56rpx'}}"
+          previous-margin="56rpx"
+          next-margin="56rpx"
           easing-function="easeOutCubic"
         >
           <swiper-item
             class="card-swiper-item"
-            wx:for="{{displayRoundSummaries}}"
-            wx:key="reviewCardKey"
+            wx:for="{{cardSlides}}"
+            wx:key="slideKey"
           >
-            <view class="game-card game-card-muted">
+            <view class="game-card game-card-muted" wx:if="{{item.slideType === 'history'}}">
               <view class="card-header-row">
                 <text class="card-section-title card-section-title-inline">{{item.playerName}} · 第{{item.round}}轮-文字纪要</text>
               </view>
@@ -138,14 +183,18 @@
                     <block wx:if="{{item.privateNote.discussionBlocks && item.privateNote.discussionBlocks.length}}">
                       <block wx:for="{{item.privateNote.discussionBlocks}}" wx:for-item="block" wx:key="key">
                         <view wx:if="{{block.type === 'text'}}" class="card-bullet">· {{block.text}}</view>
-                        <image
+                        <view
                           wx:elif="{{block.type === 'image'}}"
-                          class="card-media-thumb card-media-thumb-flow"
-                          src="{{block.url}}"
-                          mode="aspectFill"
+                          class="card-media-flow-fit"
                           data-url="{{block.url}}"
                           bindtap="onRoundHistoryPreview"
-                        />
+                        >
+                          <image
+                            class="card-media-flow-fit-img"
+                            src="{{block.url}}"
+                            mode="widthFix"
+                          />
+                        </view>
                       </block>
                     </block>
                     <block wx:else>
@@ -199,58 +248,8 @@
                 </view>
               </scroll-view>
             </view>
-          </swiper-item>
 
-          <swiper-item class="card-swiper-item" wx:if="{{viewMode === 'wheel'}}">
-            <view class="wheel-slide {{displayRoundSummaries.length ? 'wheel-slide-with-history' : ''}}">
-              <view class="wheel-wrap">
-                <view class="wheel">
-                  <view
-                    class="wheel-slice wheel-slice-{{item.zone}} {{selectedAction === item.id ? 'wheel-slice-active' : ''}}"
-                    wx:for="{{wheelPieces}}"
-                    wx:key="id"
-                    data-id="{{item.id}}"
-                    bindtap="onSelectAction"
-                  ></view>
-
-                  <image class="wheel-cross" src="/assets/partnerMode/special-wheel-cross.svg" mode="aspectFit" />
-
-                  <view class="wheel-label wheel-label-top {{selectedAction === 'master' ? 'wheel-label-active' : ''}}" data-id="master" bindtap="onSelectAction">
-                    <text class="wheel-label-sub">开启</text>
-                    <view class="wheel-label-quoted">
-                      <text class="wheel-label-quote">“</text>
-                      <text class="wheel-label-main">MASTER</text>
-                      <text class="wheel-label-quote">”</text>
-                    </view>
-                    <text class="wheel-label-sub">模式</text>
-                  </view>
-                  <view class="wheel-label wheel-label-left {{selectedAction === 'helpLuck' ? 'wheel-label-active' : ''}}" data-id="helpLuck" bindtap="onSelectAction">
-                    <!-- AI_TEMP_DISABLED: 恢复 AI 后改回「求助AI或运气」 -->
-                    <text class="wheel-label-vertical">{{aiFeatureEnabled ? '求助AI或运气' : '求助运气'}}</text>
-                    <view class="wheel-side-icon wheel-help-icon">
-                      <image class="wheel-help-arrows" src="/assets/partnerMode/special-wheel-help-arrows.svg" mode="aspectFit" />
-                      <image class="wheel-help-text" src="/assets/partnerMode/special-wheel-help-text.svg" mode="aspectFit" />
-                    </view>
-                  </view>
-                  <view class="wheel-label wheel-label-right {{selectedAction === 'silent' ? 'wheel-label-active' : ''}}" data-id="silent" bindtap="onSelectAction">
-                    <image class="wheel-side-icon wheel-silent-icon" src="/assets/partnerMode/special-wheel-silent-icon.svg" mode="aspectFit" />
-                    <text class="wheel-label-vertical">全场静默</text>
-                  </view>
-                  <view class="wheel-label wheel-label-bottom {{selectedAction === 'closing' ? 'wheel-label-active' : ''}}" data-id="closing" bindtap="onSelectAction">
-                    <text class="wheel-label-sub">进入</text>
-                    <view class="wheel-label-quoted">
-                      <text class="wheel-label-quote">“</text>
-                      <text class="wheel-label-main wheel-label-main-sm">收尾阶段</text>
-                      <text class="wheel-label-quote">”</text>
-                    </view>
-                  </view>
-                </view>
-              </view>
-            </view>
-          </swiper-item>
-
-          <swiper-item class="card-swiper-item" wx:if="{{viewMode === 'reverseRandom'}}">
-            <view class="game-card game-card-active">
+            <view class="game-card game-card-active" wx:elif="{{item.slideType === 'reverse'}}">
               <scroll-view class="reverse-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
                 <view class="reverse-card-inner">
                   <text class="reverse-title">反面随机拼</text>
@@ -265,10 +264,9 @@
                 </view>
               </scroll-view>
             </view>
-          </swiper-item>
 
-          <swiper-item class="card-swiper-item" wx:if="{{viewMode === 'silent'}}">
             <game-card-timer
+              wx:elif="{{item.slideType === 'silent'}}"
               startedAt="{{silentStartedAt}}"
               timerActive="{{false}}"
               durationSec="{{silentDurationSec}}"
@@ -309,7 +307,7 @@
           </swiper-item>
         </swiper>
 
-        <view class="card-pagination" wx:if="{{viewMode !== 'wheel' || displayRoundSummaries.length}}">
+        <view class="card-pagination">
           <view class="pagination-dots">
             <view
               wx:for="{{paginationDots}}"

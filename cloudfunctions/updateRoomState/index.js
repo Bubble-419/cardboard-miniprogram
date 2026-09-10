@@ -510,8 +510,12 @@ exports.main = async (event, context) => {
     const enteringClosing = page === 'closingstatement';
     let resolvedClosingVoteState = null;
     // 新开一轮收尾表态：必须换新 session，禁止沿用上一轮 closingVotes
+    // 从大厅恢复进表态页时 prevPage 可能不是 closingstatement，但有效会话必须保留
     if (enteringClosing) {
-      const forceNewSession = prevPage !== 'closingstatement' || resetClosingVotes === true;
+      const existingVoteState = normalizeClosingVoteState(room.closingVoteState, sessionSeq);
+      const forceNewSession = resetClosingVotes === true || (
+        prevPage !== 'closingstatement' && !existingVoteState
+      );
       const initiatorIdx = closingVoteInitiatorIndex != null
         ? Number(closingVoteInitiatorIndex)
         : null;

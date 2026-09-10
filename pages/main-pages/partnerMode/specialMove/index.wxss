@@ -240,9 +240,7 @@
 .wheel {
   position: relative;
   width: 640rpx;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 1 / 1;
+  height: 640rpx;
   border-radius: 50%;
   overflow: hidden;
   background: #fff;
@@ -907,8 +905,7 @@
 }
 
 .card-swiper-item > .game-card,
-.card-swiper-item > game-card-timer,
-.card-swiper-item > .wheel-slide {
+.card-swiper-item > game-card-timer {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -1241,51 +1238,6 @@
   height: 32rpx;
 }
 
-.wheel-main {
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.wheel-main > .section-head {
-  padding-left: 38rpx;
-  padding-right: 38rpx;
-  flex-shrink: 0;
-}
-
-.wheel-card-area {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  padding-bottom: 0;
-  overflow: hidden;
-}
-
-.wheel-slide {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 0 30rpx;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.wheel-slide-with-history {
-  padding: 0 8rpx;
-}
-
-.wheel-slide .section-head {
-  margin-top: 8rpx;
-}
-
-.wheel-slide .wheel-wrap {
-  flex: 1;
-  min-height: 0;
-}
-
 .game-card-muted {
   border: 4rpx solid #d4e0d4;
   background: #f7faf7;
@@ -1376,6 +1328,23 @@
   width: 200rpx;
   height: 200rpx;
   flex-shrink: 0;
+}
+
+/* 疑问讨论插图：定宽、按原比例自适应高度；允许横向，高宽最大 1:1 */
+.card-media-flow-fit {
+  width: 200rpx;
+  max-height: 200rpx;
+  overflow: hidden;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.card-media-flow-fit-img {
+  width: 200rpx;
+  display: block;
+  pointer-events: none;
 }
 
 .dot-lg {

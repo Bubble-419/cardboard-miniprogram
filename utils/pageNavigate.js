@@ -114,6 +114,7 @@ function _releaseNav() {
  * @param {string} url
  * @param {object} [options]
  * @param {boolean} [options.preferNavigate] 子页面栈内优先 navigateTo
+ * @param {boolean} [options.preferReLaunch] 结算/收尾回局等场景清空页面栈，避免 navigateBack 退到选情境
  * @param {boolean} [options.immediate] 跳过首跳延迟
  * @param {number} [options.retryCount] 内部重试计数
  * @param {boolean} [options._fromQueue] 内部排队调用
@@ -216,6 +217,15 @@ function _runNav(url, targetRoute, options, retryCount) {
     console.warn('[pageNavigate] 跳转失败', err, url);
     _releaseNav();
   };
+
+  if (options.preferReLaunch && retryCount === 0) {
+    wx.reLaunch({
+      url,
+      success: onSuccess,
+      fail: (e) => onFail(e, 'navigateTo')
+    });
+    return;
+  }
 
   if (options.preferNavigate && retryCount === 0) {
     wx.navigateTo({ url, success: onSuccess, fail: (e) => onFail(e, 'navigateTo') });

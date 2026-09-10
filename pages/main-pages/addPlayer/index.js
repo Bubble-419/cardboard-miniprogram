@@ -29,7 +29,7 @@ const {
   isNonResumableProgressPage
 } = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
-const { buildGamepageUrl, buildSpyPageUrl } = require('../../../utils/modeRoutes');
+const { buildGamepageUrl, buildSpyPageUrl, buildClosingStatementUrl } = require('../../../utils/modeRoutes');
 const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const {
   bindPageToRoomSession,
@@ -1899,7 +1899,26 @@ Page({
       },
       gamepage: {
         path: buildGamepageUrl(roomId, idx, modeId, {
-          phase: state.partnerGamePhase === 'discussion' ? 'discussion' : undefined
+          phase: state.partnerGamePhase === 'discussion'
+            ? 'discussion'
+            : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
+          closingStep: state.partnerClosingStep || undefined
+        }),
+        nextPage: 'gamepage'
+      },
+      closingstatement: {
+        path: buildClosingStatementUrl(roomId, {
+          closingVoteSessionId: state.closingVoteSessionId || '',
+          _t: Date.now()
+        }),
+        nextPage: 'closingStatement'
+      },
+      specialmove: {
+        path: buildGamepageUrl(roomId, idx, modeId, {
+          phase: state.partnerGamePhase === 'discussion'
+            ? 'discussion'
+            : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
+          closingStep: state.partnerClosingStep || undefined
         }),
         nextPage: 'gamepage'
       },
@@ -2036,17 +2055,25 @@ Page({
 
     if (target.nextPage) {
       const state = roomState || {};
+      const nextPageKey = String(target.nextPage || '').toLowerCase();
+      const extra = nextPageKey === 'closingstatement'
+        ? { resetClosingVotes: false }
+        : {};
       const updateRes = await this._updateRoomState(
         target.nextPage,
         state.currentPlayerIndex,
-        state.currentPlayerName
+        state.currentPlayerName,
+        extra
       );
       if (updateRes && updateRes.ok !== true) {
         wx.showToast({ title: '状态同步失败', icon: 'none' });
       }
     }
 
-    safeOpenUrl(target.path);
+    const resumeInGame = ['gamepage', 'closingStatement'].includes(target.nextPage);
+    safeOpenUrl(target.path, resumeInGame
+      ? { immediate: true, preferReLaunch: true }
+      : { immediate: true });
   },
 
   /** 左上角出口：回到小程序首页（保留房间，可从历史工作坊再进） */

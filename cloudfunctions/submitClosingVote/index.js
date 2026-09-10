@@ -132,23 +132,23 @@ exports.main = async (event, context) => {
 
       if (votedCount >= totalMembers && totalMembers > 0) {
         const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');
+        const questionIndices = Object.entries(closingVotes)
+          .filter(([, voteValue]) => voteValue === 'question')
+          .map(([key]) => parseInt(key, 10))
+          .filter((n) => Number.isFinite(n))
+          .sort((a, b) => a - b);
+
         updateData.closingVotes = _.set({});
         updateData.closingVoteState = _.set(buildEmptyClosingVoteState(sessionSeq));
         updateData.partnerMasterMode = false;
         updateData.currentPage = 'gamepage';
-        updateData.closingQuestionPlayers = _.set([]);
-        resolvedQuestionPlayers = [];
+        updateData.brainstormProgressPage = 'gamepage';
 
         const now = Date.now();
         updateData.partnerRoundStartedAt = now;
         updateData.partnerTurnStartedAt = now;
 
         if (hasQuestion) {
-          const questionIndices = Object.entries(closingVotes)
-            .filter(([, voteValue]) => voteValue === 'question')
-            .map(([key]) => parseInt(key, 10))
-            .filter((n) => Number.isFinite(n))
-            .sort((a, b) => a - b);
           const firstQuestionIndex = questionIndices[0];
           if (firstQuestionIndex != null) {
             const allMembersRes = await transaction
@@ -164,11 +164,34 @@ exports.main = async (event, context) => {
               : `玩家${firstQuestionIndex}`;
             settledCurrentPlayerIndex = firstQuestionIndex;
           }
+          updateData.closingQuestionPlayers = _.set(questionIndices);
+          resolvedQuestionPlayers = questionIndices;
           updateData.partnerGamePhase = 'play';
           updateData.partnerClosingStep = 'rune';
         } else {
+          updateData.closingQuestionPlayers = _.set([]);
+          resolvedQuestionPlayers = [];
           updateData.partnerGamePhase = 'closing';
           updateData.partnerClosingStep = 'rune';
+        }
+
+        const seat = Number(
+          updateData.currentPlayerIndex != null
+            ? updateData.currentPlayerIndex
+            : settledCurrentPlayerIndex
+        );
+        if (Number.isFinite(seat) && seat > 0) {
+          const baseWf = room.workflow && typeof room.workflow === 'object' ? room.workflow : {};
+          const roundNo = room.currentRound != null ? room.currentRound : 1;
+          updateData.workflow = {
+            ...baseWf,
+            mode: baseWf.mode || 'PARTNER',
+            step: 'TURN_ACTIVE',
+            activeSeatNo: seat,
+            roundNo,
+            turnId: `turn_r${roundNo}_s${seat}`,
+            legacyPage: 'gamepage'
+          };
         }
       }
 

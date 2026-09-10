@@ -110,6 +110,7 @@ Page({
     roundTimerActive: false,
     roundTimerKey: '',
     displayRoundSummaries: [],
+    cardSlides: [],
     cardIndex: 0,
     cardCount: 1,
     paginationDots: [{ key: 0, sizeClass: 'dot-lg', active: true }],
@@ -534,6 +535,7 @@ Page({
 
   _summaryHasContent(item) {
     const has = (arr) => Array.isArray(arr) && arr.length > 0;
+    const note = item && item.privateNote;
     return !!(item && (
       has(item.playHistory)
       || has(item.discussionNotes)
@@ -543,6 +545,14 @@ Page({
       || has(item.discussionBlocks)
       || has(item.voiceLines)
       || has(item.turnRecords)
+      || (note && (
+        has(note.playHistory)
+        || has(note.discussionNotes)
+        || has(note.playImages)
+        || has(note.discussionImages)
+        || has(note.playBlocks)
+        || has(note.discussionBlocks)
+      ))
     ));
   },
 
@@ -578,6 +588,33 @@ Page({
     });
   },
 
+  _buildCurrentRoundSummary(roomState, members) {
+    const content = roomState && roomState.partnerCurrentRoundContent;
+    if (!content || typeof content !== 'object') return null;
+    if (!this._summaryHasContent(content)) return null;
+    const currentRound = roomState.currentRound != null
+      ? Number(roomState.currentRound)
+      : Number(this.data.currentRound || 1);
+    const playerIndex = this.data.currentPlayerIndex != null
+      ? Number(this.data.currentPlayerIndex)
+      : 1;
+    const player = (members || []).find((m) => Number(m.playerIndex) === playerIndex);
+    return {
+      round: currentRound,
+      playerIndex,
+      playerName: (player && (player.nickName || player.userName)) || `玩家${playerIndex}`,
+      playHistory: Array.isArray(content.playHistory) ? content.playHistory : [],
+      discussionNotes: Array.isArray(content.discussionNotes) ? content.discussionNotes : [],
+      playImages: Array.isArray(content.playImages) ? content.playImages : [],
+      discussionImages: Array.isArray(content.discussionImages) ? content.discussionImages : [],
+      playBlocks: Array.isArray(content.playBlocks) ? content.playBlocks : [],
+      discussionBlocks: Array.isArray(content.discussionBlocks) ? content.discussionBlocks : [],
+      voiceLines: Array.isArray(content.voiceLines) ? content.voiceLines : [],
+      turnRecords: Array.isArray(content.turnRecords) ? content.turnRecords : [],
+      archivedAt: 0
+    };
+  },
+
   _normalizeRoundSummaries(roomState, members) {
     const currentRound = roomState && roomState.currentRound != null
       ? Number(roomState.currentRound)
@@ -598,6 +635,19 @@ Page({
       voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
       turnRecords: this._decorateTurnRecords(item.turnRecords)
     }));
+    const currentSummary = this._buildCurrentRoundSummary(roomState, members);
+    if (currentSummary) {
+      const already = filtered.some((item) => (
+        Number(item.round) === Number(currentSummary.round)
+        && Number(item.playerIndex) === Number(currentSummary.playerIndex)
+      ));
+      if (!already) {
+        filtered.push({
+          ...currentSummary,
+          turnRecords: this._decorateTurnRecords(currentSummary.turnRecords)
+        });
+      }
+    }
     return attachPrivateNotesToSummaries(
       buildDisplaySummaries(filtered, members),
       this.data.roomId,
@@ -615,33 +665,51 @@ Page({
         playBlocks: [],
         discussionBlocks: []
       }
+    })).filter((item) => this._summaryHasContent(item));
+  },
+
+  _buildCardSlides(summaries) {
+    const list = Array.isArray(summaries) ? summaries : [];
+    const slides = list.map((item, idx) => ({
+      ...item,
+      slideType: 'history',
+      slideKey: item.reviewCardKey || this._reviewCardKey(item, idx)
     }));
+    if (this.data.viewMode === 'silent') {
+      slides.push({ slideType: 'silent', slideKey: 'action-silent' });
+    } else if (this.data.viewMode === 'reverseRandom') {
+      slides.push({ slideType: 'reverse', slideKey: 'action-reverse' });
+    }
+    return slides;
   },
 
   _applyRoundSummaries(summaries, options) {
     const displayRoundSummaries = Array.isArray(summaries) ? summaries : [];
     const fingerprint = this._summariesFingerprint(displayRoundSummaries);
-    const summaryCount = displayRoundSummaries.length;
-    const cardCount = summaryCount + 1;
+    const cardSlides = this._buildCardSlides(displayRoundSummaries);
+    const cardCount = Math.max(1, cardSlides.length);
     const jumpToAction = options && options.jumpToAction === true;
     const prevCount = this.data.cardCount || 1;
     const prevIndex = this.data.cardIndex || 0;
     const wasOnAction = prevIndex >= prevCount - 1;
     const cardIndex = (jumpToAction || wasOnAction)
-      ? summaryCount
+      ? Math.max(0, cardSlides.length - 1)
       : Math.min(prevIndex, Math.max(0, cardCount - 1));
-    const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
+    const indicatorPlayerIndex = cardIndex < displayRoundSummaries.length
+      && displayRoundSummaries[cardIndex]
       ? displayRoundSummaries[cardIndex].playerIndex
       : (this.data.currentPlayerIndex || 1);
     const sameList = fingerprint === this._summariesFp
       && cardCount === this.data.cardCount
       && cardIndex === this.data.cardIndex
+      && (this.data.cardSlides || []).length === cardSlides.length
       && indicatorPlayerIndex === this.data.indicatorPlayerIndex;
     if (sameList && !jumpToAction) return;
 
     this._summariesFp = fingerprint;
     this.setData({
       displayRoundSummaries,
+      cardSlides,
       cardCount,
       cardIndex,
       paginationDots: buildPaginationDots(cardIndex, cardCount),
@@ -651,10 +719,11 @@ Page({
   },
 
   _jumpToActionCard() {
-    const summaryCount = (this.data.displayRoundSummaries || []).length;
-    const cardCount = Math.max(1, summaryCount + 1);
-    const cardIndex = summaryCount;
+    const cardSlides = this._buildCardSlides(this.data.displayRoundSummaries || []);
+    const cardCount = Math.max(1, cardSlides.length);
+    const cardIndex = Math.max(0, cardSlides.length - 1);
     this.setData({
+      cardSlides,
       cardCount,
       cardIndex,
       paginationDots: buildPaginationDots(cardIndex, cardCount),
@@ -670,26 +739,28 @@ Page({
     Promise.all(list.map((item) => resolveRoundContentMedia(item || {}))).then((resolved) => {
       if (this._cloudMediaToken !== token) return;
       const current = this.data.displayRoundSummaries || [];
+      const displayRoundSummaries = current.map((row, i) => {
+        const next = resolved[i];
+        if (!next) return row;
+        return {
+          ...row,
+          playImages: next.playImages,
+          discussionImages: next.discussionImages,
+          playBlocks: next.playBlocks,
+          discussionBlocks: next.discussionBlocks,
+          privateNote: next.privateNote || row.privateNote || {}
+        };
+      });
       this.setData({
-        displayRoundSummaries: current.map((row, i) => {
-          const next = resolved[i];
-          if (!next) return row;
-          return {
-            ...row,
-            playImages: next.playImages,
-            discussionImages: next.discussionImages,
-            playBlocks: next.playBlocks,
-            discussionBlocks: next.discussionBlocks,
-            privateNote: next.privateNote || row.privateNote || {}
-          };
-        })
+        displayRoundSummaries,
+        cardSlides: this._buildCardSlides(displayRoundSummaries)
       });
     }).catch((e) => console.warn('specialMove hydrate media', e));
   },
 
   onCardSwiperChange(e) {
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
-    const maxIndex = Math.max(0, (this.data.cardCount || 1) - 1);
+    const maxIndex = Math.max(0, ((this.data.cardSlides || []).length || this.data.cardCount || 1) - 1);
     const cardIndex = Math.min(index, maxIndex);
     const summaries = this.data.displayRoundSummaries || [];
     this.setData({
@@ -804,11 +875,18 @@ Page({
           sumSq += samples[i] * samples[i];
         }
         const rms = Math.sqrt(sumSq / samples.length);
-        const db = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
-        // 映射：-60dB 以下→0，-10dB 以上→1
-        const lv = Math.min(1, Math.max(0, (db + 60) / 50));
-        this.setData({ soundLevel: lv });
-        this._broadcastSilentSoundLevel(lv);
+        const dbfs = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
+        // 0 dBFS ≈ 94 dB SPL 经验映射，使 40 dB 落在半周中段
+        const approxDb = Math.min(90, Math.max(0, dbfs + 94));
+        const lv = Math.min(1, approxDb / 80);
+        this._soundEma = this._soundEma == null
+          ? lv
+          : this._soundEma * 0.74 + lv * 0.26;
+        const smooth = Math.min(1, Math.max(0, this._soundEma));
+        if (Math.abs(smooth - (this.data.soundLevel || 0)) > 0.01) {
+          this.setData({ soundLevel: smooth });
+        }
+        this._broadcastSilentSoundLevel(smooth);
       } catch (e) {
         // ignore PCM parse errors
       }
@@ -845,6 +923,7 @@ Page({
   },
 
   _stopSoundLevelSampling() {
+    this._soundEma = null;
     if (this._recorderManager) {
       try { this._recorderManager.stop(); } catch (e) { /* ignore */ }
       this._recorderManager = null;
@@ -897,7 +976,10 @@ Page({
       try {
         const res = await wx.cloud.callFunction({
           name: 'getAddPlayerData',
-          data: { roomId }
+          data: {
+            roomId,
+            full: this.data.viewMode === 'silent' || this.data.viewMode === 'reverseRandom'
+          }
         });
         const result = (res && res.result) || {};
         const members = result.members || this.data.members || [];
@@ -941,6 +1023,14 @@ Page({
                   : this.data.currentRound,
                 player.currentPlayerIndex
               );
+              if (
+                this.data.viewMode === 'silent'
+                || this.data.viewMode === 'reverseRandom'
+              ) {
+                this._applyRoundSummaries(
+                  this._normalizeRoundSummaries(pollResult.roomState, members)
+                );
+              }
             }
             // 房间静默已结束（他人清场/换轮）：退出静默视图
             if (
@@ -1081,6 +1171,7 @@ Page({
       // 默认进入反面随机拼（已去掉求助方式选择区）
       this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
         this._jumpToActionCard();
+        this.loadRoomData();
       });
       return;
     }
@@ -1185,6 +1276,7 @@ Page({
 
       this.setData({ viewMode: 'silent' }, () => this._jumpToActionCard());
       this.startSilentTimer(startedAt);
+      this.loadRoomData();
     } finally {
       this._activatingSilent = false;
     }

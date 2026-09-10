@@ -1,6 +1,6 @@
 const { buildGamepageUrl, buildClosingEndUrl } = require('../../../../utils/modeRoutes');
 const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { openUrl, safeNavigateBack } = require('../../../../utils/pageNavigate');
+const { openUrl } = require('../../../../utils/pageNavigate');
 const { PHASE_CLOSING } = require('../../../../utils/partnerGamePhase');
 
 function isValidClosingVote(vote) {
@@ -33,6 +33,7 @@ Page({
       ? expectedSessionId
       : 0;
     this._settlementNavigating = false;
+    this._sawLiveClosingSession = false;
     const isInitiator = options && (options.isInitiator === '1' || options.isInitiator === 'true');
     this.setData({
       roomId,
@@ -43,6 +44,7 @@ Page({
       closingVoteSessionId: 0,
       closingVoteSeq: 0
     });
+    this._enableLeaveGuard();
     this._startStatePolling();
     this._refreshVoteStatus();
   },
@@ -60,6 +62,27 @@ Page({
 
   onUnload() {
     this._stopStatePolling();
+    this._disableLeaveGuard();
+  },
+
+  _enableLeaveGuard() {
+    if (typeof wx.enableAlertBeforeUnload !== 'function') return;
+    try {
+      wx.enableAlertBeforeUnload({
+        message: '收尾表态进行中，离开后可能丢失进度'
+      });
+    } catch (e) {
+      // ignore
+    }
+  },
+
+  _disableLeaveGuard() {
+    if (typeof wx.disableAlertBeforeUnload !== 'function') return;
+    try {
+      wx.disableAlertBeforeUnload();
+    } catch (e) {
+      // ignore
+    }
   },
 
   /**
@@ -74,14 +97,17 @@ Page({
     const roomId = this.data.roomId;
     if (!roomId || !result) return false;
     if (!this._canLeaveClosingStatement()) return false;
+    if (!this._sawLiveClosingSession && !this._settlementNavigating) return false;
 
     const page = String(result.currentPage || '').toLowerCase();
     if (!page || page === 'closingstatement') return false;
 
     this._stopStatePolling();
+    this._disableLeaveGuard();
     this._settlementNavigating = true;
+    const navOpts = { immediate: true, preferReLaunch: true };
     if (page === 'closingend') {
-      return openUrl(buildClosingEndUrl(roomId), { immediate: true });
+      return openUrl(buildClosingEndUrl(roomId), navOpts);
     }
     if (page === 'gamepage') {
       const phase = result.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
@@ -89,7 +115,7 @@ Page({
       return openUrl(buildGamepageUrl(roomId, idx, 'partner', {
         phase,
         closingStep: result.partnerClosingStep || undefined
-      }), { immediate: true });
+      }), navOpts);
     }
     return false;
   },
@@ -115,6 +141,7 @@ Page({
       && sessionId > 0
       && sessionId !== this._expectedSessionId
     ) {
+      this._sawLiveClosingSession = true;
       this.setData({
         closingVoteSessionId: sessionId,
         closingVoteSeq: seq
@@ -124,6 +151,7 @@ Page({
 
     if (sessionId > 0) {
       this._expectedSessionId = sessionId;
+      this._sawLiveClosingSession = true;
     }
 
     const votes = (result.roomState && result.roomState.closingVotes) || {};
@@ -166,6 +194,9 @@ Page({
       if (!this._canLeaveClosingStatement()) {
         return;
       }
+      if (!this._sawLiveClosingSession && !this._settlementNavigating) {
+        return;
+      }
 
       this._navigateAfterVoteSettlement({
         currentPage: page,
@@ -200,22 +231,32 @@ Page({
             if (!this._canLeaveClosingStatement()) {
               return true;
             }
+            // 尚未见到本轮表态会话：忽略进页前的旧 gamepage 快照
+            if (!this._sawLiveClosingSession && !this._settlementNavigating) {
+              return true;
+            }
 
             if (page === 'closingend') {
-              openUrl(buildClosingEndUrl(roomId), { immediate: true });
+              this._disableLeaveGuard();
+              openUrl(buildClosingEndUrl(roomId), { immediate: true, preferReLaunch: true });
               return true;
             }
             if (page === 'gamepage') {
               const state = pollResult.roomState || {};
               const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
               const phase = state.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
+              this._disableLeaveGuard();
               openUrl(buildGamepageUrl(roomId, idx, 'partner', {
                 phase,
                 closingStep: state.partnerClosingStep || undefined
-              }), { immediate: true });
+              }), { immediate: true, preferReLaunch: true });
               return true;
             }
-            return false;
+            if (pollResult.roomState && pollResult.roomState.brainstormSessionEnded === true) {
+              return false;
+            }
+            // 表态期间忽略情境/大厅等回跳，避免页面栈退回「重新选择情境」
+            return true;
           }
         });
       } catch (e) {
@@ -267,6 +308,7 @@ Page({
       if (result.closingVoteSessionId) {
         this._expectedSessionId = Number(result.closingVoteSessionId) || this._expectedSessionId;
       }
+      this._sawLiveClosingSession = true;
 
       this.setData({
         hasVoted: true,
@@ -281,6 +323,7 @@ Page({
       const settledPage = String(result.currentPage || '').toLowerCase();
       if (settledPage && settledPage !== 'closingstatement') {
         this._settlementNavigating = true;
+        this._disableLeaveGuard();
         this._navigateAfterVoteSettlement(result);
       }
     } catch (err) {
@@ -291,10 +334,15 @@ Page({
   },
 
   handleGoBack() {
+    if (!this._canLeaveClosingStatement()) {
+      wx.showToast({ title: '请先完成收尾表态', icon: 'none' });
+      return;
+    }
     const roomId = this.data.roomId || '';
-    safeNavigateBack({
-      expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
-      fallbackUrl: roomId ? buildGamepageUrl(roomId, 1, 'partner') : ''
+    this._disableLeaveGuard();
+    openUrl(roomId ? buildGamepageUrl(roomId, 1, 'partner') : '/pages/main-pages/addPlayer/index', {
+      immediate: true,
+      preferReLaunch: true
     });
   }
 });

@@ -2075,13 +2075,18 @@ Page({
     let roomPhase = normalizePartnerGamePhase(
       roomState.partnerGamePhase || this.data.gamepagePhase
     );
-    if (
-      (this.data.statementSwitching || this._startingStatement
-        || this.data.discussionSwitching || this._endingDiscussion)
-      && !isDiscussionPhase(roomPhase)
-      && !isClosingPhase(roomPhase)
-    ) {
-      roomPhase = this.data.gamepagePhase;
+    const switchingDiscussion = this.data.statementSwitching || this._startingStatement
+      || this.data.discussionSwitching || this._endingDiscussion;
+    if (switchingDiscussion) {
+      const localPhase = this.data.gamepagePhase;
+      // 本地仍在讨论：忽略抢先到达的 play，避免结束讨论过程中闪到下一轮再闪回
+      if (isDiscussionPhase(localPhase) && !isDiscussionPhase(roomPhase) && !isClosingPhase(roomPhase)) {
+        roomPhase = localPhase;
+      }
+      // 本地已切到出牌：忽略滞后 discussion 快照，避免「没有疑问」后又被打回讨论页
+      if (!isDiscussionPhase(localPhase) && isDiscussionPhase(roomPhase)) {
+        roomPhase = localPhase;
+      }
     }
     const closingQuestionPlayers = Array.isArray(roomState.closingQuestionPlayers)
       ? roomState.closingQuestionPlayers
@@ -3066,7 +3071,7 @@ Page({
   /**
    * Partner 流程命令：优先 roomCommand；revision 冲突重试一次；失败回退 updateRoomState。
    */
-  async _dispatchPartnerCommand(type, payload) {
+  async _dispatchPartnerCommand(type, payload, dispatchOpts) {
     const roomId = this.data.roomId || '';
     if (!roomId || !type) return { ok: false, errMsg: '缺少房间或命令' };
     const session = this._boundRoomSession || getActiveRoomSession();
@@ -3087,7 +3092,7 @@ Page({
     const run = async () => {
       const command = build();
       if (session && typeof session.dispatch === 'function') {
-        return session.dispatch(command);
+        return session.dispatch(command, dispatchOpts);
       }
       const res = await wx.cloud.callFunction({ name: 'roomCommand', data: command });
       return (res && res.result) || { ok: false };
@@ -5319,6 +5324,7 @@ Page({
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
 
+    let advanced = false;
     try {
       const { roomId, members, currentPlayerIndex, currentPlayerName } = this.data;
       let { nextIndex, nextName, incrementRound } = getNextPlayerTurn(members, currentPlayerIndex);
@@ -5329,19 +5335,18 @@ Page({
         partnerSilentMode: false,
         incrementRound
       };
-      const ctx = await this._syncRoomContext();
-      const roundContent = ctx && ctx.roundContent;
-      extra.roundSummary = {
+      // 用本页已有纪要归档；空数组合略掉，让 ADVANCE_TURN 回落到服务端 partnerCurrentRoundContent
+      const roundSummary = {
         ...this._buildRoundSummaryPayload(),
-        voiceLines: (roundContent && roundContent.voiceLines.length)
-          ? roundContent.voiceLines
-          : (this.data.voiceLines || []),
-        turnRecords: turnRecords.length
-          ? turnRecords
-          : ((roundContent && roundContent.turnRecords.length)
-            ? roundContent.turnRecords
-            : (this.data.turnRecords || []))
+        turnRecords: turnRecords.length ? turnRecords : (this.data.turnRecords || [])
       };
+      ['playHistory', 'discussionNotes', 'playImages', 'discussionImages',
+        'playBlocks', 'discussionBlocks', 'voiceLines'].forEach((key) => {
+        if (!Array.isArray(roundSummary[key]) || !roundSummary[key].length) {
+          delete roundSummary[key];
+        }
+      });
+      extra.roundSummary = roundSummary;
 
       if (roomId) {
         try {
@@ -5382,7 +5387,7 @@ Page({
       cmd = await this._dispatchPartnerCommand('ADVANCE_TURN', {
         incrementRound: !!incrementRound,
         roundSummary: extra.roundSummary || null
-      });
+      }, { deferPull: true });
       if (cmd && cmd.ok === true) {
         ok = true;
         const effects = cmd.effects || {};
@@ -5400,6 +5405,7 @@ Page({
         ok = await this._updateRoomState('gamepage', nextIndex, nextName, extra);
       }
       if (!ok) {
+        this._endingDiscussion = false;
         this.setData({
           discussionSwitching: false,
           discussionSwitchAction: ''
@@ -5468,42 +5474,23 @@ Page({
         discussionSwitching: false,
         discussionSwitchAction: ''
       }, () => {
+        this._endingDiscussion = false;
         this._roundSpeech && this._roundSpeech.stop();
         this._syncRoundSpeech();
         if (!incrementRound) {
           this.refreshScoreStatus();
         }
-        // 换人后由房主重开共享计时
+        // ADVANCE_TURN 已写入 partnerRoundStartedAt，本地立刻跟钟，避免再拉一次全量房间
         if (this.data.isHost) {
-          this._ensureSharedRoundTimerOnEnter();
+          const startedAt = Date.now();
+          this._applySharedRoundTimer(startedAt, { force: true, syncTurnAvatar: true });
         }
+        this._startStatePolling();
       });
-
-      // 后台拉齐快照；若读到滞后座位则忽略，避免把 UI 打回讨论中的当前玩家
-      const session = this._boundRoomSession || getActiveRoomSession();
-      if (session && typeof session.refresh === 'function') {
-        try {
-          await session.refresh({ force: true });
-          const snap = typeof session.getSnapshot === 'function' ? session.getSnapshot() : null;
-          const snapIdx = snap && snap.raw && snap.raw.roomState
-            ? toPlayerIndex(snap.raw.roomState.currentPlayerIndex, 0)
-            : 0;
-          if (
-            snap
-            && snap.ok === true
-            && snap.raw
-            && snapIdx > 0
-            && snapIdx === toPlayerIndex(nextIndex, 0)
-          ) {
-            this._applyRoomContext(snap.raw, { resetTurnUi: true });
-          }
-        } catch (e) {
-          console.warn('endDiscussion force refresh', e);
-        }
-      }
-      this._startStatePolling();
+      advanced = true;
     } catch (err) {
       console.warn('handleEndDiscussion', err);
+      this._endingDiscussion = false;
       this.setData({
         discussionSwitching: false,
         discussionSwitchAction: ''
@@ -5511,8 +5498,8 @@ Page({
       wx.showToast({ title: '操作失败，请重试', icon: 'none' });
       this._startStatePolling();
     } finally {
-      this._endingDiscussion = false;
-      if (this.data.discussionSwitching) {
+      if (!advanced && this.data.discussionSwitching) {
+        this._endingDiscussion = false;
         this.setData({
           discussionSwitching: false,
           discussionSwitchAction: ''

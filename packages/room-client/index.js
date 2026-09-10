@@ -306,7 +306,7 @@ function createRoomSession(options) {
       pullOnce().catch((e) => console.warn('RoomSession resume', e));
       startPolling();
     },
-    async dispatch(command) {
+    async dispatch(command, opts) {
       if (!transport || typeof transport.dispatchCommand !== 'function') {
         return { ok: false, errCode: 'NOT_SUPPORTED', errMsg: 'transport 不支持命令' };
       }
@@ -320,7 +320,12 @@ function createRoomSession(options) {
           Number(result.appliedRevision) || 0
         );
         emit();
-        await pullOnce({ force: true });
+        const pullPromise = pullOnce({ force: true });
+        if (opts && opts.deferPull === true) {
+          pullPromise.catch((e) => console.warn('RoomSession dispatch pull', e));
+        } else {
+          await pullPromise;
+        }
       }
       return result;
     },

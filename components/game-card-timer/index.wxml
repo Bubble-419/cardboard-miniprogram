@@ -9,14 +9,18 @@
     wx:elif="{{displayMode === 'timer' && suppressCanvas && borderVariant !== 'rainbow' && borderVariant !== 'sound'}}"
     class="gct-canvas-placeholder"
   ></view>
+  <canvas
+    wx:if="{{borderVariant === 'sound' && displayMode !== 'expiring'}}"
+    type="2d"
+    id="gctSoundCanvas"
+    class="gct-sound-canvas"
+  ></canvas>
   <block wx:if="{{displayMode === 'expiring'}}">
     <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-1"></view>
     <view class="gct-expire-ring gct-expire-ripple gct-expire-ripple-2"></view>
     <view class="gct-expire-ring gct-expire-settle"></view>
   </block>
-  <view class="gct-sound-bars" wx:if="{{borderVariant === 'sound' && displayMode !== 'expiring'}}">
-    <view class="gct-sound-bar" wx:for="{{soundBarHeights}}" wx:key="index" style="height: {{item}}"></view>
-  </view>
+  <view class="gct-sound-warn" wx:if="{{borderVariant === 'sound' && soundTooLoud}}">声音过大，请降低音量</view>
   <view class="gct-inner">
     <slot></slot>
   </view>

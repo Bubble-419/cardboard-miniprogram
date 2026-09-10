@@ -1438,6 +1438,23 @@ game-card-timer {
   flex-shrink: 0;
 }
 
+/* 疑问讨论插图：定宽、按原比例自适应高度；允许横向，高宽最大 1:1 */
+.card-media-flow-fit {
+  width: 200rpx;
+  max-height: 200rpx;
+  overflow: hidden;
+  border-radius: 12rpx;
+  background: #f3f4f6;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.card-media-flow-fit-img {
+  width: 200rpx;
+  display: block;
+  pointer-events: none;
+}
+
 .card-section-head {
   display: flex;
   flex-direction: row;
