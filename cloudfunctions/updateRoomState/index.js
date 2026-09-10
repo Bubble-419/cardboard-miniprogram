@@ -1,6 +1,7 @@
 const cloud = require('wx-server-sdk');
 const {
   getBrainstormSessionSeq,
+  toPlayerIndex,
   buildEmptyClosingVoteState,
   buildNewClosingVoteState,
   normalizeClosingVoteState
@@ -516,9 +517,8 @@ exports.main = async (event, context) => {
       const forceNewSession = resetClosingVotes === true || (
         prevPage !== 'closingstatement' && !existingVoteState
       );
-      const initiatorIdx = closingVoteInitiatorIndex != null
-        ? Number(closingVoteInitiatorIndex)
-        : null;
+      const initiatorIdx = toPlayerIndex(closingVoteInitiatorIndex)
+        || toPlayerIndex(room.currentPlayerIndex);
       if (forceNewSession) {
         resolvedClosingVoteState = buildNewClosingVoteState(
           room,

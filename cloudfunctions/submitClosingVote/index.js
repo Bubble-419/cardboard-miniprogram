@@ -47,20 +47,6 @@ function omitNulls(value) {
   return value;
 }
 
-/** 发起人默认通过，其余座位都有票即可结算 */
-function allRequiredVotesIn(votes, seats, initiatorPlayerIndex) {
-  const map = votes || {};
-  const initiator = toPlayerIndex(initiatorPlayerIndex);
-  if (!seats.length) {
-    return Object.keys(map).length > 0;
-  }
-  return seats.every((seat) => {
-    if (initiator != null && seat === initiator) return true;
-    const vote = map[String(seat)];
-    return vote === 'pass' || vote === 'question';
-  });
-}
-
 /**
  * 收尾阶段表态：每位玩家投「通过」或「存在疑问」
  * 事务内重读并写入，避免并发投票互相覆盖
@@ -188,11 +174,8 @@ exports.main = async (event, context) => {
 
       const votedCount = Object.keys(closingVotes).length;
       let settledCurrentPlayerIndex = room.currentPlayerIndex != null ? room.currentPlayerIndex : 1;
-      const shouldSettle = allRequiredVotesIn(
-        closingVotes,
-        votingSeats,
-        voteState.initiatorPlayerIndex
-      );
+      // 发起人已在开局时写入默认通过，这里仍按全员票数结算
+      const shouldSettle = totalMembers > 0 && votedCount >= totalMembers;
 
       if (shouldSettle) {
         const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');

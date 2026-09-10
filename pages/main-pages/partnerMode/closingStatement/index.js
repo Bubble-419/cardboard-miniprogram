@@ -88,34 +88,38 @@ Page({
     if (this._sawLiveClosingSession) return true;
     const startedAt = Number(roomState.partnerRoundStartedAt) || 0;
     const enteredAt = this._enteredAt || 0;
-    // 结算会刷新回合锚点；进表态页之后才刷新的，视为已结算而非旧出牌快照
-    return enteredAt > 0 && startedAt >= enteredAt;
+    // 结算会刷新回合锚点；给 10s 时钟偏差，避免云端 now 略早于本地进页时间
+    return enteredAt > 0 && startedAt >= enteredAt - 10000;
   },
 
-  _navigateAfterVoteSettlement(result) {
+  _leaveToSettledPage(page, state) {
     const roomId = this.data.roomId;
-    if (!roomId || !result) return false;
-    if (!this._canLeaveClosingStatement()) return false;
-
-    const page = String(result.currentPage || '').toLowerCase();
-    if (!page || page === 'closingstatement') return false;
-    if (!this._isConfirmedSettlement(page, result)) return false;
-
+    const p = String(page || '').toLowerCase();
+    if (!roomId || !p || p === 'closingstatement') return false;
     this._stopStatePolling();
     this._settlementNavigating = true;
     const navOpts = { immediate: true, preferReLaunch: true };
-    if (page === 'closingend') {
+    if (p === 'closingend') {
       return openUrl(buildClosingEndUrl(roomId), navOpts);
     }
-    if (page === 'gamepage') {
-      const phase = result.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
-      const idx = result.currentPlayerIndex != null ? result.currentPlayerIndex : 1;
+    if (p === 'gamepage') {
+      const roomState = state || {};
+      const phase = roomState.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
+      const idx = roomState.currentPlayerIndex != null ? roomState.currentPlayerIndex : 1;
       return openUrl(buildGamepageUrl(roomId, idx, 'partner', {
         phase,
-        closingStep: result.partnerClosingStep || undefined
+        closingStep: roomState.partnerClosingStep || undefined
       }), navOpts);
     }
     return false;
+  },
+
+  _navigateAfterVoteSettlement(result) {
+    if (!result) return false;
+    if (!this._canLeaveClosingStatement()) return false;
+    const page = String(result.currentPage || '').toLowerCase();
+    if (!this._isConfirmedSettlement(page, result)) return false;
+    return this._leaveToSettledPage(page, result);
   },
 
   _applyVoteStatus(result) {
@@ -203,7 +207,8 @@ Page({
         partnerGamePhase: result.roomState.partnerGamePhase,
         partnerClosingStep: result.roomState.partnerClosingStep,
         currentPlayerIndex: result.roomState.currentPlayerIndex,
-        closingQuestionPlayers: result.roomState.closingQuestionPlayers
+        closingQuestionPlayers: result.roomState.closingQuestionPlayers,
+        partnerRoundStartedAt: result.roomState.partnerRoundStartedAt
       });
     } catch (e) {
       console.warn('closingStatement _refreshVoteStatus', e);
@@ -236,18 +241,8 @@ Page({
               return true;
             }
 
-            if (page === 'closingend') {
-              openUrl(buildClosingEndUrl(roomId), { immediate: true, preferReLaunch: true });
-              return true;
-            }
-            if (page === 'gamepage') {
-              const state = pollResult.roomState || {};
-              const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-              const phase = state.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
-              openUrl(buildGamepageUrl(roomId, idx, 'partner', {
-                phase,
-                closingStep: state.partnerClosingStep || undefined
-              }), { immediate: true, preferReLaunch: true });
+            if (page === 'closingend' || page === 'gamepage') {
+              this._leaveToSettledPage(page, pollResult.roomState);
               return true;
             }
             if (pollResult.roomState && pollResult.roomState.brainstormSessionEnded === true) {
@@ -311,6 +306,7 @@ Page({
         this._expectedSessionId = Number(result.closingVoteSessionId) || this._expectedSessionId;
       }
       this._sawLiveClosingSession = true;
+      this.data.hasVoted = true;
 
       this.setData({
         hasVoted: true,
@@ -324,8 +320,7 @@ Page({
 
       const settledPage = String(result.currentPage || '').toLowerCase();
       if (result.settled === true || (settledPage && settledPage !== 'closingstatement')) {
-        this._settlementNavigating = true;
-        this._navigateAfterVoteSettlement(result);
+        this._leaveToSettledPage(settledPage || 'gamepage', result);
       }
     } catch (err) {
       console.warn('handleVote', err);
