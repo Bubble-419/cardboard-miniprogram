@@ -3705,6 +3705,58 @@ Page({
     }
   },
 
+  async _prepareDiscussionImages(paths) {
+    const list = Array.isArray(paths) ? paths : [];
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      const src = list[i];
+      let info = null;
+      try {
+        info = await wx.getImageInfo({ src });
+      } catch (err) {
+        console.warn('discussion image info', err);
+      }
+      const width = info ? Number(info.width) || 0 : 0;
+      const height = info ? Number(info.height) || 0 : 0;
+      if (width > 0 && height / width > 1) {
+        const cropped = await this._openDiscussionImageCrop(src);
+        if (cropped) out.push(cropped);
+      } else {
+        out.push(src);
+      }
+    }
+    return out;
+  },
+
+  _openDiscussionImageCrop(src) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (path) => {
+        if (settled) return;
+        settled = true;
+        resolve(path || '');
+      };
+      wx.navigateTo({
+        url: '/pages/main-pages/partnerMode/imageCrop/index',
+        events: {
+          cropConfirm: (payload) => finish(payload && payload.tempFilePath),
+          cropCancel: () => finish('')
+        },
+        success: (res) => {
+          const ec = res && res.eventChannel;
+          if (ec && typeof ec.emit === 'function') {
+            ec.emit('initCrop', { src });
+          }
+        },
+        fail: (err) => {
+          console.warn('open imageCrop fail', err);
+          wx.showToast({ title: '无法打开裁剪', icon: 'none' });
+          finish('');
+        }
+      });
+    });
+  },
+
   onCardSectionAddImage(e) {
     const target = e.currentTarget && e.currentTarget.dataset
       ? e.currentTarget.dataset.target
@@ -3728,9 +3780,13 @@ Page({
           success: async (chooseRes) => {
             const paths = chooseRes.tempFilePaths || [];
             if (!paths.length) return;
+            const ready = target === 'discussion'
+              ? await this._prepareDiscussionImages(paths)
+              : paths;
+            if (!ready.length) return;
             wx.showLoading({ title: '上传中…', mask: true });
             try {
-              await this._appendSharedSectionContent(target, { photos: paths });
+              await this._appendSharedSectionContent(target, { photos: ready });
             } finally {
               wx.hideLoading();
             }

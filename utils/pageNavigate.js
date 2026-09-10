@@ -14,6 +14,7 @@ const REGISTERED_ROUTES = new Set([
   'pages/main-pages/partnerMode/confirmBG/index',
   'pages/main-pages/partnerMode/confirmFirstPlayer/index',
   'pages/main-pages/partnerMode/gamepage/index',
+  'pages/main-pages/partnerMode/imageCrop/index',
   'pages/main-pages/partnerMode/specialMove/index',
   'pages/main-pages/partnerMode/statement/index',
   'pages/main-pages/partnerMode/closingStatement/index',
@@ -48,7 +49,8 @@ function getCurrentRoute() {
 /** 回看案例 / 只读情境等叠层页：跟随跳转不得拆掉当前页 */
 const FLOW_OVERLAY_ROUTES = new Set([
   'pages/main-pages/case/index',
-  'pages/inspiration/index'
+  'pages/inspiration/index',
+  'pages/main-pages/partnerMode/imageCrop/index'
 ]);
 
 function isFlowOverlayRoute() {

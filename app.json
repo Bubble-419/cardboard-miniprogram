@@ -12,6 +12,7 @@
     "pages/main-pages/partnerMode/confirmBG/index",
     "pages/main-pages/partnerMode/confirmFirstPlayer/index",
     "pages/main-pages/partnerMode/gamepage/index",
+    "pages/main-pages/partnerMode/imageCrop/index",
     "pages/main-pages/partnerMode/specialMove/index",
     "pages/main-pages/partnerMode/statement/index",
     "pages/main-pages/partnerMode/closingStatement/index",

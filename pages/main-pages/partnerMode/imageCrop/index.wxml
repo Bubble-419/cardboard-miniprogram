@@ -1,0 +1,64 @@
+<view class="crop-page">
+  <view class="crop-navbar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="crop-navbar-inner">
+      <view class="crop-nav-btn" catchtap="onCancel">取消</view>
+      <text class="crop-nav-title">裁剪图片</text>
+      <view class="crop-nav-btn crop-nav-btn-confirm {{exporting ? 'crop-nav-btn-disabled' : ''}}" catchtap="onConfirm">
+        {{exporting ? '处理中' : '完成'}}
+      </view>
+    </view>
+  </view>
+
+  <view class="crop-stage" catchtouchstart="onStageTouchStart" catchtouchmove="onStageTouchMove" catchtouchend="onStageTouchEnd" catchtouchcancel="onStageTouchEnd">
+    <image
+      wx:if="{{src}}"
+      class="crop-photo"
+      src="{{src}}"
+      mode="scaleToFill"
+      style="{{photoStyle}}"
+    />
+    <view class="crop-mask crop-mask-top" style="{{maskTopStyle}}"></view>
+    <view class="crop-mask crop-mask-bottom" style="{{maskBottomStyle}}"></view>
+    <view class="crop-mask crop-mask-left" style="{{maskLeftStyle}}"></view>
+    <view class="crop-mask crop-mask-right" style="{{maskRightStyle}}"></view>
+    <view class="crop-box" style="{{cropStyle}}">
+      <view class="crop-grid crop-grid-v crop-grid-v1"></view>
+      <view class="crop-grid crop-grid-v crop-grid-v2"></view>
+      <view class="crop-grid crop-grid-h crop-grid-h1"></view>
+      <view class="crop-grid crop-grid-h crop-grid-h2"></view>
+      <view class="crop-handle crop-handle-nw"></view>
+      <view class="crop-handle crop-handle-ne"></view>
+      <view class="crop-handle crop-handle-sw"></view>
+      <view class="crop-handle crop-handle-se"></view>
+    </view>
+  </view>
+
+  <view class="crop-footer">
+    <text class="crop-hint">可自由调整比例，高度不能超过宽度</text>
+    <view class="crop-presets">
+      <view
+        class="crop-preset {{activePreset === '1:1' ? 'crop-preset-on' : ''}}"
+        data-preset="1:1"
+        catchtap="onSelectPreset"
+      >1:1</view>
+      <view
+        class="crop-preset {{activePreset === '4:3' ? 'crop-preset-on' : ''}}"
+        data-preset="4:3"
+        catchtap="onSelectPreset"
+      >4:3</view>
+      <view
+        class="crop-preset {{activePreset === '16:9' ? 'crop-preset-on' : ''}}"
+        data-preset="16:9"
+        catchtap="onSelectPreset"
+      >16:9</view>
+      <view
+        class="crop-preset {{activePreset === 'free' ? 'crop-preset-on' : ''}}"
+        data-preset="free"
+        catchtap="onSelectPreset"
+      >自由</view>
+    </view>
+    <text class="crop-ratio-label">当前 {{ratioLabel}}</text>
+  </view>
+
+  <canvas type="2d" id="cropExportCanvas" class="crop-export-canvas"></canvas>
+</view>

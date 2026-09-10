@@ -1,6 +1,7 @@
 const cloud = require('wx-server-sdk');
 const {
   getBrainstormSessionSeq,
+  toPlayerIndex,
   buildEmptyClosingVoteState,
   normalizeClosingVoteState,
   isClosingVoteInitiator,
@@ -13,6 +14,33 @@ const db = cloud.database();
 const _ = db.command;
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
+
+function listVotingSeats(members) {
+  const seats = [];
+  (members || []).forEach((m) => {
+    const idx = toPlayerIndex(m && m.playerIndex);
+    if (idx && seats.indexOf(idx) < 0) seats.push(idx);
+  });
+  return seats;
+}
+
+function findMemberBySeat(members, seat) {
+  return (members || []).find((m) => toPlayerIndex(m && m.playerIndex) === seat) || null;
+}
+
+/** 发起人默认通过，其余座位都有票即可结算 */
+function allRequiredVotesIn(votes, seats, initiatorPlayerIndex) {
+  const map = votes || {};
+  const initiator = toPlayerIndex(initiatorPlayerIndex);
+  if (!seats.length) {
+    return Object.keys(map).length > 0;
+  }
+  return seats.every((seat) => {
+    if (initiator != null && seat === initiator) return true;
+    const vote = map[String(seat)];
+    return vote === 'pass' || vote === 'question';
+  });
+}
 
 /**
  * 收尾阶段表态：每位玩家投「通过」或「存在疑问」
@@ -57,11 +85,13 @@ exports.main = async (event, context) => {
     const playerIndex = myMember.playerIndex;
     const voteKey = String(playerIndex);
 
-    const membersCountRes = await db
+    const membersRes = await db
       .collection(ROOM_MEMBERS_COLLECTION)
       .where({ roomId })
-      .count();
-    const totalMembers = (membersCountRes && membersCountRes.total) || 0;
+      .get();
+    const roomMembers = (membersRes && membersRes.data) || [];
+    const votingSeats = listVotingSeats(roomMembers);
+    const totalMembers = votingSeats.length;
 
     const result = await db.runTransaction(async (transaction) => {
       const roomRes = await transaction
@@ -129,8 +159,13 @@ exports.main = async (event, context) => {
 
       const votedCount = Object.keys(closingVotes).length;
       let settledCurrentPlayerIndex = room.currentPlayerIndex != null ? room.currentPlayerIndex : 1;
+      const shouldSettle = allRequiredVotesIn(
+        closingVotes,
+        votingSeats,
+        voteState.initiatorPlayerIndex
+      );
 
-      if (votedCount >= totalMembers && totalMembers > 0) {
+      if (shouldSettle) {
         const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');
         const questionIndices = Object.entries(closingVotes)
           .filter(([, voteValue]) => voteValue === 'question')
@@ -143,6 +178,7 @@ exports.main = async (event, context) => {
         updateData.partnerMasterMode = false;
         updateData.currentPage = 'gamepage';
         updateData.brainstormProgressPage = 'gamepage';
+        updateData.revision = _.inc(1);
 
         const now = Date.now();
         updateData.partnerRoundStartedAt = now;
@@ -151,13 +187,7 @@ exports.main = async (event, context) => {
         if (hasQuestion) {
           const firstQuestionIndex = questionIndices[0];
           if (firstQuestionIndex != null) {
-            const allMembersRes = await transaction
-              .collection(ROOM_MEMBERS_COLLECTION)
-              .where({ roomId })
-              .get();
-            const member = (allMembersRes.data || []).find(
-              (m) => m.playerIndex === firstQuestionIndex
-            );
+            const member = findMemberBySeat(roomMembers, firstQuestionIndex);
             updateData.currentPlayerIndex = firstQuestionIndex;
             updateData.currentPlayerName = member
               ? (member.nickName || `玩家${firstQuestionIndex}`)
@@ -174,25 +204,6 @@ exports.main = async (event, context) => {
           updateData.partnerGamePhase = 'closing';
           updateData.partnerClosingStep = 'rune';
         }
-
-        const seat = Number(
-          updateData.currentPlayerIndex != null
-            ? updateData.currentPlayerIndex
-            : settledCurrentPlayerIndex
-        );
-        if (Number.isFinite(seat) && seat > 0) {
-          const baseWf = room.workflow && typeof room.workflow === 'object' ? room.workflow : {};
-          const roundNo = room.currentRound != null ? room.currentRound : 1;
-          updateData.workflow = {
-            ...baseWf,
-            mode: baseWf.mode || 'PARTNER',
-            step: 'TURN_ACTIVE',
-            activeSeatNo: seat,
-            roundNo,
-            turnId: `turn_r${roundNo}_s${seat}`,
-            legacyPage: 'gamepage'
-          };
-        }
       }
 
       await transaction.collection(ROOMS_COLLECTION).doc(room._id).update({ data: updateData });
@@ -207,10 +218,11 @@ exports.main = async (event, context) => {
         partnerGamePhase: updateData.partnerGamePhase || room.partnerGamePhase,
         partnerClosingStep: updateData.partnerClosingStep || room.partnerClosingStep,
         closingQuestionPlayers: resolvedQuestionPlayers,
-        closingVoteSessionId: nextState.sessionId,
-        closingVoteSeq: nextState.seq,
+        closingVoteSessionId: shouldSettle ? 0 : nextState.sessionId,
+        closingVoteSeq: shouldSettle ? 0 : nextState.seq,
         votedCount,
-        totalMembers
+        totalMembers,
+        settled: shouldSettle === true
       };
     });
 
