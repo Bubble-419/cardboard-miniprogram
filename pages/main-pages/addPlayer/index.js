@@ -124,7 +124,6 @@ Page(withPageInteractionLock({
     showExitText: false,
     exitTextLabel: '退出房间',
     exitTextAction: 'leave',
-    exitTextDanger: false,
     showWaitingHint: false,
     waitingHintText: '等待房主选择模式',
     showModeActionSheet: false,
@@ -148,7 +147,6 @@ Page(withPageInteractionLock({
     let showExitText = true;
     let exitTextLabel = isHost ? '解散房间' : '退出房间';
     let exitTextAction = isHost ? 'dissolve' : 'leave';
-    let exitTextDanger = isHost === true;
 
     let showWaitingHint = false;
     const waitingHintText = '等待房主选择模式';
@@ -181,7 +179,6 @@ Page(withPageInteractionLock({
       showExitText,
       exitTextLabel,
       exitTextAction,
-      exitTextDanger,
       showWaitingHint,
       waitingHintText
     };

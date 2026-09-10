@@ -214,7 +214,7 @@
   <view class="footer-wrap {{isDragging ? 'footer-wrap-dragging' : ''}}">
     <view class="footer">
       <view class="waiting-hint" wx:if="{{showWaitingHint}}">{{waitingHintText}}</view>
-      <view class="footer-actions" wx:if="{{!showWaitingHint && ((primaryBtnAction && primaryBtnText) || showExitText)}}">
+      <view class="footer-actions" wx:if="{{(primaryBtnAction && primaryBtnText) || showExitText}}">
         <button
           wx:if="{{primaryBtnAction && primaryBtnText}}"
           class="primary-btn {{primaryBtnDisabled ? 'primary-btn-disabled' : ''}}"
@@ -222,13 +222,8 @@
           catchtap="onTapPrimaryAction"
         >{{primaryBtnText}}</button>
         <view
-          wx:if="{{showExitText && !isHost}}"
-          class="exit-outline-btn"
-          catchtap="onTapExitText"
-        >{{exitTextLabel}}</view>
-        <view
-          wx:elif="{{showExitText}}"
-          class="exit-text-btn {{exitTextDanger ? 'exit-text-btn-danger' : ''}}"
+          wx:if="{{showExitText}}"
+          class="exit-text-btn exit-text-btn-danger"
           catchtap="onTapExitText"
         >{{exitTextLabel}}</view>
       </view>

@@ -996,29 +996,6 @@
   box-sizing: border-box;
 }
 
-.exit-outline-btn {
-  width: 100%;
-  height: 92rpx;
-  margin: 0;
-  padding: 0;
-  background: #ffffff;
-  color: #5ec159;
-  border: 2rpx solid #5ec159;
-  border-radius: 24rpx;
-  font-size: 34rpx;
-  font-weight: 500;
-  letter-spacing: 2rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  line-height: 1;
-}
-
-.exit-outline-btn:active {
-  opacity: 0.72;
-}
-
 .exit-text-btn {
   width: 100%;
   font-size: 26rpx;
