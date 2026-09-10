@@ -15,7 +15,13 @@ const _ = db.command;
 const ROOMS_COLLECTION = 'rooms';
 const ROOM_MEMBERS_COLLECTION = 'roomMembers';
 
-function listVotingSeats(members) {
+function listVotingSeats(members, room) {
+  const fromMap = Object.keys((room && room.seatMap) || {})
+    .map((key) => toPlayerIndex(key))
+    .filter((idx) => idx != null);
+  if (fromMap.length) {
+    return Array.from(new Set(fromMap));
+  }
   const seats = [];
   (members || []).forEach((m) => {
     const idx = toPlayerIndex(m && m.playerIndex);
@@ -28,7 +34,6 @@ function findMemberBySeat(members, seat) {
   return (members || []).find((m) => toPlayerIndex(m && m.playerIndex) === seat) || null;
 }
 
-/** 云库 update/_.set 不能带 null/undefined，否则整次提交会失败 */
 function omitNulls(value) {
   if (Array.isArray(value)) {
     return value
@@ -47,9 +52,15 @@ function omitNulls(value) {
   return value;
 }
 
+function resolveInitiatorIndex(room, voteState) {
+  return toPlayerIndex(voteState && voteState.initiatorPlayerIndex)
+    || toPlayerIndex(room && room.closingVoteState && room.closingVoteState.initiatorPlayerIndex)
+    || toPlayerIndex(room && room.currentPlayerIndex);
+}
+
 /**
  * 收尾阶段表态：每位玩家投「通过」或「存在疑问」
- * 事务内重读并写入，避免并发投票互相覆盖
+ * 发起人在开局/提交时后台记一票 pass，结算仍按「已投票数 >= 房间人数」
  */
 exports.main = async (event, context) => {
   const { roomId, vote } = event || {};
@@ -98,8 +109,6 @@ exports.main = async (event, context) => {
       .where({ roomId })
       .get();
     const roomMembers = (membersRes && membersRes.data) || [];
-    const votingSeats = listVotingSeats(roomMembers);
-    const totalMembers = votingSeats.length;
 
     const result = await db.runTransaction(async (transaction) => {
       const roomRes = await transaction
@@ -123,21 +132,22 @@ exports.main = async (event, context) => {
 
       const sessionSeq = getBrainstormSessionSeq(room);
       const voteState = normalizeClosingVoteState(room.closingVoteState, sessionSeq);
-      if (!voteState) {
-        const err = new Error('表态会话已失效，请重新进入收尾阶段');
-        err.errCode = 'VOTE_SESSION_INVALID';
-        throw err;
-      }
+      const initiatorIdx = resolveInitiatorIndex(room, voteState);
 
-      if (isClosingVoteInitiator(playerIndex, voteState.initiatorPlayerIndex)) {
+      if (isClosingVoteInitiator(playerIndex, initiatorIdx)) {
         const err = new Error('发起收尾的玩家无需表态');
         err.errCode = 'INITIATOR_EXEMPT';
         throw err;
       }
 
+      const topVotes = room.closingVotes && typeof room.closingVotes === 'object'
+        ? room.closingVotes
+        : {};
+      const stateVotes = (voteState && voteState.votes) || {};
+      // 后台补上发起人默认通过，再按原来的全员票数结算
       const closingVotes = applyInitiatorDefaultPass(
-        { ...(voteState.votes || {}) },
-        voteState.initiatorPlayerIndex
+        { ...topVotes, ...stateVotes },
+        initiatorIdx
       );
       if (closingVotes[voteKey]) {
         const err = new Error('您已表态');
@@ -146,9 +156,17 @@ exports.main = async (event, context) => {
       }
 
       closingVotes[voteKey] = normalizedVote;
+
+      const votingSeats = listVotingSeats(roomMembers, room);
+      const totalMembers = votingSeats.length;
+      const votedCount = Object.keys(closingVotes).length;
+      const shouldSettle = totalMembers > 0 && votedCount >= totalMembers;
+
       const nextState = omitNulls({
-        ...voteState,
-        initiatorPlayerIndex: voteState.initiatorPlayerIndex || 0,
+        sessionId: voteState ? voteState.sessionId : Date.now(),
+        seq: voteState ? voteState.seq : 1,
+        brainstormSessionSeq: sessionSeq,
+        initiatorPlayerIndex: initiatorIdx || 0,
         votes: closingVotes
       });
 
@@ -172,10 +190,7 @@ exports.main = async (event, context) => {
         updateData.closingQuestionPlayers = _.set(resolvedQuestionPlayers);
       }
 
-      const votedCount = Object.keys(closingVotes).length;
       let settledCurrentPlayerIndex = room.currentPlayerIndex != null ? room.currentPlayerIndex : 1;
-      // 发起人已在开局时写入默认通过，这里仍按全员票数结算
-      const shouldSettle = totalMembers > 0 && votedCount >= totalMembers;
 
       if (shouldSettle) {
         const hasQuestion = Object.values(closingVotes).some((v) => v === 'question');
@@ -201,11 +216,10 @@ exports.main = async (event, context) => {
           const firstQuestionIndex = questionIndices[0];
           if (firstQuestionIndex != null) {
             const member = findMemberBySeat(roomMembers, firstQuestionIndex);
-            const playerName = member && member.nickName
+            updateData.currentPlayerIndex = firstQuestionIndex;
+            updateData.currentPlayerName = member && member.nickName
               ? String(member.nickName)
               : `玩家${firstQuestionIndex}`;
-            updateData.currentPlayerIndex = firstQuestionIndex;
-            updateData.currentPlayerName = playerName;
             settledCurrentPlayerIndex = firstQuestionIndex;
           }
           updateData.closingQuestionPlayers = _.set(questionIndices);

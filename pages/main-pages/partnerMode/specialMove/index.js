@@ -1202,9 +1202,11 @@ Page(withPageInteractionLock({
     this._activatingClosing = true;
 
     try {
-      const initiatorIdx = this.data.initiatorPlayerIndex != null
-        ? this.data.initiatorPlayerIndex
-        : this.data.currentPlayerIndex;
+      const initiatorIdx = Number(
+        this.data.initiatorPlayerIndex != null
+          ? this.data.initiatorPlayerIndex
+          : this.data.currentPlayerIndex
+      );
       const result = await this._updateRoomState('closingStatement', null, null, {
         partnerGamePhase: 'closing',
         partnerMasterMode: false,

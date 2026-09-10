@@ -2,6 +2,7 @@ const cloud = require('wx-server-sdk');
 const {
   getBrainstormSessionSeq,
   toPlayerIndex,
+  applyInitiatorDefaultPass,
   buildEmptyClosingVoteState,
   buildNewClosingVoteState,
   normalizeClosingVoteState
@@ -525,6 +526,11 @@ exports.main = async (event, context) => {
           sessionSeq,
           initiatorIdx
         );
+        // 发起人后台默认通过，写入票箱，结算仍按全员人数
+        resolvedClosingVoteState.votes = applyInitiatorDefaultPass(
+          resolvedClosingVoteState.votes || {},
+          initiatorIdx
+        );
         updateData.closingVotes = _.set(resolvedClosingVoteState.votes || {});
         updateData.closingQuestionPlayers = _.set([]);
         updateData.closingVoteState = _.set(resolvedClosingVoteState);
@@ -536,6 +542,10 @@ exports.main = async (event, context) => {
       ) {
         // 旧数据残留且无有效 session：强制开新会话
         resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq, initiatorIdx);
+        resolvedClosingVoteState.votes = applyInitiatorDefaultPass(
+          resolvedClosingVoteState.votes || {},
+          initiatorIdx
+        );
         updateData.closingVotes = _.set(resolvedClosingVoteState.votes || {});
         updateData.closingQuestionPlayers = _.set([]);
         updateData.closingVoteState = _.set(resolvedClosingVoteState);

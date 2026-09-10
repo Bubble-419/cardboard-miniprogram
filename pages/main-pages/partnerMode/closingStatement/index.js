@@ -102,20 +102,30 @@ Page(withPageInteractionLock({
     if (!roomId || !p || p === 'closingstatement') return false;
     this._stopStatePolling();
     this._settlementNavigating = true;
-    const navOpts = { immediate: true, preferReLaunch: true };
+    const roomState = state || {};
+    let url = '';
     if (p === 'closingend') {
-      return openUrl(buildClosingEndUrl(roomId), navOpts);
-    }
-    if (p === 'gamepage') {
-      const roomState = state || {};
+      url = buildClosingEndUrl(roomId);
+    } else if (p === 'gamepage') {
       const phase = roomState.partnerGamePhase === PHASE_CLOSING ? 'closing' : undefined;
       const idx = roomState.currentPlayerIndex != null ? roomState.currentPlayerIndex : 1;
-      return openUrl(buildGamepageUrl(roomId, idx, 'partner', {
+      url = buildGamepageUrl(roomId, idx, 'partner', {
         phase,
         closingStep: roomState.partnerClosingStep || undefined
-      }), navOpts);
+      });
     }
-    return false;
+    if (!url) return false;
+    // 避开全局 openUrl 队列：收尾进页的 reLaunch 可能仍占着 inFlight，导致后续跳转被丢掉
+    wx.reLaunch({
+      url,
+      fail: () => {
+        wx.redirectTo({
+          url,
+          fail: () => openUrl(url, { immediate: true, preferReLaunch: true })
+        });
+      }
+    });
+    return true;
   },
 
   _navigateAfterVoteSettlement(result) {
@@ -329,8 +339,13 @@ Page(withPageInteractionLock({
       });
 
       const settledPage = String(result.currentPage || '').toLowerCase();
-      if (result.settled === true || (settledPage && settledPage !== 'closingstatement')) {
-        this._leaveToSettledPage(settledPage || 'gamepage', result);
+      if (result.settled === true) {
+        const page = settledPage && settledPage !== 'closingstatement' ? settledPage : 'gamepage';
+        this._leaveToSettledPage(page, result);
+        return;
+      }
+      if (settledPage && settledPage !== 'closingstatement') {
+        this._leaveToSettledPage(settledPage, result);
       }
     } catch (err) {
       console.warn('handleVote', err);
