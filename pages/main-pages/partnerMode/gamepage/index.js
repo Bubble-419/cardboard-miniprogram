@@ -3737,7 +3737,7 @@ Page({
         resolve(path || '');
       };
       wx.navigateTo({
-        url: '/pages/main-pages/partnerMode/imageCrop/index',
+        url: `/pages/main-pages/partnerMode/imageCrop/index?src=${encodeURIComponent(src)}`,
         events: {
           cropConfirm: (payload) => finish(payload && payload.tempFilePath),
           cropCancel: () => finish('')

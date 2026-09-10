@@ -178,7 +178,7 @@ exports.main = async (event, context) => {
         updateData.partnerMasterMode = false;
         updateData.currentPage = 'gamepage';
         updateData.brainstormProgressPage = 'gamepage';
-        updateData.revision = _.inc(1);
+        updateData.revision = (room.revision != null ? Number(room.revision) : 0) + 1;
 
         const now = Date.now();
         updateData.partnerRoundStartedAt = now;

@@ -77,6 +77,8 @@ Page({
   },
 
   _setSrc(src) {
+    if (!src || this._src === src) return;
+    this._src = src;
     this.setData({ src });
     wx.getImageInfo({
       src,
@@ -290,7 +292,7 @@ Page({
       next.x = start.x + dx;
       next.y = start.y + dy;
     } else {
-      this.setData({ activePreset: 'free' });
+      this.data.activePreset = 'free';
       if (drag.mode === 'se') {
         next.w = start.w + dx;
         next.h = start.h + dy;
