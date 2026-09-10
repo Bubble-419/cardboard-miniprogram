@@ -1,7 +1,8 @@
 const {
   normalizeHalfStarScore,
   scoreFromTrackX,
-  buildStarFills
+  buildStarFills,
+  toHalfSteps
 } = require('../../utils/halfStarScore');
 
 function mapStars(score, activeIndex) {
@@ -45,6 +46,7 @@ Component({
       this._lastX = null;
       this._hasActivePreview = false;
       this._seedScore = null;
+      this._lastSyncedSteps = null;
       this._minTravelPx = 24;
       this._syncFromValue(this.properties.value);
     }
@@ -53,6 +55,8 @@ Component({
   observers: {
     'value': function (next) {
       if (this._gesturing) return;
+      const steps = toHalfSteps(next);
+      if (steps === this._lastSyncedSteps) return;
       this._syncFromValue(next);
     }
   },
@@ -60,6 +64,7 @@ Component({
   methods: {
     _syncFromValue(raw) {
       if (raw == null || raw === '') {
+        this._lastSyncedSteps = null;
         this.setData({
           stars: mapStars(null, -1),
           gesturing: false
@@ -67,6 +72,11 @@ Component({
         return;
       }
       const score = normalizeHalfStarScore(raw);
+      const steps = toHalfSteps(score);
+      if (steps === this._lastSyncedSteps && !this.data.gesturing) {
+        return;
+      }
+      this._lastSyncedSteps = steps;
       this.setData({
         stars: mapStars(score, -1),
         gesturing: false
@@ -74,6 +84,7 @@ Component({
     },
 
     _paint(score) {
+      this._lastSyncedSteps = toHalfSteps(score);
       this.setData({
         stars: mapStars(score, activeIndexFromScore(score)),
         gesturing: true
@@ -141,6 +152,7 @@ Component({
       if (opts.minTravelPx != null) {
         this._minTravelPx = Number(opts.minTravelPx) || 24;
       }
+      const skipInitialApply = !!opts.skipInitialApply;
 
       this._gesturing = true;
       this._startClientX = clientX;
@@ -153,7 +165,6 @@ Component({
 
       if (this._seedScore != null) {
         this._paint(this._seedScore);
-        this.triggerEvent('preview', { score: this._seedScore });
       } else {
         this.setData({ gesturing: true });
       }
@@ -161,11 +172,11 @@ Component({
 
       this._measureTrack((rect) => {
         if (!this._gesturing) return;
-        if (rect && this._lastX != null) {
+        if (rect && this._lastX != null && !skipInitialApply) {
           this._applyClientX(this._lastX, { force: true });
         }
       });
-      if (this._trackRect) {
+      if (this._trackRect && !skipInitialApply) {
         this._applyClientX(clientX, { force: true });
       }
     },
@@ -210,6 +221,7 @@ Component({
 
       if (canConfirm) {
         const score = this._previewScore;
+        this._lastSyncedSteps = toHalfSteps(score);
         this.setData({
           stars: mapStars(score, -1),
           gesturing: false
@@ -239,12 +251,7 @@ Component({
       this._lastX = this._startClientX;
       this.setData({ gesturing: true });
       this.triggerEvent('gesturestart');
-      const x = this._lastX;
-      this._measureTrack((rect) => {
-        if (!this._gesturing) return;
-        if (rect) this._applyClientX(this._lastX, { force: true });
-      });
-      if (this._trackRect) this._applyClientX(x, { force: true });
+      this._measureTrack();
     },
 
     onTouchMove(e) {
@@ -253,12 +260,12 @@ Component({
       if (x == null) return;
       this._lastX = x;
       if (this._trackRect) {
-        this._applyClientX(x, { force: true });
+        this._applyClientX(x);
         return;
       }
       this._measureTrack((rect) => {
         if (!this._gesturing) return;
-        if (rect) this._applyClientX(this._lastX, { force: true });
+        if (rect) this._applyClientX(this._lastX);
       });
     },
 
@@ -267,9 +274,12 @@ Component({
       const x = this._readClientX(e);
       if (x != null) this._lastX = x;
       const finish = () => {
-        if (this._lastX != null) this._applyClientX(this._lastX, { force: true });
+        if (this._lastX != null) {
+          this._applyClientX(this._lastX, { force: true });
+        }
         const score = this._previewScore;
         if (score != null) {
+          this._lastSyncedSteps = toHalfSteps(score);
           this.setData({
             stars: mapStars(score, -1),
             gesturing: false

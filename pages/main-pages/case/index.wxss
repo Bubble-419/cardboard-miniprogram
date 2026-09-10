@@ -118,3 +118,10 @@
   box-sizing: border-box;
 }
 
+/* 返回按钮：与全站主按钮（confirm-btn）一致的绿色实心风格 */
+.footer .page-footer__prev-btn {
+  background-color: #5EC159;
+  color: #FFFFFF;
+  border: none;
+}
+

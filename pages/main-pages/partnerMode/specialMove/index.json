@@ -1,6 +1,6 @@
 {
   "usingComponents": {
-    "player-top-bar": "/components/player-top-bar/index",
+    "user-list": "/components/user-list/index",
     "game-card-timer": "/components/game-card-timer/index"
   },
   "navigationStyle": "custom"

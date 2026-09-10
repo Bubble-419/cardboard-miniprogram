@@ -618,8 +618,8 @@
   --spectator-action-inset: 30rpx;
   --spectator-fab-size: 60rpx;
   --spectator-action-gap: 16rpx;
-  /* 与按钮同高，避免垂直居中后再多出空白导致底边偏大 */
-  --star-hit-height: 60rpx;
+  /* 热区高于 chip 视觉(60rpx)，便于点按与长按右滑 */
+  --star-hit-height: 104rpx;
   padding: 36rpx var(--spectator-action-inset) var(--spectator-action-inset);
   overflow: hidden;
 }
@@ -751,8 +751,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
-  bottom: 0;
+  top: -16rpx;
+  bottom: -16rpx;
   z-index: 5;
   background: transparent;
 }

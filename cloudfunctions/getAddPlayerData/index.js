@@ -337,6 +337,9 @@ exports.main = async (event, context) => {
       closingVotes: activeClosing.votes || {},
       closingVoteSeq: activeClosing.seq || 0,
       closingVoteSessionId: activeClosing.sessionId || 0,
+      closingVoteInitiatorIndex: activeClosing.initiatorPlayerIndex != null
+        ? activeClosing.initiatorPlayerIndex
+        : null,
       partnerRoundStartedAt: room.partnerRoundStartedAt != null ? room.partnerRoundStartedAt : null,
       // 当前行动玩家本轮首次倒计时起点（卡片循环不更新），用于全员同步头像框
       partnerTurnStartedAt: room.partnerTurnStartedAt != null ? room.partnerTurnStartedAt : null,

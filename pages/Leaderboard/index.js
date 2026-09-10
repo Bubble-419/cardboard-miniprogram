@@ -33,9 +33,16 @@ Page({
     if (from === 'closingEnd') {
       this._hostStatusPromise = this._loadHostStatus(roomId);
     }
-    if (isSubScreen) {
+  },
+
+  onShow() {
+    if (this.data.isSubScreen) {
       this._startStatePolling();
     }
+  },
+
+  onHide() {
+    this._stopStatePolling();
   },
 
   onUnload() {

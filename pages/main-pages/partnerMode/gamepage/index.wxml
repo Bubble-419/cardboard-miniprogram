@@ -45,13 +45,15 @@
         showName="{{false}}"
         visualMode="partner-game"
         onActionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
+        specialMoveActive="{{cardBorderVariant === 'rainbow' || cardBorderVariant === 'sound'}}"
         showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
         enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
         enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        roundStartedAt="{{isHistoryReview ? null : partnerRoundStartedAt}}"
+        roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
         roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
         roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
         suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
+        bind:timerexpire="handleRoundTimerExpire"
         bindavatartap="handleAvatarTap"
       />
     </view>
@@ -218,7 +220,7 @@
 
       <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
       <view
-        class="inspiration-bar inspiration-bar-closing {{isHost ? '' : 'inspiration-bar-safe-bottom'}} {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
+        class="inspiration-bar inspiration-bar-closing {{isHost || closingStep === 'review' ? '' : 'inspiration-bar-safe-bottom'}} {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
         style="{{inspirationLiftStyle}}"
       >
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
@@ -499,7 +501,7 @@
         <swiper-item class="card-swiper-item" wx:if="{{!isHistoryReview && showCurrentActionCard}}">
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible}}"
+            timerActive="{{roundTimerVisible && !cardBorderVariant}}"
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
@@ -527,10 +529,10 @@
                 bindtouchcancel="onInnerScrollTouchEnd"
               >
                 <view class="discussion-scroll-inner">
-                  <!-- 出牌解释：仅出牌阶段匿名聊天 -->
+                  <!-- 匿名表达：仅出牌阶段匿名聊天 -->
                   <view class="card-section-block">
                     <view class="card-section-head">
-                      <text class="card-section-title">出牌解释</text>
+                      <text class="card-section-title">匿名表达</text>
                     </view>
                     <view class="discussion-express-list" wx:if="{{playExpressChatList.length}}">
                       <view
@@ -601,7 +603,7 @@
                       <view id="discussion-express-chat-bottom" style="height: 1rpx;"></view>
                     </view>
                     <view class="spectator-chat-empty" wx:elif="{{!discussionBlocks.length}}">
-                      <text class="spectator-chat-empty-text">暂无匿名表达</text>
+                      <text class="spectator-chat-empty-text">暂无疑问讨论</text>
                     </view>
                   </view>
                 </view>
@@ -623,6 +625,7 @@
                     <input
                       class="spectator-express-input"
                       name="expressText"
+                      value="{{expressDraftText}}"
                       maxlength="40"
                       confirm-type="send"
                       hold-keyboard="{{true}}"
@@ -660,7 +663,7 @@
 
           <game-card-timer
             startedAt="{{partnerRoundStartedAt}}"
-            timerActive="{{roundTimerVisible}}"
+            timerActive="{{roundTimerVisible && !cardBorderVariant}}"
             durationSec="{{roundTimerMaxSec}}"
             loop="{{true}}"
             suppressCanvas="{{showHostStatementTip}}"
@@ -804,7 +807,7 @@
                   <view class="star-rating-shell {{starRatingCollapsed ? 'star-rating-shell-collapsed' : ''}} {{starRatingChipSwiping ? 'star-rating-shell-swiping' : ''}}">
                     <!-- 收起/右滑中：全宽透明热区，避免手指右移离开 chip 后断触、被卡片 swiper 抢走 -->
                     <view
-                      wx:if="{{starRatingCollapsed || starRatingChipSwiping}}"
+                      wx:if="{{starRatingCollapsed || starRatingChipSwiping || chipTouchActive}}"
                       class="star-rating-chip-hit"
                       catchtouchstart="onStarChipTouchStart"
                       catchtouchmove="onStarChipTouchMove"
@@ -839,6 +842,7 @@
                         <input
                           class="spectator-express-input"
                           name="expressText"
+                          value="{{expressDraftText}}"
                           maxlength="40"
                           confirm-type="done"
                           hold-keyboard="{{true}}"
@@ -1003,7 +1007,7 @@
   <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
   <view
     class="page-footer {{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
-    wx:if="{{!isHistoryReview && !((gamepagePhase === 'closing' || gamepagePhase === 'discussion') && !isHost)}}"
+    wx:if="{{!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review'))}}"
   >
     <view class="bottom-actions" wx:if="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">
       <button
@@ -1021,7 +1025,24 @@
         结束脑暴
       </button>
     </view>
+    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'review'}}">
+      <button
+        class="end-brainstorm-btn"
+        bindtap="handleGlobalReview"
+      >
+        全局回顾
+      </button>
+    </view>
     <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
+      <button
+        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
+        disabled="{{discussionSwitching}}"
+        loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
+        hover-class="none"
+        bindtap="handleAllPassFromDiscussion"
+      >
+        {{discussionSwitching && discussionSwitchAction === 'allPass' ? '处理中' : '没有疑问'}}
+      </button>
       <button
         class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
         disabled="{{discussionSwitching}}"
@@ -1030,15 +1051,6 @@
         bindtap="handleEndDiscussion"
       >
         {{discussionSwitching && discussionSwitchAction === 'end' ? '处理中' : '结束讨论'}}
-      </button>
-      <button
-        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
-        disabled="{{discussionSwitching}}"
-        loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
-        hover-class="none"
-        bindtap="handleAllPassFromDiscussion"
-      >
-        {{discussionSwitching && discussionSwitchAction === 'allPass' ? '处理中' : '全部通过'}}
       </button>
     </view>
     <view class="bottom-actions" wx:elif="{{showSpecialMoveBtn || isHost || (isCurrentPlayer && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing')}}">

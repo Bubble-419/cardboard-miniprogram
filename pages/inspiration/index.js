@@ -70,6 +70,7 @@ Page({
 
   onHide() {
     this._unbindInspirationKeyboard();
+    this._flushInspirationKeyboardZero(true);
     if (this.data.inspirationKeyboardHeight !== 0 || this.data.inspirationLiftStyle) {
       this._inspirationNativeFocused = false;
       this.setData({
@@ -82,6 +83,7 @@ Page({
   onUnload() {
     this._pageAlive = false;
     this._unbindInspirationKeyboard();
+    this._flushInspirationKeyboardZero(true);
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
@@ -394,6 +396,7 @@ Page({
     this._inspirationBlurTimer = setTimeout(() => {
       if (this.data.inspirationHoldKeyboard) return;
       if (this._inspirationNativeFocused) return;
+      this._flushInspirationKeyboardZero(true);
       this.setData({
         inspirationInputFocused: false,
         ...this._resetInspirationKeyboardUi()
@@ -422,6 +425,7 @@ Page({
     }
     this._inspirationFocusRequestedAt = 0;
     this._inspirationNativeFocused = false;
+    this._flushInspirationKeyboardZero(true);
     this.setData({
       inspirationInputFocused: false,
       inspirationHoldKeyboard: false,
@@ -432,11 +436,7 @@ Page({
   onInspirationKeyboardHeightChange(e) {
     const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
-    if (!active && height <= 0) {
-      this._setInspirationKeyboardHeight(0);
-      return;
-    }
-    if (active && height <= 0) return;
+    if (!active && height > 0) return;
     this._setInspirationKeyboardHeight(height);
   },
 
@@ -476,23 +476,41 @@ Page({
     };
   },
 
-  _setInspirationKeyboardHeight(height) {
-    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
-    // 聚焦中收到 0 高度多为抖动，保持当前抬升避免上下跳
-    if (
-      next <= 0
-      && (this._inspirationNativeFocused || this.data.inspirationInputFocused)
-    ) {
-      return;
-    }
+  _commitInspirationKeyboardHeight(next) {
     const patch = this._buildInspirationKeyboardUi(next);
     if (
       patch.inspirationKeyboardHeight === this.data.inspirationKeyboardHeight
       && patch.inspirationLiftStyle === (this.data.inspirationLiftStyle || '')
+      && patch.inspirationMaskStyle === (this.data.inspirationMaskStyle || '')
     ) {
       return;
     }
     this.setData(patch);
+  },
+
+  _flushInspirationKeyboardZero(immediate) {
+    if (this._inspirationKbZeroTimer) {
+      clearTimeout(this._inspirationKbZeroTimer);
+      this._inspirationKbZeroTimer = null;
+    }
+    if (immediate) {
+      this._commitInspirationKeyboardHeight(0);
+    }
+  },
+
+  _setInspirationKeyboardHeight(height) {
+    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    if (next > 0) {
+      this._flushInspirationKeyboardZero(false);
+      this._commitInspirationKeyboardHeight(next);
+      return;
+    }
+    // 键盘收起：短防抖过滤弹起动画中的瞬时 0，但确保收起后必定归位
+    if (this._inspirationKbZeroTimer) clearTimeout(this._inspirationKbZeroTimer);
+    this._inspirationKbZeroTimer = setTimeout(() => {
+      this._inspirationKbZeroTimer = null;
+      this._commitInspirationKeyboardHeight(0);
+    }, 120);
   },
 
   _resetInspirationKeyboardUi() {
@@ -502,18 +520,23 @@ Page({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    // 仅依赖 input bindkeyboardheightchange，避免双通道高度抖动
+    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
+    if (typeof wx.onKeyboardHeightChange === 'function') {
+      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
+    }
   },
 
   _unbindInspirationKeyboard() {
+    if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
+    this._flushInspirationKeyboardZero(false);
     if (
       typeof wx.offKeyboardHeightChange === 'function'
       && this._onInspirationKeyboardHeightChange
     ) {
       wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-      this._onInspirationKeyboardHeightChange = null;
     }
+    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {

@@ -8,6 +8,12 @@ const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecial
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl, openPartnerPage } = require('../../../../utils/pageNavigate');
 const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
+const { isRoundTimerActive, buildPaginationDots } = require('../../../../utils/partnerRoundTimer');
+const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
+const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
+const { buildDisplaySummaries } = require('../../../../utils/partnerRoundNavigation');
+const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
+const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
@@ -99,7 +105,48 @@ Page({
     inspirationLiftStyle: '',
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
-    reverseSteps: REVERSE_STEPS
+    reverseSteps: REVERSE_STEPS,
+    avatarRoundStartedAt: null,
+    roundTimerActive: false,
+    roundTimerKey: '',
+    displayRoundSummaries: [],
+    cardIndex: 0,
+    cardCount: 1,
+    paginationDots: [{ key: 0, sizeClass: 'dot-lg', active: true }],
+    indicatorPlayerIndex: 1,
+    innerScrollLocked: false,
+    /** 与微信胶囊垂直对齐 */
+    topBarPadTop: 20,
+    topBarHeight: 32,
+    topBarIconSize: 32,
+    topBarPaddingRight: 12
+  },
+
+  _applyTopBarSafeInset() {
+    try {
+      const metrics = getCapsuleTopBarMetrics({ minBarPx: 36 });
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const windowWidth = (sys && sys.windowWidth) || 375;
+      const chipNeedPx = Math.ceil((74 * windowWidth) / 750);
+      const barHeight = Math.max(metrics.barHeight, chipNeedPx);
+      const capsuleCenter = metrics.padTop + metrics.barHeight / 2;
+      const padTop = Math.max(0, Math.round(capsuleCenter - barHeight / 2));
+      this.setData({
+        topBarPadTop: padTop,
+        topBarHeight: barHeight,
+        topBarIconSize: Math.min(barHeight, Math.max(metrics.iconSize, chipNeedPx)),
+        topBarPaddingRight: Math.max(8, metrics.padRightPx + 8)
+      });
+    } catch (e) {
+      this.setData({
+        topBarPadTop: 48,
+        topBarHeight: 40,
+        topBarIconSize: 40,
+        topBarPaddingRight: 100
+      });
+    }
   },
 
   onLoad(options) {
@@ -117,10 +164,12 @@ Page({
 
     getApp().globalData.roomId = roomId;
     this.setData({ roomId, initiatorPlayerIndex, currentPlayerIndex: initiatorPlayerIndex });
+    this._applyTopBarSafeInset();
     this.loadRoomData();
   },
 
   onShow() {
+    this._applyTopBarSafeInset();
     this._bindInspirationKeyboard();
     if (this.data.roomId) {
       this._startStatePolling();
@@ -165,7 +214,8 @@ Page({
     );
   },
 
-  _returnToGamepage(markUsed = true) {
+  _buildGamepageUrlFromRoom(pollResult, options = {}) {
+    const state = (pollResult && pollResult.roomState) || {};
     const {
       roomId,
       currentPlayerIndex,
@@ -174,24 +224,51 @@ Page({
       brainstormSessionSeq
     } = this.data;
     const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
-    const target = buildGamepageUrl(
-      roomId,
-      idx,
-      'partner',
-      markUsed
-        ? {
-          specialMoveUsed: true,
-          currentRound,
-          brainstormSessionSeq
+    const urlOpts = {
+      currentRound,
+      brainstormSessionSeq
+    };
+    if (state.partnerGamePhase === 'discussion') {
+      urlOpts.phase = 'discussion';
+    } else if (state.partnerGamePhase === 'closing') {
+      urlOpts.phase = 'closing';
+      if (state.partnerClosingStep) urlOpts.closingStep = state.partnerClosingStep;
+    }
+    if (options.markUsed) {
+      urlOpts.specialMoveUsed = true;
+    }
+    return buildGamepageUrl(roomId, idx, 'partner', urlOpts);
+  },
+
+  _redirectToGamepageFromRoom(pollResult, options = {}) {
+    const target = this._buildGamepageUrlFromRoom(pollResult, options);
+
+    if (this.data.viewMode === 'silent' || this.data.silentTimerActive) {
+      this._stopSilentTimerUi();
+    }
+    this._stopStatePolling();
+
+    // 讨论/收尾须带 phase，避免 navigateBack 回到旧出牌态
+    if (target.indexOf('phase=') >= 0) {
+      const opened = openUrl(target, { immediate: true });
+      if (opened) return;
+      wx.redirectTo({
+        url: target,
+        fail: () => {
+          wx.reLaunch({
+            url: target,
+            fail: () => {
+              this._startStatePolling();
+              wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
+            }
+          });
         }
-        : {
-          currentRound,
-          brainstormSessionSeq
-        }
-    );
+      });
+      return;
+    }
+
     const { safeNavigateBack } = require('../../../../utils/pageNavigate');
-    // 未标记已使用时可安全 pop；带 specialMoveUsed query 时必须 openUrl
-    if (!markUsed) {
+    if (!options.markUsed) {
       safeNavigateBack({
         expectedPrev: 'pages/main-pages/partnerMode/gamepage/index',
         fallbackUrl: target
@@ -199,6 +276,10 @@ Page({
       return;
     }
     safeOpenUrl(target);
+  },
+
+  _returnToGamepage(markUsed = true) {
+    this._redirectToGamepageFromRoom({ roomState: {} }, { markUsed });
   },
 
   formatSilentTime(sec) {
@@ -412,12 +493,250 @@ Page({
     this.handleGoInspirationCenter();
   },
 
+  /** 与 gamepage 同源：头像框只用本回合首次锚点 */
+  _resolveAvatarRoundStartedAt(roomState) {
+    const turnTs = roomState && roomState.partnerTurnStartedAt != null
+      ? Number(roomState.partnerTurnStartedAt)
+      : 0;
+    const cardTs = roomState && roomState.partnerRoundStartedAt != null
+      ? Number(roomState.partnerRoundStartedAt)
+      : 0;
+    if (Number.isFinite(turnTs) && turnTs > 0) return turnTs;
+    if (Number.isFinite(cardTs) && cardTs > 0) return cardTs;
+    return null;
+  },
+
+  _syncAvatarTimerFromRoom(roomState, currentRound, currentPlayerIndex) {
+    const avatarRoundStartedAt = this._resolveAvatarRoundStartedAt(roomState);
+    const roundTimerKey = `${currentRound != null ? currentRound : 1}-${currentPlayerIndex != null ? currentPlayerIndex : 1}`;
+    const roundTimerActive = !!(avatarRoundStartedAt && isRoundTimerActive(avatarRoundStartedAt));
+    const patch = {};
+    if (avatarRoundStartedAt !== this.data.avatarRoundStartedAt) {
+      patch.avatarRoundStartedAt = avatarRoundStartedAt;
+    }
+    if (roundTimerActive !== this.data.roundTimerActive) {
+      patch.roundTimerActive = roundTimerActive;
+    }
+    if (roundTimerKey !== this.data.roundTimerKey) {
+      patch.roundTimerKey = roundTimerKey;
+    }
+    if (Object.keys(patch).length) {
+      this.setData(patch);
+    }
+  },
+
+  handleRoundTimerExpire() {
+    // 特殊行动期间卡片不 loop；头像到期仅刷新房间态
+    if (this.data.roomId) {
+      this.loadRoomData();
+    }
+  },
+
+  _summaryHasContent(item) {
+    const has = (arr) => Array.isArray(arr) && arr.length > 0;
+    return !!(item && (
+      has(item.playHistory)
+      || has(item.discussionNotes)
+      || has(item.playImages)
+      || has(item.discussionImages)
+      || has(item.playBlocks)
+      || has(item.discussionBlocks)
+      || has(item.voiceLines)
+      || has(item.turnRecords)
+    ));
+  },
+
+  _reviewCardKey(item, summaryIdx) {
+    if (!item || item.round == null || item.playerIndex == null) {
+      return summaryIdx != null ? `i${summaryIdx}` : '';
+    }
+    const archived = item.archivedAt != null ? Number(item.archivedAt) : 0;
+    return `i${summaryIdx}_r${Number(item.round)}_p${Number(item.playerIndex)}_${archived}`;
+  },
+
+  _summariesFingerprint(summaries) {
+    return (summaries || []).map((s) => [
+      s.round,
+      s.playerIndex,
+      s.archivedAt || 0,
+      (s.playHistory || []).length,
+      (s.discussionNotes || []).length,
+      (s.voiceLines || []).length,
+      (s.turnRecords || []).length,
+      (s.playBlocks || []).length,
+      (s.discussionBlocks || []).length
+    ].join(':')).join('|');
+  },
+
+  _decorateTurnRecords(records) {
+    return (Array.isArray(records) ? records : []).map((turn) => {
+      if (!turn || typeof turn !== 'object') return turn;
+      return {
+        ...turn,
+        statementLabel: turn.statementLabel || getStatementLabel(turn.statementResult) || ''
+      };
+    });
+  },
+
+  _normalizeRoundSummaries(roomState, members) {
+    const currentRound = roomState && roomState.currentRound != null
+      ? Number(roomState.currentRound)
+      : Number(this.data.currentRound || 1);
+    const raw = Array.isArray(roomState && roomState.partnerRoundSummaries)
+      ? roomState.partnerRoundSummaries
+      : (this._lastRawRoundSummaries || []);
+    if (Array.isArray(roomState && roomState.partnerRoundSummaries)) {
+      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
+    }
+    const filtered = raw.filter((item) => {
+      const rd = Number(item && item.round);
+      if (!Number.isFinite(rd) || rd <= 0) return false;
+      if (rd >= currentRound) return false;
+      return this._summaryHasContent(item);
+    }).map((item) => ({
+      ...item,
+      voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
+      turnRecords: this._decorateTurnRecords(item.turnRecords)
+    }));
+    return attachPrivateNotesToSummaries(
+      buildDisplaySummaries(filtered, members),
+      this.data.roomId,
+      roomState && roomState.brainstormSessionSeq != null
+        ? roomState.brainstormSessionSeq
+        : this.data.brainstormSessionSeq
+    ).map((item, idx) => ({
+      ...item,
+      reviewCardKey: this._reviewCardKey(item, idx),
+      privateNote: item.privateNote || {
+        playHistory: [],
+        discussionNotes: [],
+        playImages: [],
+        discussionImages: [],
+        playBlocks: [],
+        discussionBlocks: []
+      }
+    }));
+  },
+
+  _applyRoundSummaries(summaries, options) {
+    const displayRoundSummaries = Array.isArray(summaries) ? summaries : [];
+    const fingerprint = this._summariesFingerprint(displayRoundSummaries);
+    const summaryCount = displayRoundSummaries.length;
+    const cardCount = summaryCount + 1;
+    const jumpToAction = options && options.jumpToAction === true;
+    const prevCount = this.data.cardCount || 1;
+    const prevIndex = this.data.cardIndex || 0;
+    const wasOnAction = prevIndex >= prevCount - 1;
+    const cardIndex = (jumpToAction || wasOnAction)
+      ? summaryCount
+      : Math.min(prevIndex, Math.max(0, cardCount - 1));
+    const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
+      ? displayRoundSummaries[cardIndex].playerIndex
+      : (this.data.currentPlayerIndex || 1);
+    const sameList = fingerprint === this._summariesFp
+      && cardCount === this.data.cardCount
+      && cardIndex === this.data.cardIndex
+      && indicatorPlayerIndex === this.data.indicatorPlayerIndex;
+    if (sameList && !jumpToAction) return;
+
+    this._summariesFp = fingerprint;
+    this.setData({
+      displayRoundSummaries,
+      cardCount,
+      cardIndex,
+      paginationDots: buildPaginationDots(cardIndex, cardCount),
+      indicatorPlayerIndex
+    });
+    this._hydrateSummaryMedia(displayRoundSummaries);
+  },
+
+  _jumpToActionCard() {
+    const summaryCount = (this.data.displayRoundSummaries || []).length;
+    const cardCount = Math.max(1, summaryCount + 1);
+    const cardIndex = summaryCount;
+    this.setData({
+      cardCount,
+      cardIndex,
+      paginationDots: buildPaginationDots(cardIndex, cardCount),
+      indicatorPlayerIndex: this.data.currentPlayerIndex
+    });
+  },
+
+  _hydrateSummaryMedia(summaries) {
+    const list = Array.isArray(summaries) ? summaries : [];
+    if (!list.length) return;
+    const token = (this._cloudMediaToken || 0) + 1;
+    this._cloudMediaToken = token;
+    Promise.all(list.map((item) => resolveRoundContentMedia(item || {}))).then((resolved) => {
+      if (this._cloudMediaToken !== token) return;
+      const current = this.data.displayRoundSummaries || [];
+      this.setData({
+        displayRoundSummaries: current.map((row, i) => {
+          const next = resolved[i];
+          if (!next) return row;
+          return {
+            ...row,
+            playImages: next.playImages,
+            discussionImages: next.discussionImages,
+            playBlocks: next.playBlocks,
+            discussionBlocks: next.discussionBlocks,
+            privateNote: next.privateNote || row.privateNote || {}
+          };
+        })
+      });
+    }).catch((e) => console.warn('specialMove hydrate media', e));
+  },
+
+  onCardSwiperChange(e) {
+    const index = e.detail && e.detail.current != null ? e.detail.current : 0;
+    const maxIndex = Math.max(0, (this.data.cardCount || 1) - 1);
+    const cardIndex = Math.min(index, maxIndex);
+    const summaries = this.data.displayRoundSummaries || [];
+    this.setData({
+      cardIndex,
+      paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
+      indicatorPlayerIndex: cardIndex < summaries.length && summaries[cardIndex]
+        ? summaries[cardIndex].playerIndex
+        : this.data.currentPlayerIndex
+    });
+  },
+
+  onInnerScrollTouchStart() {
+    if (!this.data.innerScrollLocked) {
+      this.setData({ innerScrollLocked: true });
+    }
+  },
+
+  onInnerScrollTouchEnd() {
+    if (this.data.innerScrollLocked) {
+      this.setData({ innerScrollLocked: false });
+    }
+  },
+
+  onRoundHistoryPreview(e) {
+    const url = e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.url
+      : '';
+    if (!url) return;
+    const idx = this.data.cardIndex || 0;
+    const item = (this.data.displayRoundSummaries || [])[idx] || {};
+    const note = item.privateNote || {};
+    const urls = [].concat(
+      note.playImages || [],
+      note.discussionImages || [],
+      note.images || [],
+      item.playImages || [],
+      item.discussionImages || []
+    ).filter(Boolean);
+    wx.previewImage({ current: url, urls: urls.length ? urls : [url] });
+  },
+
   async loadRoomData() {
     const roomId = this.data.roomId;
     try {
       const res = await wx.cloud.callFunction({
         name: 'getAddPlayerData',
-        data: { roomId }
+        data: { roomId, full: true }
       });
       const result = (res && res.result) || {};
       if (result.ok !== true || !result.members || !result.members.length) return;
@@ -435,6 +754,8 @@ Page({
         return;
       }
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
+      const roomState = result.roomState || {};
+      const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
 
       this.setData({
         members,
@@ -442,11 +763,9 @@ Page({
         // 以房间态当前出牌玩家为准，发起人索引与之对齐
         currentPlayerIndex: player.currentPlayerIndex,
         initiatorPlayerIndex: player.currentPlayerIndex,
-        currentRound: result.roomState && result.roomState.currentRound != null
-          ? result.roomState.currentRound
-          : 1,
-        brainstormSessionSeq: result.roomState && result.roomState.brainstormSessionSeq != null
-          ? result.roomState.brainstormSessionSeq
+        currentRound,
+        brainstormSessionSeq: roomState.brainstormSessionSeq != null
+          ? roomState.brainstormSessionSeq
           : 0,
         isHost: result.isHost === true,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
@@ -454,6 +773,8 @@ Page({
         problemTextOverflow: false
       }, () => {
         this._checkProblemTextOverflow();
+        this._syncAvatarTimerFromRoom(roomState, currentRound, player.currentPlayerIndex);
+        this._applyRoundSummaries(this._normalizeRoundSummaries(roomState, members));
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
@@ -552,6 +873,9 @@ Page({
       if (extra && extra.resetClosingVotes === true) {
         data.resetClosingVotes = true;
       }
+      if (extra && extra.closingVoteInitiatorIndex != null) {
+        data.closingVoteInitiatorIndex = extra.closingVoteInitiatorIndex;
+      }
       const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
       const result = (res && res.result) || {};
       return {
@@ -591,6 +915,12 @@ Page({
         }
         followSubScreenRoomPoll(result, roomId, {
           beforeNavigate: (pollResult, page) => {
+            const state = pollResult.roomState || {};
+            // 房主开始表态：静默/master/求助运气等均须与房主进入同一讨论流程
+            if (state.partnerGamePhase === 'discussion') {
+              this._redirectToGamepageFromRoom(pollResult);
+              return true;
+            }
             // 未本地采样时：从房间同步声贝等级到音柱
             if (
               !this._recorderManager
@@ -603,15 +933,22 @@ Page({
                 this.setData({ soundLevel: lv });
               }
             }
+            if (pollResult.roomState) {
+              this._syncAvatarTimerFromRoom(
+                pollResult.roomState,
+                pollResult.roomState.currentRound != null
+                  ? pollResult.roomState.currentRound
+                  : this.data.currentRound,
+                player.currentPlayerIndex
+              );
+            }
             // 房间静默已结束（他人清场/换轮）：退出静默视图
             if (
               this.data.viewMode === 'silent'
               && this.data.silentTimerActive
-              && pollResult.roomState
-              && pollResult.roomState.partnerSilentMode === false
+              && state.partnerSilentMode === false
             ) {
-              this._stopSilentTimerUi();
-              this._returnToGamepage();
+              this._redirectToGamepageFromRoom(pollResult);
               return true;
             }
             // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
@@ -697,7 +1034,7 @@ Page({
       return;
     }
     if (viewMode === 'reverseRandom') {
-      this.setData({ viewMode: 'wheel' });
+      this.setData({ viewMode: 'wheel' }, () => this._jumpToActionCard());
       return;
     }
     if (viewMode === 'silent') {
@@ -706,7 +1043,7 @@ Page({
       this._clearSilentRoomState();
       this.setData({
         viewMode: 'wheel'
-      });
+      }, () => this._jumpToActionCard());
       return;
     }
     // 转盘选择页：返回脑暴主流程（未确认行动，不标记已使用）
@@ -742,7 +1079,9 @@ Page({
 
     if (selectedAction === 'helpLuck') {
       // 默认进入反面随机拼（已去掉求助方式选择区）
-      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' });
+      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
+        this._jumpToActionCard();
+      });
       return;
     }
 
@@ -771,11 +1110,15 @@ Page({
     this._activatingClosing = true;
 
     try {
+      const initiatorIdx = this.data.initiatorPlayerIndex != null
+        ? this.data.initiatorPlayerIndex
+        : this.data.currentPlayerIndex;
       const result = await this._updateRoomState('closingStatement', null, null, {
         partnerGamePhase: 'closing',
         partnerMasterMode: false,
         partnerSilentMode: false,
-        resetClosingVotes: true
+        resetClosingVotes: true,
+        closingVoteInitiatorIndex: initiatorIdx
       });
       if (!result || result.ok !== true) {
         wx.showToast({ title: '状态同步失败', icon: 'none' });
@@ -784,6 +1127,7 @@ Page({
 
       const url = buildClosingStatementUrl(roomId, {
         closingVoteSessionId: result.closingVoteSessionId || '',
+        isInitiator: true,
         _t: Date.now()
       });
       // 先跳转再停轮询：失败时仍可靠 poll 自救到 closingStatement
@@ -839,7 +1183,7 @@ Page({
         return;
       }
 
-      this.setData({ viewMode: 'silent' });
+      this.setData({ viewMode: 'silent' }, () => this._jumpToActionCard());
       this.startSilentTimer(startedAt);
     } finally {
       this._activatingSilent = false;

@@ -81,6 +81,9 @@ function buildClosingStatementUrl(roomId, options = {}) {
   if (options.closingVoteSessionId) {
     url += `&closingVoteSessionId=${encodeURIComponent(options.closingVoteSessionId)}`;
   }
+  if (options.isInitiator) {
+    url += '&isInitiator=1';
+  }
   if (options._t) {
     url += `&_t=${encodeURIComponent(options._t)}`;
   }

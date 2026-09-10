@@ -277,6 +277,7 @@ exports.main = async (event, context) => {
     partnerClosingStep,
     closingQuestionPlayers,
     resetClosingVotes,
+    closingVoteInitiatorIndex,
     brainstormSessionEnded,
     roundSummary,
     partnerCurrentRoundContent,
@@ -511,9 +512,16 @@ exports.main = async (event, context) => {
     // 新开一轮收尾表态：必须换新 session，禁止沿用上一轮 closingVotes
     if (enteringClosing) {
       const forceNewSession = prevPage !== 'closingstatement' || resetClosingVotes === true;
+      const initiatorIdx = closingVoteInitiatorIndex != null
+        ? Number(closingVoteInitiatorIndex)
+        : null;
       if (forceNewSession) {
-        resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq);
-        updateData.closingVotes = _.set({});
+        resolvedClosingVoteState = buildNewClosingVoteState(
+          room,
+          sessionSeq,
+          initiatorIdx
+        );
+        updateData.closingVotes = _.set(resolvedClosingVoteState.votes || {});
         updateData.closingQuestionPlayers = _.set([]);
         updateData.closingVoteState = _.set(resolvedClosingVoteState);
       } else if (
@@ -523,8 +531,8 @@ exports.main = async (event, context) => {
         ).length > 0
       ) {
         // 旧数据残留且无有效 session：强制开新会话
-        resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq);
-        updateData.closingVotes = _.set({});
+        resolvedClosingVoteState = buildNewClosingVoteState(room, sessionSeq, initiatorIdx);
+        updateData.closingVotes = _.set(resolvedClosingVoteState.votes || {});
         updateData.closingQuestionPlayers = _.set([]);
         updateData.closingVoteState = _.set(resolvedClosingVoteState);
       }

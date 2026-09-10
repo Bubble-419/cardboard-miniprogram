@@ -60,6 +60,10 @@ function isFlowOverlayRoute() {
   if (route === 'pages/main-pages/partnerMode/confirmBG/index') {
     return !!(current._fromGameView || (current.data && current.data.fromGameView));
   }
+  // 全局回顾与主流程同路由，必须按回顾态识别，否则副屏轮询会把成员从回顾页拉走
+  if (route === 'pages/main-pages/partnerMode/gamepage/index') {
+    return !!(current._isHistoryReview || (current.data && current.data.isHistoryReview));
+  }
   return false;
 }
 

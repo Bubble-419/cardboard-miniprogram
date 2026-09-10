@@ -2,7 +2,9 @@ const cloud = require('wx-server-sdk');
 const {
   getBrainstormSessionSeq,
   buildEmptyClosingVoteState,
-  normalizeClosingVoteState
+  normalizeClosingVoteState,
+  isClosingVoteInitiator,
+  applyInitiatorDefaultPass
 } = require('./closingVoteState');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -89,7 +91,16 @@ exports.main = async (event, context) => {
         throw err;
       }
 
-      const closingVotes = { ...(voteState.votes || {}) };
+      if (isClosingVoteInitiator(playerIndex, voteState.initiatorPlayerIndex)) {
+        const err = new Error('发起收尾的玩家无需表态');
+        err.errCode = 'INITIATOR_EXEMPT';
+        throw err;
+      }
+
+      const closingVotes = applyInitiatorDefaultPass(
+        { ...(voteState.votes || {}) },
+        voteState.initiatorPlayerIndex
+      );
       if (closingVotes[voteKey]) {
         const err = new Error('您已表态');
         err.errCode = 'ALREADY_VOTED';

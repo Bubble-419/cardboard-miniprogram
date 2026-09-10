@@ -11,6 +11,7 @@ Page({
   data: {
     roomId: '',
     hasVoted: false,
+    isInitiator: false,
     isSubmitting: false,
     voteResult: '',
     closingVoteSessionId: 0,
@@ -32,10 +33,12 @@ Page({
       ? expectedSessionId
       : 0;
     this._settlementNavigating = false;
+    const isInitiator = options && (options.isInitiator === '1' || options.isInitiator === 'true');
     this.setData({
       roomId,
       hasVoted: false,
-      voteResult: '',
+      isInitiator: !!isInitiator,
+      voteResult: isInitiator ? 'pass' : '',
       isSubmitting: false,
       closingVoteSessionId: 0,
       closingVoteSeq: 0
@@ -114,9 +117,7 @@ Page({
     ) {
       this.setData({
         closingVoteSessionId: sessionId,
-        closingVoteSeq: seq,
-        hasVoted: false,
-        voteResult: ''
+        closingVoteSeq: seq
       });
       return;
     }
@@ -127,21 +128,21 @@ Page({
 
     const votes = (result.roomState && result.roomState.closingVotes) || {};
     const myVote = votes[String(me.playerIndex)];
-    if (sessionId > 0 && isValidClosingVote(myVote)) {
-      this.setData({
-        closingVoteSessionId: sessionId,
-        closingVoteSeq: seq,
-        hasVoted: true,
-        voteResult: myVote
-      });
-    } else {
-      this.setData({
-        closingVoteSessionId: sessionId || 0,
-        closingVoteSeq: seq || 0,
-        hasVoted: false,
-        voteResult: ''
-      });
-    }
+    const initiatorIdx = result.roomState && result.roomState.closingVoteInitiatorIndex != null
+      ? Number(result.roomState.closingVoteInitiatorIndex)
+      : null;
+    const serverIsInitiator = initiatorIdx != null && initiatorIdx === Number(me.playerIndex);
+    const isInitiator = serverIsInitiator || (initiatorIdx == null && this.data.isInitiator);
+    const hasVoted = serverIsInitiator || (sessionId > 0 && isValidClosingVote(myVote));
+    this.setData({
+      closingVoteSessionId: sessionId || 0,
+      closingVoteSeq: seq || 0,
+      hasVoted,
+      isInitiator,
+      voteResult: isInitiator
+        ? (isValidClosingVote(myVote) ? myVote : 'pass')
+        : (isValidClosingVote(myVote) ? myVote : '')
+    });
   },
 
   async _refreshVoteStatus() {
@@ -233,7 +234,7 @@ Page({
   },
 
   async handleVote(e) {
-    if (this.data.hasVoted || this.data.isSubmitting) return;
+    if (this.data.hasVoted || this.data.isInitiator || this.data.isSubmitting) return;
     const vote = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.vote;
     if (!vote) return;
 
@@ -248,6 +249,15 @@ Page({
       });
       const result = (res && res.result) || {};
       if (result.ok !== true) {
+        if (result.errCode === 'INITIATOR_EXEMPT') {
+          this.setData({
+            hasVoted: true,
+            isInitiator: true,
+            voteResult: 'pass',
+            isSubmitting: false
+          });
+          return;
+        }
         wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
         this.setData({ isSubmitting: false });
         this._refreshVoteStatus();
