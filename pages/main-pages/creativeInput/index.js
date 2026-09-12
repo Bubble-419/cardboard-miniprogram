@@ -1,10 +1,15 @@
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const {
+  bindPageToRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../../../modules/room-session/index');
 
 Page(withPageInteractionLock({
   data: {
@@ -30,7 +35,6 @@ Page(withPageInteractionLock({
     }
     this.setData({ roomId });
     await this.loadRoomData(roomId);
-    await this.loadIdeas(roomId);
     this._startStatePolling();
   },
 
@@ -45,11 +49,14 @@ Page(withPageInteractionLock({
 
   async loadRoomData(roomId) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      this._applySnapshot(result);
+    } catch (e) {
+      console.warn('creativeInput loadRoomData', e);
+    }
+  },
+
+  _applySnapshot(result) {
       if (result.ok !== true || !result.members || !result.members.length) return;
       const { assignAvatarImages } = require('../../../utils/avatars');
       const members = assignAvatarImages(result.members);
@@ -63,45 +70,17 @@ Page(withPageInteractionLock({
         myNickName: me ? (me.nickName || `玩家${me.playerIndex}`) : '',
         myAvatar: me ? (me.avatarImage || me.avatarUrl || '') : ''
       });
-      this._updateCanViewSummary(this.data.submittedCount, members.length, isHost);
-
-      if (isHost) {
-        try {
-          await wx.cloud.callFunction({
-            name: 'updateRoomState',
-            data: { roomId, currentPage: 'creativeInput' }
-          });
-        } catch (e) {
-          console.warn('creativeInput sync room state', e);
-        }
-      }
-    } catch (e) {
-      console.warn('creativeInput loadRoomData', e);
-    }
-  },
-
-  async loadIdeas(roomId) {
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'listCreativeIdeas',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok !== true) return;
-
-      const list = result.ideas || [];
-      const submittedCount = result.submittedCount != null ? result.submittedCount : list.length;
-      const mine = list.find(i => i.playerIndex === this.data.myPlayerIndex);
+      const session = result.view && result.view.session;
+      const progress = session && session.progress && session.progress.contributionProgress || {};
+      const contribution = result.view && result.view.actor && result.view.actor.contributionStatus;
+      const submittedCount = progress.submittedCount || 0;
       this.setData({
         submittedCount,
-        submitted: !!mine,
-        ideaText: mine ? (mine.ideaText || '') : ''
+        submitted: !!(contribution && contribution.submitted),
+        ideaText: contribution && contribution.submitted ? (contribution.text || '') : this.data.ideaText
       });
-      const memberCount = result.totalMembers || this.data.memberCount;
+      const memberCount = progress.requiredCount || members.length;
       this._updateCanViewSummary(submittedCount, memberCount, this.data.isHost);
-    } catch (e) {
-      console.warn('creativeInput loadIdeas', e);
-    }
   },
 
   _updateCanViewSummary(submittedCount, memberCount, isHost) {
@@ -128,11 +107,7 @@ Page(withPageInteractionLock({
       this._submitting = true;
       this._stopStatePolling();
       try {
-        const res = await wx.cloud.callFunction({
-          name: 'submitCreativeIdea',
-          data: { roomId, ideaText }
-        });
-        const result = (res && res.result) || {};
+        const result = await dispatchRoomCommand('SUBMIT_HALLI_IDEA', { text: ideaText });
         if (result.ok !== true) {
           wx.showToast({ title: result.errMsg || '提交失败', icon: 'none' });
           this._startStatePolling();
@@ -160,17 +135,6 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || '';
     if (!roomId) return;
     return runPageNavigation(this, async () => {
-      try {
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: {
-            roomId,
-            currentPage: 'creativeSummary'
-          }
-        });
-      } catch (e) {
-        console.warn('creativeInput handleViewSummary updateRoomState', e);
-      }
       return {
         method: 'redirectTo',
         url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
@@ -180,47 +144,17 @@ Page(withPageInteractionLock({
 
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || '';
-      if (!roomId || this._submitting) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            if (page === 'creativesummary') {
-              wx.redirectTo({
-                url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
-              });
-              return true;
-            }
-            if (page === 'addplayer') {
-              wx.redirectTo({
-                url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-              });
-              return true;
-            }
-            if (page === 'creativeinput') return true;
-            if (['gamepage', 'playsuccess', 'playfail'].includes(page)) return true;
-            return false;
-          }
-        });
-      } catch (e) {
-        console.warn('creativeInput state poll', e);
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || '',
+      followNavigation: true,
+      onSnapshot: (result) => {
+        if (!this._submitting) this._applySnapshot(result);
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('creativeInput bind room', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   handleGoBack() {

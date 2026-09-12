@@ -6,10 +6,8 @@
  * - 绝不 clearStorage / 登出 / 清除 wxUserProfile 等授权与登录凭证
  * - 授权流程进行中时延后跳转与提示，结束后再执行
  *
- * 房间解散信号来源：轮询 getAddPlayerData 的 ROOM_DISSOLVED（等同 room_dissolved）
+ * 房间解散信号来源：RoomClient 同步返回的 ROOM_DISSOLVED。
  */
-const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
-const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
 const { getCurrentRoute } = require('./pageNavigate');
 const {
   isUserAuthInProgress,
@@ -122,17 +120,12 @@ function clearRoomLocalState(roomId) {
     // ignore
   }
 
-  // 停止 App 级轮询，避免解散后继续打 getAddPlayerData
+  // 停止 RoomClient 同步循环。
   try {
     const { disposeRoomSession } = require('../modules/room-session/index');
     disposeRoomSession();
   } catch (e) {
     // ignore
-  }
-
-  if (id) {
-    clearLocalBrainstormProgress(id);
-    clearPartnerSpecialMoveUsedFlag(id);
   }
 
   try {
@@ -254,7 +247,7 @@ function handleRoomGoneFromResult(result, roomId, options = {}) {
     return exitRoomGone(result, { roomId, forceDissolved: true, ...options });
   }
   if (isRemovedFromRoomResult(result)) {
-    // 扫码 join 尚未落库时 getAddPlayerData 会回 NOT_IN_ROOM，不能当成真踢出
+    // 扫码 join 尚未落库时不能把 NOT_IN_ROOM 当成真踢出。
     if (isScanJoinActive(roomId)) return false;
     return exitRoomGone(result, { roomId, ...options });
   }

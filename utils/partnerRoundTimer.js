@@ -21,22 +21,27 @@ function getRoundElapsedSec(startedAt) {
   return Math.max(0, (Date.now() - ts) / 1000);
 }
 
-/** 计时仍在窗口内，过期时间戳视为无效 */
-function isRoundTimerActive(startedAt, durationSec = ROUND_DURATION_SEC) {
+/**
+ * 计时锚点在整个业务阶段内都有效。每个客户端用同一锚点计算 5 分钟循环，
+ * 避免到点后由某台设备重复写服务端时间造成多端漂移。
+ */
+function isRoundTimerActive(startedAt) {
   const ts = Number(startedAt);
   if (!Number.isFinite(ts) || ts <= 0) return false;
   const elapsedSec = (Date.now() - ts) / 1000;
-  return elapsedSec >= 0 && elapsedSec < durationSec;
+  return elapsedSec >= 0;
 }
 
 function getRoundTimerState(startedAt, durationSec = ROUND_DURATION_SEC) {
   const elapsedSecExact = getRoundElapsedSec(startedAt);
   const elapsedSec = Math.floor(elapsedSecExact);
-  const elapsedRatio = Math.min(1, elapsedSecExact / durationSec);
+  const cycleElapsedSec = durationSec > 0 ? elapsedSecExact % durationSec : 0;
+  const elapsedRatio = durationSec > 0 ? cycleElapsedSec / durationSec : 0;
   return {
     elapsedSec,
+    cycleElapsedSec,
     elapsedRatio,
-    remainingSec: Math.max(0, Math.ceil(durationSec - elapsedSecExact)),
+    remainingSec: Math.max(0, Math.ceil(durationSec - cycleElapsedSec)),
     border: getBorderSegmentProgress(elapsedRatio)
   };
 }

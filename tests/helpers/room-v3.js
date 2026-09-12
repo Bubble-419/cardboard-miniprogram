@@ -45,7 +45,12 @@ function createHarness(options) {
     return snapshot('host');
   }
 
-  return { app, repo, command, snapshot, seedMembers, knownSeq };
+  function advanceTime(ms) {
+    time += Number(ms) || 0;
+    return time;
+  }
+
+  return { app, repo, command, snapshot, seedMembers, advanceTime, knownSeq };
 }
 
 module.exports = { createHarness };

@@ -13,7 +13,7 @@ Page(withPageInteractionLock({
   data: {
     roomId: '',
     workshopOnly: false,
-    brainstormSessionSeq: 0,
+    sessionId: '',
     // AI_TEMP_DISABLED: 恢复 AI 时保留下列字段供生成/引用使用
     aiFeatureEnabled: isAiFeatureEnabled(),
     aiPrompt: '',
@@ -55,15 +55,16 @@ Page(withPageInteractionLock({
     this._pageAlive = true;
     this._applyNavbarInset();
     const roomId = (options && options.roomId) || (getApp().globalData && getApp().globalData.roomId) || '';
-    // 带房间进入时一律按「本房间本人灵感」展示，与灯泡角标一致
-    const workshopOnly = (options && options.scope) === 'workshop' || !!roomId;
-    const brainstormSessionSeq = options && options.brainstormSessionSeq != null
-      ? parseInt(options.brainstormSessionSeq, 10)
-      : 0;
+    // 显式 workshop 范围展示房间全部灵感，否则按不可变场次标识筛选。
+    const workshopOnly = (options && options.scope) === 'workshop'
+      || (!!roomId && !(options && options.sessionId));
+    const sessionId = options && options.sessionId
+      ? String(options.sessionId)
+      : '';
     this.setData({
       roomId,
       workshopOnly,
-      brainstormSessionSeq: Number.isFinite(brainstormSessionSeq) ? brainstormSessionSeq : 0
+      sessionId
     });
   },
 
@@ -229,7 +230,7 @@ Page(withPageInteractionLock({
           content: generatedText.trim(),
           isAIGenerated: true,
           referencedInspirations: this.data.referencedInspirations
-        }, this.data.roomId, this.data.brainstormSessionSeq)
+        }, this.data.roomId, this.data.sessionId)
       });
       const result = (saveRes && saveRes.result) || {};
       if (result.ok !== true) {
@@ -251,14 +252,14 @@ Page(withPageInteractionLock({
   },
 
   async loadInspirations() {
-    const { roomId, brainstormSessionSeq, workshopOnly } = this.data;
+    const { roomId, sessionId, workshopOnly } = this.data;
     try {
       let listData = {};
       if (roomId) {
-        // 游戏内进入（workshop）按房间拉本人全部灵感；否则可按对局序号缩小
+        // workshop 按房间拉本人全部灵感；否则按不可变场次标识缩小范围。
         listData = workshopOnly
           ? { roomId, workshopOnly: true }
-          : { roomId, brainstormSessionSeq };
+          : { roomId, sessionId };
       }
       const res = await wx.cloud.callFunction({
         name: 'listInspirations',
@@ -675,7 +676,7 @@ Page(withPageInteractionLock({
           content,
           imageUrls,
           isAIGenerated: false
-        }, this.data.roomId, this.data.brainstormSessionSeq)
+        }, this.data.roomId, this.data.sessionId)
       });
       const result = (saveRes && saveRes.result) || {};
       if (result.ok !== true) {

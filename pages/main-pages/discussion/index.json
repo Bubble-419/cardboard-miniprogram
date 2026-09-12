@@ -1,6 +1,0 @@
-{
-  "usingComponents": {
-    "player-top-bar": "/components/player-top-bar/index"
-  },
-  "navigationStyle": "custom"
-}

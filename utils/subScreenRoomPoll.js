@@ -1,13 +1,10 @@
 const { navigateByRoomState } = require('./subAwaitRoutes');
 const { getCurrentRoute, openUrl, isFlowOverlayRoute } = require('./pageNavigate');
-const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
-const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
 const {
   isRoomDissolvedResult,
   isRemovedFromRoomResult,
   handleRoomGoneFromResult
 } = require('./roomDissolved');
-const { handleRoomLastEvent } = require('./roomMembersSync');
 const { isScanJoinActive } = require('./scanJoinGate');
 
 const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
@@ -41,14 +38,12 @@ function redirectSubScreenToAddPlayer(roomId) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) return false;
   if (getCurrentRoute() === ADD_PLAYER_ROUTE) return false;
-  clearLocalBrainstormProgress(id);
-  clearPartnerSpecialMoveUsedFlag(id);
   return openUrl(`/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(id)}`);
 }
 
 /**
  * 副屏轮询统一入口：处理房间解散、退出脑暴回大厅、跟随主屏跳转
- * @param {object} result getAddPlayerData 返回值
+ * @param {object} result V3 页面快照
  * @param {string} roomId
  * @param {object} [options]
  * @param {(result: object) => boolean|void} [options.beforeNavigate] 返回 true 表示已处理
@@ -65,11 +60,6 @@ function followSubScreenRoomPoll(result, roomId, options = {}) {
   }
 
   if (!result || result.ok !== true || !result.roomState) return false;
-
-  // 成员变更 / 只剩 1 人回退房间：房主与成员均处理（幂等）
-  if (handleRoomLastEvent(result, id, options)) {
-    return true;
-  }
 
   // 回看案例/只读情境：不跟随主流程，避免从叠层页被拉回 submit/select
   if (isFlowOverlayRoute()) {

@@ -30,7 +30,11 @@
   </view>
 
   <page-footer extClass="footer" showPrev="{{false}}">
-    <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onRestart">再来一局</view>
+    <block wx:if="{{isHost}}">
+      <view class="secondary-btn {{acting ? 'dimmed' : ''}}" bindtap="onFinishSession">结束并返回房间</view>
+      <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onRestart">再来一局</view>
+    </block>
+    <view wx:else class="page-subtitle">等待房主选择下一步</view>
   </page-footer>
 </view>
 

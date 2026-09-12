@@ -1,5 +1,0 @@
-@import "../styles/common.wxss";
-
-.container {
-  padding: 48rpx;
-}

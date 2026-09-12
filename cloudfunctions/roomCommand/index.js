@@ -887,11 +887,17 @@ var require_partner = __commonJS({
         if (!check.ok) return check;
         if (check.session.workflow.step === WORKFLOW_STEP.PARTNER_TURN && check.turn.activeMemberId === actor.memberId) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u884C\u52A8\u8005\u4E0D\u80FD\u53D1\u9001\u533F\u540D\u8868\u8FBE");
         const facts = ensureFacts(aggregate);
+        const text = String(command.payload.text || "").trim();
+        if (!text) return fail(ERR.INVALID_ARGUMENT, "\u8868\u8FBE\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+        if (text.length > 500) return fail(ERR.LIMIT_EXCEEDED, "\u8868\u8FBE\u5185\u5BB9\u6700\u591A 500 \u5B57");
         const message = {
           messageId: idOf(deps, "message"),
           sessionId: check.session.sessionId,
           turnId: check.turn.turnId,
-          text: String(command.payload.text).trim(),
+          turnOrdinal: check.turn.ordinal,
+          roundNo: check.turn.roundNo,
+          phase: check.session.workflow.step === WORKFLOW_STEP.PARTNER_STATEMENT ? "discussion" : "play",
+          text,
           anonKey: `anon_${actor.memberId.slice(-6)}`,
           authorMemberId: actor.memberId,
           createdAt: nowOf(deps)
@@ -949,7 +955,7 @@ var require_partner = __commonJS({
         if (kind === "MASTER") check.turn.masterMode = true;
         if (kind === "SILENT") {
           check.turn.silentStartedAt = nowOf(deps);
-          check.turn.silentDeadlineAt = nowOf(deps) + 60 * 1e3;
+          check.turn.silentDeadlineAt = nowOf(deps) + 5 * 60 * 1e3;
         }
         if (kind === "CLOSING") {
           const voteSessionId = idOf(deps, "closing");
@@ -1409,6 +1415,7 @@ var require_spy = __commonJS({
       const spy = spyState(aggregate);
       const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
       spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
+      spy.voteStartedAt = nowOf(deps);
       session.workflow = {
         step: WORKFLOW_STEP.SPY_VOTE,
         roundNo: spy.roundNo,
@@ -1459,6 +1466,7 @@ var require_spy = __commonJS({
         currentSpeakerIndex: 0,
         speakerTurnId: null,
         voteProgress: null,
+        voteStartedAt: null,
         tieBreak: false,
         lastResult: null,
         winnerSide: null,
@@ -1509,6 +1517,7 @@ var require_spy = __commonJS({
       spy.lastResult = {
         eliminatedMemberId: eliminated && eliminated.memberId,
         eliminatedName: eliminated && eliminated.nickName,
+        eliminatedRole: eliminatedSecret && eliminatedSecret.role,
         maxVotes: max,
         tied: false,
         tallies: tally,
@@ -2247,6 +2256,7 @@ var require_room_projection = __commonJS({
           roomId: room.roomId,
           lifecycle: room.lifecycle,
           workshopName: room.workshopName,
+          createdAt: room.createdAt,
           hostMemberId: room.hostMemberId,
           members: (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
             memberId: member.memberId,
@@ -2254,7 +2264,8 @@ var require_room_projection = __commonJS({
             nickName: member.profile.nickName,
             avatarRef: member.profile.avatarRef || null,
             avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
-            color: member.profile.color
+            color: member.profile.color,
+            joinedAt: member.joinedAt
           }))
         },
         session: null
@@ -2310,6 +2321,7 @@ var require_room_projection = __commonJS({
         activeTurn: null,
         activeArtifacts: [],
         recentMessages: [],
+        turnSummaries: [],
         result: clone(session.result || null)
       };
       if (session.mode === MODE.PARTNER) {
@@ -2358,7 +2370,21 @@ var require_room_projection = __commonJS({
           createdAt: item.createdAt,
           updatedAt: item.updatedAt
         }));
-        view.recentMessages = (facts.messages || []).filter((item) => item.sessionId === session.sessionId).slice(-40).map((item) => ({ messageId: item.messageId, text: item.text, anonKey: item.anonKey, createdAt: item.createdAt }));
+        view.recentMessages = (facts.messages || []).filter((item) => item.sessionId === session.sessionId).slice(-40).map((item) => ({
+          messageId: item.messageId,
+          turnId: item.turnId,
+          turnOrdinal: item.turnOrdinal,
+          roundNo: item.roundNo,
+          phase: item.phase,
+          text: item.text,
+          anonKey: item.anonKey,
+          createdAt: item.createdAt
+        }));
+        const allArtifacts = Object.values(facts.artifacts || {});
+        view.turnSummaries = Object.values(facts.turns || {}).filter((item) => item.sessionId === session.sessionId).sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((item) => ({
+          ...clone(item),
+          artifacts: allArtifacts.filter((artifact) => artifact.sessionId === session.sessionId && artifact.turnId === item.turnId && !artifact.removed).sort((a, b) => a.createdAt - b.createdAt).map((artifact) => clone(artifact))
+        }));
       } else if (session.mode === MODE.HALLI_GALLI) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
         const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
@@ -2373,11 +2399,16 @@ var require_room_projection = __commonJS({
           gameId: spy.gameId || null,
           roundNo: spy.roundNo || 1,
           players: clone(spy.players || []),
+          speakOrder: clone(spy.speakOrder || []),
+          currentSpeakerIndex: spy.currentSpeakerIndex || 0,
           speakerTurnId: spy.speakerTurnId || null,
+          speakRoundStartedAt: spy.speakRoundStartedAt || null,
+          speakTurnStartedAt: spy.speakTurnStartedAt || null,
           currentSpeakerMemberId: spy.speakOrder && spy.currentSpeakerIndex < spy.speakOrder.length ? spy.speakOrder[spy.currentSpeakerIndex] : null,
           voteSessionId: spy.voteProgress && spy.voteProgress.voteSessionId,
           votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
           requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
+          voteStartedAt: spy.voteStartedAt || null,
           tieBreak: spy.tieBreak === true,
           lastResult: clone(spy.lastResult || null),
           winnerSide: spy.winnerSide || null,
@@ -2426,7 +2457,8 @@ var require_room_projection = __commonJS({
       caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(!!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(isParticipant && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE, "INVALID_TRANSITION");
+      const canClosingVote = isParticipant && !!partner && !!partner.closing && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE && partner.closing.initiatorMemberId !== actor.memberId && partner.closing.requiredMemberIds.includes(actor.memberId) && !partner.closing.submittedMemberIds.includes(actor.memberId);
+      caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(canClosingVote, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.COMPLETE_PARTNER_SESSION] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.END_HALLI_ACTIVITY] = capability(isHost && step === WORKFLOW_STEP.HALLI_ACTIVITY, "INVALID_TRANSITION");
@@ -2689,8 +2721,13 @@ var require_room_application = __commonJS({
       const appOptions = options || {};
       const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
       async function ephemeral(roomId) {
-        if (typeof repo.listPresence !== "function") return {};
-        const rows = await repo.listPresence(roomId);
+        let rows = [];
+        let signalRows = [];
+        try {
+          rows = typeof repo.listPresence === "function" ? await repo.listPresence(roomId) : [];
+        } catch (e) {
+          rows = [];
+        }
         const cutoff = now() - (appOptions.presenceTtlMs || 15e3);
         const byMemberId = {};
         (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff).forEach((row) => {
@@ -2698,7 +2735,23 @@ var require_room_application = __commonJS({
             byMemberId[row.memberId] = { online: true, lastSeenAt: row.lastSeenAt };
           }
         });
-        return { presenceByMemberId: byMemberId };
+        try {
+          signalRows = typeof repo.listSignals === "function" ? await repo.listSignals(roomId) : [];
+        } catch (e) {
+          signalRows = [];
+        }
+        const signals = {};
+        (signalRows || []).filter((row) => Number(row.expiresAt) > now()).forEach((row) => {
+          if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
+            signals[row.signalType] = {
+              value: clone(row.value),
+              memberId: row.memberId,
+              updatedAt: row.updatedAt,
+              expiresAt: row.expiresAt
+            };
+          }
+        });
+        return { presenceByMemberId: byMemberId, signals };
       }
       async function readCurrentRoom(actorContext) {
         const actorUserId = actorContext && actorContext.userId;
@@ -2889,6 +2942,7 @@ var require_room_application = __commonJS({
       const events = /* @__PURE__ */ new Map();
       const activeRooms = /* @__PURE__ */ new Map();
       const presence = /* @__PURE__ */ new Map();
+      const signals = /* @__PURE__ */ new Map();
       const sessions = /* @__PURE__ */ new Map();
       let seq = 1e7;
       const copy = (value) => clone(value);
@@ -2907,6 +2961,7 @@ var require_room_application = __commonJS({
         events,
         activeRooms,
         presence,
+        signals,
         sessions,
         generateRoomId(commandId, actorUserId) {
           if (options && typeof options.generateRoomId === "function") return options.generateRoomId(commandId, actorUserId);
@@ -2975,6 +3030,9 @@ var require_room_application = __commonJS({
         },
         async listPresence(roomId) {
           return copy([...presence.values()].filter((item) => item.roomId === roomId));
+        },
+        async listSignals(roomId) {
+          return copy([...signals.values()].filter((item) => item.roomId === roomId));
         }
       };
     }
@@ -3009,7 +3067,9 @@ var require_room_cloudbase_adapter = __commonJS({
       artifacts: "roomV3Artifacts",
       messages: "roomV3Messages",
       secrets: "roomV3Secrets",
-      presence: "roomV3Presence"
+      presence: "roomV3Presence",
+      signals: "roomV3Signals",
+      media: "roomV3Media"
     });
     var FACT_COLLECTION = Object.freeze({
       turns: COLLECTIONS.turns,
@@ -3187,6 +3247,10 @@ var require_room_cloudbase_adapter = __commonJS({
         const result = await db2.collection(COLLECTIONS.presence).where({ roomId }).limit(50).get();
         return (result && result.data || []).map(cleanDoc);
       }
+      async function listSignals(roomId) {
+        const result = await db2.collection(COLLECTIONS.signals).where({ roomId }).limit(20).get();
+        return (result && result.data || []).map(cleanDoc);
+      }
       return {
         generateRoomId,
         transactCommand,
@@ -3194,7 +3258,8 @@ var require_room_cloudbase_adapter = __commonJS({
         readSyncState,
         findActiveRoom,
         upsertPresence,
-        listPresence
+        listPresence,
+        listSignals
       };
     }
     module2.exports = { COLLECTIONS, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId };

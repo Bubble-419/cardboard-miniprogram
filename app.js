@@ -9,8 +9,6 @@ const SHARED_ENV_CONFIG = {
 };
 
 function patchWxCloudForSharedEnv(app) {
-  const origCallFunction = wx.cloud.callFunction.bind(wx.cloud);
-  const origDatabase = wx.cloud.database.bind(wx.cloud);
   const origGetTempFileURL = wx.cloud.getTempFileURL ? wx.cloud.getTempFileURL.bind(wx.cloud) : null;
 
   wx.cloud.callFunction = function(opts) {
@@ -25,9 +23,6 @@ function patchWxCloudForSharedEnv(app) {
       }
       return cloud.callFunction(opts);
     });
-  };
-  wx.cloud.database = function() {
-    return app.globalData.cloudReady.then(() => app.globalData.cloud.database());
   };
   if (origGetTempFileURL) {
     wx.cloud.getTempFileURL = function(opts) {
@@ -127,4 +122,3 @@ App({
     workshopName: "工作坊名称"
   }
 })
-

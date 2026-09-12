@@ -43,46 +43,54 @@ function makePage() {
 
 test('ignores an existing-scenario tap while add-scenario navigation is locked', async () => {
   const page = makePage();
-  const pending = [];
-  let updateCalls = 0;
-  page._updateRoomState = () => {
-    updateCalls += 1;
-    return new Promise((resolve) => pending.push(resolve));
+  const originalNavigateTo = global.wx.navigateTo;
+  let navigationCalls = 0;
+  let finishNavigation = null;
+  global.wx.navigateTo = (options) => {
+    navigationCalls += 1;
+    finishNavigation = () => options.success({});
   };
 
-  const addScenario = page._goAddScenario();
-  await Promise.resolve();
+  try {
+    const addScenario = page._goAddScenario();
+    await new Promise((resolve) => setImmediate(resolve));
 
-  page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
-  assert.equal(updateCalls, 1, '全屏锁期间不应启动第二个情境跳转请求');
+    page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
+    assert.equal(navigationCalls, 1, '全屏锁期间不应启动第二个情境跳转请求');
 
-  pending.forEach((resolve) => resolve(true));
-  await addScenario;
+    finishNavigation();
+    await addScenario;
+  } finally {
+    global.wx.navigateTo = originalNavigateTo;
+  }
 });
 
 test('ignores add-scenario while existing-scenario navigation is locked', async () => {
   const page = makePage();
-  const pending = [];
-  let updateCalls = 0;
-  page._updateRoomState = () => {
-    updateCalls += 1;
-    return new Promise((resolve) => pending.push(resolve));
+  const originalNavigateTo = global.wx.navigateTo;
+  let navigationCalls = 0;
+  let finishNavigation = null;
+  global.wx.navigateTo = (options) => {
+    navigationCalls += 1;
+    finishNavigation = () => options.success({});
   };
 
-  page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
-  await Promise.resolve();
+  try {
+    page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
+    await new Promise((resolve) => setImmediate(resolve));
 
-  page.handleAddScenario();
-  await Promise.resolve();
-  assert.equal(updateCalls, 1, '选择情境的全屏锁期间不应启动新增情境请求');
+    page.handleAddScenario();
+    assert.equal(navigationCalls, 1, '选择情境的全屏锁期间不应启动新增情境请求');
 
-  pending.forEach((resolve) => resolve(true));
-  await Promise.resolve();
+    finishNavigation();
+    await Promise.resolve();
+  } finally {
+    global.wx.navigateTo = originalNavigateTo;
+  }
 });
 
 test('keeps the page locked while navigation is still transitioning', async () => {
   const page = makePage();
-  let updateCalls = 0;
   let navigationCalls = 0;
   let completeNavigation = null;
   const originalNavigateTo = global.wx.navigateTo;
@@ -90,11 +98,6 @@ test('keeps the page locked while navigation is still transitioning', async () =
     navigationCalls += 1;
     completeNavigation = () => options.success({});
   };
-  page._updateRoomState = async () => {
-    updateCalls += 1;
-    return true;
-  };
-
   try {
     page.handleAddScenario();
     await Promise.resolve();
@@ -107,7 +110,7 @@ test('keeps the page locked while navigation is still transitioning', async () =
     page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
     await Promise.resolve();
 
-    assert.equal(updateCalls, 1, '页面切换完成前不应启动第二次请求');
+    assert.equal(navigationCalls, 1, '页面切换完成前不应启动第二次请求');
     completeNavigation();
     await Promise.resolve();
   } finally {

@@ -40,3 +40,31 @@ test('Sync 返回连续完整事件组；过期与越界水位要求 Snapshot', 
   assert.equal((await h.app.sync('12345678', 0, { userId: 'host' })).snapshotRequired, true);
   assert.equal((await h.app.sync('12345678', 999, { userId: 'host' })).snapshotRequired, true);
 });
+
+test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'HALLI_GALLI' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', { context: { sessionId }, payload: { source: 'OFFLINE' } });
+  snapshot = await h.snapshot('host');
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: snapshot.view.actor.memberId }
+  });
+  await h.command('host', 'END_HALLI_ACTIVITY', { context: { sessionId } });
+  await h.command('host', 'SUBMIT_HALLI_IDEA', { context: { sessionId }, payload: { text: 'A' } });
+  await h.command('u2', 'SUBMIT_HALLI_IDEA', { context: { sessionId }, payload: { text: 'B' } });
+  await h.command('host', 'COMPLETE_HALLI_SESSION', { context: { sessionId } });
+
+  const history = await h.app.readHistory('12345678', { userId: 'host' }, { limit: 10 });
+  assert.equal(history.ok, true);
+  assert.deepEqual(history.sessions.map((item) => item.sessionId), [sessionId]);
+
+  await h.command('host', 'RETURN_TO_LOBBY', { context: { sessionId } });
+  assert.equal((await h.snapshot('host')).view.session, null);
+  const archived = await h.app.readSessionSnapshot('12345678', sessionId, { userId: 'host' });
+  assert.equal(archived.ok, true);
+  assert.equal(archived.view.session.status, 'COMPLETED');
+  assert.deepEqual(archived.view.session.publicModeState.ideas.map((item) => item.text), ['A', 'B']);
+});

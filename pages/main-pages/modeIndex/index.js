@@ -9,7 +9,9 @@ const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
 const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const {
   bindPageToRoomSession,
-  unbindPageFromRoomSession
+  unbindPageFromRoomSession,
+  getRoomPageSnapshot,
+  dispatchRoomCommand
 } = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
@@ -122,11 +124,7 @@ Page({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return null;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         await this._syncMembersFromResult(result);
       }
@@ -152,7 +150,6 @@ Page({
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
         if (isHost) {
-          this._updateRoomState('auth');
           this._loadScenarios();
         } else {
           this._startStatePolling();
@@ -164,24 +161,6 @@ Page({
     } catch (e) {
       this.setData({ isHost: true });
       this._loadScenarios();
-    }
-  },
-
-  async _updateRoomState(currentPage, selectedBG) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const data = { roomId, currentPage };
-      if (selectedBG) data.selectedBG = selectedBG;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
     }
   },
 
@@ -248,13 +227,6 @@ Page({
       const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
       getApp().globalData.gameMode = mode;
       getApp().globalData.selectedBGSource = 'custom';
-      if (roomId) {
-        const ok = await this._updateRoomState('selectBG');
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-          return;
-        }
-      }
       const query = roomId
         ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
         : `?mode=${mode}`;
@@ -294,8 +266,8 @@ Page({
         if (scenario.isOffline || scenario.id === 'offline') {
           const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
           app.globalData.gameMode = offlineMode;
-          const ok = await this._updateRoomState('selectPlayer');
-          if (!ok) {
+          const result = await dispatchRoomCommand('SET_SCENARIO', { source: 'OFFLINE' });
+          if (!result || result.ok !== true) {
             wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
             return;
           }
@@ -314,11 +286,6 @@ Page({
         if (this.data.modeId === 'partner') {
           app.globalData.selectedBG = { ...scenario.bg };
           app.globalData.gameMode = 'partner';
-          const ok = await this._updateRoomState('confirmBG', app.globalData.selectedBG);
-          if (!ok) {
-            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-            return;
-          }
           return {
             method: 'navigateTo',
             url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
@@ -332,8 +299,9 @@ Page({
         }
         app.globalData.selectedBG = bg;
         app.globalData.gameMode = this.data.modeId;
-        const ok = await this._updateRoomState('selectPlayer', bg);
-        if (!ok) {
+        const source = String(scenario.type || 'CASE').toUpperCase();
+        const result = await dispatchRoomCommand('SET_SCENARIO', { source, scenario: bg });
+        if (!result || result.ok !== true) {
           wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
           return;
         }
@@ -352,6 +320,7 @@ Page({
   handleGoBack() {
     if (isPageInteractionLocked(this)) return;
     return runPageInteraction(this, async () => {
+      await this._cancelConfiguringSession();
       const roomId = this.data.roomId || '';
       const fallbackUrl = roomId
         ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
@@ -365,8 +334,20 @@ Page({
 
   handleGoRoom() {
     if (isPageInteractionLocked(this)) return;
-    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+    return runPageInteraction(this, async () => {
+      await this._cancelConfiguringSession();
+      await goRoomPage(this.data.roomId);
+    }, {
       loadingText: '正在返回房间…'
     });
+  },
+
+  async _cancelConfiguringSession() {
+    if (!this.data.isHost) return;
+    const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: false });
+    const session = snapshot && snapshot.view && snapshot.view.session;
+    if (!session || session.status !== 'CONFIGURING') return;
+    const result = await dispatchRoomCommand('CANCEL_WORKSHOP_SESSION', {}, { sessionId: session.sessionId });
+    if (!result || result.ok !== true) throw new Error(result && result.errMsg || '取消场次失败');
   }
 });

@@ -1,6 +1,8 @@
-const { navigateByRoomState, openSubAwait } = require('../../../utils/subAwaitRoutes');
+const { openSubAwait } = require('../../../utils/subAwaitRoutes');
 const {
   bindPageToRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
@@ -60,11 +62,7 @@ Page({
 
   async _bootstrapAsHostOrWait(roomId, options = {}) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         return;
@@ -92,7 +90,6 @@ Page({
         update.minPlayers = result.members.length;
       }
       this.setData(update);
-      this._updateRoomState('selectPlayer');
     } catch (e) {
       console.warn('selectPlayer bootstrap', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -116,37 +113,11 @@ Page({
     this._clearLongPressTimer();
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const data = { roomId, currentPage, skipArchive: true };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
-    }
-  },
-
   _startStatePolling() {
     this._stopStatePolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      intervalMs: 2000,
-      followNavigation: false,
-      onSnapshot(snapshot) {
-        if (!snapshot || !snapshot.ok || !snapshot.raw || !snapshot.raw.roomState) return;
-        const roomId = this.data.roomId || getApp().globalData.roomId || '';
-        const page = (snapshot.raw.roomState.currentPage || '').toLowerCase();
-        navigateByRoomState(page, snapshot.raw.roomState, roomId);
-      }
+      followNavigation: true
     }).catch((e) => console.warn('selectPlayer roomSession', e));
   },
 
@@ -156,11 +127,7 @@ Page({
 
   async loadMembers(roomId) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         const selectedModeId = result.selectedModeId || '';
         if (selectedModeId === 'partner') {
@@ -397,7 +364,12 @@ Page({
     const resolvedRoomId = roomId || getApp().globalData.roomId || '';
 
     if (this._isPartnerMode()) {
-      return this.navigateToConfirmFirstPlayer(resolvedRoomId);
+      let currentPlayerIndex = 1;
+      if (members && members.length > 0) {
+        currentPlayerIndex = members[Math.floor(Math.random() * members.length)].playerIndex;
+      }
+      getApp().globalData.selectedPlayer = { currentPlayerIndex };
+      return this.navigateToConfirmFirstPlayer(resolvedRoomId, currentPlayerIndex);
     }
 
     let currentPlayerIndex = 1;
@@ -420,7 +392,7 @@ Page({
     const { selectedPlayerIndex, roomId } = this.data;
     if (selectedPlayerIndex == null) return;
     if (this._isPartnerMode()) {
-      return this.navigateToConfirmFirstPlayer(roomId);
+      return this.navigateToConfirmFirstPlayer(roomId, selectedPlayerIndex);
     }
     return this.navigateToGamepage(roomId, selectedPlayerIndex);
   },
@@ -444,7 +416,7 @@ Page({
     });
   },
 
-  async navigateToConfirmFirstPlayer(roomId) {
+  async navigateToConfirmFirstPlayer(roomId, currentPlayerIndex) {
     if (!roomId) {
       roomId = getApp().globalData.roomId || '';
     }
@@ -456,13 +428,22 @@ Page({
     if (this._navPending) return;
     return runPageNavigation(this, async () => {
       this._navPending = true;
-      getApp().globalData.selectedPlayer = {};
       try {
-        const ok = await this._updateRoomState('confirmFirstPlayer');
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        const member = (this.data.members || []).find((item) => item.playerIndex === currentPlayerIndex)
+          || (this.data.members || [])[0];
+        if (!member) {
+          wx.showToast({ title: '没有可选择的成员', icon: 'none' });
           return;
         }
+        const result = await dispatchRoomCommand('SELECT_FIRST_PLAYER', { memberId: member.memberId });
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        getApp().globalData.selectedPlayer = {
+          currentPlayerIndex: member.playerIndex,
+          currentPlayerName: member.nickName || `玩家${member.playerIndex}`
+        };
         return {
           method: 'redirectTo',
           url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
@@ -489,11 +470,14 @@ Page({
       this._navPending = true;
       const members = this.data.members || [];
       const current = members.find(m => m.playerIndex === currentPlayerIndex);
-      const currentPlayerName = current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`;
       try {
-        const ok = await this._updateRoomState('gamepage', currentPlayerIndex, currentPlayerName);
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        if (!current) {
+          wx.showToast({ title: '所选成员已经离开', icon: 'none' });
+          return;
+        }
+        const result = await dispatchRoomCommand('SELECT_FIRST_PLAYER', { memberId: current.memberId });
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
           return;
         }
         return {
@@ -554,8 +538,7 @@ Page({
     safeNavigateBack({
       expectedPrev: [
         'pages/main-pages/selectProblem/index',
-        'pages/main-pages/modeIndex/index',
-        'pages/main-pages/selectMode/index'
+        'pages/main-pages/modeIndex/index'
       ],
       fallbackUrl
     });

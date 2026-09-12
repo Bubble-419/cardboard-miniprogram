@@ -114,6 +114,53 @@ const COMMAND_CONTEXT = Object.freeze({
   RESTART_SPY_GAME: ['sessionId', 'gameId'], COMPLETE_SPY_SESSION: ['sessionId', 'gameId']
 });
 
+/**
+ * 指令 payload 使用白名单，避免旧协议字段或客户端派生状态被服务端静默接收。
+ * 这里描述的是传输结构；角色、步骤与实体归属仍由领域 Reducer 裁决。
+ */
+const COMMAND_PAYLOAD_KEYS = Object.freeze({
+  CREATE_ROOM: ['workshopName', 'nickName', 'avatarRef', 'avatarUrl', 'avatarIndex', 'color', 'avatarColor'],
+  JOIN_ROOM: ['nickName', 'avatarRef', 'avatarUrl', 'avatarIndex', 'color', 'avatarColor'],
+  UPDATE_ROOM_PROFILE: ['workshopName'],
+  UPDATE_MEMBER_PROFILE: ['nickName', 'avatarRef', 'avatarUrl', 'avatarIndex', 'color', 'avatarColor'],
+  REORDER_SEATS: ['orderedMemberIds'],
+  LEAVE_ROOM: [],
+  KICK_MEMBER: ['memberId'],
+  DISSOLVE_ROOM: [],
+  START_WORKSHOP_SESSION: ['mode'],
+  SET_SCENARIO: ['source', 'scenario'],
+  SUBMIT_DESIGN_PROBLEM: ['text'],
+  UPDATE_DESIGN_PROBLEM: ['contributionId', 'text'],
+  SELECT_DESIGN_PROBLEM: ['contributionId'],
+  SELECT_FIRST_PLAYER: ['memberId'],
+  CONFIRM_FIRST_PLAYER: ['memberId'],
+  CANCEL_WORKSHOP_SESSION: [],
+  RETURN_TO_LOBBY: [],
+  REPLAY_WORKSHOP_SESSION: [],
+  APPEND_ARTIFACT: ['operationId', 'kind', 'text', 'fileRef'],
+  UPDATE_ARTIFACT: ['operationId', 'text', 'fileRef'],
+  REMOVE_ARTIFACT: ['operationId'],
+  SUBMIT_PARTNER_SCORE: ['scoreHalfSteps'],
+  POST_PARTNER_MESSAGE: ['text'],
+  START_PARTNER_STATEMENT: [],
+  ADVANCE_PARTNER_TURN: ['statementResult'],
+  USE_PARTNER_SPECIAL: ['kind'],
+  END_PARTNER_SILENT: [],
+  SUBMIT_PARTNER_CLOSING_VOTE: ['vote'],
+  ADVANCE_PARTNER_CLOSING: [],
+  COMPLETE_PARTNER_SESSION: [],
+  END_HALLI_ACTIVITY: [],
+  SUBMIT_HALLI_IDEA: ['text'],
+  COMPLETE_HALLI_SESSION: [],
+  START_SPY_GAME: [],
+  ADVANCE_SPY_SPEAKER: [],
+  OPEN_SPY_VOTE: [],
+  SUBMIT_SPY_VOTE: ['targetMemberId', 'abstain'],
+  START_NEXT_SPY_ROUND: [],
+  RESTART_SPY_GAME: [],
+  COMPLETE_SPY_SESSION: []
+});
+
 function fail(errCode, errMsg, extra) {
   return { ok: false, errCode, errMsg: errMsg || ERR_MSG[errCode] || errCode,
     retryable: errCode === ERR.DEPENDENCY_UNAVAILABLE || errCode === ERR.RATE_LIMITED, ...(extra || {}) };
@@ -125,7 +172,28 @@ function normalizeMode(value) {
     HALLI_GALLI: MODE.HALLI_GALLI, spy: MODE.SPY, SPY: MODE.SPY })[String(value || '').trim()] || null;
 }
 
+function isRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateOptionalText(payload, key, limit, label) {
+  if (payload[key] == null) return okResult();
+  if (typeof payload[key] !== 'string') return fail(ERR.INVALID_ARGUMENT, `${label}必须是字符串`);
+  if (payload[key].length > limit) return fail(ERR.LIMIT_EXCEEDED, `${label}最多 ${limit} 字符`);
+  return okResult();
+}
+
 function validatePayload(type, payload) {
+  let payloadSize = 0;
+  try { payloadSize = JSON.stringify(payload).length; } catch (error) {
+    return fail(ERR.INVALID_ARGUMENT, 'payload 必须可序列化');
+  }
+  if (payloadSize > 32 * 1024) return fail(ERR.LIMIT_EXCEEDED, 'payload 超过 32KB');
+
+  const allowedKeys = COMMAND_PAYLOAD_KEYS[type] || [];
+  const unknownKey = Object.keys(payload).find((key) => !allowedKeys.includes(key));
+  if (unknownKey) return fail(ERR.INVALID_ARGUMENT, `payload.${unknownKey} 不属于 ${type}`);
+
   if (type === COMMAND_TYPES.START_WORKSHOP_SESSION && !normalizeMode(payload.mode)) {
     return fail(ERR.INVALID_ARGUMENT, 'mode 必须是 PARTNER、HALLI_GALLI 或 SPY');
   }
@@ -136,6 +204,7 @@ function validatePayload(type, payload) {
   const textLimits = {
     [COMMAND_TYPES.POST_PARTNER_MESSAGE]: ['text', 40, '消息'],
     [COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM]: ['text', 50, '设计问题'],
+    [COMMAND_TYPES.UPDATE_DESIGN_PROBLEM]: ['text', 50, '设计问题'],
     [COMMAND_TYPES.SUBMIT_HALLI_IDEA]: ['text', 120, '创意']
   };
   if (textLimits[type]) {
@@ -150,22 +219,137 @@ function validatePayload(type, payload) {
   if (type === COMMAND_TYPES.USE_PARTNER_SPECIAL && !['HELP_LUCK', 'SILENT', 'MASTER', 'CLOSING'].includes(payload.kind)) {
     return fail(ERR.INVALID_ARGUMENT, '未知特殊行动');
   }
+  const requiredString = {
+    [COMMAND_TYPES.KICK_MEMBER]: 'memberId',
+    [COMMAND_TYPES.UPDATE_DESIGN_PROBLEM]: 'contributionId',
+    [COMMAND_TYPES.SELECT_DESIGN_PROBLEM]: 'contributionId',
+    [COMMAND_TYPES.SELECT_FIRST_PLAYER]: 'memberId',
+    [COMMAND_TYPES.APPEND_ARTIFACT]: 'operationId',
+    [COMMAND_TYPES.UPDATE_ARTIFACT]: 'operationId',
+    [COMMAND_TYPES.REMOVE_ARTIFACT]: 'operationId'
+  }[type];
+  if (requiredString && (!isNonEmptyString(payload[requiredString]) || payload[requiredString].length > 128)) {
+    return fail(ERR.INVALID_ARGUMENT, `payload.${requiredString} 必须是 1～128 字符`);
+  }
+  if (type === COMMAND_TYPES.REORDER_SEATS) {
+    if (!Array.isArray(payload.orderedMemberIds) || !payload.orderedMemberIds.length
+      || payload.orderedMemberIds.length > MAX_SEATS
+      || payload.orderedMemberIds.some((id) => !isNonEmptyString(id) || id.length > 128)
+      || new Set(payload.orderedMemberIds).size !== payload.orderedMemberIds.length) {
+      return fail(ERR.INVALID_ARGUMENT, 'orderedMemberIds 必须是非空成员 ID 数组');
+    }
+  }
+  if (type === COMMAND_TYPES.SET_SCENARIO) {
+    const source = String(payload.source || '').toUpperCase();
+    if (!['OFFLINE', 'CASE', 'HISTORY', 'CUSTOM'].includes(source)) return fail(ERR.INVALID_ARGUMENT, '未知情境来源');
+    if (source === 'OFFLINE' && payload.scenario != null) return fail(ERR.INVALID_ARGUMENT, '线下情境不应携带 scenario');
+    const scenario = payload.scenario;
+    if (source !== 'OFFLINE' && !isRecord(scenario)) return fail(ERR.INVALID_ARGUMENT, 'scenario 必填');
+    const scenarioKeys = scenario ? Object.keys(scenario) : [];
+    if (scenarioKeys.some((key) => !['scene', 'user', 'function', 'platform'].includes(key))) {
+      return fail(ERR.INVALID_ARGUMENT, 'scenario 包含未知字段');
+    }
+    if (source !== 'OFFLINE' && (!isNonEmptyString(scenario.scene)
+      || !isNonEmptyString(scenario.user) || !isNonEmptyString(scenario.function))) {
+      return fail(ERR.INVALID_ARGUMENT, '非线下情境字段不完整');
+    }
+    if (scenario && ['scene', 'user', 'function', 'platform'].some((key) => scenario[key] != null
+      && (typeof scenario[key] !== 'string' || scenario[key].length > 100))) {
+      return fail(ERR.LIMIT_EXCEEDED, '情境字段最多 100 字');
+    }
+  }
+  if (type === COMMAND_TYPES.APPEND_ARTIFACT) {
+    if (payload.kind != null && !['TEXT', 'IMAGE', 'VOICE'].includes(String(payload.kind))) {
+      return fail(ERR.INVALID_ARGUMENT, '未知素材类型');
+    }
+    const text = payload.text == null ? '' : String(payload.text).trim();
+    const fileRef = payload.fileRef == null ? '' : String(payload.fileRef).trim();
+    if (!text && !fileRef) return fail(ERR.INVALID_ARGUMENT, '素材内容不能为空');
+    if (text.length > 500 || fileRef.length > 1024) return fail(ERR.LIMIT_EXCEEDED, '素材内容超过上限');
+  }
+  if (type === COMMAND_TYPES.UPDATE_ARTIFACT) {
+    const text = String(payload.text || '').trim();
+    if (!text) return fail(ERR.INVALID_ARGUMENT, '素材内容不能为空');
+    if (text.length > 500) return fail(ERR.LIMIT_EXCEEDED, '共享文本最多 500 字');
+    if (payload.fileRef != null && (typeof payload.fileRef !== 'string' || payload.fileRef.length > 1024)) {
+      return fail(ERR.LIMIT_EXCEEDED, '素材引用超过上限');
+    }
+  }
+  if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN
+    && !['allPass', 'partialPass', 'allQuestion'].includes(payload.statementResult)) {
+    return fail(ERR.INVALID_ARGUMENT, 'statementResult 不合法');
+  }
+  if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM, COMMAND_TYPES.UPDATE_MEMBER_PROFILE].includes(type)
+    && payload.nickName != null) {
+    const name = String(payload.nickName).trim();
+    if (!name || name.length > 20) return fail(ERR.INVALID_ARGUMENT, '昵称必须是 1～20 字');
+  }
+  if (type === COMMAND_TYPES.UPDATE_ROOM_PROFILE && String(payload.workshopName || '').trim().length > 20) {
+    return fail(ERR.LIMIT_EXCEEDED, '房间名称最多 20 字');
+  }
+  if (type === COMMAND_TYPES.UPDATE_ROOM_PROFILE && !isNonEmptyString(payload.workshopName)) {
+    return fail(ERR.INVALID_ARGUMENT, '房间名称不能为空');
+  }
+  if (type === COMMAND_TYPES.CREATE_ROOM && payload.workshopName != null
+    && (!isNonEmptyString(payload.workshopName) || payload.workshopName.trim().length > 20)) {
+    return fail(ERR.INVALID_ARGUMENT, '房间名称必须是 1～20 字');
+  }
+  for (const [key, limit, label] of [
+    ['avatarRef', 1024, '头像引用'], ['avatarUrl', 1024, '头像地址'],
+    ['color', 32, '头像颜色'], ['avatarColor', 32, '头像颜色']
+  ]) {
+    const checked = validateOptionalText(payload, key, limit, label);
+    if (!checked.ok) return checked;
+  }
+  if (payload.avatarIndex != null
+    && (!Number.isInteger(Number(payload.avatarIndex)) || Number(payload.avatarIndex) < 0 || Number(payload.avatarIndex) > 1000)) {
+    return fail(ERR.INVALID_ARGUMENT, 'avatarIndex 必须是 0～1000 的整数');
+  }
+  if (type === COMMAND_TYPES.UPDATE_MEMBER_PROFILE && Object.keys(payload).length === 0) {
+    return fail(ERR.INVALID_ARGUMENT, '至少提供一个成员资料字段');
+  }
+  if (type === COMMAND_TYPES.SUBMIT_SPY_VOTE && payload.abstain !== true && !isNonEmptyString(payload.targetMemberId)) {
+    return fail(ERR.INVALID_ARGUMENT, '请选择投票目标或弃票');
+  }
+  if (payload.targetMemberId != null
+    && (!isNonEmptyString(payload.targetMemberId) || payload.targetMemberId.length > 128)) {
+    return fail(ERR.INVALID_ARGUMENT, '投票目标不合法');
+  }
+  if (type === COMMAND_TYPES.SUBMIT_SPY_VOTE && payload.abstain != null && typeof payload.abstain !== 'boolean') {
+    return fail(ERR.INVALID_ARGUMENT, 'abstain 必须是布尔值');
+  }
   return okResult();
 }
 
 function validateCommandEnvelope(raw) {
-  if (!raw || typeof raw !== 'object') return fail(ERR.INVALID_ARGUMENT, 'command envelope 必填');
+  if (!isRecord(raw)) return fail(ERR.INVALID_ARGUMENT, 'command envelope 必填');
+  const envelopeKeys = ['protocolVersion', 'commandId', 'roomId', 'knownSeq', 'type', 'context', 'payload', 'clientSentAt'];
+  const unknownEnvelope = Object.keys(raw).find((key) => !envelopeKeys.includes(key));
+  if (unknownEnvelope) return fail(ERR.INVALID_ARGUMENT, `command.${unknownEnvelope} 是未知字段`);
   if (Number(raw.protocolVersion) !== PROTOCOL_VERSION) return fail(ERR.INVALID_ARGUMENT, `仅支持 protocolVersion=${PROTOCOL_VERSION}`);
   const type = String(raw.type || '');
   if (!Object.values(COMMAND_TYPES).includes(type)) return fail(ERR.INVALID_ARGUMENT, `未知命令类型: ${type}`);
   if (!isNonEmptyString(raw.commandId) || raw.commandId.trim().length > 128) return fail(ERR.INVALID_ARGUMENT, 'commandId 必须是 1～128 字符');
   if (type !== COMMAND_TYPES.CREATE_ROOM && !isNonEmptyString(raw.roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
+  if (isNonEmptyString(raw.roomId) && raw.roomId.trim().length > 128) return fail(ERR.INVALID_ARGUMENT, 'roomId 最多 128 字符');
   const knownSeq = raw.knownSeq == null ? 0 : Number(raw.knownSeq);
   if (!Number.isInteger(knownSeq) || knownSeq < 0) return fail(ERR.INVALID_ARGUMENT, 'knownSeq 必须是非负整数');
-  const context = raw.context && typeof raw.context === 'object' ? raw.context : {};
-  const payload = raw.payload && typeof raw.payload === 'object' ? raw.payload : {};
-  for (const key of COMMAND_CONTEXT[type] || []) {
+  if (raw.context != null && !isRecord(raw.context)) return fail(ERR.INVALID_ARGUMENT, 'context 必须是对象');
+  if (raw.payload != null && !isRecord(raw.payload)) return fail(ERR.INVALID_ARGUMENT, 'payload 必须是对象');
+  const context = raw.context || {};
+  const payload = raw.payload || {};
+  const contextKeys = COMMAND_CONTEXT[type] || [];
+  const unknownContext = Object.keys(context).find((key) => !contextKeys.includes(key));
+  if (unknownContext) return fail(ERR.INVALID_ARGUMENT, `context.${unknownContext} 不属于 ${type}`);
+  for (const key of contextKeys) {
     if (context[key] == null || context[key] === '') return fail(ERR.INVALID_ARGUMENT, `context.${key} 必填`);
+    if (key !== 'entityVersion' && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
+      return fail(ERR.INVALID_ARGUMENT, `context.${key} 必须是 1～128 字符`);
+    }
+  }
+  if (context.entityVersion != null
+    && (!Number.isInteger(Number(context.entityVersion)) || Number(context.entityVersion) < 1)) {
+    return fail(ERR.INVALID_ARGUMENT, 'context.entityVersion 必须是正整数');
   }
   const payloadResult = validatePayload(type, payload);
   if (!payloadResult.ok) return payloadResult;
@@ -182,4 +366,4 @@ function stableStringify(value) {
 
 module.exports = { PROTOCOL_VERSION, SCHEMA_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_SEATS,
   LIFECYCLE, SESSION_STATUS, MODE, WORKFLOW_STEP, COMMAND_TYPES, EVENT_TYPES, ERR, ERR_MSG, COMMAND_CONTEXT,
-  fail, okResult, isNonEmptyString, normalizeMode, validateCommandEnvelope, stableStringify };
+  COMMAND_PAYLOAD_KEYS, fail, okResult, isNonEmptyString, normalizeMode, validateCommandEnvelope, stableStringify };

@@ -8,7 +8,6 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { getCurrentRoute, openUrl, safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
@@ -17,6 +16,11 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const {
+  bindPageToRoomSession,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../../../modules/room-session/index');
 
 Page(withPageInteractionLock({
   data: {
@@ -110,11 +114,7 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId;
     if (!roomId) return;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true) return;
 
       const roomBG = normalizeBG(result.selectedBG)
@@ -158,53 +158,32 @@ Page(withPageInteractionLock({
 
   _startPolling() {
     this._stopPolling();
-    const poll = async () => {
-      if (!this._pageAlive || this._pageVisible === false) return;
-      if (this.data.myPlayerIndex != null && !this._inputFocused && !this.data.isSubmitting) {
-        await this.refreshSubmitStatus();
-      }
-      if (!this._pageAlive || this._pageVisible === false) return;
-      const roomId = this.data.roomId;
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        if (!this._pageAlive) return;
-        const result = (res && res.result) || {};
-
+    if (!this.data.roomId) return;
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId,
+      followNavigation: true,
+      onSnapshot: (result) => {
+        if (!this._pageAlive || this._pageVisible === false) return;
         const roomBG = normalizeBG(result.selectedBG)
           || normalizeBG(getApp().globalData.selectedBG);
-        if (roomBG) {
-          this._syncCategoriesFromBG(roomBG);
-        }
-
+        if (roomBG) this._syncCategoriesFromBG(roomBG);
         this._syncMembersFromResult(result);
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (_pollResult, page) => {
-            if (page === 'selectproblem') {
-              this._goSelectProblem();
-              return true;
-            }
-            return false;
-          }
-        });
-      } catch (e) {
-        if (this._pageAlive) {
-          console.warn('submitProblem poll', e);
-        }
+        const session = result.view && result.view.session;
+        const progress = session && session.progress && session.progress.contributionProgress || {};
+        const actor = result.view && result.view.actor;
+        const patch = {
+          submittedCount: progress.submittedCount || 0,
+          totalMembers: progress.requiredCount || result.memberCount || 0,
+          hasSubmitted: !!(actor && actor.contributionStatus.submitted)
+        };
+        if (patch.hasSubmitted && !this._inputFocused) patch.problemText = actor.contributionStatus.text || '';
+        this.setData(patch);
       }
-    };
-    poll();
-    this._pollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('submitProblem bind room', e));
   },
 
   _stopPolling() {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   _goSelectProblem() {
@@ -218,19 +197,6 @@ Page(withPageInteractionLock({
     clearPendingNavigation();
     const roomIdEnc = encodeURIComponent(this.data.roomId);
     openUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`, { preferNavigate: true });
-  },
-
-  async _updateRoomState(currentPage) {
-    const roomId = this.data.roomId;
-    if (!roomId) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage }
-      });
-    } catch (e) {
-      console.warn('updateRoomState', e);
-    }
   },
 
   handleOpenCase() {
@@ -376,8 +342,6 @@ Page(withPageInteractionLock({
         });
 
         if (!status.allSubmitted) return;
-        await this._updateRoomState('selectProblem');
-        await new Promise((resolve) => setTimeout(resolve, 500));
         this._navigating = true;
         this._stopPolling();
         clearPendingNavigation();

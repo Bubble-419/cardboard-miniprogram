@@ -12,11 +12,9 @@ function buildSpyPageUrl(pageKey, roomId, query = {}) {
   const pathMap = {
     intro: '/packageSpy/pages/modeIndex/index',
     modeIndex: '/packageSpy/pages/modeIndex/index',
-    assign: '/packageSpy/pages/assign/index',
     speak: '/packageSpy/pages/speak/index',
     vote: '/packageSpy/pages/vote/index',
     result: '/packageSpy/pages/result/index',
-    nextRound: '/packageSpy/pages/nextRound/index',
     settle: '/packageSpy/pages/settle/index'
   };
   let url = `${pathMap[pageKey] || pathMap.intro}?roomId=${roomIdEnc}`;
@@ -42,17 +40,11 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     if (options.closingStep) {
       url += `&closingStep=${encodeURIComponent(options.closingStep)}`;
     }
-    if (options.specialMoveUsed) {
-      url += '&specialMoveUsed=1';
-    }
     if (options.currentRound != null && Number.isFinite(Number(options.currentRound))) {
       url += `&currentRound=${Number(options.currentRound)}`;
     }
-    if (options.brainstormSessionSeq != null && Number.isFinite(Number(options.brainstormSessionSeq))) {
-      url += `&brainstormSessionSeq=${Number(options.brainstormSessionSeq)}`;
-    }
-    if (options.fromStatement) {
-      url += '&fromStatement=1';
+    if (options.sessionId) {
+      url += `&sessionId=${encodeURIComponent(String(options.sessionId))}`;
     }
     return url;
   }
@@ -60,13 +52,6 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
     return buildSpyPageUrl('speak', roomId);
   }
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
-}
-
-function buildStatementUrl(roomId, currentPlayerIndex, currentPlayerName, options = {}) {
-  return buildGamepageUrl(roomId, currentPlayerIndex, 'partner', {
-    phase: 'discussion',
-    currentRound: options.currentRound
-  });
 }
 
 function buildSpecialMoveUrl(roomId, currentPlayerIndex) {
@@ -90,11 +75,6 @@ function buildClosingStatementUrl(roomId, options = {}) {
   return url;
 }
 
-function buildClosingEndUrl(roomId) {
-  const roomIdEnc = encodeURIComponent(roomId);
-  return `/pages/main-pages/partnerMode/closingEnd/index?roomId=${roomIdEnc}`;
-}
-
 function buildLeaderboardUrl(roomId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId || '');
   const from = options.from ? `&from=${encodeURIComponent(options.from)}` : '';
@@ -105,10 +85,8 @@ function buildLeaderboardUrl(roomId, options = {}) {
 module.exports = {
   getSelectedModeId,
   buildGamepageUrl,
-  buildStatementUrl,
   buildSpecialMoveUrl,
   buildClosingStatementUrl,
-  buildClosingEndUrl,
   buildLeaderboardUrl,
   buildSpyPageUrl
 };

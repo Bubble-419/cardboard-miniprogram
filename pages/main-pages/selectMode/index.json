@@ -1,7 +1,0 @@
-{
-  "usingComponents": {
-    "player-top-bar": "/components/player-top-bar/index",
-    "page-footer": "/components/page-footer/index"
-  },
-  "navigationStyle": "custom"
-}

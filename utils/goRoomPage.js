@@ -1,7 +1,6 @@
 /** 跳转房间大厅页 addPlayer（清空页面栈，避免从深层流程 navigateBack 乱跳转） */
 const { setSpyLobbyStay, clearSpyFollowLock } = require('./spyFollow');
 const { clearPendingNavigation } = require('./pageNavigate');
-const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
 
 function goRoomPage(roomId) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
@@ -23,32 +22,24 @@ function goRoomPage(roomId) {
 
 /**
  * 合伙人整局结束后回房间。
- * 仅房主可 updateRoomState 清会话；非房主直接进大厅，避免权限失败。
+ * 已完成场次由房主提交 RETURN_TO_LOBBY；非房主只进行本地导航。
  */
 async function endPartnerSessionAndGoRoom(roomId, options) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
   if (!id) {
     return goRoomPage('');
   }
-  clearLocalBrainstormProgress(id);
   const isHost = !!(options && options.isHost);
   if (isHost) {
     try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId: id,
-          currentPage: 'addPlayer',
-          partnerGamePhase: 'play',
-          partnerMasterMode: false,
-          partnerSilentMode: false,
-          resetClosingVotes: true,
-          clearBrainstormProgress: true,
-          brainstormSessionEnded: true
-        }
-      });
+      const { getActiveRoomSession, dispatchRoomCommand } = require('../modules/room-session/index');
+      const view = getActiveRoomSession() && getActiveRoomSession().getView();
+      const session = view && view.session;
+      if (session && session.status === 'COMPLETED') {
+        await dispatchRoomCommand('RETURN_TO_LOBBY', {}, { sessionId: session.sessionId });
+      }
     } catch (e) {
-      console.warn('endPartnerSessionAndGoRoom updateRoomState', e);
+      console.warn('endPartnerSessionAndGoRoom', e);
     }
   }
   return goRoomPage(id);

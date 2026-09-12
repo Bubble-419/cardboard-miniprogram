@@ -2,7 +2,6 @@
  * 德国心脏病模式 - 游戏页
  * 路径：pages/main-pages/halliGalli/gamepage/
  */
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { prepareMembersForDisplay } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
@@ -11,6 +10,12 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
+const {
+  bindPageToRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../../../../modules/room-session/index');
 
 Page(withPageInteractionLock({
   data: {
@@ -42,8 +47,7 @@ Page(withPageInteractionLock({
 
     this.setData({
       roomId,
-      currentPlayerIndex,
-      selectedBG: getApp().globalData.selectedBG || null
+      currentPlayerIndex
     });
 
     this.loadRoomData(roomId);
@@ -55,95 +59,56 @@ Page(withPageInteractionLock({
 
   async loadRoomData(roomId) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
-      if (result.ok !== true || !result.members || !result.members.length) {
-        if (followSubScreenRoomPoll(result, roomId)) return;
-        wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      if (!result || result.ok !== true || !result.members || !result.members.length) {
+        wx.showToast({ title: result && result.errMsg || '加载失败', icon: 'none' });
         return;
       }
+      await this._applySnapshot(result);
 
-      const members = result.members;
-      const enriched = await prepareMembersForDisplay(members);
-      const avatarList = enriched.map(m => ({
-        id: m.playerIndex,
-        avatar: m.avatarImage || m.avatarUrl || '',
-        nickName: m.nickName,
-        isMe: m.isMe
-      }));
-
-      const current = members.find(m => m.playerIndex === this.data.currentPlayerIndex);
-      const currentPlayerName = current
-        ? (current.nickName || `玩家${this.data.currentPlayerIndex}`)
-        : `玩家${this.data.currentPlayerIndex}`;
-      const isHost = result.isHost === true;
-      const selectedBG = this.data.selectedBG || getApp().globalData.selectedBG || null;
-
-      this.setData({
-        members,
-        avatarList,
-        currentPlayerName,
-        isHost,
-        selectedBG
-      });
-
-      if (result.isHost === true) {
-        this._updateRoomState('gamepage', this.data.currentPlayerIndex, currentPlayerName);
-        this._stopStatePolling();
-      } else {
-        this._startStatePolling();
-      }
+      this._startStatePolling();
     } catch (e) {
       console.error('loadRoomData', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
 
-  /** 非房主：轮询房间状态，房主结束游戏时跟随跳转 */
+  async _applySnapshot(result) {
+    if (!result || result.ok !== true || !result.members || !result.members.length) return;
+    const members = result.members;
+    const enriched = await prepareMembersForDisplay(members);
+    const avatarList = enriched.map((member) => ({
+      id: member.playerIndex,
+      avatar: member.avatarImage || member.avatarUrl || '',
+      nickName: member.nickName,
+      isMe: member.isMe
+    }));
+    const roomState = result.roomState || {};
+    const currentPlayerIndex = roomState.currentPlayerIndex || this.data.currentPlayerIndex || 1;
+    const current = members.find((member) => member.playerIndex === currentPlayerIndex);
+    this.setData({
+      members,
+      avatarList,
+      currentPlayerIndex,
+      currentPlayerName: current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`,
+      isHost: result.isHost === true,
+      selectedBG: result.selectedBG || roomState.selectedBG || null
+    });
+  },
+
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        followSubScreenRoomPoll(result, roomId);
-      } catch (e) {
-        console.warn('halliGalli gamepage state poll', e);
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || '',
+      followNavigation: true,
+      onSnapshot: (result) => {
+        this._applySnapshot(result).catch((e) => console.warn('halliGalli apply snapshot', e));
       }
-    };
-    this._statePollTimer = setInterval(poll, 2000);
-    poll();
+    }).catch((e) => console.warn('halliGalli bind room', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
-  },
-
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra = {}) {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return;
-    try {
-      const data = { roomId, currentPage, ...extra };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-    } catch (e) {
-      console.warn('updateRoomState', e);
-    }
+    unbindPageFromRoomSession(this);
   },
 
   handleEndGame() {
@@ -154,10 +119,10 @@ Page(withPageInteractionLock({
     }
     const roomIdEnc = encodeURIComponent(roomId);
     return runPageNavigation(this, async () => {
-      try {
-        await this._updateRoomState('creativeInput', null, null, { startCreativeSession: true });
-      } catch (e) {
-        console.warn('handleEndGame updateRoomState', e);
+      const result = await dispatchRoomCommand('END_HALLI_ACTIVITY', {});
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '结束失败', icon: 'none' });
+        return;
       }
       return {
         method: 'redirectTo',

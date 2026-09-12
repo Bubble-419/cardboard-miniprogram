@@ -13,6 +13,7 @@ const STEPS_WITHOUT_PLATFORM = [
 
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { dispatchRoomCommand } = require('../../../modules/room-session/index');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -62,23 +63,6 @@ Page({
 
     this.setData({ includePlatform, steps, currentStep, bg });
     this.updateCanConfirm();
-    this._updateRoomState('selectBG');
-  },
-
-  async _updateRoomState(currentPage) {
-    const roomId = getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage }
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
-    }
   },
 
   goBack() {
@@ -161,24 +145,13 @@ Page({
       const roomId = app.globalData.roomId || '';
       this._confirmPending = true;
       try {
-        if (roomId) {
-          try {
-            const res = await wx.cloud.callFunction({
-              name: 'updateRoomState',
-              data: {
-                roomId,
-                currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
-                selectedBG: bg
-              }
-            });
-            const result = (res && res.result) || {};
-            if (result.ok !== true) {
-              wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
-              return;
-            }
-          } catch (e) {
-            console.warn('updateRoomState selectedBG', e);
-            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        if (roomId && !this.data.includePlatform) {
+          const result = await dispatchRoomCommand('SET_SCENARIO', {
+            source: 'CUSTOM',
+            scenario: bg
+          });
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
             return;
           }
         }

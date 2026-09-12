@@ -85,11 +85,15 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
   const definition = loadPageDefinition('../../pages/main-pages/selectPlayer/index');
   const page = makePage(definition, {
     roomId: '12345678',
+    members: [{ memberId: 'member-2', playerIndex: 2, nickName: '玩家2' }],
     selectedPlayerIndex: 2,
     selectedModeId: 'partner',
     selectionAnimationDone: true
   });
-  page._updateRoomState = async () => true;
+  app.globalData.roomSession = {
+    getView: () => ({ session: { sessionId: 'session-1' } }),
+    dispatch: async () => ({ ok: true })
+  };
 
   const running = page.confirmSelection();
   assert.equal(page.data.interactionLocked, true, '点击确认后应立即锁住整页');
@@ -104,4 +108,5 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
   finishNavigation();
   await running;
   assert.equal(page.data.interactionLocked, false, '路由回调后应释放锁');
+  delete app.globalData.roomSession;
 });

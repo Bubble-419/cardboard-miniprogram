@@ -7,6 +7,8 @@ const {
   activeParticipantsBySeat, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
+const SPY_VOTE_DURATION_MS = 2 * 60 * 1000;
+
 function randomOf(deps) { return deps && typeof deps.random === 'function' ? deps.random : Math.random; }
 function shuffle(items, random) {
   const list = items.slice();
@@ -59,6 +61,7 @@ function openVote(aggregate, deps) {
   const session = aggregate.currentSession; const spy = spyState(aggregate);
   const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
   spy.voteProgress = { voteSessionId: idOf(deps, 'vote'), requiredMemberIds, submittedMemberIds: [] };
+  spy.voteStartedAt = nowOf(deps);
   session.workflow = { step: WORKFLOW_STEP.SPY_VOTE, roundNo: spy.roundNo, activeMemberId: null,
     turnId: spy.voteProgress.voteSessionId, phaseStartedAt: nowOf(deps) };
   return event(EVENT_TYPES.SPY_VOTE_OPENED, { voteSessionId: spy.voteProgress.voteSessionId, requiredCount: requiredMemberIds.length, tieBreak: spy.tieBreak });
@@ -79,7 +82,7 @@ function startGame(aggregate, deps, restarted) {
       blurb: isSpy ? words.spyBlurb : words.civilianBlurb, createdAt: nowOf(deps) };
   });
   session.modeState.spy = { gameId, roundNo: 1, wordPairId: words.id || null, players, speakOrder: [],
-    currentSpeakerIndex: 0, speakerTurnId: null, voteProgress: null, tieBreak: false,
+    currentSpeakerIndex: 0, speakerTurnId: null, voteProgress: null, voteStartedAt: null, tieBreak: false,
     lastResult: null, winnerSide: null, reveal: [] };
   session.status = SESSION_STATUS.RUNNING;
   const events = [];
@@ -116,7 +119,9 @@ function resolveVote(aggregate, deps) {
   const winner = winnerSide(aggregate, spy);
   const eliminatedSecret = eliminated ? secretByMemberId(aggregate, spy.gameId, eliminated.memberId) : null;
   spy.lastResult = { eliminatedMemberId: eliminated && eliminated.memberId,
-    eliminatedName: eliminated && eliminated.nickName, maxVotes: max, tied: false, tallies: tally, winnerSide: winner };
+    eliminatedName: eliminated && eliminated.nickName,
+    eliminatedRole: eliminatedSecret && eliminatedSecret.role,
+    maxVotes: max, tied: false, tallies: tally, winnerSide: winner };
   const events = [];
   if (eliminated) events.push(event(EVENT_TYPES.SPY_PLAYER_ELIMINATED,
     { memberId: eliminated.memberId, nickName: eliminated.nickName, maxVotes: max }));
@@ -176,7 +181,10 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
     const player = playerByMemberId(check.spy, actor.member.memberId);
     if (!player || !player.alive || player.left) return fail(ERR.INVALID_TRANSITION, '出局成员不能投票');
     if (progress.submittedMemberIds.includes(actor.member.memberId)) return fail(ERR.ALREADY_VOTED);
-    const abstain = command.payload.abstain === true;
+    // 截止时间由服务端时钟裁决；迟到的目标票统一按弃票记录，客户端倒计时只负责展示。
+    const voteExpired = check.spy.voteStartedAt != null
+      && nowOf(deps) >= Number(check.spy.voteStartedAt) + SPY_VOTE_DURATION_MS;
+    const abstain = command.payload.abstain === true || voteExpired;
     const targetMemberId = abstain ? null : String(command.payload.targetMemberId || '');
     if (!abstain) {
       if (!targetMemberId || targetMemberId === actor.member.memberId) return fail(ERR.INVALID_ARGUMENT, '请选择其他存活成员');

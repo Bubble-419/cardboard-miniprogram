@@ -222,8 +222,13 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     if (!check.ok) return check;
     if (check.session.workflow.step === WORKFLOW_STEP.PARTNER_TURN && check.turn.activeMemberId === actor.memberId) return fail(ERR.INVALID_TRANSITION, '当前行动者不能发送匿名表达');
     const facts = ensureFacts(aggregate);
+    const text = String(command.payload.text || '').trim();
+    if (!text) return fail(ERR.INVALID_ARGUMENT, '表达内容不能为空');
+    if (text.length > 40) return fail(ERR.LIMIT_EXCEEDED, '表达内容最多 40 字');
     const message = { messageId: idOf(deps, 'message'), sessionId: check.session.sessionId, turnId: check.turn.turnId,
-      text: String(command.payload.text).trim(), anonKey: `anon_${actor.memberId.slice(-6)}`, authorMemberId: actor.memberId, createdAt: nowOf(deps) };
+      turnOrdinal: check.turn.ordinal, roundNo: check.turn.roundNo,
+      phase: check.session.workflow.step === WORKFLOW_STEP.PARTNER_STATEMENT ? 'discussion' : 'play',
+      text, anonKey: `anon_${actor.memberId.slice(-6)}`, authorMemberId: actor.memberId, createdAt: nowOf(deps) };
     facts.messages.push(message);
     if (facts.messages.length > 200) facts.messages.splice(0, facts.messages.length - 200);
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_MESSAGE_POSTED, { messageId: message.messageId })],
@@ -259,7 +264,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     const events = [event(EVENT_TYPES.PARTNER_SPECIAL_USED, { turnId: check.turn.turnId, kind })];
     if (kind === 'MASTER') check.turn.masterMode = true;
     if (kind === 'SILENT') {
-      check.turn.silentStartedAt = nowOf(deps); check.turn.silentDeadlineAt = nowOf(deps) + 60 * 1000;
+      check.turn.silentStartedAt = nowOf(deps); check.turn.silentDeadlineAt = nowOf(deps) + 5 * 60 * 1000;
     }
     if (kind === 'CLOSING') {
       const voteSessionId = idOf(deps, 'closing');
@@ -313,6 +318,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     const check = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]); if (!check.ok) return check;
     const turns = Object.values(ensureFacts(aggregate).turns).filter((row) => row.sessionId === check.session.sessionId);
     const totals = {};
+    (check.session.participants || []).forEach((participant) => { totals[participant.memberId] = 0; });
     turns.forEach((row) => { totals[row.activeMemberId] = (totals[row.activeMemberId] || 0) + (row.totalStars || 0); });
     check.session.status = SESSION_STATUS.COMPLETED; check.session.completedAt = nowOf(deps);
     check.session.result = { mode: MODE.PARTNER,

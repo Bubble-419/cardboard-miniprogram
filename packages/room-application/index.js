@@ -95,8 +95,13 @@ function createRoomApplication(repo, options) {
   const now = () => Number(typeof appOptions.now === 'function' ? appOptions.now() : (appOptions.now || Date.now()));
 
   async function ephemeral(roomId) {
-    if (typeof repo.listPresence !== 'function') return {};
-    const rows = await repo.listPresence(roomId);
+    let rows = [];
+    let signalRows = [];
+    try {
+      rows = typeof repo.listPresence === 'function' ? await repo.listPresence(roomId) : [];
+    } catch (e) {
+      rows = [];
+    }
     const cutoff = now() - (appOptions.presenceTtlMs || 15000);
     const byMemberId = {};
     (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff).forEach((row) => {
@@ -104,7 +109,19 @@ function createRoomApplication(repo, options) {
         byMemberId[row.memberId] = { online: true, lastSeenAt: row.lastSeenAt };
       }
     });
-    return { presenceByMemberId: byMemberId };
+    try {
+      signalRows = typeof repo.listSignals === 'function' ? await repo.listSignals(roomId) : [];
+    } catch (e) {
+      signalRows = [];
+    }
+    const signals = {};
+    (signalRows || []).filter((row) => Number(row.expiresAt) > now()).forEach((row) => {
+      if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
+        signals[row.signalType] = { value: clone(row.value), memberId: row.memberId,
+          updatedAt: row.updatedAt, expiresAt: row.expiresAt };
+      }
+    });
+    return { presenceByMemberId: byMemberId, signals };
   }
 
   async function readCurrentRoom(actorContext) {
@@ -136,6 +153,68 @@ function createRoomApplication(repo, options) {
     });
   }
 
+  async function readSessionSnapshot(roomId, sessionId, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isNonEmptyString(roomId) || !isNonEmptyString(sessionId)) {
+      return fail(ERR.INVALID_ARGUMENT, 'roomId/sessionId 必填');
+    }
+    if (typeof repo.readSessionAggregate !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
+    const aggregate = await repo.readSessionAggregate(roomId, sessionId);
+    const auth = authorizeRoomRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
+    return okResult({
+      protocolVersion: PROTOCOL_VERSION,
+      roomId,
+      sessionId,
+      viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      view: projectMemberView(auth.aggregate, actorUserId),
+      serverTime: now()
+    });
+  }
+
+  async function readHistory(roomId, actorContext, requestOptions) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    const aggregate = await repo.readAggregate(roomId);
+    const auth = authorizeRoomRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
+    if (typeof repo.listSessions !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
+    const limit = Math.min(50, Math.max(1, Number(requestOptions && requestOptions.limit) || 20));
+    const rows = await repo.listSessions(roomId, {
+      limit,
+      beforeStartedAt: requestOptions && requestOptions.beforeStartedAt
+    });
+    const hasMore = rows.length > limit;
+    const selected = rows.slice(0, limit);
+    const sessions = selected.map((session) => ({
+      sessionId: session.sessionId,
+      ordinal: session.ordinal,
+      mode: session.mode,
+      status: session.status,
+      startedAt: session.startedAt,
+      completedAt: session.completedAt,
+      resultSummary: session.result ? {
+        ideaCount: session.result.ideaCount,
+        winnerSide: session.result.winnerSide,
+        leaderboard: clone(session.result.leaderboard || [])
+      } : null
+    }));
+    return okResult({ protocolVersion: PROTOCOL_VERSION, roomId, sessions, hasMore,
+      nextBeforeStartedAt: hasMore && sessions.length ? sessions[sessions.length - 1].startedAt : null,
+      serverTime: now() });
+  }
+
+  async function readLeaderboard(roomId, sessionId, actorContext) {
+    const snapshot = await readSessionSnapshot(roomId, sessionId, actorContext);
+    if (!snapshot.ok) return snapshot;
+    const session = snapshot.view && snapshot.view.session;
+    if (!session || session.status !== 'COMPLETED') return fail(ERR.INVALID_TRANSITION, '场次尚未完成');
+    return okResult({ protocolVersion: PROTOCOL_VERSION, roomId, sessionId,
+      leaderboard: clone(session.result && session.result.leaderboard || []),
+      participants: clone(session.participants || []), serverTime: now() });
+  }
+
   async function sync(roomId, afterSeq, actorContext, requestOptions) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
@@ -149,7 +228,9 @@ function createRoomApplication(repo, options) {
     if (!auth.ok) return auth;
     const currentSeq = aggregate.room.eventSeq;
     const minAvailableSeq = aggregate.room.minAvailableSeq;
-    const base = { afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
+    const base = { protocolVersion: PROTOCOL_VERSION, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      eventSchemaVersion: EVENT_SCHEMA_VERSION,
+      afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
       snapshotRequired: false, events: [], actorView: null, ephemeral: {}, serverTime: now() };
     if (baseSeq > currentSeq || baseSeq < minAvailableSeq - 1 || currentSeq - baseSeq > MAX_SYNC_BACKLOG) {
       return okResult({ ...base, snapshotRequired: true });
@@ -252,7 +333,8 @@ function createRoomApplication(repo, options) {
     return okResult({ presence: row, seq: aggregate.room.eventSeq });
   }
 
-  return { executeCommand, readCurrentRoom, readSnapshot, sync, heartbeat };
+  return { executeCommand, readCurrentRoom, readSnapshot, readSessionSnapshot,
+    readHistory, readLeaderboard, sync, heartbeat };
 }
 
 function createInMemoryRoomRepository(options) {
@@ -261,7 +343,9 @@ function createInMemoryRoomRepository(options) {
   const events = new Map();
   const activeRooms = new Map();
   const presence = new Map();
+  const signals = new Map();
   const sessions = new Map();
+  const sessionRooms = new Map();
   let seq = 10000000;
   const copy = (value) => clone(value);
   const receiptKey = (scopeKey, commandId) => `${scopeKey}:${commandId}`;
@@ -272,7 +356,7 @@ function createInMemoryRoomRepository(options) {
   };
 
   return {
-    rooms, actions, events, activeRooms, presence, sessions,
+    rooms, actions, events, activeRooms, presence, signals, sessions,
     generateRoomId(commandId, actorUserId) {
       if (options && typeof options.generateRoomId === 'function') return options.generateRoomId(commandId, actorUserId);
       seq += 1;
@@ -295,7 +379,14 @@ function createInMemoryRoomRepository(options) {
         const beforeUsers = usersOf(current);
         const afterUsers = usersOf(decision.aggregate);
         rooms.set(input.roomId, copy(decision.aggregate));
-        if (decision.archivedSession) sessions.set(decision.archivedSession.sessionId, copy(decision.archivedSession));
+        if (decision.aggregate.currentSession) {
+          sessions.set(decision.aggregate.currentSession.sessionId, copy(decision.aggregate.currentSession));
+          sessionRooms.set(decision.aggregate.currentSession.sessionId, input.roomId);
+        }
+        if (decision.archivedSession) {
+          sessions.set(decision.archivedSession.sessionId, copy(decision.archivedSession));
+          sessionRooms.set(decision.archivedSession.sessionId, input.roomId);
+        }
         (decision.events || []).forEach((item) => {
           if (!events.has(input.roomId)) events.set(input.roomId, []);
           events.get(input.roomId).push(copy(item));
@@ -316,6 +407,30 @@ function createInMemoryRoomRepository(options) {
       return { roomId, memberId: member.memberId };
     },
     async readAggregate(roomId) { return rooms.has(roomId) ? copy(rooms.get(roomId)) : null; },
+    async readSessionAggregate(roomId, sessionId) {
+      const stored = rooms.get(roomId);
+      const session = sessions.get(sessionId)
+        || (stored && stored.currentSession && stored.currentSession.sessionId === sessionId && stored.currentSession);
+      if (!stored || !session || (sessionRooms.has(sessionId) && sessionRooms.get(sessionId) !== roomId)) return null;
+      const facts = {};
+      Object.entries(stored.facts || {}).forEach(([kind, bucket]) => {
+        if (kind === 'messages') {
+          facts[kind] = (bucket || []).filter((row) => row.sessionId === sessionId);
+          return;
+        }
+        facts[kind] = Object.fromEntries(Object.entries(bucket || {})
+          .filter(([, row]) => row.sessionId === sessionId));
+      });
+      return copy({ room: stored.room, currentSession: session, facts });
+    },
+    async listSessions(roomId, requestOptions) {
+      const before = Number(requestOptions && requestOptions.beforeStartedAt);
+      const limit = Number(requestOptions && requestOptions.limit) || 20;
+      return copy([...sessions.values()].filter((session) => sessionRooms.get(session.sessionId) === roomId
+        && ['COMPLETED', 'CANCELLED'].includes(session.status)
+        && (!Number.isFinite(before) || session.startedAt < before))
+        .sort((a, b) => b.startedAt - a.startedAt).slice(0, limit + 1));
+    },
     async readSyncState(roomId, afterSeq, limit) {
       return { aggregate: rooms.has(roomId) ? copy(rooms.get(roomId)) : null,
         events: copy((events.get(roomId) || []).filter((item) => item.seq > afterSeq).slice(0, limit)) };
@@ -325,7 +440,8 @@ function createInMemoryRoomRepository(options) {
       presence.set(`${roomId}:${memberId}:${row.deviceSessionId}`, row);
       return copy(row);
     },
-    async listPresence(roomId) { return copy([...presence.values()].filter((item) => item.roomId === roomId)); }
+    async listPresence(roomId) { return copy([...presence.values()].filter((item) => item.roomId === roomId)); },
+    async listSignals(roomId) { return copy([...signals.values()].filter((item) => item.roomId === roomId)); }
   };
 }
 

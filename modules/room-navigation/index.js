@@ -1,144 +1,90 @@
 'use strict';
 
-/**
- * 流程步骤 / legacy currentPage → 路由描述
- * 第一阶段仍消费 currentPage；后续改为 workflow.step。
- */
+const ROUTES = Object.freeze({
+  addPlayer: { path: '/pages/main-pages/addPlayer/index', mode: 'reLaunch', pageKey: 'addplayer' },
+  modeIndex: { path: '/pages/main-pages/modeIndex/index', mode: 'redirectTo', pageKey: 'modeindex' },
+  subAwait: { path: '/pages/sub-pages/subAwait/index', mode: 'redirectTo', pageKey: 'subawait' },
+  submitProblem: { path: '/pages/main-pages/submitProblem/index', mode: 'redirectTo', pageKey: 'submitproblem' },
+  selectProblem: { path: '/pages/main-pages/selectProblem/index', mode: 'redirectTo', pageKey: 'selectproblem' },
+  selectPlayer: { path: '/pages/main-pages/selectPlayer/index', mode: 'redirectTo', pageKey: 'selectplayer' },
+  confirmFirstPlayer: { path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index', mode: 'redirectTo', pageKey: 'confirmfirstplayer' },
+  partnerGame: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
+  closingStatement: { path: '/pages/main-pages/partnerMode/closingStatement/index', mode: 'redirectTo', pageKey: 'closingstatement' },
+  leaderboard: { path: '/pages/leaderboard/index', mode: 'redirectTo', pageKey: 'leaderboard' },
+  halliGame: { path: '/pages/main-pages/halliGalli/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
+  creativeInput: { path: '/pages/main-pages/creativeInput/index', mode: 'redirectTo', pageKey: 'creativeinput' },
+  creativeSummary: { path: '/pages/main-pages/creativeSummary/index', mode: 'redirectTo', pageKey: 'creativesummary' },
+  spyIntro: { path: '/packageSpy/pages/modeIndex/index', mode: 'redirectTo', pageKey: 'spymodeindex' },
+  spySpeak: { path: '/packageSpy/pages/speak/index', mode: 'redirectTo', pageKey: 'spyspeak' },
+  spyVote: { path: '/packageSpy/pages/vote/index', mode: 'redirectTo', pageKey: 'spyvote' },
+  spyResult: { path: '/packageSpy/pages/result/index', mode: 'redirectTo', pageKey: 'spyresult' },
+  spySettle: { path: '/packageSpy/pages/settle/index', mode: 'redirectTo', pageKey: 'spysettle' }
+});
 
-const PAGE_TO_ROUTE = {
-  addplayer: {
-    path: '/pages/main-pages/addPlayer/index',
-    mode: 'redirect'
-  },
-  brainstormmode: {
-    path: '/pages/main-pages/brainstormMode/index',
-    mode: 'redirect'
-  },
-  modeindex: {
-    path: '/pages/main-pages/modeIndex/index',
-    mode: 'redirect'
-  },
-  selectbg: {
-    path: '/pages/main-pages/selectBG/index',
-    mode: 'navigate'
-  },
-  confirmbg: {
-    path: '/pages/main-pages/partnerMode/confirmBG/index',
-    mode: 'redirect'
-  },
-  selectplayer: {
-    path: '/pages/main-pages/selectPlayer/index',
-    mode: 'redirect'
-  },
-  confirmfirstplayer: {
-    path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index',
-    mode: 'redirect'
-  },
-  submitproblem: {
-    path: '/pages/main-pages/submitProblem/index',
-    mode: 'redirect'
-  },
-  selectproblem: {
-    path: '/pages/main-pages/selectProblem/index',
-    mode: 'redirect'
-  },
-  gamepage: {
-    path: '/pages/main-pages/partnerMode/gamepage/index',
-    mode: 'redirect'
-  },
-  statement: {
-    path: '/pages/main-pages/partnerMode/gamepage/index',
-    mode: 'redirect'
-  },
-  closingstatement: {
-    path: '/pages/main-pages/partnerMode/closingStatement/index',
-    mode: 'redirect'
-  },
-  closingend: {
-    path: '/pages/main-pages/partnerMode/closingEnd/index',
-    mode: 'redirect'
-  }
-};
+const MANAGED_PATHS = new Set(Object.values(ROUTES).map((item) => item.path.slice(1)));
 
-function projectRoute({ workflow, mode, actorRole, legacyPage }) {
-  const pageKey = String(
-    (workflow && workflow.step) || legacyPage || ''
-  ).toLowerCase();
-
-  const base = PAGE_TO_ROUTE[pageKey] || null;
-  if (!base) {
-    return {
-      pageKey,
-      path: null,
-      mode: 'none',
-      actorRole: actorRole || 'PLAYER',
-      reason: 'UNKNOWN_PAGE'
-    };
-  }
-
-  return {
-    pageKey,
-    path: base.path,
-    mode: base.mode,
-    actorRole: actorRole || 'PLAYER',
-    gameMode: mode || null,
-    reason: null
-  };
+function queryString(params) {
+  return Object.entries(params || {}).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
 }
 
-/**
- * 导航协调：按 revision 串行，避免旧状态回跳
- */
+function describeRoute(route, roomId) {
+  if (!route || !ROUTES[route.name]) return null;
+  const config = ROUTES[route.name];
+  const query = queryString({ roomId, ...(route.params || {}) });
+  return { ...config, name: route.name, url: `${config.path}${query ? `?${query}` : ''}` };
+}
+
+function currentPath() {
+  if (typeof getCurrentPages !== 'function') return '';
+  const pages = getCurrentPages();
+  return pages.length ? pages[pages.length - 1].route : '';
+}
+
 function createNavigationCoordinator(options) {
-  const openUrl = options && options.openUrl;
-  let lastRevision = 0;
-  let inFlight = false;
+  const open = options && options.open;
+  let lastSeq = 0;
+  let active = false;
   let pending = null;
 
-  async function reconcile(routeDescriptor, revision) {
-    const rev = revision != null ? Number(revision) : 0;
-    if (rev < lastRevision) {
-      return { ok: false, skipped: true, reason: 'STALE_REVISION' };
+  async function reconcile(route, seq, context) {
+    const nextSeq = Number(seq) || 0;
+    if (nextSeq < lastSeq) return { ok: false, skipped: true, reason: 'STALE_SEQ' };
+    const descriptor = describeRoute(route, context && context.roomId);
+    if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
+    const current = currentPath();
+    if (current === descriptor.path.slice(1)) { lastSeq = nextSeq; return { ok: true, skipped: true, reason: 'SAME_ROUTE' }; }
+    // 灵感、裁剪、规则卡库等本地叠层不应被普通同步关闭。
+    if (current && !MANAGED_PATHS.has(current) && route.name !== 'addPlayer') {
+      return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
     }
-    if (!routeDescriptor || !routeDescriptor.path || routeDescriptor.mode === 'none') {
-      return { ok: false, skipped: true, reason: 'NO_ROUTE' };
+    if (context && typeof context.beforeNavigate === 'function'
+      && context.beforeNavigate(context.pageSnapshot, descriptor.pageKey) === true) {
+      lastSeq = nextSeq;
+      return { ok: true, skipped: true, reason: 'HANDLED' };
     }
-    if (typeof openUrl !== 'function') {
-      return { ok: false, skipped: true, reason: 'NO_OPENER' };
-    }
-
-    if (inFlight) {
-      pending = { routeDescriptor, revision: rev };
+    if (active) {
+      pending = { route, seq: nextSeq, context };
       return { ok: false, skipped: true, reason: 'IN_FLIGHT' };
     }
-
-    inFlight = true;
+    active = true;
     try {
-      lastRevision = rev;
-      await Promise.resolve(openUrl(routeDescriptor));
+      lastSeq = nextSeq;
+      if (typeof open === 'function') await open(descriptor);
+      else if (typeof wx !== 'undefined' && typeof wx[descriptor.mode] === 'function') {
+        await new Promise((resolve) => wx[descriptor.mode]({ url: descriptor.url, complete: resolve }));
+      }
       return { ok: true };
     } finally {
-      inFlight = false;
+      active = false;
       if (pending) {
-        const next = pending;
-        pending = null;
-        if (next.revision >= lastRevision) {
-          reconcile(next.routeDescriptor, next.revision);
-        }
+        const next = pending; pending = null;
+        reconcile(next.route, next.seq, next.context);
       }
     }
   }
 
-  return {
-    reconcile,
-    getLastRevision() {
-      return lastRevision;
-    }
-  };
+  return { reconcile, getLastSeq: () => lastSeq };
 }
 
-module.exports = {
-  PAGE_TO_ROUTE,
-  projectRoute,
-  createNavigationCoordinator
-};
+module.exports = { ROUTES, describeRoute, createNavigationCoordinator };

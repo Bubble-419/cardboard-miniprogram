@@ -16,7 +16,10 @@ function idOf(deps, prefix) {
   if (deps && typeof deps.idFactory === 'function') return deps.idFactory(prefix);
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
-function nowOf(deps) { return Number(deps && deps.now) || Date.now(); }
+function nowOf(deps) {
+  const value = Number(deps && deps.now);
+  return Number.isFinite(value) ? value : Date.now();
+}
 function normalizeHalfStarScore(raw, halfSteps) {
   if (halfSteps != null && halfSteps !== '') {
     const steps = Number(halfSteps);
@@ -136,7 +139,14 @@ function newSession(aggregate, mode, copiedSetup, deps) {
   const now = nowOf(deps);
   const ordinal = (aggregate.room.sessionOrdinal || 0) + 1;
   const participants = sortedMembers(aggregate.room).map((member) => ({
-    memberId: member.memberId, seatNoAtStart: member.seatNo, status: 'ACTIVE'
+    memberId: member.memberId,
+    seatNoAtStart: member.seatNo,
+    status: 'ACTIVE',
+    // 场次内展示使用冻结资料，成员中途离房后 Snapshot 仍可完整还原回合与榜单。
+    nickName: member.profile.nickName,
+    avatarRef: member.profile.avatarRef || null,
+    avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
+    color: member.profile.color
   }));
   const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : WORKFLOW_STEP.CHOOSE_SCENARIO;
   const session = {
@@ -151,10 +161,10 @@ function newSession(aggregate, mode, copiedSetup, deps) {
   return session;
 }
 function normalizeScenario(payload, mode) {
-  const source = String(payload.source || payload.scenarioSource || '').toUpperCase();
+  const source = String(payload.source || '').toUpperCase();
   if (!['OFFLINE', 'CASE', 'HISTORY', 'CUSTOM'].includes(source)) return fail(ERR.INVALID_ARGUMENT, '未知情境来源');
   if (source === 'OFFLINE') return okResult({ source, scenario: null });
-  const input = payload.scenario && typeof payload.scenario === 'object' ? payload.scenario : payload;
+  const input = payload.scenario;
   const scenario = {
     scene: String(input.scene || '').trim().slice(0, 100),
     user: String(input.user || '').trim().slice(0, 100),

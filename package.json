@@ -2,7 +2,7 @@
   "name": "cardboard-miniprogram",
   "private": true,
   "version": "0.1.0",
-  "description": "Cardboard 微信小程序 workspace（房间协议 V2）",
+  "description": "Cardboard 微信小程序 workspace（房间协议 V3）",
   "scripts": {
     "test": "node --require ./scripts/test-register.js --test tests/room-domain/*.test.js tests/room-contract/*.test.js tests/room-client/*.test.js tests/ui/*.test.js",
     "test:domain": "node --require ./scripts/test-register.js --test tests/room-domain/*.test.js",

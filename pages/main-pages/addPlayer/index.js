@@ -15,27 +15,18 @@ const {
 } = require('../../../utils/roomDissolved');
 const { beginScanJoin, endScanJoin } = require('../../../utils/scanJoinGate');
 const {
-  handleRoomLastEvent,
-  consumePendingGameReturnedToast
-} = require('../../../utils/roomMembersSync');
-const {
   beginUserAuthFlow,
   endUserAuthFlow
 } = require('../../../utils/userAuthSession');
-const {
-  saveLocalBrainstormProgress,
-  clearLocalBrainstormProgress,
-  resolveBrainstormProgress,
-  isNonResumableProgressPage
-} = require('../../../utils/roomBrainstormProgress');
 const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
 const { buildGamepageUrl, buildSpyPageUrl, buildClosingStatementUrl } = require('../../../utils/modeRoutes');
-const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   disposeRoomSession,
-  getActiveRoomSession
+  getActiveRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
@@ -185,10 +176,7 @@ Page(withPageInteractionLock({
   },
 
   _syncLobbyRoomState(result) {
-    const hasSelectedMode = result && result.hasSelectedMode === true;
-    if (!hasSelectedMode) {
-      this._updateRoomState('addPlayer');
-    }
+    // V3 路由来自 View；进入大厅不再通过通用写接口改房间状态。
   },
 
   _formatRoomId(roomId) {
@@ -289,7 +277,6 @@ Page(withPageInteractionLock({
   onShow() {
     if (!this._pageAlive || this._navigatingToBrainstorm) return;
     this.setData({ navFreeze: false });
-    consumePendingGameReturnedToast();
     // 扫码 join 未完成前禁止轮询，否则会把 NOT_IN_ROOM 误判成退出房间
     if (this.data.roomId && !this._joinInFlight) {
       this._startMemberPolling();
@@ -299,7 +286,6 @@ Page(withPageInteractionLock({
   onHide() {
     // 进入子页（如选择脑暴模式）时必须停掉轮询，否则后台 setData 易导致目标页白屏
     this._stopMemberPolling();
-    this._stopStatePolling();
     wx.hideLoading();
   },
 
@@ -309,7 +295,6 @@ Page(withPageInteractionLock({
       endScanJoin(this.data.roomId);
     }
     this._stopMemberPolling();
-    this._stopStatePolling();
     this._clearLongPressTimer();
     this._clearDragWatchdog();
     this._clearDragEnterAnimTimer();
@@ -370,40 +355,6 @@ Page(withPageInteractionLock({
     );
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra = {}) {
-    const roomId = this.data.roomId;
-    if (!roomId) {
-      console.warn('[主屏] updateRoomState 跳过：无 roomId');
-      return { ok: false };
-    }
-    try {
-      const data = { roomId, currentPage, ...extra };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      if (result.ok === true) {
-        if (currentPage && currentPage !== 'addPlayer') {
-          saveLocalBrainstormProgress(roomId, currentPage);
-        }
-        return result;
-      }
-      console.warn('[主屏] updateRoomState 失败', {
-        errCode: result.errCode,
-        errMsg: result.errMsg,
-        roomId,
-        currentPage
-      });
-      return result;
-    } catch (e) {
-      console.warn('[主屏] updateRoomState 异常', e);
-      return { ok: false, errMsg: e.errMsg };
-    }
-  },
-
   _followRoomPageFromResult(result, roomId) {
     const page = (result && result.roomState && result.roomState.currentPage || 'addPlayer').toLowerCase();
     // 主动停留大厅时：只处理被踢/解散，不跟随游戏页
@@ -424,9 +375,8 @@ Page(withPageInteractionLock({
       followSubScreenRoomPoll(result, roomId);
       return;
     }
-    if (page === 'closingend') return;
     if (result.roomState.brainstormSessionEnded === true) {
-      const stalePages = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+      const stalePages = ['closingstatement', 'gamepage'];
       if (stalePages.includes(page)) return;
     }
     // 房主在脑暴模式页：优先进等待空状态，避免被卧底跟随抢走
@@ -444,19 +394,6 @@ Page(withPageInteractionLock({
       return;
     }
     followSubScreenRoomPoll(result, roomId);
-  },
-
-  _startStatePolling() {
-    // 副屏不再单独轮询：统一走成员轮询，顺带跟随主屏页面
-    this._stopStatePolling();
-  },
-
-  _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
-    this._statePollFn = null;
   },
 
   _startMemberPolling() {
@@ -632,15 +569,12 @@ Page(withPageInteractionLock({
     this._joinInFlight = true;
     beginScanJoin(roomId);
     this._stopMemberPolling();
-    disposeRoomSession();
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const joinRes = await wx.cloud.callFunction({
-        name: 'roomJoin',
-        data: buildRoomJoinPayload(profile, { roomId })
-      });
-      const result = (joinRes && joinRes.result) || {};
+      const joinPayload = buildRoomJoinPayload(profile, { roomId });
+      delete joinPayload.roomId;
+      const result = await dispatchRoomCommand('JOIN_ROOM', joinPayload, {}, { roomId });
       if (result.ok !== true) {
         this._joinInFlight = false;
         endScanJoin(roomId);
@@ -705,11 +639,7 @@ Page(withPageInteractionLock({
     try {
       let result = opts.cachedResult || null;
       if (!result) {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        result = (res && res.result) || {};
+        result = await getRoomPageSnapshot(roomId, { refresh: true });
       }
       if (!silent) wx.hideLoading();
 
@@ -729,22 +659,19 @@ Page(withPageInteractionLock({
           this._handleMembershipLost('dissolved');
           return null;
         }
-        if (result.errCode === 'NOT_IN_ROOM') {
+        if (['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result.errCode)) {
           this._handleMembershipLost('left');
           return null;
         }
         if (!silent) {
           this.setData({
             qrcodeStatus: 'load_error',
-            qrcodeErrorHint: result.errMsg || '请重新部署云函数 getAddPlayerData 后重试'
+            qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试'
           });
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         }
         return null;
       }
-
-      // 统一消费 room_members_updated / game_returned_to_room（已在大厅则只 toast+清本局态）
-      handleRoomLastEvent(result, roomId);
 
       const rawMembers = result.members || [];
       const deduped = this._dedupeMembersById(rawMembers);
@@ -768,18 +695,8 @@ Page(withPageInteractionLock({
         currentPlayerName: '玩家1'
       };
       const hasSelectedMode = result.hasSelectedMode === true;
-      const resolvedState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
-      if (
-        !resolvedState.brainstormSessionEnded
-        && resolvedState.currentPage
-        && resolvedState.currentPage !== 'addPlayer'
-      ) {
-        saveLocalBrainstormProgress(roomId, resolvedState.currentPage);
-      }
-      if (resolvedState.brainstormSessionEnded) {
-        clearLocalBrainstormProgress(roomId);
-      }
-
+      // 恢复流程只使用 V3 View，禁止本地进度覆盖服务端状态。
+      const resolvedState = roomState;
       if (silent) {
         // 跳转脑暴模式途中禁止 setData，否则主线程被拖死易触发 navigateTo:fail timeout
         if (
@@ -808,7 +725,6 @@ Page(withPageInteractionLock({
         if (fingerprint !== this._silentMembersFingerprint) {
           this._silentMembersFingerprint = fingerprint;
           this._triggerCountBounceIfNeeded(roomMeta.memberCount);
-          const wasHost = this.data.isHost === true;
           const nowHost = result.isHost === true;
           const patch = {
             members: expanded,
@@ -823,14 +739,6 @@ Page(withPageInteractionLock({
             delete patch.workshopName;
           }
           this.setData(patch);
-          // 静默刷新时纠正主副屏身份，避免误开副屏轮询把房主拉进 subAwait
-          if (wasHost !== nowHost) {
-            if (nowHost) {
-              this._stopStatePolling();
-            } else if (!this._statePollTimer) {
-              this._startStatePolling();
-            }
-          }
         }
         return result;
       }
@@ -847,7 +755,7 @@ Page(withPageInteractionLock({
 
       if (!qrResolved.qrcodeUrl) {
         if (!qrcodeFileID) {
-          const regen = await this._regenerateRoomQrcode(roomId);
+          const regen = await this._regenerateRoomQrcode(roomId, forceRegenQr);
           qrcodeFileID = regen.qrcodeFileID;
           if (regen.qrcodeUrl) {
             qrResolved = {
@@ -870,7 +778,7 @@ Page(withPageInteractionLock({
 
         // 已有 fileID 但临时链接失效时，强制补生成一次
         if (qrResolved.qrcodeStatus === 'error' && !forceRegenQr) {
-          const regen = await this._regenerateRoomQrcode(roomId);
+          const regen = await this._regenerateRoomQrcode(roomId, true);
           if (regen.qrcodeUrl) {
             qrResolved = {
               qrcodeUrl: regen.qrcodeUrl,
@@ -908,7 +816,7 @@ Page(withPageInteractionLock({
         wx.hideLoading();
         const errMsg = (err && (err.errMsg || err.message)) || '加载失败';
         const hint = /SyntaxError|functions execute fail|-504002/i.test(String(errMsg))
-          ? '云函数执行失败，请重新上传部署 getAddPlayerData'
+          ? '云函数执行失败，请重新上传部署 roomQuery'
           : errMsg;
         this.setData({
           qrcodeStatus: 'load_error',
@@ -920,11 +828,11 @@ Page(withPageInteractionLock({
     }
   },
 
-  async _regenerateRoomQrcode(roomId) {
+  async _regenerateRoomQrcode(roomId, force = false) {
     try {
       const regenRes = await wx.cloud.callFunction({
-        name: 'regenerateRoomQrcode',
-        data: { roomId }
+        name: 'roomMedia',
+        data: { action: 'qrcode', roomId, force: force === true }
       });
       const regenResult = (regenRes && regenRes.result) || {};
       if (regenResult.ok === true && regenResult.qrcodeFileID) {
@@ -934,12 +842,12 @@ Page(withPageInteractionLock({
           errMsg: ''
         };
       }
-      const errMsg = regenResult.errMsg || '补生成二维码失败，请部署 regenerateRoomQrcode';
-      console.warn('regenerateRoomQrcode fail', errMsg, regenResult);
+      const errMsg = regenResult.errMsg || '生成二维码失败，请部署 roomMedia';
+      console.warn('roomMedia fail', errMsg, regenResult);
       return { qrcodeFileID: null, qrcodeUrl: '', errMsg };
     } catch (e) {
-      const errMsg = (e && (e.errMsg || e.message)) || 'regenerateRoomQrcode 调用失败';
-      console.warn('regenerateRoomQrcode 调用失败', e);
+      const errMsg = (e && (e.errMsg || e.message)) || 'roomMedia 调用失败';
+      console.warn('roomMedia 调用失败', e);
       return { qrcodeFileID: null, qrcodeUrl: '', errMsg };
     }
   },
@@ -1070,11 +978,7 @@ Page(withPageInteractionLock({
     if (!roomId || !member || !member.userId || member.isMe === true) return;
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomKickMember',
-        data: { roomId, targetUserId: member.userId }
-      });
-      const result = (res && res.result) || {};
+      const result = await dispatchRoomCommand('KICK_MEMBER', { memberId: member.memberId || member.userId });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '踢出失败', icon: 'none' });
         return;
@@ -1513,37 +1417,7 @@ Page(withPageInteractionLock({
   _dispatchRoomCommand(type, payload) {
     const roomId = this.data.roomId || '';
     if (!roomId || !type) return Promise.resolve({ ok: false, errMsg: '缺少房间或命令' });
-    const session = this._boundRoomSession || getActiveRoomSession();
-    const build = () => {
-      const expectedRevision = session && typeof session.getAppliedRevision === 'function'
-        ? Number(session.getAppliedRevision()) || 0
-        : 0;
-      return {
-        protocolVersion: 2,
-        commandId: `lobby_${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        type,
-        roomId,
-        expectedRevision,
-        payload: payload || {},
-        clientSentAt: Date.now()
-      };
-    };
-    const run = async () => {
-      const command = build();
-      if (session && typeof session.dispatch === 'function') {
-        return session.dispatch(command);
-      }
-      const res = await wx.cloud.callFunction({ name: 'roomCommand', data: command });
-      return (res && res.result) || { ok: false };
-    };
-    return run().then(async (first) => {
-      let result = first;
-      if (!result.ok && result.errCode === 'REVISION_CONFLICT' && session && typeof session.refresh === 'function') {
-        await session.refresh();
-        result = await run();
-      }
-      return result || { ok: false };
-    }).catch((e) => {
+    return dispatchRoomCommand(type, payload || {}).catch((e) => {
       console.warn('addPlayer roomCommand', type, e);
       return { ok: false, errMsg: (e && e.errMsg) || (e && e.message) || '命令失败' };
     });
@@ -1554,7 +1428,7 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || '';
     const packed = (orderedMembers || []).filter(Boolean);
     const userIdOrder = packed
-      .map((m) => m.userId || m.openid)
+      .map((m) => m.memberId || m.userId || m.openid)
       .filter((id) => !!id);
     if (!roomId || userIdOrder.length < 2) return;
     if (userIdOrder.length !== packed.length) {
@@ -1623,17 +1497,13 @@ Page(withPageInteractionLock({
 
     this.setData({ isSavingRoomName: true });
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomUpdateWorkshopName',
-        data: { roomId, workshopName: name }
-      });
-      const result = (res && res.result) || {};
+      const result = await dispatchRoomCommand('UPDATE_ROOM_PROFILE', { workshopName: name });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '保存失败', icon: 'none' });
         this.setData({ isSavingRoomName: false });
         return;
       }
-      const savedName = result.workshopName || name;
+      const savedName = name;
       getApp().globalData.workshopName = savedName;
       this.setData({
         workshopName: savedName,
@@ -1667,7 +1537,6 @@ Page(withPageInteractionLock({
 
     this._navigatingToBrainstorm = true;
     this._stopMemberPolling();
-    this._stopStatePolling();
     wx.hideLoading();
     // 停掉大厅重动画，给路由让出主线程（模拟器尤其明显）
     this.setData({ navFreeze: true });
@@ -1755,24 +1624,15 @@ Page(withPageInteractionLock({
       return;
     }
 
-    clearLocalBrainstormProgress(roomId);
-    clearPartnerSpecialMoveUsedFlag(roomId);
-
     try {
       // 以云端身份为准，避免本地 isHost 过期/误判导致房主进副屏
-      const checkRes = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const check = (checkRes && checkRes.result) || {};
+      const check = await getRoomPageSnapshot(roomId, { refresh: true });
       if (check.ok !== true) {
         wx.showToast({ title: check.errMsg || '状态获取失败', icon: 'none' });
         return;
       }
       if (check.isHost !== true) {
         this.setData({ isHost: false });
-        this._stopStatePolling();
-        this._startStatePolling();
         wx.showToast({ title: '请等待房主开始新一轮', icon: 'none' });
         return;
       }
@@ -1784,7 +1644,6 @@ Page(withPageInteractionLock({
       }
 
       this.setData({ isHost: true });
-      this._stopStatePolling();
 
       const modeId = check.selectedModeId || this.data.selectedModeId || 'partner';
       const app = getApp();
@@ -1801,47 +1660,38 @@ Page(withPageInteractionLock({
         app.globalData.selectedProblem = problem;
       }
 
-      // 同情境/同设计问题，直接重开 gamepage（不再绕 selectPlayer）
-      const members = (check.members || []).slice().sort((a, b) => {
-        return (a.playerIndex || 0) - (b.playerIndex || 0);
-      });
-      const first = members[0];
-      const idx = first && first.playerIndex != null ? first.playerIndex : 1;
-      const name = first
-        ? (first.nickName || first.playerName || `玩家${idx}`)
-        : `玩家${idx}`;
-      const startedAt = Date.now();
-
-      const updateRes = await this._updateRoomState('gamepage', idx, name, {
-        brainstormSessionEnded: false,
-        partnerGamePhase: 'play',
-        partnerMasterMode: false,
-        partnerClosingStep: 'rune',
-        resetClosingVotes: true,
-        clearBrainstormProgress: true,
-        incrementRound: true,
-        partnerRoundStartedAt: startedAt
-      });
+      const currentSession = check.view && check.view.session;
+      const updateRes = currentSession && currentSession.status === 'COMPLETED'
+        ? await dispatchRoomCommand('REPLAY_WORKSHOP_SESSION', {}, { sessionId: currentSession.sessionId })
+        : { ok: false, errMsg: '当前场次尚未完成' };
       if (updateRes && updateRes.ok !== true) {
         wx.showToast({ title: updateRes.errMsg || '状态同步失败', icon: 'none' });
-        this._startStatePolling();
         return;
       }
 
-      const url = buildGamepageUrl(roomId, idx, modeId === 'partner' ? 'partner' : modeId);
-      const opened = safeOpenUrl(url, { immediate: true });
+      const refreshed = await getRoomPageSnapshot(roomId, { refresh: true });
+      if (!refreshed || refreshed.ok !== true || !refreshed.roomState) {
+        wx.showToast({ title: refreshed && refreshed.errMsg || '恢复新场次失败', icon: 'none' });
+        return;
+      }
+      const target = this._resolveContinueBrainstormTarget(
+        roomId,
+        refreshed.selectedModeId || modeId,
+        refreshed.roomState,
+        refreshed.selectedBG
+      );
+      const opened = safeOpenUrl(target.path, { immediate: true });
       if (!opened) {
         wx.redirectTo({
-          url,
+          url: target.path,
           fail: () => {
-            wx.reLaunch({ url });
+            wx.reLaunch({ url: target.path });
           }
         });
       }
     } catch (e) {
       console.warn('handleAnotherRound', e);
       wx.showToast({ title: '操作失败', icon: 'none' });
-      this._startStatePolling();
     }
   },
 
@@ -1851,17 +1701,7 @@ Page(withPageInteractionLock({
     const modeId = selectedModeId || 'halliGalli';
     const state = roomState || {};
     let page = (state.currentPage || 'addPlayer').toLowerCase();
-    const progressPage = (state.brainstormProgressPage || '').toLowerCase();
-    if (
-      page === 'addplayer'
-      && progressPage
-      && progressPage !== 'addplayer'
-      && !isNonResumableProgressPage(progressPage)
-    ) {
-      page = progressPage;
-    }
     const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-    const name = encodeURIComponent(state.currentPlayerName || `玩家${idx}`);
     const bg = selectedBG || (getApp().globalData && getApp().globalData.selectedBG);
 
     const modeIndexRoute = {
@@ -1877,11 +1717,9 @@ Page(withPageInteractionLock({
     if (modeId === 'spy') {
       const spyResumeRoutes = {
         spymodeindex: spyModeIndexRoute,
-        spyassign: { path: buildSpyPageUrl('assign', roomId), nextPage: 'spyassign' },
         spyspeak: { path: buildSpyPageUrl('speak', roomId), nextPage: 'spyspeak' },
         spyvote: { path: buildSpyPageUrl('vote', roomId), nextPage: 'spyvote' },
         spyresult: { path: buildSpyPageUrl('result', roomId), nextPage: 'spyresult' },
-        spynextround: { path: buildSpyPageUrl('nextRound', roomId), nextPage: 'spynextround' },
         spysettle: { path: buildSpyPageUrl('settle', roomId), nextPage: 'spysettle' }
       };
       if (page !== 'addplayer' && spyResumeRoutes[page]) {
@@ -1918,10 +1756,6 @@ Page(withPageInteractionLock({
       confirmbg: {
         path: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
         nextPage: 'confirmBG'
-      },
-      selectmode: {
-        path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
-        nextPage: 'selectPlayer'
       },
       selectplayer: {
         path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
@@ -1963,16 +1797,6 @@ Page(withPageInteractionLock({
       creativesummary: {
         path: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
         nextPage: 'creativeSummary'
-      },
-      statement: {
-        path: buildGamepageUrl(roomId, idx, modeId, {
-          phase: 'discussion'
-        }),
-        nextPage: 'gamepage'
-      },
-      discussion: {
-        path: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${name}`,
-        nextPage: 'discussion'
       }
     };
 
@@ -2020,15 +1844,11 @@ Page(withPageInteractionLock({
     let hasSelectedMode = this.data.hasSelectedMode;
     let selectedBG = (getApp().globalData && getApp().globalData.selectedBG) || null;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         hasSelectedMode = result.hasSelectedMode === true;
         if (result.roomState) {
-          roomState = resolveBrainstormProgress(roomId, result.roomState, hasSelectedMode);
+          roomState = result.roomState;
         }
         if (result.selectedModeId) {
           selectedModeId = result.selectedModeId;
@@ -2047,14 +1867,9 @@ Page(withPageInteractionLock({
           ),
           selectedModeDesc: result.selectedModeDesc || this.data.selectedModeDesc
         });
-      } else if (hasSelectedMode) {
-        roomState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
       }
     } catch (e) {
       console.warn('handleContinueBrainstorm fetch state', e);
-      if (hasSelectedMode) {
-        roomState = resolveBrainstormProgress(roomId, roomState, hasSelectedMode);
-      }
     }
 
     getApp().globalData.gameMode = selectedModeId;
@@ -2090,23 +1905,6 @@ Page(withPageInteractionLock({
       selectedBG
     );
 
-    if (target.nextPage) {
-      const state = roomState || {};
-      const nextPageKey = String(target.nextPage || '').toLowerCase();
-      const extra = nextPageKey === 'closingstatement'
-        ? { resetClosingVotes: false }
-        : {};
-      const updateRes = await this._updateRoomState(
-        target.nextPage,
-        state.currentPlayerIndex,
-        state.currentPlayerName,
-        extra
-      );
-      if (updateRes && updateRes.ok !== true) {
-        wx.showToast({ title: '状态同步失败', icon: 'none' });
-      }
-    }
-
     const resumeInGame = ['gamepage', 'closingStatement'].includes(target.nextPage);
     safeOpenUrl(target.path, resumeInGame
       ? { immediate: true, preferReLaunch: true }
@@ -2117,7 +1915,6 @@ Page(withPageInteractionLock({
   handleExitBrainstorm() {
     return runPageNavigation(this, async () => {
       this._stopMemberPolling();
-      this._stopStatePolling();
       try {
         const { setSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
         const { clearPendingNavigation } = require('../../../utils/pageNavigate');
@@ -2169,17 +1966,16 @@ Page(withPageInteractionLock({
     this._exitingMode = true;
     this.setData({ showExitModeConfirm: false, showModeActionSheet: false });
     try {
-      const callRes = await wx.cloud.callFunction({
-        name: 'roomClearBrainstormMode',
-        data: { roomId: this.data.roomId }
-      });
-      const result = (callRes && callRes.result) || {};
+      const current = getActiveRoomSession() && getActiveRoomSession().getView();
+      const currentSession = current && current.session;
+      const result = !currentSession
+        ? { ok: true }
+        : await dispatchRoomCommand(currentSession.status === 'COMPLETED' ? 'RETURN_TO_LOBBY' : 'CANCEL_WORKSHOP_SESSION',
+          {}, { sessionId: currentSession.sessionId });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
       }
-      clearLocalBrainstormProgress(this.data.roomId);
-      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
       try {
         const app = getApp();
         if (app.globalData) {
@@ -2238,11 +2034,7 @@ Page(withPageInteractionLock({
 
   async _dissolveRoom() {
     try {
-      const callRes = await wx.cloud.callFunction({
-        name: 'roomDissolve',
-        data: { roomId: this.data.roomId }
-      });
-      const result = (callRes && callRes.result) || {};
+      const result = await dispatchRoomCommand('DISSOLVE_ROOM', {});
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '解散失败', icon: 'none' });
         return;
@@ -2275,11 +2067,7 @@ Page(withPageInteractionLock({
 
   async _leaveRoom() {
     try {
-      const callRes = await wx.cloud.callFunction({
-        name: 'roomLeave',
-        data: { roomId: this.data.roomId }
-      });
-      const result = (callRes && callRes.result) || {};
+      const result = await dispatchRoomCommand('LEAVE_ROOM', {});
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
         return;

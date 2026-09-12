@@ -2,21 +2,17 @@
 
 const SPY_PHASE = {
   INTRO: 'intro',
-  ASSIGN: 'assign',
   SPEAK: 'speak',
   VOTE: 'vote',
   RESULT: 'result',
-  NEXT_ROUND: 'nextRound',
   SETTLE: 'settle'
 };
 
 const SPY_PAGE = {
   intro: 'spymodeindex',
-  assign: 'spyassign',
   speak: 'spyspeak',
   vote: 'spyvote',
   result: 'spyresult',
-  nextRound: 'spynextround',
   settle: 'spysettle'
 };
 
@@ -78,11 +74,9 @@ function phaseForPage(page) {
   const p = (page || '').toLowerCase();
   const map = {
     spymodeindex: SPY_PHASE.INTRO,
-    spyassign: SPY_PHASE.ASSIGN,
     spyspeak: SPY_PHASE.SPEAK,
     spyvote: SPY_PHASE.VOTE,
     spyresult: SPY_PHASE.RESULT,
-    spynextround: SPY_PHASE.NEXT_ROUND,
     spysettle: SPY_PHASE.SETTLE
   };
   return map[p] || null;

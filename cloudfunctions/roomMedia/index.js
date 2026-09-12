@@ -3054,7 +3054,7 @@ var require_room_cloudbase_adapter = __commonJS({
     "use strict";
     var crypto = require("crypto");
     var { clone } = require_room_projection();
-    var COLLECTIONS = Object.freeze({
+    var COLLECTIONS2 = Object.freeze({
       rooms: "roomV3Rooms",
       sessions: "roomV3Sessions",
       active: "roomV3ActiveByUser",
@@ -3072,13 +3072,13 @@ var require_room_cloudbase_adapter = __commonJS({
       media: "roomV3Media"
     });
     var FACT_COLLECTION = Object.freeze({
-      turns: COLLECTIONS.turns,
-      scores: COLLECTIONS.scores,
-      votes: COLLECTIONS.votes,
-      contributions: COLLECTIONS.contributions,
-      artifacts: COLLECTIONS.artifacts,
-      messages: COLLECTIONS.messages,
-      secrets: COLLECTIONS.secrets
+      turns: COLLECTIONS2.turns,
+      scores: COLLECTIONS2.scores,
+      votes: COLLECTIONS2.votes,
+      contributions: COLLECTIONS2.contributions,
+      artifacts: COLLECTIONS2.artifacts,
+      messages: COLLECTIONS2.messages,
+      secrets: COLLECTIONS2.secrets
     });
     var FACT_LIMITS = Object.freeze({
       turns: 600,
@@ -3092,7 +3092,7 @@ var require_room_cloudbase_adapter = __commonJS({
     function digest(value) {
       return crypto.createHash("sha256").update(String(value)).digest("hex");
     }
-    function docId(value) {
+    function docId2(value) {
       return digest(value).slice(0, 48);
     }
     function cleanDoc(value) {
@@ -3127,9 +3127,9 @@ var require_room_cloudbase_adapter = __commonJS({
       return out;
     }
     async function loadAggregate(store, roomId) {
-      const room = await safeGet(store, COLLECTIONS.rooms, roomId);
+      const room = await safeGet(store, COLLECTIONS2.rooms, roomId);
       if (!room) return null;
-      const currentSession = room.currentSessionId ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId) : null;
+      const currentSession = room.currentSessionId ? await safeGet(store, COLLECTIONS2.sessions, room.currentSessionId) : null;
       if (currentSession) delete currentSession.roomId;
       const sessionId = currentSession && currentSession.sessionId;
       const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) => [kind, await loadFactRows(store, kind, roomId, sessionId)]));
@@ -3157,13 +3157,13 @@ var require_room_cloudbase_adapter = __commonJS({
       }
       async function transactCommand(input, handler) {
         return db2.runTransaction(async (transaction) => {
-          const actionId = docId(`${input.scopeKey}:${input.commandId}`);
-          const existing = await safeGet(transaction, COLLECTIONS.actions, actionId);
+          const actionId = docId2(`${input.scopeKey}:${input.commandId}`);
+          const existing = await safeGet(transaction, COLLECTIONS2.actions, actionId);
           if (existing) {
             const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
             return conflict ? { conflict: true } : { replayed: true, receipt: existing };
           }
-          const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+          const active = await safeGet(transaction, COLLECTIONS2.active, docId2(input.actorUserId));
           const current = await loadAggregate(transaction, input.roomId);
           const decision = handler({ aggregate: current, activeRoomId: active && active.roomId });
           const receipt = {
@@ -3182,14 +3182,14 @@ var require_room_cloudbase_adapter = __commonJS({
           if (decision.accepted) {
             const beforeUsers = openUsers(current);
             const afterUsers = openUsers(decision.aggregate);
-            await transaction.collection(COLLECTIONS.rooms).doc(input.roomId).set({ data: cleanDoc(decision.aggregate.room) });
+            await transaction.collection(COLLECTIONS2.rooms).doc(input.roomId).set({ data: cleanDoc(decision.aggregate.room) });
             if (decision.aggregate.currentSession) {
               const session = cleanDoc(decision.aggregate.currentSession);
-              await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId).set({ data: { ...session, roomId: input.roomId } });
+              await transaction.collection(COLLECTIONS2.sessions).doc(session.sessionId).set({ data: { ...session, roomId: input.roomId } });
             }
             if (decision.archivedSession) {
               const archived = cleanDoc(decision.archivedSession);
-              await transaction.collection(COLLECTIONS.sessions).doc(archived.sessionId).set({ data: { ...archived, roomId: input.roomId } });
+              await transaction.collection(COLLECTIONS2.sessions).doc(archived.sessionId).set({ data: { ...archived, roomId: input.roomId } });
             }
             for (const dirty of decision.dirtyFacts || []) {
               const row = factRow(decision.aggregate, dirty.kind, dirty.id);
@@ -3197,22 +3197,22 @@ var require_room_cloudbase_adapter = __commonJS({
               const sessionId = row.sessionId || decision.aggregate.currentSession && decision.aggregate.currentSession.sessionId;
               const data = { ...cleanDoc(row), roomId: input.roomId, sessionId };
               if (dirty.kind !== "messages") data._factKey = dirty.id;
-              await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(docId(`${input.roomId}:${dirty.kind}:${dirty.id}`)).set({ data });
+              await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(docId2(`${input.roomId}:${dirty.kind}:${dirty.id}`)).set({ data });
             }
             for (const item of decision.events || []) {
-              await transaction.collection(COLLECTIONS.events).doc(`${input.roomId}_${String(item.seq).padStart(12, "0")}`).set({ data: cleanDoc(item) });
+              await transaction.collection(COLLECTIONS2.events).doc(`${input.roomId}_${String(item.seq).padStart(12, "0")}`).set({ data: cleanDoc(item) });
             }
             const afterIds = new Set(afterUsers.map((item) => item.userId));
             for (const member of beforeUsers) {
               if (!afterIds.has(member.userId)) {
-                await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).remove();
+                await transaction.collection(COLLECTIONS2.active).doc(docId2(member.userId)).remove();
               }
             }
             for (const member of afterUsers) {
-              await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
+              await transaction.collection(COLLECTIONS2.active).doc(docId2(member.userId)).set({ data: member });
             }
           }
-          await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
+          await transaction.collection(COLLECTIONS2.actions).doc(actionId).set({ data: receipt });
           return { replayed: false, receipt };
         });
       }
@@ -3225,13 +3225,13 @@ var require_room_cloudbase_adapter = __commonJS({
           if (!aggregate) return { aggregate: null, events: [] };
           const ceiling = aggregate.room.eventSeq;
           const _ = db2.command;
-          const result = await transaction.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
+          const result = await transaction.collection(COLLECTIONS2.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
           return { aggregate, events: (result && result.data || []).map(cleanDoc) };
         });
       }
       async function findActiveRoom(userId) {
         return db2.runTransaction(async (transaction) => {
-          const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
+          const active = await safeGet(transaction, COLLECTIONS2.active, docId2(userId));
           if (!active) return null;
           const aggregate = await loadAggregate(transaction, active.roomId);
           const member = aggregate && aggregate.room.lifecycle === "OPEN" && (aggregate.room.members || []).find((item) => item.userId === userId);
@@ -3240,15 +3240,15 @@ var require_room_cloudbase_adapter = __commonJS({
       }
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
         const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
-        await db2.collection(COLLECTIONS.presence).doc(docId(`${roomId}:${memberId}:${row.deviceSessionId}`)).set({ data: row });
+        await db2.collection(COLLECTIONS2.presence).doc(docId2(`${roomId}:${memberId}:${row.deviceSessionId}`)).set({ data: row });
         return row;
       }
       async function listPresence(roomId) {
-        const result = await db2.collection(COLLECTIONS.presence).where({ roomId }).limit(50).get();
+        const result = await db2.collection(COLLECTIONS2.presence).where({ roomId }).limit(50).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listSignals(roomId) {
-        const result = await db2.collection(COLLECTIONS.signals).where({ roomId }).limit(20).get();
+        const result = await db2.collection(COLLECTIONS2.signals).where({ roomId }).limit(20).get();
         return (result && result.data || []).map(cleanDoc);
       }
       return {
@@ -3262,31 +3262,78 @@ var require_room_cloudbase_adapter = __commonJS({
         listSignals
       };
     }
-    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId };
+    module2.exports = { COLLECTIONS: COLLECTIONS2, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId: docId2 };
   }
 });
 
-// cloudfunctions/roomPresence/src/entry.js
+// cloudfunctions/roomMedia/src/entry.js
 var cloud = require("wx-server-sdk");
 var { createRoomApplication } = require_room_application();
-var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
+var { createCloudBaseRoomRepository, COLLECTIONS, docId } = require_room_cloudbase_adapter();
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 var db = cloud.database();
 var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+function extractImageBuffer(response) {
+  const raw = response && (response.buffer || response.fileContent) || (Buffer.isBuffer(response) ? response : null);
+  const buffer = Buffer.isBuffer(raw) ? raw : raw && Buffer.from(raw);
+  if (!buffer || !buffer.length || !(buffer[0] === 137 && buffer[1] === 80 || buffer[0] === 255 && buffer[1] === 216)) throw new Error("\u5C0F\u7A0B\u5E8F\u7801\u8FD4\u56DE\u5185\u5BB9\u65E0\u6548");
+  return buffer;
+}
+async function generate(roomId) {
+  const versions = [process.env.QR_ENV_VERSION, "develop", "trial", "release"].filter((value, index, list) => value && list.indexOf(value) === index);
+  let lastError;
+  for (const envVersion of versions) {
+    try {
+      const response = await cloud.openapi.wxacode.getUnlimited({
+        page: "pages/main-pages/addPlayer/index",
+        scene: `rid=${roomId}`,
+        width: 430,
+        check_path: false,
+        env_version: envVersion
+      });
+      return extractImageBuffer(response);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("\u751F\u6210\u5C0F\u7A0B\u5E8F\u7801\u5931\u8D25");
+}
+async function tempUrl(fileRef) {
+  if (!fileRef) return "";
+  const response = await cloud.getTempFileURL({ fileList: [fileRef] });
+  return response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || "";
+}
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
-  const roomId = event && event.roomId;
+  const roomId = String(event && event.roomId || "");
+  if (!roomId || String(event && event.action || "qrcode") !== "qrcode") {
+    return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "roomId/action \u4E0D\u5408\u6CD5" };
+  }
   try {
-    return await app.heartbeat(roomId, { userId }, {
-      deviceSessionId: event && event.deviceSessionId
-    });
+    const snapshot = await app.readSnapshot(roomId, { userId });
+    if (!snapshot.ok) return snapshot;
+    const mediaId = docId(`${roomId}:QRCODE`);
+    let media = null;
+    try {
+      const result = await db.collection(COLLECTIONS.media).doc(mediaId).get();
+      media = result && result.data || null;
+    } catch (e) {
+      media = null;
+    }
+    const force = event && event.force === true;
+    if ((!media || !media.fileRef || force) && snapshot.view.actor.role !== "HOST") {
+      return { ok: false, errCode: "HOST_REQUIRED", errMsg: "\u8BF7\u7B49\u5F85\u623F\u4E3B\u751F\u6210\u4E8C\u7EF4\u7801" };
+    }
+    if (!media || !media.fileRef || force) {
+      const fileContent = await generate(roomId);
+      const upload = await cloud.uploadFile({ cloudPath: `room-v3/qrcodes/${roomId}.png`, fileContent });
+      media = { roomId, mediaType: "QRCODE", fileRef: upload.fileID, updatedAt: Date.now() };
+      await db.collection(COLLECTIONS.media).doc(mediaId).set({ data: media });
+    }
+    return { ok: true, qrcodeFileID: media.fileRef, qrcodeUrl: await tempUrl(media.fileRef) };
   } catch (e) {
-    console.error("roomPresence error", e);
-    return {
-      ok: false,
-      errCode: e.errCode || e.code || "INTERNAL_ERROR",
-      errMsg: e.errMsg || e.message || "roomPresence failed"
-    };
+    console.error("roomMedia error", e);
+    return { ok: false, errCode: e.code || "INTERNAL_ERROR", errMsg: e.message || "roomMedia failed" };
   }
 };

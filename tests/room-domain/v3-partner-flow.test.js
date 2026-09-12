@@ -39,7 +39,7 @@ test('Partner 完整评分、内容、表态、换轮并按整轮递增', async 
   assert.equal(JSON.stringify(snapshot.view.session.recentMessages).includes('authorMemberId'), false);
 
   await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', { context: { sessionId, turnId }, payload: { statementResult: '继续' } });
+  await h.command('host', 'ADVANCE_PARTNER_TURN', { context: { sessionId, turnId }, payload: { statementResult: 'allPass' } });
   snapshot = await h.snapshot('host');
   assert.notEqual(snapshot.view.session.activeTurn.turnId, turnId);
   assert.equal(snapshot.view.session.activeTurn.roundNo, 1);
@@ -84,7 +84,13 @@ test('Partner 收尾 question 回到新 Turn；全 pass 进入 Rune/Review 并�
   assert.equal(snapshot.view.session.result.turns.length, 2);
   assert.equal(snapshot.view.session.result.turns.some((item) => item.activeMemberId === hostMemberId), true);
   assert.equal(snapshot.view.session.result.turns.some((item) => item.activeMemberId === u2MemberId), true);
-  assert.equal(u3MemberId.length > 0, true);
+  assert.equal(snapshot.view.session.result.leaderboard.length, 3);
+  assert.equal(snapshot.view.session.result.leaderboard.some((item) => item.memberId === u3MemberId
+    && item.totalStars === 0), true);
+
+  const leaderboard = await h.app.readLeaderboard('12345678', sessionId, { userId: 'host' });
+  assert.equal(leaderboard.ok, true);
+  assert.equal(leaderboard.leaderboard.length, 3);
 });
 
 test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async () => {
@@ -96,7 +102,9 @@ test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async 
   assert.equal(aggregate.currentSession.modeState.partner.activeTurn.scoreProgress.requiredMemberIds.length, 1);
   await h.command('u3', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 6 } });
   await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', { context: { sessionId, turnId }, payload: {} });
+  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
   const next = await h.snapshot('host');
   const activeUser = next.view.room.members.find((item) => item.memberId === next.view.session.activeTurn.activeMemberId);
   assert.equal(activeUser.nickName, '玩家3');

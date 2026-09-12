@@ -1,3 +1,5 @@
+const { dispatchRoomCommand } = require('../../../modules/room-session/index');
+
 Page({
   data: {
     roomId: '',
@@ -126,7 +128,7 @@ Page({
     return true;
   },
 
-  handleStartWorkshop() {
+  async handleStartWorkshop() {
     if (this.data.isSubmitting) return;
     if (!this.data.roomId) {
       wx.showToast({
@@ -142,55 +144,24 @@ Page({
       workshopName = '脑暴工作坊';
     }
     const godNickName = (this.data.godNickName || '').trim();
-    const payload = {
-      roomId: this.data.roomId,
-      workshopName,
-      godNickName: godNickName || null,
-      godAvatarUrl: this.data.godAvatarUrl || null
-    };
-
     this.setData({
       isSubmitting: true
     });
-
-    wx.cloud.callFunction({
-      name: 'roomStartWorkshop',
-      data: payload,
-      success: (res) => {
-        const result = (res && res.result) || {};
-        if (result.ok === false) {
-          console.error('roomStartWorkshop result error', result);
-          wx.showToast({
-            title: '发起失败，请重试',
-            icon: 'none'
-          });
-          return;
-        }
-
-        const app = getApp();
-        app.globalData.workshopName = workshopName || '脑暴工作坊';
-
-        wx.navigateTo({
-          url: `/pages/main-pages/addPlayer/index?roomId=${this.data.roomId}`
-        });
-      },
-      fail: (error) => {
-        console.error('roomStartWorkshop failed', {
-          errMsg: error && error.errMsg,
-          errCode: error && (error.errCode || error.code),
-          roomId: this.data.roomId
-        });
-        wx.showToast({
-          title: '发起失败，请重试',
-          icon: 'none'
-        });
-      },
-      complete: () => {
-        this.setData({
-          isSubmitting: false
-        });
-      }
-    });
+    try {
+      const roomResult = await dispatchRoomCommand('UPDATE_ROOM_PROFILE', { workshopName });
+      if (!roomResult || roomResult.ok !== true) throw Object.assign(new Error(roomResult && roomResult.errMsg || '更新房间失败'), roomResult);
+      const memberResult = await dispatchRoomCommand('UPDATE_MEMBER_PROFILE', {
+        nickName: godNickName || '玩家1',
+        avatarRef: this.data.godAvatarUrl || null
+      });
+      if (!memberResult || memberResult.ok !== true) throw Object.assign(new Error(memberResult && memberResult.errMsg || '更新资料失败'), memberResult);
+      getApp().globalData.workshopName = workshopName;
+      wx.navigateTo({ url: `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(this.data.roomId)}` });
+    } catch (error) {
+      console.error('setup room failed', error);
+      wx.showToast({ title: error.errMsg || error.message || '发起失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ isSubmitting: false });
+    }
   }
 });
-

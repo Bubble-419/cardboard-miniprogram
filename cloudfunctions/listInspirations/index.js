@@ -23,7 +23,7 @@ function isOwnInspiration(item, userId) {
  * 灵感空间为个人空间，不与其他玩家共用
  */
 exports.main = async (event) => {
-  const { roomId, brainstormSessionSeq, workshopOnly } = event || {};
+  const { roomId, sessionId, workshopOnly } = event || {};
 
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID;
@@ -64,10 +64,10 @@ exports.main = async (event) => {
       if (isWorkshopScope(workshopOnly)) {
         rows = rows.filter((item) => item && item.roomId === roomId);
       } else {
-        const seq = brainstormSessionSeq != null ? Number(brainstormSessionSeq) : 0;
+        const normalizedSessionId = String(sessionId || '');
         rows = rows.filter((item) => {
           if (!item || item.roomId !== roomId) return false;
-          return Number(item.brainstormSessionSeq != null ? item.brainstormSessionSeq : 0) === seq;
+          return String(item.sessionId || '') === normalizedSessionId;
         });
       }
     }

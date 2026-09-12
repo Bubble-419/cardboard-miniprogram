@@ -30,7 +30,7 @@ function getHistoryWorkshops() {
 function _slimMember(m) {
   if (!m || typeof m !== 'object') return null;
   return {
-    openid: m.openid || '',
+    memberId: m.memberId || m._id || '',
     nickName: m.nickName || m.nickname || m.name || '',
     avatarUrl: m.avatarUrl || m.avatar || '',
     avatarImage: m.avatarImage || '',
@@ -81,7 +81,7 @@ function buildReviewSnapshot(payload) {
       round: msg && msg.round,
       phase: msg && msg.phase,
       playerIndex: msg && msg.playerIndex,
-      openid: msg && msg.openid,
+      sessionId: msg && msg.sessionId,
       at: msg && msg.at
     }))
     : [];
@@ -96,7 +96,7 @@ function buildReviewSnapshot(payload) {
       partnerRoundSummaries: roundSummaries,
       partnerExpressMessages: expressMessages,
       currentRound: p.currentRound != null ? p.currentRound : 1,
-      brainstormSessionSeq: p.brainstormSessionSeq != null ? p.brainstormSessionSeq : 0,
+      sessionId: p.sessionId || '',
       currentPlayerIndex: p.currentPlayerIndex != null ? p.currentPlayerIndex : 0,
       partnerGamePhase: 'play',
       partnerMasterMode: !!p.isMasterMode

@@ -1,11 +1,10 @@
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
-const { clearPartnerSpecialMoveUsedFlag } = require('../../../utils/partnerSpecialMove');
 const { openSubAwait } = require('../../../utils/subAwaitRoutes');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { callCloudFunction } = require('../../../utils/cloudApi');
+const { dispatchRoomCommand, getRoomPageSnapshot } = require('../../../modules/room-session/index');
 const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
@@ -100,8 +99,6 @@ Page(withPageInteractionLock({
 
     if (!isHost) {
       this._redirectNonHostToAwait();
-    } else {
-      this._updateRoomState('brainstormMode');
     }
   },
 
@@ -164,9 +161,8 @@ Page(withPageInteractionLock({
 
     this._roomRefreshInFlight = true;
     try {
-      const res = await callCloudFunction('getAddPlayerData', { roomId });
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (!this._pageAlive) return;
-      const result = (res && res.result) || {};
       if (result.ok !== true) {
         if (!silent) {
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
@@ -193,7 +189,6 @@ Page(withPageInteractionLock({
         this._redirectNonHostToAwait();
         return;
       }
-      this._publishSelectingModeState();
     } catch (err) {
       console.warn('brainstormMode refreshRoomData', err);
       if (!silent) {
@@ -208,24 +203,6 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     openSubAwait(roomId, 'brainstormMode');
-  },
-
-  async _updateRoomState(currentPage) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId || !currentPage) return false;
-    try {
-      const res = await callCloudFunction('updateRoomState', { roomId, currentPage });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('brainstormMode updateRoomState', e);
-      return false;
-    }
-  },
-
-  _publishSelectingModeState() {
-    if (this.data.isHost !== true) return;
-    this._updateRoomState('brainstormMode');
   },
 
   onTapMode(e) {
@@ -259,13 +236,9 @@ Page(withPageInteractionLock({
     this.setData({ isSelecting: true });
 
     try {
-      const callRes = await callCloudFunction('roomSetBrainstormMode', {
-        roomId: this.data.roomId,
-        selectedModeId: mode.id,
-        selectedModeTitle: mode.title,
-        selectedModeDesc: mode.description
+      const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, {}, {
+        roomId: this.data.roomId
       });
-      const result = (callRes && callRes.result) || {};
 
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '选择失败', icon: 'none' });
@@ -277,8 +250,6 @@ Page(withPageInteractionLock({
         title: mode.title,
         description: mode.description
       };
-      clearPartnerSpecialMoveUsedFlag(this.data.roomId);
-
       const targetUrl = `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`;
       const openModePage = () => new Promise((resolve) => {
         // 谁是卧底：统一 redirectTo，避免与后续跟页叠栈导致不同步
@@ -336,9 +307,6 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      if (this.data.isHost === true) {
-        await this._updateRoomState('addPlayer');
-      }
       const roomId = this.data.roomId || '';
       const fallbackUrl = roomId
         ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
@@ -352,9 +320,6 @@ Page(withPageInteractionLock({
 
   handleGoRoom() {
     return runPageInteraction(this, async () => {
-      if (this.data.isHost === true) {
-        await this._updateRoomState('addPlayer');
-      }
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });
   }

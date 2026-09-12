@@ -4,11 +4,11 @@ const {
   dedupeMembersById,
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
-const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
@@ -58,9 +58,7 @@ Page(withPageInteractionLock({
   },
 
   onShow() {
-    if (this.data.isWaiting || this.data.isHost === false) {
-      this._startStatePolling();
-    }
+    this._startStatePolling();
   },
 
   onHide() {
@@ -79,20 +77,12 @@ Page(withPageInteractionLock({
       return;
     }
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
-        if (isHost) {
-          await this.loadRoomData(result);
-          this._updateRoomState('confirmFirstPlayer');
-        } else {
-          this._startStatePolling();
-        }
+        await this.loadRoomData(result);
+        this._startStatePolling();
       } else {
         this.loadRoomData();
       }
@@ -109,11 +99,7 @@ Page(withPageInteractionLock({
     try {
       let result = cachedResult;
       if (!result) {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        result = (res && res.result) || {};
+        result = await getRoomPageSnapshot(roomId, { refresh: true });
       }
       if (result.ok !== true) return;
 
@@ -125,34 +111,24 @@ Page(withPageInteractionLock({
 
       const memberCount = result.memberCount != null ? result.memberCount : deduped.length;
       const workshopName = result.workshopName || '';
+      const proposedMemberId = result.view && result.view.session
+        && result.view.session.setup.proposedFirstMemberId;
+      const proposed = proposedMemberId
+        ? deduped.find((item) => item.memberId === proposedMemberId)
+        : null;
+      this._proposedMemberId = proposedMemberId || null;
 
       this.setData({
         members,
         memberSlots,
         memberCount,
-        workshopName
+        workshopName,
+        selectedPlayerIndex: proposed ? proposed.playerIndex : this.data.selectedPlayerIndex,
+        selectedPlayerName: proposed ? (proposed.nickName || `玩家${proposed.playerIndex}`) : this.data.selectedPlayerName,
+        canConfirm: !!proposed || this.data.canConfirm
       });
     } catch (e) {
       console.warn('loadRoomData', e);
-    }
-  },
-
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const data = { roomId, currentPage, skipArchive: true };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
     }
   },
 
@@ -161,7 +137,6 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      intervalMs: 2000,
       followNavigation: true,
       beforeNavigate(pollResult, page) {
         if (page === 'gamepage') {
@@ -174,6 +149,9 @@ Page(withPageInteractionLock({
           return true;
         }
         return false;
+      },
+      onSnapshot(snapshot) {
+        this.loadRoomData(snapshot);
       }
     }).catch((e) => console.warn('confirmFirstPlayer roomSession', e));
   },
@@ -184,6 +162,7 @@ Page(withPageInteractionLock({
 
   onSlotTap(e) {
     if (!this.data.isHost) return;
+    if (this._proposedMemberId) return;
     const index = e.currentTarget.dataset.index;
     const slot = this.data.memberSlots[index];
     if (!slot || !slot.member) return;
@@ -216,9 +195,26 @@ Page(withPageInteractionLock({
     return runPageNavigation(this, async () => {
       this._confirmPending = true;
       try {
-        const ok = await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        const selected = (this.data.members || []).find((item) => item.playerIndex === selectedPlayerIndex);
+        if (!selected) {
+          wx.showToast({ title: '所选成员已经离开', icon: 'none' });
+          return;
+        }
+        if (!this._proposedMemberId) {
+          const selectedResult = await dispatchRoomCommand('SELECT_FIRST_PLAYER', {
+            memberId: selected.memberId
+          });
+          if (!selectedResult || selectedResult.ok !== true) {
+            wx.showToast({ title: selectedResult && selectedResult.errMsg || '同步房间失败，请重试', icon: 'none' });
+            return;
+          }
+          this._proposedMemberId = selected.memberId;
+        }
+        const result = await dispatchRoomCommand('CONFIRM_FIRST_PLAYER', {
+          memberId: this._proposedMemberId
+        });
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
           return;
         }
         return {

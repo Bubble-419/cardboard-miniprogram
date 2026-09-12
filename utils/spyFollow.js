@@ -8,31 +8,25 @@ const ADD_PLAYER_ROUTE = 'pages/main-pages/addPlayer/index';
 
 const SPY_ROUTE_BY_PAGE = {
   spymodeindex: 'packageSpy/pages/modeIndex/index',
-  spyassign: 'packageSpy/pages/assign/index',
   spyspeak: 'packageSpy/pages/speak/index',
   spyvote: 'packageSpy/pages/vote/index',
   spyresult: 'packageSpy/pages/result/index',
-  spynextround: 'packageSpy/pages/nextRound/index',
   spysettle: 'packageSpy/pages/settle/index'
 };
 
 const PHASE_TO_PAGE = {
   intro: 'spymodeindex',
-  assign: 'spyassign',
   speak: 'spyspeak',
   vote: 'spyvote',
   result: 'spyresult',
-  nextRound: 'spynextround',
   settle: 'spysettle'
 };
 
 const PAGE_TO_BUILD_KEY = {
   spymodeindex: 'intro',
-  spyassign: 'assign',
   spyspeak: 'speak',
   spyvote: 'vote',
   spyresult: 'result',
-  spynextround: 'nextRound',
   spysettle: 'settle'
 };
 
@@ -117,14 +111,6 @@ function followSpyRoomState(result, roomId, options = {}) {
     const currentRoute = getCurrentRoute();
     if (currentRoute === 'pages/main-pages/addPlayer/index') return false;
     if (currentRoute === 'pages/main-pages/brainstormMode/index') return false;
-    try {
-      const { clearLocalBrainstormProgress } = require('./roomBrainstormProgress');
-      const { clearPartnerSpecialMoveUsedFlag } = require('./partnerSpecialMove');
-      clearLocalBrainstormProgress(id);
-      clearPartnerSpecialMoveUsedFlag(id);
-    } catch (e) {
-      // ignore
-    }
     return openUrl(`/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(id)}`, {
       immediate: true,
       noReLaunch: true

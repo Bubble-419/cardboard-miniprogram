@@ -1,7 +1,6 @@
 /**
  * 谁是卧底客户端辅助：导航、倒计时、成员过滤
  */
-const { callCloudFunction } = require('./cloudApi');
 const {
   SPY_PAGE,
   SPEAK_ROUND_MS,
@@ -19,15 +18,23 @@ const { openUrl } = require('./pageNavigate');
 const { goRoomPage } = require('./goRoomPage');
 const { buildAvatarList, buildAvatarListAsync } = require('./avatars');
 const { handleRoomGoneFromResult } = require('./roomDissolved');
-const { handleRoomLastEvent } = require('./roomMembersSync');
+const {
+  bindPageToRoomSession,
+  dispatchRoomCommand,
+  getActiveRoomSession,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../modules/room-session/index');
 
 /** 拉取房间；若已解散/不在房间则统一回首页并返回 null */
 async function fetchRoomDataOrExit(roomId) {
-  const res = await callCloudFunction('getAddPlayerData', { roomId });
-  const result = (res && res.result) || {};
+  let result;
+  try {
+    result = await getRoomPageSnapshot(roomId, { refresh: true });
+  } catch (error) {
+    result = { ok: false, errCode: error && error.errCode, errMsg: error && (error.errMsg || error.message) };
+  }
   if (handleRoomGoneFromResult(result, roomId)) return null;
-  // 只剩 1 人回退房间：停止局内 UI 更新
-  if (handleRoomLastEvent(result, roomId)) return null;
   return result;
 }
 
@@ -36,11 +43,9 @@ function buildSpyPageUrl(pageKey, roomId, query = {}) {
   const pathMap = {
     intro: '/packageSpy/pages/modeIndex/index',
     cardLibrary: '/packageSpy/pages/cardLibrary/index',
-    assign: '/packageSpy/pages/assign/index',
     speak: '/packageSpy/pages/speak/index',
     vote: '/packageSpy/pages/vote/index',
     result: '/packageSpy/pages/result/index',
-    nextRound: '/packageSpy/pages/nextRound/index',
     settle: '/packageSpy/pages/settle/index'
   };
   let url = `${pathMap[pageKey] || pathMap.intro}?roomId=${roomIdEnc}`;
@@ -67,45 +72,36 @@ function parseIsHostOption(options) {
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
-const SPY_PROTOCOL_VERSION = 2;
-
 function makeSpyCommandId(action) {
   return `spy_${action}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function fetchRoomRevision(roomId) {
-  const res = await callCloudFunction('getAddPlayerData', { roomId });
-  const result = (res && res.result) || {};
-  if (result.revision != null && Number.isFinite(Number(result.revision))) {
-    return Number(result.revision);
-  }
-  const rs = result.roomState || {};
-  if (rs.revision != null && Number.isFinite(Number(rs.revision))) {
-    return Number(rs.revision);
-  }
-  return 0;
-}
-
-function normalizeSpyCommandResult(result) {
-  if (!result) return { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
-  if (result.ok !== true) return result;
-  const effects = result.effects || {};
+function spyResultFromSnapshot(result, snapshot) {
+  const view = snapshot && snapshot.view;
+  const session = view && view.session;
+  const spyGame = snapshot && snapshot.roomState && snapshot.roomState.spyGame;
+  const routeName = view && view.route && view.route.name;
+  const pageByRoute = {
+    spyIntro: SPY_PAGE.intro,
+    spySpeak: SPY_PAGE.speak,
+    spyVote: SPY_PAGE.vote,
+    spyResult: SPY_PAGE.result,
+    spySettle: SPY_PAGE.settle
+  };
   return {
-    ...result,
-    spyGame: result.spyGame != null ? result.spyGame : effects.spyGame,
-    currentPage: result.currentPage != null ? result.currentPage : effects.legacyPage,
-    card: result.card != null ? result.card : effects.card,
-    settled: result.settled != null ? result.settled : effects.settled,
-    tied: result.tied != null ? result.tied : effects.tied,
-    finished: result.finished != null ? result.finished : effects.finished,
-    autoVote: result.autoVote != null ? result.autoVote : effects.autoVote,
-    already: result.already != null ? result.already : effects.already
+    ...(result || {}),
+    spyGame,
+    currentPage: pageByRoute[routeName] || '',
+    card: view && view.actor && view.actor.privateModeState,
+    settled: !!(session && session.workflow.step === 'SPY_SETTLED'),
+    tied: !!(session && session.workflow.step === 'SPY_TIE_SPEAK'),
+    finished: !!(session && session.status === 'COMPLETED'),
+    autoVote: !!(session && session.workflow.step === 'SPY_VOTE')
   };
 }
 
 /**
- * Spy 写操作：经 roomCommand（V2）。兼容旧 action 名。
- * 需要 revision 的命令会先拉一次 getAddPlayerData。
+ * Spy 页面动作适配。写入统一转换成 V3 语义命令；本人密牌直接来自 ActorView。
  */
 async function callSpyAction(action, data = {}) {
   const roomId = data && data.roomId;
@@ -113,21 +109,13 @@ async function callSpyAction(action, data = {}) {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'action 与 roomId 必填' };
   }
 
-  const needsRevision = !(
-    action === 'getMyCard'
-    || action === 'submitVote'
-  );
-
-  let expectedRevision = data.expectedRevision;
-  if (needsRevision && expectedRevision == null) {
+  if (action === 'getMyCard') {
     try {
-      expectedRevision = await fetchRoomRevision(roomId);
-    } catch (e) {
-      return {
-        ok: false,
-        errCode: 'DEPENDENCY_UNAVAILABLE',
-        errMsg: '读取房间版本失败，请重试'
-      };
+      const snapshot = await getRoomPageSnapshot(roomId, { refresh: false });
+      return spyResultFromSnapshot({ ok: true }, snapshot);
+    } catch (error) {
+      return { ok: false, errCode: error && error.errCode || 'SNAPSHOT_ERROR',
+        errMsg: error && (error.errMsg || error.message) || '读取密牌失败' };
     }
   }
 
@@ -137,56 +125,58 @@ async function callSpyAction(action, data = {}) {
   switch (action) {
     case 'startAssign':
     case 'startGame':
-      type = 'SPY_START_ASSIGN';
-      break;
-    case 'getMyCard':
-      type = 'SPY_GET_MY_CARD';
+      type = 'START_SPY_GAME';
       break;
     case 'advanceSpeak':
     case 'finishSpeak':
-      type = 'SPY_ADVANCE_SPEAKER';
+      type = 'ADVANCE_SPY_SPEAKER';
       break;
     case 'startVote':
-      type = 'SPY_ADVANCE_SPEAKER';
-      payload = { forceVote: true };
+      type = 'OPEN_SPY_VOTE';
       break;
     case 'submitVote':
-      type = 'SPY_SUBMIT_VOTE';
-      payload = data.abstain
-        ? { abstain: true }
-        : { targetPlayerIndex: data.targetPlayerIndex };
+      type = 'SUBMIT_SPY_VOTE';
+      if (data.abstain) payload = { abstain: true };
+      else {
+        const snapshot = await getRoomPageSnapshot(roomId, { refresh: false });
+        const target = (snapshot.members || []).find((member) => Number(member.playerIndex) === Number(data.targetPlayerIndex));
+        if (!target) return { ok: false, errCode: 'STALE_CONTEXT', errMsg: '投票目标已经离开' };
+        payload = { targetMemberId: target.memberId };
+      }
       break;
     case 'nextRound':
     case 'continueRound':
-      type = 'SPY_NEXT_ROUND';
+      type = 'START_NEXT_SPY_ROUND';
       break;
     case 'restart':
-      type = 'SPY_RESTART';
+      type = 'RESTART_SPY_GAME';
+      break;
+    case 'complete':
+      type = 'COMPLETE_SPY_SESSION';
+      break;
+    case 'returnToLobby':
+      type = 'RETURN_TO_LOBBY';
       break;
     default:
       return { ok: false, errCode: 'UNKNOWN_ACTION', errMsg: `未知 action: ${action}` };
   }
 
-  const envelope = {
-    protocolVersion: SPY_PROTOCOL_VERSION,
-    commandId: data.commandId || makeSpyCommandId(action),
-    type,
-    roomId: String(roomId),
-    payload,
-    clientSentAt: Date.now()
-  };
-  if (needsRevision) {
-    envelope.expectedRevision = Number(expectedRevision);
-  }
-
   try {
-    const res = await callCloudFunction('roomCommand', envelope);
-    return normalizeSpyCommandResult((res && res.result) || {});
+    const result = await dispatchRoomCommand(type, payload, null, {
+      roomId: String(roomId),
+      commandId: data.commandId || makeSpyCommandId(action)
+    });
+    if (!result || result.ok !== true) return result || { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
+    const session = getActiveRoomSession();
+    const snapshot = session && session.getSnapshot
+      ? session.getSnapshot()
+      : await getRoomPageSnapshot(roomId, { refresh: false });
+    return spyResultFromSnapshot(result, snapshot);
   } catch (e) {
     return {
       ok: false,
-      errCode: (e && e.errCode) || 'ROOM_COMMAND_ERROR',
-      errMsg: (e && e.errMsg) || (e && e.message) || 'roomCommand 调用失败'
+      errCode: (e && e.errCode) || 'SPY_COMMAND_ERROR',
+      errMsg: (e && e.errMsg) || (e && e.message) || '操作失败'
     };
   }
 }
@@ -197,7 +187,11 @@ function startSpyCountdownTicker(page, getStartedAt, durationMs, dataKey = 'coun
     if (!page || page._pageAlive === false) return;
     try {
       const startedAt = typeof getStartedAt === 'function' ? getStartedAt() : getStartedAt;
-      const left = computeMsLeft(startedAt, durationMs);
+      const session = getActiveRoomSession();
+      const state = session && session.getState ? session.getState() : null;
+      const projectedNow = state && Number(state.serverNow);
+      const now = Number.isFinite(projectedNow) ? projectedNow : Date.now();
+      const left = computeMsLeft(startedAt, durationMs, now);
       page.setData({ [dataKey]: formatCountdown(left), countdownMsLeft: left });
       if (typeof onTick === 'function') onTick(left);
     } catch (e) {
@@ -261,31 +255,16 @@ async function withSpyRefreshGuard(page, refreshFn) {
 }
 
 /**
- * Spy 读路径：挂 App 级 RoomSession（同房 reconfigure，不 dispose）。
- * - emitCurrent:false：进页不立刻同步回放，避免首屏布局被二次 setData 打坏
- * - 首屏仍由页面自己 refresh()/fetch 完成
- * - onPollResult 收到的是 getAddPlayerData 原始 result（snapshot.raw）
+ * Spy 读路径挂在唯一 RoomClient 上，页面只消费投影后的快照。
  */
 function startSpyRoomPoll(page, options) {
   if (!page) return Promise.resolve(null);
-  const intervalMs = (options && options.intervalMs) || 1000;
   const onPollResult = options && options.onPollResult;
-
-  if (page._pollTimer) {
-    clearInterval(page._pollTimer);
-    page._pollTimer = null;
-  }
-
-  const {
-    bindPageToRoomSession
-  } = require('../modules/room-session/index');
 
   return bindPageToRoomSession(page, {
     getRoomId() {
       return page.data && page.data.roomId;
     },
-    intervalMs,
-    full: false,
     emitCurrent: false,
     followNavigation: false,
     onSnapshot(snapshot) {
@@ -311,7 +290,6 @@ function startSpyRoomPoll(page, options) {
         return;
       }
       if (!raw || raw.ok !== true) return;
-      if (handleRoomLastEvent(raw, roomId)) return;
       if (typeof onPollResult === 'function') {
         onPollResult.call(page, raw);
       }
@@ -324,22 +302,12 @@ function startSpyRoomPoll(page, options) {
 
 function stopSpyRoomPoll(page) {
   if (!page) return;
-  if (page._pollTimer) {
-    clearInterval(page._pollTimer);
-    page._pollTimer = null;
-  }
-  try {
-    const { unbindPageFromRoomSession } = require('../modules/room-session/index');
-    unbindPageFromRoomSession(page);
-  } catch (e) {
-    // ignore
-  }
+  unbindPageFromRoomSession(page);
 }
 
 /** 写命令后主动拉一次会话，避免等下一轮 poll */
 function bumpSpyRoomSession() {
   try {
-    const { getActiveRoomSession } = require('../modules/room-session/index');
     const session = getActiveRoomSession();
     if (session && typeof session.refresh === 'function') {
       return session.refresh().catch(() => null);
@@ -365,7 +333,6 @@ module.exports = {
   filterPlayerMembers,
   parseIsHostOption,
   callSpyAction,
-  callCloudFunction,
   fetchRoomDataOrExit,
   followSubScreenRoomPoll,
   openUrl,

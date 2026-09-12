@@ -1,164 +1,152 @@
 'use strict';
 
-const { createRoomSession } = require('../../packages/room-client/index');
-const { followSubScreenRoomPoll } = require('../../utils/subScreenRoomPoll');
+const { COMMAND_CONTEXT } = require('../../packages/room-contracts/index');
+const { createRoomClient, createCloudRoomGateway } = require('../../packages/room-client/index');
+const { createNavigationCoordinator } = require('../room-navigation/index');
+const { projectPageSnapshot } = require('./page-model');
 
-function createLegacyTransport(roomId, options) {
-  const defaultFull = !!(options && options.full);
-  return {
-    async fetchSnapshot({ full }) {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId, full: full === true || defaultFull }
-      });
-      return (res && res.result) || {};
-    },
-    async dispatchCommand(command) {
-      if (!command || !command.type) {
-        return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'command.type 必填' };
-      }
-      // Phase 4：通用流程仍主要走 updateRoomState；V2 roomCommand 后续接入
-      if (command.type === 'UPDATE_ROOM_STATE' || command.legacy === 'updateRoomState') {
-        const res = await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: Object.assign({ roomId }, command.payload || {})
-        });
-        return (res && res.result) || { ok: false };
-      }
-      const res = await wx.cloud.callFunction({
-        name: 'roomCommand',
-        data: Object.assign({ roomId }, command)
-      });
-      return (res && res.result) || { ok: false };
-    }
-  };
+const navigation = createNavigationCoordinator();
+
+function currentView() {
+  const session = getActiveRoomSession();
+  return session && session.getView();
 }
 
-/**
- * App 级 RoomSession 管理：同一 roomId 复用，切换房间先 dispose
- */
-function getActiveRoomSession() {
-  const app = getApp();
-  return (app.globalData && app.globalData.roomSession) || null;
-}
-
-async function openRoomSession(roomId, options) {
-  if (!roomId) {
-    throw new Error('roomId required');
+function commandContext(type, explicit) {
+  const context = { ...(explicit || {}) };
+  const view = currentView();
+  const session = view && view.session;
+  const partner = session && session.publicModeState;
+  const spy = session && session.mode === 'SPY' ? session.publicModeState : null;
+  const tokens = COMMAND_CONTEXT[type] || [];
+  if (tokens.includes('sessionId') && context.sessionId == null && session) context.sessionId = session.sessionId;
+  if (tokens.includes('turnId') && context.turnId == null && session) {
+    if (session.activeTurn) context.turnId = session.activeTurn.turnId;
+    else if (partner && partner.closing) context.turnId = partner.closing.sourceTurnId;
   }
+  if (tokens.includes('closingVoteSessionId') && context.closingVoteSessionId == null && partner && partner.closing) {
+    context.closingVoteSessionId = partner.closing.closingVoteSessionId;
+  }
+  if (tokens.includes('gameId') && context.gameId == null && spy) context.gameId = spy.gameId;
+  if (tokens.includes('speakerTurnId') && context.speakerTurnId == null && spy) context.speakerTurnId = spy.speakerTurnId;
+  if (tokens.includes('voteSessionId') && context.voteSessionId == null && spy) context.voteSessionId = spy.voteSessionId;
+  return context;
+}
+
+function normalizeCommand(input) {
+  const aliases = { START_STATEMENT: 'START_PARTNER_STATEMENT', ADVANCE_TURN: 'ADVANCE_PARTNER_TURN' };
+  const type = aliases[input.type] || input.type;
+  const payload = { ...(input.payload || {}) };
+  if (type === 'REORDER_SEATS' && !payload.orderedMemberIds && Array.isArray(payload.userIdOrder)) {
+    payload.orderedMemberIds = payload.userIdOrder.slice();
+    delete payload.userIdOrder;
+  }
+  return { type, roomId: input.roomId, commandId: input.commandId,
+    context: commandContext(type, input.context), payload };
+}
+
+function createFacade(client) {
+  const facade = {
+    _client: client,
+    subscribe(listener, options) {
+      return client.subscribe((view, state) => {
+        if (!view && !(state && state.error)) return;
+        listener(projectPageSnapshot(view, state));
+      }, options);
+    },
+    async open() { await client.open(); return projectPageSnapshot(client.getView(), client.getState()); },
+    async refresh() { await client.refresh(); return projectPageSnapshot(client.getView(), client.getState()); },
+    dispatch(input) { return client.dispatch(normalizeCommand(input || {})); },
+    getView: () => client.getView(),
+    getState: () => client.getState(),
+    getSnapshot: () => projectPageSnapshot(client.getView(), client.getState()),
+    getAppliedRevision: () => client.getState().seq,
+    history: (query) => client.history(query),
+    sessionSnapshot: (sessionId) => client.sessionSnapshot(sessionId),
+    leaderboard: (sessionId) => client.leaderboard(sessionId),
+    pause: () => client.pause(),
+    resume: () => client.resume(),
+    dispose: () => client.close(),
+    reconfigure() {}
+  };
+  Object.defineProperty(facade, 'roomId', { get: () => client.getState().roomId });
+  return facade;
+}
+
+function ensureRoomSession() {
   const app = getApp();
   app.globalData = app.globalData || {};
-  const existing = app.globalData.roomSession;
-  const intervalMs = (options && options.intervalMs) || 2000;
-  const full = !!(options && options.full);
+  if (app.globalData.roomSession) return app.globalData.roomSession;
+  const gateway = createCloudRoomGateway({ callFunction: (request) => wx.cloud.callFunction(request) });
+  const facade = createFacade(createRoomClient({ gateway, intervalMs: 1000 }));
+  app.globalData.roomSession = facade;
+  return facade;
+}
 
-  if (existing && existing.roomId === roomId) {
-    const needInterval = options && options.intervalMs != null
-      && existing._intervalMs !== intervalMs;
-    const needFull = options && options.full != null
-      && existing._full !== full;
-    // 同房间只升级 transport / 间隔，禁止 dispose 重建（gamepage 进页会触发，曾打坏横向头像）
-    if (needInterval || needFull) {
-      existing.reconfigure({
-        intervalMs,
-        transport: createLegacyTransport(roomId, { full })
-      });
-      existing._intervalMs = intervalMs;
-      existing._full = full;
-    }
-    return existing;
-  }
+function getActiveRoomSession() {
+  const app = getApp();
+  return app.globalData && app.globalData.roomSession || null;
+}
 
-  if (existing) {
-    existing.dispose();
-    app.globalData.roomSession = null;
-  }
-
-  const session = createRoomSession({
-    roomId,
-    intervalMs,
-    transport: createLegacyTransport(roomId, { full })
-  });
-  session._intervalMs = intervalMs;
-  session._full = full;
-  app.globalData.roomSession = session;
-  app.globalData.roomId = roomId;
+async function openRoomSession(roomId) {
+  const session = ensureRoomSession();
+  const state = session.getState();
+  if (state.status === 'READY' && (!roomId || state.roomId === roomId)) return session;
   await session.open();
+  const current = session.getState().roomId;
+  if (roomId && current && roomId !== current) throw new Error('当前账号属于其他房间');
+  if (current) getApp().globalData.roomId = current;
   return session;
+}
+
+async function dispatchRoomCommand(type, payload, context, options) {
+  const session = ensureRoomSession();
+  const result = await session.dispatch({ type, roomId: options && options.roomId,
+    commandId: options && options.commandId, context, payload });
+  if (result && result.ok && result.outcome && result.outcome.roomId) {
+    getApp().globalData.roomId = result.outcome.roomId;
+  }
+  return result;
+}
+
+async function getRoomPageSnapshot(roomId, options) {
+  const session = await openRoomSession(roomId);
+  if (options && options.refresh) await session.refresh();
+  return session.getSnapshot();
 }
 
 function disposeRoomSession() {
   const app = getApp();
-  if (app.globalData && app.globalData.roomSession) {
-    app.globalData.roomSession.dispose();
-    app.globalData.roomSession = null;
-  }
+  if (app.globalData && app.globalData.roomSession) app.globalData.roomSession.dispose();
+  if (app.globalData) app.globalData.roomSession = null;
 }
 
-function pauseRoomSession() {
-  const session = getActiveRoomSession();
-  if (session) session.pause();
-}
+function pauseRoomSession() { const session = getActiveRoomSession(); if (session) session.pause(); }
+function resumeRoomSession() { const session = getActiveRoomSession(); if (session) session.resume(); }
 
-function resumeRoomSession() {
-  const session = getActiveRoomSession();
-  if (session) session.resume();
-}
-
-/**
- * 页面绑定：onShow 订阅，onHide 退订（不 dispose 会话）
- * @param {object} page this
- * @param {object} options
- * @param {() => string} options.getRoomId
- * @param {(snapshot: object) => void} options.onSnapshot
- * @param {number} [options.intervalMs]
- * @param {boolean} [options.full]
- * @param {boolean} [options.followNavigation] 是否对副屏走 followSubScreenRoomPoll
- * @param {boolean} [options.emitCurrent] 订阅时是否立刻回放当前快照（默认 true）
- *   gamepage 必须 false：进页同步 setData 会打坏 user-list 横向 scroll-view
- */
 async function bindPageToRoomSession(page, options) {
-  const getRoomId = options.getRoomId;
-  const onSnapshot = options.onSnapshot;
-  const roomId = typeof getRoomId === 'function' ? getRoomId.call(page) : '';
+  const roomId = typeof options.getRoomId === 'function' ? options.getRoomId.call(page) : '';
   if (!roomId) return null;
-
-  const bindGen = (page._roomSessionBindGen || 0) + 1;
-  page._roomSessionBindGen = bindGen;
-
-  const session = await openRoomSession(roomId, {
-    intervalMs: options.intervalMs || 2000,
-    full: options.full === true
-  });
-
-  // onHide 已 unbind 时，禁止把跟随订阅挂到已离开的页面上（会把灵感空间等叠层页打回）
-  if (page._roomSessionBindGen !== bindGen) {
-    return null;
-  }
-
-  if (page._roomSessionUnsub) {
-    page._roomSessionUnsub();
-    page._roomSessionUnsub = null;
-  }
-
-  const emitCurrent = options.emitCurrent !== false;
+  const generation = (page._roomSessionBindGen || 0) + 1;
+  page._roomSessionBindGen = generation;
+  const session = await openRoomSession(roomId);
+  if (page._roomSessionBindGen !== generation) return null;
+  if (page._roomSessionUnsub) page._roomSessionUnsub();
+  let first = true;
   page._roomSessionUnsub = session.subscribe((snapshot) => {
-    if (!snapshot) return;
-    if (page._roomSessionBindGen !== bindGen) return;
-    if (typeof onSnapshot === 'function') {
-      onSnapshot.call(page, snapshot);
-    }
-    // 解散 / 踢出时 getAddPlayerData 返回 ok:false；原先要求 snapshot.ok
-    // 导致 followSubScreenRoomPoll 从不执行，成员页卡住不回首页
-    if (options.followNavigation && snapshot.raw) {
-      followSubScreenRoomPoll(snapshot.raw, roomId, {
+    if (page._roomSessionBindGen !== generation) return;
+    if (first && options.emitCurrent === false) { first = false; return; }
+    first = false;
+    if (typeof options.onSnapshot === 'function') options.onSnapshot.call(page, snapshot);
+    const view = snapshot.view;
+    if (options.followNavigation && view && view.route) {
+      navigation.reconcile(view.route, snapshot.revision, { roomId,
+        pageSnapshot: snapshot,
         beforeNavigate: options.beforeNavigate
-          ? (result, pageKey) => options.beforeNavigate.call(page, result, pageKey)
-          : undefined
-      });
+          ? (model, pageKey) => options.beforeNavigate.call(page, model, pageKey)
+          : null }).catch((error) => console.warn('room navigation', error));
     }
-  }, { emitCurrent });
-
+  });
   page._boundRoomSession = session;
   return session;
 }
@@ -166,20 +154,11 @@ async function bindPageToRoomSession(page, options) {
 function unbindPageFromRoomSession(page) {
   if (!page) return;
   page._roomSessionBindGen = (page._roomSessionBindGen || 0) + 1;
-  if (page._roomSessionUnsub) {
-    page._roomSessionUnsub();
-    page._roomSessionUnsub = null;
-  }
+  if (page._roomSessionUnsub) page._roomSessionUnsub();
+  page._roomSessionUnsub = null;
   page._boundRoomSession = null;
 }
 
-module.exports = {
-  getActiveRoomSession,
-  openRoomSession,
-  disposeRoomSession,
-  pauseRoomSession,
-  resumeRoomSession,
-  bindPageToRoomSession,
-  unbindPageFromRoomSession,
-  createLegacyTransport
-};
+module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
+  getRoomPageSnapshot, disposeRoomSession, pauseRoomSession, resumeRoomSession,
+  bindPageToRoomSession, unbindPageFromRoomSession, commandContext };

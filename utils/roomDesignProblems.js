@@ -1,121 +1,58 @@
-const { getCloudDatabase } = require('./cloudDb');
+'use strict';
 
-const COLLECTION = 'designProblems';
-const ENTRY_TYPE = 'designProblem';
+const { dispatchRoomCommand, getRoomPageSnapshot, getActiveRoomSession } = require('../modules/room-session/index');
 
-function mapProblemDoc(item) {
-  const createTime = item.createTime || item.createdAt || item.submitTime || item.firstSubmitTime || 0;
-  const updateTime = item.updateTime || item.updatedAt || 0;
-  return {
-    id: item._id,
-    text: item.text || item.problemText || '',
-    playerIndex: item.playerIndex,
-    nickName: item.nickName || '',
-    userId: item.userId || '',
-    createTime,
-    updateTime,
-    // 列表排序固定用首次提交时间，禁止用 updateTime
-    submitTime: createTime || updateTime || 0
-  };
+function mapProblem(item, snapshot) {
+  const member = (snapshot.members || []).find((row) => row.memberId === item.memberId) || {};
+  return { id: item.contributionId, contributionId: item.contributionId, text: item.text,
+    playerIndex: member.playerIndex, nickName: member.nickName || '', userId: item.memberId,
+    entityVersion: item.entityVersion, createTime: 0, updateTime: 0, submitTime: 0 };
 }
 
-async function clearRoomProblems(roomId) {
-  const db = await getCloudDatabase();
-  try {
-    await db.collection(COLLECTION).where({ roomId, entryType: ENTRY_TYPE }).remove();
-  } catch (e) {
-    const res = await db.collection(COLLECTION).where({ roomId, entryType: ENTRY_TYPE }).get();
-    const docs = res.data || [];
-    await Promise.all(docs.map((doc) => db.collection(COLLECTION).doc(doc._id).remove()));
-  }
+async function currentSnapshot(roomId, refresh) {
+  return getRoomPageSnapshot(roomId, { refresh: refresh === true });
+}
+
+async function clearRoomProblems() {
+  // 问题按 sessionId 隔离，新场次天然为空，无需客户端执行删除。
+  return { ok: true };
 }
 
 async function listProblems(roomId) {
-  const res = await wx.cloud.callFunction({
-    name: 'getDesignProblems',
-    data: { roomId }
-  });
-  const result = (res && res.result) || {};
-  if (result.ok !== true) {
-    throw new Error(result.errMsg || '获取设计问题失败');
-  }
-  return (result.problems || []).map((item) => ({
-    id: item.id,
-    text: item.text || '',
-    playerIndex: item.playerIndex,
-    nickName: item.nickName || '',
-    userId: item.userId || '',
-    createTime: item.createTime || item.submitTime || 0,
-    updateTime: item.updateTime || 0,
-    submitTime: item.createTime || item.submitTime || 0
-  }));
+  const snapshot = await currentSnapshot(roomId, true);
+  const session = snapshot && snapshot.view && snapshot.view.session;
+  return ((session && session.setup.designProblems) || []).map((item) => mapProblem(item, snapshot));
 }
 
-async function submitProblem(roomId, { playerIndex, nickName, text }) {
-  const db = await getCloudDatabase();
-  const problemText = (text || '').trim();
-  if (!roomId || playerIndex == null || !problemText) {
-    throw new Error('提交参数不完整');
-  }
-
-  const where = { roomId, playerIndex, entryType: ENTRY_TYPE };
-  const existsRes = await db.collection(COLLECTION).where(where).get();
-  const nowData = {
-    roomId,
-    playerIndex,
-    entryType: ENTRY_TYPE,
-    nickName: nickName || `玩家${playerIndex}`,
-    text: problemText,
-    problemText,
-    updateTime: db.serverDate()
-  };
-
-  if (existsRes.data && existsRes.data.length) {
-    await db.collection(COLLECTION).doc(existsRes.data[0]._id).update({ data: nowData });
-  } else {
-    await db.collection(COLLECTION).add({
-      data: {
-        ...nowData,
-        createTime: db.serverDate()
-      }
-    });
-  }
+async function submitProblem(roomId, { text }) {
+  const result = await dispatchRoomCommand('SUBMIT_DESIGN_PROBLEM', { text }, null, { roomId });
+  if (!result || result.ok !== true) throw Object.assign(new Error(result && result.errMsg || '提交设计问题失败'), result);
+  return result;
 }
 
 async function updateProblemText(docId, text) {
-  const problemText = (text || '').trim();
-  if (!docId || !problemText) return;
-  const res = await wx.cloud.callFunction({
-    name: 'updateDesignProblem',
-    data: { problemId: docId, text: problemText }
-  });
-  const result = (res && res.result) || {};
-  if (result.ok !== true) {
-    throw new Error(result.errMsg || '更新设计问题失败');
-  }
+  const session = getActiveRoomSession();
+  const view = session && session.getView();
+  const problem = view && view.session && view.session.setup.designProblems
+    .find((item) => item.contributionId === docId);
+  if (!problem) throw new Error('设计问题已经变化，请刷新后重试');
+  const result = await dispatchRoomCommand('UPDATE_DESIGN_PROBLEM',
+    { contributionId: docId, text }, { entityVersion: problem.entityVersion });
+  if (!result || result.ok !== true) throw Object.assign(new Error(result && result.errMsg || '更新设计问题失败'), result);
+  return result;
 }
 
 async function getSubmitStatus(roomId, myPlayerIndex, totalMembers) {
+  const snapshot = await currentSnapshot(roomId, true);
+  const session = snapshot && snapshot.view && snapshot.view.session;
+  const progress = session && session.progress && session.progress.contributionProgress || {};
+  const actor = snapshot && snapshot.view && snapshot.view.actor;
   const problems = await listProblems(roomId);
-  const mine = problems.find((item) => item.playerIndex === myPlayerIndex) || null;
-  const submittedCount = problems.length;
-  const memberTotal = totalMembers || submittedCount;
-  return {
-    problems,
-    submittedCount,
-    totalMembers: memberTotal,
-    allSubmitted: memberTotal > 0 && submittedCount >= memberTotal,
-    hasSubmitted: !!mine,
-    myProblemText: mine ? mine.text : ''
-  };
+  return { problems, submittedCount: progress.submittedCount || 0,
+    totalMembers: progress.requiredCount || totalMembers || 0,
+    allSubmitted: progress.requiredCount > 0 && progress.submittedCount >= progress.requiredCount,
+    hasSubmitted: !!(actor && actor.contributionStatus.submitted),
+    myProblemText: actor && actor.contributionStatus.text || '', myPlayerIndex };
 }
 
-module.exports = {
-  COLLECTION,
-  ENTRY_TYPE,
-  clearRoomProblems,
-  listProblems,
-  submitProblem,
-  updateProblemText,
-  getSubmitStatus
-};
+module.exports = { clearRoomProblems, listProblems, submitProblem, updateProblemText, getSubmitStatus };

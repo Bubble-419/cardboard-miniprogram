@@ -5,8 +5,6 @@ const {
   applyBGToApp,
   normalizeBG
 } = require('../../../utils/scenarioCategories');
-const { isAwaitPage } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
 const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
@@ -15,17 +13,12 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
-
-/** 已在选择设计问题页时，这些滞后 currentPage 不应把成员拉走 */
-const SELECT_PROBLEM_STALE_PAGES = {
-  selectproblem: true,
-  submitproblem: true,
-  confirmbg: true,
-  selectbg: true,
-  auth: true,
-  addplayer: true,
-  brainstormmode: true
-};
+const {
+  bindPageToRoomSession,
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../../../modules/room-session/index');
 
 Page(withPageInteractionLock({
   data: {
@@ -72,7 +65,7 @@ Page(withPageInteractionLock({
       this.loadSubmittedProblems();
       this._measureHeaderHeight();
     });
-    this.startProblemCheck();
+    this._startStatePolling();
   },
 
   onReady() {
@@ -107,19 +100,11 @@ Page(withPageInteractionLock({
     } else {
       this.loadSubmittedProblems();
     }
-    if (this.data.isHost) {
-      this.startProblemCheck();
-    } else {
-      this._startStatePolling();
-    }
+    this._startStatePolling();
   },
 
   onHide() {
     this._pageVisible = false;
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
-      this.problemCheckTimer = null;
-    }
     this._stopStatePolling();
   },
 
@@ -129,15 +114,7 @@ Page(withPageInteractionLock({
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
     }
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
-      this.problemCheckTimer = null;
-    }
     this._stopStatePolling();
-    // 房主离开页时清掉编辑态，避免成员端一直显示「编辑中」
-    if (this.data.isHost && this.data.editingProblemId) {
-      this._syncEditingProblemId('');
-    }
   },
 
   _syncCategoriesFromBG(bg) {
@@ -158,13 +135,16 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true) return;
+      await this._applyRoomSnapshot(result);
+    } catch (e) {
+      console.warn('loadRoomData', e);
+    }
+  },
 
+  async _applyRoomSnapshot(result) {
+      if (!result || result.ok !== true) return;
       const avatarList = await buildAvatarListAsync(result.members || [], this._prevMembersForAvatar);
       this._prevMembersForAvatar = result.members || [];
       const meMember = (result.members || []).find((m) => m.isMe);
@@ -177,7 +157,6 @@ Page(withPageInteractionLock({
         this._syncCategoriesFromBG(roomBG);
       }
 
-      const roomState = result.roomState || {};
       const patch = {
         workshopName: result.workshopName || '脑暴工作坊',
         currentUser: me ? me.id : null,
@@ -191,102 +170,26 @@ Page(withPageInteractionLock({
         this._avatarFingerprint = avatarFp;
         patch.avatarList = avatarList;
       }
-      // 成员端：进入页即同步房主编辑态标记（只同步 id，不同步正文）
-      if (!isHost) {
-        const remoteId = roomState.editingProblemId || '';
-        if (remoteId !== (this.data.remoteEditingProblemId || '')) {
-          patch.remoteEditingProblemId = remoteId;
-        }
-      }
       this.setData(patch);
-
-      if (isHost) {
-        this._updateRoomState('selectProblem');
-        this._stopStatePolling();
-        this.startProblemCheck();
-      } else {
-        const page = (roomState.currentPage || 'selectProblem').toLowerCase();
-        this._followRoomOrStay(result, roomId);
-        if (isAwaitPage(page)) {
-          return;
-        }
-        if (this._pageVisible === false) return;
-        this._startStatePolling();
-      }
-    } catch (e) {
-      console.warn('loadRoomData', e);
-    }
-  },
-
-  /** 非房主跟随：只前进（抽首位/进游戏），不因滞后 currentPage 回跳 */
-  _followRoomOrStay(result, roomId) {
-    followSubScreenRoomPoll(result, roomId, {
-      beforeNavigate: (pollResult, page) => {
-        const leftWorkshop = pollResult
-          && pollResult.hasSelectedMode !== true
-          && (page === 'addplayer' || page === 'brainstormmode');
-        // 房主已回大厅/重选模式：不要吞掉，交给后续逻辑拉回
-        if (leftWorkshop) return false;
-        return SELECT_PROBLEM_STALE_PAGES[page] === true;
-      }
-    });
-  },
-
-  async _updateRoomState(currentPage) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage }
-      });
-    } catch (e) {
-      console.warn('updateRoomState', e);
-    }
+      this._applyProblemsFromSnapshot(result);
   },
 
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      if (!this._pageAlive || this._pageVisible === false) return;
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    bindPageToRoomSession(this, {
+      getRoomId: () => roomId,
+      followNavigation: true,
+      onSnapshot: (result) => {
         if (!this._pageAlive || this._pageVisible === false) return;
-        const result = (res && res.result) || {};
-        this._followRoomOrStay(result, roomId);
-        const roomState = result.roomState || {};
-        const remoteId = roomState.editingProblemId || '';
-        const prevRemoteId = this.data.remoteEditingProblemId || '';
-        if (remoteId !== prevRemoteId) {
-          this.setData({ remoteEditingProblemId: remoteId });
-          // 房主退出编辑后再拉列表，拿到保存后的最终文案
-          if (!remoteId) {
-            this.loadSubmittedProblems();
-          }
-        } else {
-          this.loadSubmittedProblems();
-        }
-        // 编辑中：只同步「编辑中」标记，不刷新正文（无需实时同步修改内容）
-      } catch (e) {
-        if (this._pageAlive) {
-          console.warn('selectProblem state poll', e);
-        }
+        this._applyRoomSnapshot(result).catch((e) => console.warn('selectProblem snapshot', e));
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    }).catch((e) => console.warn('selectProblem bind room', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   startCountdown() {
@@ -364,6 +267,26 @@ Page(withPageInteractionLock({
     const isHost = this.data.isHost === true;
     try {
       const problemList = await listProblems(roomId);
+      this._applyProblemList(problemList);
+    } catch (e) {
+      console.warn('loadSubmittedProblems', e);
+    }
+  },
+
+  _applyProblemsFromSnapshot(result) {
+    if (this.data.editingProblemId) return;
+    const session = result && result.view && result.view.session;
+    const members = result && result.members || [];
+    const problemList = ((session && session.setup && session.setup.designProblems) || []).map((item) => {
+      const member = members.find((row) => row.memberId === item.memberId) || {};
+      return { id: item.contributionId, contributionId: item.contributionId, text: item.text,
+        entityVersion: item.entityVersion, playerIndex: member.playerIndex,
+        nickName: member.nickName || '', createTime: 0, submitTime: 0 };
+    });
+    this._applyProblemList(problemList);
+  },
+
+  _applyProblemList(problemList) {
       const newProblems = this._mapProblemsForDisplay(problemList);
 
       if (newProblems.length === 0) {
@@ -385,26 +308,10 @@ Page(withPageInteractionLock({
         problems: newProblems,
         selectedProblemId: selectedProblem ? selectedProblem.id : null
       });
-    } catch (e) {
-      console.warn('loadSubmittedProblems', e);
-    }
   },
 
   startProblemCheck() {
-    // 副屏由状态轮询顺带刷新问题列表；房主单独轮询
-    if (this.problemCheckTimer) {
-      clearInterval(this.problemCheckTimer);
-      this.problemCheckTimer = null;
-    }
-    if (!this.data.isHost) return;
-    this.problemCheckTimer = setInterval(() => {
-      if (!this._pageAlive) {
-        clearInterval(this.problemCheckTimer);
-        this.problemCheckTimer = null;
-        return;
-      }
-      this.loadSubmittedProblems();
-    }, 2500);
+    this._startStatePolling();
   },
 
   selectCategory(e) {
@@ -461,22 +368,8 @@ Page(withPageInteractionLock({
   },
 
   async _syncEditingProblemId(problemId) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId || !this.data.isHost) return;
-    try {
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          // 编辑态同步时显式带上 currentPage，避免云端读取到旧 currentPage
-          // 导致非房主端“跳房间页又跳回”的循环抖动
-          currentPage: 'selectProblem',
-          editingProblemId: problemId == null ? '' : String(problemId)
-        }
-      });
-    } catch (e) {
-      console.warn('sync editingProblemId', e);
-    }
+    // 编辑态是本地 UI 临时状态，不进入房间事实模型。
+    return problemId;
   },
 
   stopPropagation() {},
@@ -549,22 +442,11 @@ Page(withPageInteractionLock({
       if (this.data.editingProblemId) {
         this.setData({ editingProblemId: '' });
       }
-      try {
-        await wx.cloud.callFunction({
-          name: 'updateRoomState',
-          data: {
-            roomId,
-            currentPage: 'selectPlayer',
-            editingProblemId: '',
-            selectedDesignProblem: {
-              id: problem.id,
-              text: problem.text
-            }
-          }
-        });
-      } catch (e) {
-        console.warn('updateRoomState selectedDesignProblem', e);
-        wx.showToast({ title: '保存设计问题失败', icon: 'none' });
+      const result = await dispatchRoomCommand('SELECT_DESIGN_PROBLEM', {
+        contributionId: problem.id
+      });
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '保存设计问题失败', icon: 'none' });
         return;
       }
 
@@ -607,10 +489,6 @@ Page(withPageInteractionLock({
       }
       this._pageVisible = false;
       this._stopStatePolling();
-      if (this.problemCheckTimer) {
-        clearInterval(this.problemCheckTimer);
-        this.problemCheckTimer = null;
-      }
       clearPendingNavigation();
       return {
         method: 'navigateTo',
@@ -618,8 +496,7 @@ Page(withPageInteractionLock({
         fail: (err) => {
           console.warn('selectProblem viewContext', err);
           this._pageVisible = true;
-          if (this.data.isHost) this.startProblemCheck();
-          else this._startStatePolling();
+          this._startStatePolling();
           wx.showToast({ title: '打开失败', icon: 'none' });
         }
       };

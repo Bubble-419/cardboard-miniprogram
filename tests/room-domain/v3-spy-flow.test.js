@@ -4,9 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
 
-async function seedSpy() {
+async function seedSpy(playerCount = 3) {
   const h = createHarness({ wordPairPicker: () => ({ id: 'fixed', civilianWord: '苹果', civilianBlurb: '水果', spyWord: '梨', spyBlurb: '另一种水果' }) });
-  await h.seedMembers(3);
+  await h.seedMembers(playerCount);
   await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'SPY' } });
   let snapshot = await h.snapshot('host');
   const sessionId = snapshot.view.session.sessionId;
@@ -92,4 +92,20 @@ test('Spy 全员弃票产生无淘汰轮结果，并可开始下一轮', async (
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.publicModeState.roundNo, 2);
   assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
+});
+
+test('Spy 超时后的目标票由服务端强制记为弃票', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const state = snapshot.view.session.publicModeState;
+  const voteSessionId = state.voteSessionId;
+  const targetMemberId = state.players.find((item) => item.memberId !== snapshot.view.actor.memberId).memberId;
+  h.advanceTime(2 * 60 * 1000 + 1);
+  const result = await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { targetMemberId }
+  });
+  assert.equal(result.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.actor.voteStatus.vote, 'abstain');
+  assert.equal(snapshot.view.actor.voteStatus.targetMemberId, null);
 });

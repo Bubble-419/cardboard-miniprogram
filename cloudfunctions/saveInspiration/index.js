@@ -12,7 +12,7 @@ exports.main = async (event) => {
   const {
     id,
     roomId,
-    brainstormSessionSeq,
+    sessionId,
     type,
     content,
     imageUrl,
@@ -65,7 +65,13 @@ exports.main = async (event) => {
     doc.createTime = now;
     if (roomId) {
       doc.roomId = roomId;
-      doc.brainstormSessionSeq = brainstormSessionSeq != null ? brainstormSessionSeq : 0;
+      if (sessionId) {
+        const normalizedSessionId = String(sessionId);
+        if (normalizedSessionId.length > 128) {
+          return { ok: false, message: '场次标识无效' };
+        }
+        doc.sessionId = normalizedSessionId;
+      }
     }
 
     const addRes = await db.collection(COLLECTION).add({ data: doc });

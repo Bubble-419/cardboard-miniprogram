@@ -40,6 +40,7 @@ function projectPublicView(aggregate) {
       roomId: room.roomId,
       lifecycle: room.lifecycle,
       workshopName: room.workshopName,
+      createdAt: room.createdAt,
       hostMemberId: room.hostMemberId,
       members: (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
         memberId: member.memberId,
@@ -47,7 +48,8 @@ function projectPublicView(aggregate) {
         nickName: member.profile.nickName,
         avatarRef: member.profile.avatarRef || null,
         avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
-        color: member.profile.color
+        color: member.profile.color,
+        joinedAt: member.joinedAt
       }))
     },
     session: null
@@ -59,7 +61,11 @@ function projectPublicView(aggregate) {
   const participantView = (session.participants || []).map((item) => ({
     memberId: item.memberId,
     seatNoAtStart: item.seatNoAtStart,
-    status: item.status
+    status: item.status,
+    nickName: item.nickName,
+    avatarRef: item.avatarRef || null,
+    avatarIndex: item.avatarIndex == null ? null : item.avatarIndex,
+    color: item.color
   }));
   const rawProgress = session.progress || {};
   const progress = {};
@@ -106,6 +112,7 @@ function projectPublicView(aggregate) {
     activeTurn: null,
     activeArtifacts: [],
     recentMessages: [],
+    turnSummaries: [],
     result: clone(session.result || null)
   };
 
@@ -150,7 +157,19 @@ function projectPublicView(aggregate) {
         fileRef: item.fileRef || null, authorMemberId: item.authorMemberId,
         entityVersion: item.entityVersion, createdAt: item.createdAt, updatedAt: item.updatedAt }));
     view.recentMessages = (facts.messages || []).filter((item) => item.sessionId === session.sessionId)
-      .slice(-40).map((item) => ({ messageId: item.messageId, text: item.text, anonKey: item.anonKey, createdAt: item.createdAt }));
+      .slice(-40).map((item) => ({ messageId: item.messageId, turnId: item.turnId,
+        turnOrdinal: item.turnOrdinal, roundNo: item.roundNo, phase: item.phase,
+        text: item.text, anonKey: item.anonKey, createdAt: item.createdAt }));
+    const allArtifacts = Object.values(facts.artifacts || {});
+    view.turnSummaries = Object.values(facts.turns || {}).filter((item) => item.sessionId === session.sessionId)
+      .sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((item) => ({
+        ...clone(item),
+        artifacts: allArtifacts.filter((artifact) => (
+          artifact.sessionId === session.sessionId
+          && artifact.turnId === item.turnId
+          && !artifact.removed
+        )).sort((a, b) => a.createdAt - b.createdAt).map((artifact) => clone(artifact))
+      }));
   } else if (session.mode === MODE.HALLI_GALLI) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
     const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
@@ -165,13 +184,18 @@ function projectPublicView(aggregate) {
       gameId: spy.gameId || null,
       roundNo: spy.roundNo || 1,
       players: clone(spy.players || []),
+      speakOrder: clone(spy.speakOrder || []),
+      currentSpeakerIndex: spy.currentSpeakerIndex || 0,
       speakerTurnId: spy.speakerTurnId || null,
+      speakRoundStartedAt: spy.speakRoundStartedAt == null ? null : spy.speakRoundStartedAt,
+      speakTurnStartedAt: spy.speakTurnStartedAt == null ? null : spy.speakTurnStartedAt,
       currentSpeakerMemberId: spy.speakOrder && spy.currentSpeakerIndex < spy.speakOrder.length
         ? spy.speakOrder[spy.currentSpeakerIndex]
         : null,
       voteSessionId: spy.voteProgress && spy.voteProgress.voteSessionId,
       votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
       requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
+      voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
       tieBreak: spy.tieBreak === true,
       lastResult: clone(spy.lastResult || null),
       winnerSide: spy.winnerSide || null,
@@ -220,7 +244,12 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(!!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(isParticipant && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE, 'INVALID_TRANSITION');
+  const canClosingVote = isParticipant && !!partner && !!partner.closing
+    && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE
+    && partner.closing.initiatorMemberId !== actor.memberId
+    && partner.closing.requiredMemberIds.includes(actor.memberId)
+    && !partner.closing.submittedMemberIds.includes(actor.memberId);
+  caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(canClosingVote, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.COMPLETE_PARTNER_SESSION] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_HALLI_ACTIVITY] = capability(isHost && step === WORKFLOW_STEP.HALLI_ACTIVITY, 'INVALID_TRANSITION');
@@ -231,8 +260,11 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(isHost && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step), 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(alive && step === WORKFLOW_STEP.SPY_VOTE, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.START_NEXT_SPY_ROUND] = capability(alive && step === WORKFLOW_STEP.SPY_RESULT, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
+    alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
+    'INVALID_TRANSITION'
+  );
+  caps[COMMAND_TYPES.START_NEXT_SPY_ROUND] = capability(isParticipant && step === WORKFLOW_STEP.SPY_RESULT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RESTART_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.COMPLETE_SPY_SESSION] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, 'INVALID_TRANSITION');
   return caps;

@@ -104,9 +104,10 @@ function removeMember(aggregate, target, kicked, deps) {
   const events = [event(kicked ? EVENT_TYPES.MEMBER_KICKED : EVENT_TYPES.MEMBER_LEFT,
     { memberId: target.memberId, seatNo: target.seatNo })];
   const dirtyFacts = [];
-  markParticipantLeft(aggregate, target.memberId);
   const session = aggregate.currentSession;
   if (session && [SESSION_STATUS.CONFIGURING, SESSION_STATUS.RUNNING].includes(session.status)) {
+    // 已完成场次必须保持不可变；只有仍在进行的场次才记录 Participant 离开。
+    markParticipantLeft(aggregate, target.memberId);
     if (session.status === SESSION_STATUS.CONFIGURING && activeParticipantIds(session).length < minimumPlayers(session.mode)) {
       cancelCurrentSession(aggregate, 'NOT_ENOUGH_PLAYERS', deps, events);
     } else if ((session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI) && activeParticipantIds(session).length <= 1) {
@@ -270,6 +271,9 @@ function replaySession(aggregate, command, actorUserId, deps) {
   const check = assertSession(aggregate, command.context); if (!check.ok) return check;
   if (check.session.status !== SESSION_STATUS.COMPLETED) return fail(ERR.INVALID_TRANSITION, '场次尚未完成');
   const old = clone(check.session);
+  if (aggregate.room.members.length < minimumPlayers(old.mode)) {
+    return fail(ERR.NOT_ENOUGH_PLAYERS, `${old.mode} 人数不足`);
+  }
   const oldSelectedProblem = old.setup.selectedProblemId
     ? Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === old.sessionId
       && row.contributionId === old.setup.selectedProblemId)

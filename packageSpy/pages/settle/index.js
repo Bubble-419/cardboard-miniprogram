@@ -27,6 +27,7 @@ Page(withPageInteractionLock({
     civilianWord: '',
     spyWord: '',
     revealPlayers: [],
+    isHost: false,
     acting: false
   },
 
@@ -96,6 +97,7 @@ Page(withPageInteractionLock({
 
         this.setData({
           avatarList: buildAvatarList(result.members || []),
+          isHost: result.isHost === true,
           winnerSide,
           winnerText: winnerLabel(winnerSide) || '本局结束',
           civilianWord: spyGame.civilianWord || '',
@@ -138,6 +140,37 @@ Page(withPageInteractionLock({
     }
   },
 
+  onFinishSession() {
+    return runPageInteraction(this, () => this._finishSession(), {
+      loadingText: '正在结束本次游戏…'
+    });
+  },
+
+  async _finishSession() {
+    if (this.data.acting || !this.data.isHost) return;
+    this.setData({ acting: true });
+    try {
+      const completed = await callSpyAction('complete', { roomId: this.data.roomId });
+      if (!completed || completed.ok !== true) {
+        wx.showToast({ title: completed && completed.errMsg || '结束失败', icon: 'none' });
+        this.setData({ acting: false });
+        return;
+      }
+      const returned = await callSpyAction('returnToLobby', { roomId: this.data.roomId });
+      if (!returned || returned.ok !== true) {
+        wx.showToast({ title: returned && returned.errMsg || '返回房间失败', icon: 'none' });
+        this.setData({ acting: false });
+        return;
+      }
+      this._pageAlive = false;
+      this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    } catch (e) {
+      wx.showToast({ title: e && (e.errMsg || e.message) || '结束失败', icon: 'none' });
+      this.setData({ acting: false });
+    }
+  },
+
   handleGoRoom() {
     return runPageInteraction(this, async () => {
       this._pageAlive = false;
@@ -145,4 +178,4 @@ Page(withPageInteractionLock({
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });
   }
-}, ['onRestart', 'handleGoRoom']));
+}, ['onRestart', 'onFinishSession', 'handleGoRoom']));

@@ -36,6 +36,10 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const {
+  dispatchRoomCommand,
+  getRoomPageSnapshot
+} = require('../../../modules/room-session/index');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
@@ -155,17 +159,13 @@ Page(withPageInteractionLock({
     }
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (gen !== this._joinedStateGen) return;
       if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
-      const result = (res && res.result) || {};
 
       if (result.ok !== true) {
         // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
-        if (isRoomDissolvedResult(result) || result.errCode === 'NOT_IN_ROOM') {
+        if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result.errCode)) {
           handleRoomGoneFromResult(result, roomId, {
             allowToastOnHome: true,
             title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
@@ -450,13 +450,9 @@ Page(withPageInteractionLock({
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomCreate',
-        data: buildRoomJoinPayload(profile, { clientCreateId })
-      });
-
-      const result = (res && res.result) || {};
-      const roomId = result.roomId || (result.data && result.data.roomId);
+      const payload = buildRoomJoinPayload(profile);
+      const result = await dispatchRoomCommand('CREATE_ROOM', payload, {}, { commandId: clientCreateId });
+      const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {
         console.error('roomCreate error', result);
@@ -548,7 +544,8 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
-      await this._goToScanJoinRoom(roomId);
+      // JOIN_ROOM 已经成功，不再带 fromScan 进入页面，避免 addPlayer 重复提交 JOIN_ROOM。
+      await this._goToRoomPage(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
         wx.showToast({ title: '已取消扫码', icon: 'none' });
@@ -802,11 +799,12 @@ Page(withPageInteractionLock({
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomJoin',
-        data: buildRoomJoinPayload(profile, { roomId })
-      });
-      const result = (res && res.result) || {};
+      const result = await dispatchRoomCommand(
+        'JOIN_ROOM',
+        buildRoomJoinPayload(profile),
+        {},
+        { roomId }
+      );
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;

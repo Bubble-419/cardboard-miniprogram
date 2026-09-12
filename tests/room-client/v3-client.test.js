@@ -62,11 +62,14 @@ test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, roomId: '12345678',
       seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {}, minAvailableSeq: 1 }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' }, sync: {
-      ok: true, afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 1, seq: 2, commandId: 'x', commandEventIndex: 1, commandEventCount: 1,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, snapshotRequired: false,
+      events: [{ eventSchemaVersion: 1, roomId: '12345678', type: 'ROOM_PROFILE_UPDATED', seq: 2,
+        commandId: 'x', commandEventIndex: 1, commandEventCount: 1,
         payload: { publicPatch: { set: {}, remove: [] } } }], actorView: { actor: view.actor, route: view.route }
     } }),
-    sync: async () => ({ ok: true, afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
       snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
@@ -93,4 +96,50 @@ test('传输超时使用相同 commandId 重试', async () => {
   await client.open();
   await client.dispatch({ type: 'JOIN_ROOM', roomId: '12345678', payload: { nickName: 'A' } });
   assert.deepEqual(sent, ['stable-id', 'stable-id']);
+});
+
+test('同步完成水位矛盾时强制 Snapshot，不发布不完整 View', async () => {
+  let snapshotCalls = 0;
+  const view = { room: { roomId: '12345678', workshopName: '完整状态' }, session: null,
+    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: snapshotCalls++, view, ephemeral: {} }),
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
+      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } }),
+    dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
+      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route }
+    } })
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+  await client.open();
+  await client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
+  assert.equal(snapshotCalls, 2);
+  assert.equal(client.getView().room.workshopName, '完整状态');
+});
+
+test('从后台恢复时立即重新读取 Snapshot', async () => {
+  let snapshotCalls = 0;
+  const makeView = () => ({ room: { roomId: '12345678', workshopName: `快照${snapshotCalls}` },
+    session: null, actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } });
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+        roomId: '12345678', seq: snapshotCalls, view: makeView(), ephemeral: {} };
+    },
+    sync: async () => null,
+    dispatch: async () => null
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+  await client.open();
+  client.pause();
+  await client.resume();
+  assert.equal(snapshotCalls, 2);
+  assert.equal(client.getView().room.workshopName, '快照2');
 });
