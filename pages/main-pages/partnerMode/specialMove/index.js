@@ -84,6 +84,7 @@ Page(withPageInteractionLock({
     currentPlayerIndex: 1,
     currentRound: 1,
     sessionId: '',
+    turnId: '',
     avatarList: [],
     selectedProblemText: '',
     problemExpanded: false,
@@ -813,6 +814,9 @@ Page(withPageInteractionLock({
         initiatorPlayerIndex: player.currentPlayerIndex,
         currentRound,
         sessionId: roomState.sessionId || '',
+        turnId: result.view && result.view.session && result.view.session.activeTurn
+          ? result.view.session.activeTurn.turnId
+          : '',
         isHost: result.isHost === true,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
         problemExpanded: false,
@@ -881,13 +885,16 @@ Page(withPageInteractionLock({
 
   _broadcastSilentSoundLevel(level) {
     const roomId = this.data.roomId || '';
-    if (!roomId || !this.data.silentTimerActive) return;
+    const sessionId = this.data.sessionId || '';
+    const turnId = this.data.turnId || '';
+    if (!roomId || !sessionId || !turnId || !this.data.silentTimerActive) return;
     const now = Date.now();
     if (this._lastSoundBroadcastAt && now - this._lastSoundBroadcastAt < 500) return;
     this._lastSoundBroadcastAt = now;
     wx.cloud.callFunction({
       name: 'roomSignal',
-      data: { roomId, signalType: 'PARTNER_SILENT_SOUND', value: Math.min(1, Math.max(0, Number(level) || 0)) }
+      data: { roomId, sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND',
+        value: Math.min(1, Math.max(0, Number(level) || 0)) }
     }).catch(() => {});
   },
 

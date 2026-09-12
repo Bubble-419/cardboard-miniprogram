@@ -1,6 +1,6 @@
 # 房间协议 V3 与完整重构计划
 
-> 状态：`proposed`
+> 状态：`implemented-in-repository`（云端资源与真机发布见 [部署清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md)）
 >
 > 范围：房间、工作坊场次、Partner、Halli Galli、Spy、客户端同步和 CloudBase 持久化。
 >
@@ -9,6 +9,8 @@
 > 现状依据：[业务流程](./ROOM_BUSINESS_FLOWS.md)、[房间模型](./ROOM_MODEL_STATE.md)、[同步协议](./ROOM_SYNC_PROTOCOL.md)、[协议参考](./协议架构方案参考.md)。
 >
 > 架构决策：[ADR-0001](./adr/0001-room-snapshot-event-protocol.md)。
+>
+> 最终实现：[协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md)。
 
 ## 0. 最终决策
 
@@ -53,7 +55,7 @@ I06  State、Facts、Events、Command Receipt 必须原子提交。
 I07  相同 commandId 重试不得重复产生业务效果。
 I08  knownSeq 只用于同步，不作为写入并发条件。
 I09  过期 session/turn/vote/speaker 上下文必须返回 STALE_CONTEXT。
-I10  客户端永远看不到其他成员的 Spy 身份、词语和秘密票型。
+I10  Spy 仅向本人投影密牌；中途淘汰只公开该成员身份，词语/全员身份仅在最终结算公开，秘密票型始终不公开。
 I11  查询、Snapshot、Sync 和 Presence 不得修改业务状态。
 I12  页面、路由、焦点、滚动、swiper、输入草稿不进入服务端 State。
 I13  房间最多 6 名 Member；Member 和 Seat 一一对应。
@@ -236,7 +238,7 @@ RoomApplication.sync(roomId, afterSeq, actorContext)
 | 可公开 | 持久化 Event payload 不含 openid、其他成员密牌、秘密票型 |
 | 可归约 | `RoomViewReducer(view,event)` 必须确定性地产生新 View |
 | 有版本 | 不兼容变更增加 `eventSchemaVersion`；旧客户端不猜测解析 |
-| 有限保留 | 默认 7 天；服务端维护 `minAvailableSeq` |
+| 有限保留 | 默认 7 天；服务端从实际最早 Event 计算 `minAvailableSeq`，缺口统一要求 Snapshot |
 | 有序 | 一个 Command 多个 Event 时在同一事务分配连续 seq 区间 |
 | 可验组 | `commandEventIndex` 从 1 连续到 `commandEventCount`，客户端可证明事件组完整 |
 | 双版本 | 每个已接受 Command 只令 `stateVersion + 1`；每个 Event 令 `eventSeq + 1`，同 Command 的 Events 共享同一 stateVersion |
@@ -412,7 +414,7 @@ createdAt
 | Partner 收尾票 | `sessionId + closingVoteSessionId` | 上一轮票落入新投票 |
 | Spy 发言 | `sessionId + gameId + speakerTurnId` | 旧发言人推进当前发言 |
 | Spy 投票 | `sessionId + gameId + voteSessionId` | 上一轮票落入新轮 |
-| Artifact 更新/删除 | `operationId + entityVersion` | 两台设备相互覆盖编辑 |
+| Artifact 追加/更新/删除 | `operationId + workflowStep + entityVersion` | 重复 ID 写入其他内容、跨阶段落错素材、两台设备相互覆盖编辑 |
 | 席位排序 | 全量 `orderedMemberIds` | 加入/离开期间提交旧排序 |
 
 `knownSeq` 与这些令牌不可互相替代。
@@ -422,7 +424,7 @@ createdAt
 ```mermaid
 flowchart LR
   U[上传文件/语音识别] --> X[外部操作成功]
-  X --> C[APPEND_ARTIFACT Command<br/>携带 operationId + turnId]
+  X --> C[APPEND_ARTIFACT Command<br/>携带 operationId + turnId + workflowStep]
   C --> TX[业务事务]
   U -.失败或孤儿文件.-> GC[异步清理]
 ```
@@ -526,7 +528,7 @@ Room 不再使用 `CREATED/STARTED/ACTIVE/ENDED` 多套状态；是否在大厅�
 | 网络离线 | 只改变 Presence；Participant 不变 |
 | 显式离开/被踢 | 删除 Room Member；Participant 标记 `LEFT`，既有事实保留 |
 | 当前行动者离开 | 原子归档为 `ABANDONED` 并推进下一有效 Participant |
-| 投票者离开 | 从 required voter 集合移除；必要时同事务自动结算 |
+| 投票者离开 | 从 required/submitted voter 集合移除；其旧票保留审计但不参与本轮裁决；必要时同事务自动结算 |
 | Spy 玩家离开 | 标记退出/出局；推进发言、重算投票门槛与胜负 |
 | Host 离开 | 拒绝；只能取消场次后解散 Room |
 | Seat 复用 | 新 Member 可占空 Seat，但不会继承离开者的场次身份或事实 |
@@ -560,14 +562,14 @@ Room 不再使用 `CREATED/STARTED/ACTIVE/ENDED` 多套状态；是否在大厅�
 ```text
 roomEvents        UNIQUE(roomId, seq), INDEX(roomId, seq ASC)
 roomActions       UNIQUE(scopeKey, commandId), INDEX(roomId, createdAt)
-roomSessions      INDEX(roomId, ordinal DESC)
-roomTurns         UNIQUE(sessionId, turnId), INDEX(sessionId, completedAt)
-roomScores        UNIQUE(turnId, memberId)
-roomVotes         UNIQUE(voteSessionId, memberId)
-roomContributions UNIQUE(sessionId, kind, memberId)
-roomArtifacts     UNIQUE(sessionId, operationId), INDEX(turnId, createdAt)
-roomMessages      UNIQUE(sessionId, messageId), INDEX(sessionId, createdAt)
-roomSecrets       UNIQUE(gameId, memberId)
+roomSessions      INDEX(roomId, status, ordinal DESC)
+roomTurns         UNIQUE(sessionId, turnId), INDEX(roomId, sessionId, _factKey)
+roomScores        UNIQUE(turnId, memberId), INDEX(roomId, sessionId, _factKey)
+roomVotes         UNIQUE(voteSessionId, memberId), INDEX(roomId, sessionId, _factKey)
+roomContributions UNIQUE(sessionId, kind, memberId), INDEX(roomId, sessionId, _factKey)
+roomArtifacts     UNIQUE(sessionId, operationId), INDEX(roomId, sessionId, _factKey)
+roomMessages      UNIQUE(sessionId, messageId), INDEX(roomId, sessionId, createdAt DESC, _id DESC)
+roomSecrets       UNIQUE(gameId, memberId), INDEX(roomId, sessionId, _factKey)
 roomPresence      UNIQUE(roomId, memberId, deviceSessionId)
 ```
 
@@ -765,17 +767,17 @@ flowchart LR
 | Command | Actor / Context | 结果 | Event |
 |---|---|---|---|
 | `START_WORKSHOP_SESSION` | Host；Lobby；人数满足模式要求 | 创建 Session、冻结 Participant；Spy→INTRO，其余→CHOOSE_SCENARIO | `WORKSHOP_SESSION_STARTED` |
-| `SET_SCENARIO` | Host；`sessionId`；CHOOSE_SCENARIO | 保存 `OFFLINE/CASE/HISTORY/CUSTOM` 与规范化情境 | `SCENARIO_SET` |
+| `SET_SCENARIO` | Host；`sessionId + workflowStep`；配置期允许显式返回修改 | 保存 `OFFLINE/CASE/HISTORY/CUSTOM`；原子清除旧问题与后续选择，按新情境重建配置状态 | `SCENARIO_SET` |
 | `SUBMIT_DESIGN_PROBLEM` | Participant；`sessionId`；COLLECT_DESIGN_PROBLEMS | 按成员 upsert 问题；最后一人提交时自动进入选择步骤 | `DESIGN_PROBLEM_SUBMITTED`、可选 `PROBLEM_COLLECTION_COMPLETED` |
-| `UPDATE_DESIGN_PROBLEM` | Host；当前 Session 的问题 | 更新文本与 entityVersion | `DESIGN_PROBLEM_UPDATED` |
-| `SELECT_DESIGN_PROBLEM` | Host；问题属于当前 Session | 固定 selectedProblemId，进入 SELECT_FIRST_PLAYER | `DESIGN_PROBLEM_SELECTED` |
-| `SELECT_FIRST_PLAYER` | Host；目标是有效 Participant | Partner→CONFIRM_FIRST_PLAYER；Halli→HALLI_ACTIVITY | `FIRST_PLAYER_SELECTED` |
+| `UPDATE_DESIGN_PROBLEM` | Host；`sessionId + workflowStep + entityVersion`；当前 Session 的问题 | 配置后续页返回时仍可更新文本；乐观锁递增 entityVersion | `DESIGN_PROBLEM_UPDATED` |
+| `SELECT_DESIGN_PROBLEM` | Host；`sessionId + workflowStep`；问题属于当前 Session | 首选或重选 selectedProblemId，清除已提议首位并进入 SELECT_FIRST_PLAYER | `DESIGN_PROBLEM_SELECTED` |
+| `SELECT_FIRST_PLAYER` | Host；目标是有效 Participant；`workflowStep` | Partner→CONFIRM_FIRST_PLAYER（可返回后重选）；Halli→HALLI_ACTIVITY；旧步骤令牌失效 | `FIRST_PLAYER_SELECTED` |
 | `CONFIRM_FIRST_PLAYER` | Host；Partner；目标未变 | 创建首个 Turn，进入 PARTNER_TURN | `PARTNER_TURN_STARTED` |
 | `CANCEL_WORKSHOP_SESSION` | Host；CONFIGURING/RUNNING | Session CANCELLED，Room currentSessionId 清空 | `WORKSHOP_SESSION_CANCELLED` |
 | `RETURN_TO_LOBBY` | Host；Session COMPLETED | 清 Room currentSessionId；Session 保持可查询 | `ROOM_RETURNED_TO_LOBBY` |
 | `REPLAY_WORKSHOP_SESSION` | Host；Session COMPLETED | 新建 Session；复制 mode/scenario/selected problem，重新冻结参与者 | `WORKSHOP_SESSION_REPLAYED`；Partner 再加 `PARTNER_TURN_STARTED` |
 
-Replay 永远创建新 `sessionId`，不复活旧 Session：Partner 直接以当前最小有效 Seat 创建新 Turn；Halli 回到 `SELECT_FIRST_PLAYER`；Spy 回到 `SPY_INTRO`。旧 Session、Turn、评分、投票、素材和结果保持只读。
+Replay 永远创建新 `sessionId`，不复活旧 Session：Partner 优先沿用仍有效的原首位成员，否则取当前最小有效 Seat 创建新 Turn；Halli 回到 `SELECT_FIRST_PLAYER`；Spy 回到 `SPY_INTRO`。旧 Session、Turn、评分、投票、素材和结果保持只读。
 
 模式最低人数固定为 Partner/Halli 2 人、Spy 3 人。规范化 Scenario 为 `{ source, scene, user, function, platform? }`：`source` 仅允许 `OFFLINE/CASE/HISTORY/CUSTOM`；Partner 非 OFFLINE 必须包含完整情境并进入设计问题流程，Halli 不使用 `platform` 且直接进入首位选择，OFFLINE 不保存伪造的空情境对象。
 
@@ -807,11 +809,11 @@ flowchart TD
 
 | Command | Actor / Context / Guard | 结果 | Event |
 |---|---|---|---|
-| `APPEND_ARTIFACT` | 当前行动者可写 PLAY；Host 可写 PLAY/DISCUSSION/CLOSING；`sessionId+turnId+operationId` | 追加文本、图片、语音或转写事实 | `ARTIFACT_APPENDED` |
-| `UPDATE_ARTIFACT` | 原作者或 Host；未归档；entityVersion 匹配 | 更新文本/引用 | `ARTIFACT_UPDATED` |
-| `REMOVE_ARTIFACT` | 原作者或 Host；未归档；entityVersion 匹配 | 软删除 | `ARTIFACT_REMOVED` |
+| `APPEND_ARTIFACT` | 当前行动者可写 PLAY；Host 可写 PLAY/DISCUSSION/CLOSING；`sessionId+turnId+workflowStep+operationId` | 追加文本、图片、语音或转写事实；相同 operationId 只可重放同一内容 | `ARTIFACT_APPENDED` |
+| `UPDATE_ARTIFACT` | 原作者或 Host；未归档；workflowStep/entityVersion 匹配 | 更新文本/引用 | `ARTIFACT_UPDATED` |
+| `REMOVE_ARTIFACT` | 原作者或 Host；未归档；workflowStep/entityVersion 匹配 | 软删除 | `ARTIFACT_REMOVED` |
 | `SUBMIT_PARTNER_SCORE` | 非当前行动 Participant；PARTNER_TURN；`turnId` | 0～10 半星整数；同成员可在截止前覆盖 | `PARTNER_SCORE_RECORDED` |
-| `POST_PARTNER_MESSAGE` | PARTNER_TURN 时非行动者；PARTNER_STATEMENT 时所有 Participant；Closing 禁止 | 追加匿名表达，服务端生成匿名展示键 | `PARTNER_MESSAGE_POSTED` |
+| `POST_PARTNER_MESSAGE` | PARTNER_TURN 时非行动者；PARTNER_STATEMENT 时所有 Participant；workflowStep 必须匹配；Closing 禁止 | 追加匿名表达，服务端生成匿名展示键 | `PARTNER_MESSAGE_POSTED` |
 | `START_PARTNER_STATEMENT` | Host；`turnId`；所有必需评分已提交 | 进入 PARTNER_STATEMENT，固定评分集合 | `PARTNER_STATEMENT_STARTED` |
 | `ADVANCE_PARTNER_TURN` | Host；`turnId`；PARTNER_STATEMENT；携带 statementResult | 计算均分/总星，归档 Turn，选择下一有效 Participant | `PARTNER_TURN_COMPLETED` + `PARTNER_TURN_STARTED` |
 | `USE_PARTNER_SPECIAL` | 当前行动者；`turnId`；本 Turn 未使用 | HELP_LUCK / SILENT / MASTER / CLOSING | `PARTNER_SPECIAL_USED`；CLOSING 再加 `PARTNER_CLOSING_VOTE_STARTED` |
@@ -884,9 +886,9 @@ stateDiagram-v2
 |---|---|---|---|
 | `START_SPY_GAME` | Host；SPY_INTRO；至少 3 个 Participant | 服务端选词/分身份/写 Secret，直接进入 SPEAK | `SPY_ROLES_ASSIGNED` + `SPY_SPEAKER_STARTED` |
 | `ADVANCE_SPY_SPEAKER` | 当前发言者；`gameId+speakerTurnId` | 推进下一存活者；最后一人自动开票 | `SPY_SPEAKER_FINISHED` + 下一步 Event |
-| `OPEN_SPY_VOTE` | Host；SPY_SPEAK；`gameId` | 强制进入投票、新建 voteSessionId | `SPY_VOTE_OPENED` |
+| `OPEN_SPY_VOTE` | Host；SPY_SPEAK；`gameId+speakerTurnId` | 强制进入投票、新建 voteSessionId | `SPY_VOTE_OPENED` |
 | `SUBMIT_SPY_VOTE` | 存活 Participant；`gameId+voteSessionId` | 目标为其他存活者或弃票；不可改票；齐票自动结算 | `SPY_VOTE_RECORDED` + 结算 Event |
-| `START_NEXT_SPY_ROUND` | 任意仍在场 Participant；SPY_RESULT | 存活者重排、round+1、进入 SPEAK | `SPY_ROUND_STARTED` + `SPY_SPEAKER_STARTED` |
+| `START_NEXT_SPY_ROUND` | 任意仍在场 Participant；SPY_RESULT；`gameId+roundNo` | 存活者重排、round+1、进入 SPEAK | `SPY_ROUND_STARTED` + `SPY_SPEAKER_STARTED` |
 | `RESTART_SPY_GAME` | Host；SPY_SETTLED | 新 gameId、清旧公开局面、重新分牌 | `SPY_GAME_RESTARTED` + 分牌/发言 Event |
 | `COMPLETE_SPY_SESSION` | Host；SPY_SETTLED | Session COMPLETED | `WORKSHOP_SESSION_COMPLETED` |
 
@@ -917,7 +919,7 @@ stateDiagram-v2
 | 云文件 URL 批量解析 | Media Adapter | 缓存到期刷新，不进入 State |
 | 语音识别 | `speechToText` | 外部 operation；成功后 `APPEND_ARTIFACT` |
 | Inspiration 保存/列表 | Inspiration 模块 | 用户个人数据，不进入 Room Event |
-| Session 历史 | `roomQuery(history)` | 完成 Session/Turn 分页，只读 |
+| Session 历史 | `roomQuery(history/session)` | ordinal 严格分页；按 sessionId 回看不切换当前连接，原 Participant 离房后仍可读自己的归档场次 |
 | Partner 排行榜 | `roomQuery(leaderboard)` | 从 roomTurns/roomScores 派生；完成时摘要也进入 View |
 | 案例/历史情境列表 | 本地/独立内容查询 | 只有选中的规范化 Scenario 进入 Session |
 
@@ -1084,6 +1086,15 @@ modules/
 
 任何阶段未满足退出条件，不进入下一阶段。因为不迁移旧数据，不设置 legacy 双写或兼容 wrapper。
 
+| 阶段 | 仓库状态 | 主要落点 |
+|---|---|---|
+| Phase 0～1 | 完成 | contracts、纯状态机、Projector、静态门禁 |
+| Phase 2 | 完成 | InMemory / CloudBase Repository 与原子 Receipt/Event/Facts |
+| Phase 3 | 完成 | Snapshot、Sync、RoomClient、Route Projector |
+| Phase 4～9 | 完成 | Room、公共配置、Partner、Halli、Spy 与辅助功能页面切换 |
+| Phase 10 | 完成 | legacy 房间接口/页面/协议删除；仅 `roomV3*` |
+| 环境发布 | 待目标环境执行 | 集合、索引、权限、云函数部署、真机矩阵 |
+
 ### Phase 0：设计冻结与测试基线
 
 交付：
@@ -1136,7 +1147,7 @@ modules/
 交付：
 
 - 创建、当前房间、加入、改名/头像、席位排序、踢人、离开、解散、QR。
-- 首页、setRoom、addPlayer 全面改用 RoomClient。
+- 首页、addPlayer 全面改用 RoomClient；删除重复的 setRoom/createRoom 页面。
 - 中途加入者与 Participant 隔离。
 
 退出：2～6 人完整大厅流程和并发加入通过；页面无直接房间数据库写入。
@@ -1177,7 +1188,7 @@ modules/
 - 文本/图片/语音/转写 Artifact、匿名表达。
 - HELP_LUCK、SILENT、MASTER、CLOSING。
 - Closing Vote、Rune、Review、创意点增删改、完成和 Replay。
-- gamepage ViewModel 拆分，远端更新不覆盖本地输入/swiper。
+- 由统一 PageModel 向 gamepage 提供远端投影，远端更新不覆盖本地输入/swiper。
 
 退出：弱网上传、命令超时重试、收尾所有票型、完整 Snapshot 恢复通过。
 
@@ -1224,7 +1235,7 @@ modules/
 6 个用户同时 JOIN
 5 个评分者同时 SUBMIT_SCORE
 所有成员同时提交 Closing/Spy Vote
-LEAVE 与 ADVANCE_TURN 同时发生
+LEAVE 与 ADVANCE_PARTNER_TURN 同时发生
 KICK 与 SUBMIT_VOTE 同时发生
 Command commit 成功但 HTTP Response 丢失
 CREATE_ROOM commit 成功但 HTTP Response 丢失
@@ -1321,38 +1332,38 @@ presence_stale
 
 ### 协议
 
-- [ ] 只有 Command 可以改变业务事实。
-- [ ] 所有 State/Facts/Event/Receipt 写入原子提交。
-- [ ] Event seq 严格连续，Snapshot 与 seq 一致。
-- [ ] 所有 Command 都有精确 context token，不依赖全局 expectedRevision。
-- [ ] Command Response 与 Sync 使用同一种 SyncBatch。
-- [ ] Event 过期、缺口和未知版本都统一 Snapshot。
+- [x] 只有 Command 可以改变业务事实。
+- [x] 所有 State/Facts/Event/Receipt 写入原子提交。
+- [x] Event seq 严格连续，Snapshot 与 seq 一致。
+- [x] 所有并发敏感 Command 都有精确 context token，不依赖全局 expectedRevision。
+- [x] Command Response 与 Sync 使用同一种 SyncBatch。
+- [x] Event 过期、缺口和未知版本都统一 Snapshot。
 
 ### View
 
-- [ ] 任意 Workflow Step 的 Host/Participant View 都能从 Snapshot 单独渲染。
-- [ ] Snapshot + Events 等价于最新 Snapshot。
-- [ ] Spy 私密信息只出现在本人 Actor View。
-- [ ] 中途加入者不会看到或影响当前 Session Participant 事实。
-- [ ] 页面路由完全由 Workflow + Actor View 投影。
-- [ ] 本地 UI 状态不会被远端 View 覆盖。
+- [x] 任意 Workflow Step 的 Host/Participant View 都能从 Snapshot 单独渲染。
+- [x] Snapshot + Events 等价于最新 Snapshot。
+- [x] Spy 私密信息只出现在本人 Actor View。
+- [x] 中途加入者不会看到或影响当前 Session Participant 事实。
+- [x] 页面路由完全由 Workflow + Actor View 投影。
+- [x] 本地 UI 状态不会被远端 View 覆盖。
 
 ### 功能
 
-- [ ] 第 15.4 节全部 E2E 场景通过。
-- [ ] Partner 内容、特殊行动、收尾、回顾与排行榜无缺项。
-- [ ] Halli 当前可达完整流程无缺项。
-- [ ] Spy 全部状态边、秘密与胜负无缺项。
-- [ ] Media、语音、Inspiration、History 均有明确归属。
+- [x] 第 15.4 节业务路径已完成代码接线、领域流程与静态门禁覆盖；目标环境真机矩阵见部署清单。
+- [x] Partner 内容、特殊行动、收尾、回顾与排行榜无缺项。
+- [x] Halli 当前可达完整流程无缺项。
+- [x] Spy 全部状态边、秘密与胜负无缺项。
+- [x] Media、语音、Inspiration、History 均有明确归属。
 
 ### 清理
 
-- [ ] 页面无房间业务云函数直调、数据库直写和业务轮询。
-- [ ] 删除 `updateRoomState/getAddPlayerData` 及全部 legacy fallback。
-- [ ] 删除 `currentPage/brainstormProgressPage/status/lifecycle` 双状态。
-- [ ] 删除 `lastEvent/domainRevisions/appliedRevision/expectedRevision` 协议路径。
-- [ ] 删除旧 Halli 死页面与重复路由映射。
-- [ ] pnpm workspace 构建的 contracts/domain/application 是云端唯一实现。
+- [x] 页面无房间业务云函数直调、数据库直写和业务轮询。
+- [x] 删除 `updateRoomState/getAddPlayerData` 及全部 legacy fallback。
+- [x] 删除 `currentPage/brainstormProgressPage/status/lifecycle` 双状态。
+- [x] 删除 `lastEvent/domainRevisions/appliedRevision/expectedRevision` 协议路径。
+- [x] 删除旧 Halli 死页面与重复路由映射。
+- [x] pnpm workspace 构建的 contracts/domain/application 是云端唯一实现。
 
 ## 18. 实施禁令
 

@@ -1,6 +1,8 @@
 # 房间模型与状态现状
 
-> 基线与标记说明见 [房间系统现状索引](./ROOM_SYSTEM_INDEX.md)。术语采用 [领域上下文](./refactor/CONTEXT.md)。
+> 历史基线：本文记录 V3 重构前的混合模型，仅用于核对被替换的数据与状态。
+>
+> 当前模型以 [协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md) 为准；术语采用 [领域上下文](./refactor/CONTEXT.md)。
 
 ## 1. 概念模型
 

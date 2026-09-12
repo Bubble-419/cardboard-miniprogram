@@ -161,14 +161,16 @@ Page(withPageInteractionLock({
     const fromGameView = this._fromGameView === true;
     let bg = getApp().globalData.selectedBG;
     let roomResult = null;
-    if (!isValidPartnerBG(bg, { requirePlatform: true })) {
+    if (fromGameView) {
       roomResult = await this._fetchRoomFull(roomId);
       bg = (roomResult && roomResult.selectedBG) || null;
       if (bg) {
         getApp().globalData.selectedBG = bg;
       }
-    } else if (fromGameView) {
+    } else if (!isValidPartnerBG(bg, { requirePlatform: true })) {
       roomResult = await this._fetchRoomFull(roomId);
+      bg = (roomResult && roomResult.selectedBG) || null;
+      if (bg) getApp().globalData.selectedBG = bg;
     }
 
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {

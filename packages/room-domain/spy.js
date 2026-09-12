@@ -4,7 +4,7 @@ const { COMMAND_TYPES } = require('@cardboard/room-contracts');
 const { SPY_WORD_PAIRS } = require('./spyWordPairs');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
-  activeParticipantsBySeat, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
+  activeParticipantsBySeat, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
 const SPY_VOTE_DURATION_MS = 2 * 60 * 1000;
@@ -68,6 +68,15 @@ function openVote(aggregate, deps) {
 }
 function startGame(aggregate, deps, restarted) {
   const session = aggregate.currentSession; const facts = ensureFacts(aggregate);
+  const previousGameId = restarted && session.modeState.spy && session.modeState.spy.gameId;
+  const deletedFacts = [];
+  if (previousGameId) {
+    Object.entries(facts.secrets).forEach(([key, row]) => {
+      if (row.gameId !== previousGameId) return;
+      delete facts.secrets[key];
+      deletedFacts.push({ kind: 'secrets', id: key, remove: true });
+    });
+  }
   const participants = activeParticipantsBySeat(aggregate);
   if (participants.length < 3) return fail(ERR.NOT_ENOUGH_PLAYERS, 'Spy 至少需要 3 人');
   const words = pickWords(deps); if (!words) return fail(ERR.NO_WORD_PAIR);
@@ -90,7 +99,7 @@ function startGame(aggregate, deps, restarted) {
   events.push(event(EVENT_TYPES.SPY_ROLES_ASSIGNED, { gameId, playerCount: players.length, spyCount: 1 }));
   events.push(startSpeaker(aggregate, shuffle(players.map((player) => player.memberId), random), deps, false));
   return domainOk(aggregate, events, { kind: 'ACCEPTED', gameId },
-    players.map((player) => ({ kind: 'secrets', id: `${gameId}:${player.memberId}` })));
+    deletedFacts.concat(players.map((player) => ({ kind: 'secrets', id: `${gameId}:${player.memberId}` }))));
 }
 function assertSpy(aggregate, context, steps) {
   const check = assertSession(aggregate, context, { mode: MODE.SPY, steps });
@@ -101,9 +110,16 @@ function assertSpy(aggregate, context, steps) {
 }
 function resolveVote(aggregate, deps) {
   const session = aggregate.currentSession; const spy = spyState(aggregate); const facts = ensureFacts(aggregate);
-  const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === spy.voteProgress.voteSessionId);
+  const requiredVoters = new Set(spy.voteProgress.requiredMemberIds);
+  const validTargets = new Set(alivePlayers(spy).map((player) => player.memberId));
+  const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === spy.voteProgress.voteSessionId
+    && requiredVoters.has(row.memberId));
   const tally = {};
-  rows.forEach((row) => { if (row.targetMemberId) tally[row.targetMemberId] = (tally[row.targetMemberId] || 0) + 1; });
+  rows.forEach((row) => {
+    if (row.targetMemberId && validTargets.has(row.targetMemberId)) {
+      tally[row.targetMemberId] = (tally[row.targetMemberId] || 0) + 1;
+    }
+  });
   const max = Math.max(0, ...Object.values(tally));
   const top = max ? Object.keys(tally).filter((memberId) => tally[memberId] === max) : [];
   if (top.length > 1) {
@@ -127,10 +143,12 @@ function resolveVote(aggregate, deps) {
     { memberId: eliminated.memberId, nickName: eliminated.nickName, maxVotes: max }));
   if (winner) {
     spy.winnerSide = winner; spy.reveal = reveal(aggregate, spy);
-    session.workflow.step = WORKFLOW_STEP.SPY_SETTLED; session.workflow.phaseStartedAt = nowOf(deps);
+    session.workflow.step = WORKFLOW_STEP.SPY_SETTLED; session.workflow.activeMemberId = null;
+    session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
     events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
   } else {
-    session.workflow.step = WORKFLOW_STEP.SPY_RESULT; session.workflow.phaseStartedAt = nowOf(deps);
+    session.workflow.step = WORKFLOW_STEP.SPY_RESULT; session.workflow.activeMemberId = null;
+    session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
     events.push(event(EVENT_TYPES.SPY_ROUND_COMPLETED, { roundNo: spy.roundNo, eliminatedMemberId: eliminated && eliminated.memberId, tallies: tally }));
   }
   return events;
@@ -171,6 +189,9 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
   if (command.type === COMMAND_TYPES.OPEN_SPY_VOTE) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK]); if (!check.ok) return check;
+    if (check.spy.speakerTurnId !== command.context.speakerTurnId) {
+      return fail(ERR.STALE_CONTEXT, '发言轮已经变化');
+    }
     return domainOk(aggregate, [openVote(aggregate, deps)]);
   }
 
@@ -192,17 +213,19 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
       if (!target || !target.alive || target.left) return fail(ERR.INVALID_ARGUMENT, '投票目标不可用');
     }
     const facts = ensureFacts(aggregate); const key = `${progress.voteSessionId}:${actor.member.memberId}`;
-    facts.votes[key] = { sessionId: check.session.sessionId, voteSessionId: progress.voteSessionId,
+    facts.votes[key] = { sessionId: check.session.sessionId, gameId: check.spy.gameId,
+      voteSessionId: progress.voteSessionId,
       memberId: actor.member.memberId, vote: abstain ? 'abstain' : 'target', targetMemberId, createdAt: nowOf(deps) };
     progress.submittedMemberIds.push(actor.member.memberId);
     const events = [event(EVENT_TYPES.SPY_VOTE_RECORDED, { voteSessionId: progress.voteSessionId,
       votedCount: progress.submittedMemberIds.length, requiredCount: progress.requiredMemberIds.length })];
-    if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) events.push(...resolveVote(aggregate, deps));
+    if (progressComplete(progress)) events.push(...resolveVote(aggregate, deps));
     return domainOk(aggregate, events, { kind: 'ACCEPTED' }, [{ kind: 'votes', id: key }]);
   }
 
   if (command.type === COMMAND_TYPES.START_NEXT_SPY_ROUND) {
     const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_RESULT]); if (!check.ok) return check;
+    if (check.spy.roundNo !== command.context.roundNo) return fail(ERR.STALE_CONTEXT, 'Spy 轮次已经变化');
     const alive = alivePlayers(check.spy);
     if (alive.length < 2) return fail(ERR.INVALID_TRANSITION, '存活人数不足');
     const previousResult = check.spy.lastResult;
@@ -241,8 +264,9 @@ function handleSpyParticipantLeft(aggregate, memberId, deps) {
   player.left = true; player.alive = false;
   if (spy.voteProgress) {
     spy.voteProgress.requiredMemberIds = spy.voteProgress.requiredMemberIds.filter((id) => id !== memberId);
+    spy.voteProgress.submittedMemberIds = spy.voteProgress.submittedMemberIds.filter((id) => id !== memberId);
     if (session.workflow.step === WORKFLOW_STEP.SPY_VOTE
-      && spy.voteProgress.requiredMemberIds.every((id) => spy.voteProgress.submittedMemberIds.includes(id))) {
+      && progressComplete(spy.voteProgress)) {
       events.push(...resolveVote(aggregate, deps));
       return { events, dirtyFacts: [] };
     }
@@ -250,6 +274,7 @@ function handleSpyParticipantLeft(aggregate, memberId, deps) {
   const winner = winnerSide(aggregate, spy);
   if (winner && session.workflow.step !== WORKFLOW_STEP.SPY_SETTLED) {
     spy.winnerSide = winner; spy.reveal = reveal(aggregate, spy); session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
+    session.workflow.activeMemberId = null; session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
     events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
     return { events, dirtyFacts: [] };
   }
@@ -263,8 +288,11 @@ function handleSpyParticipantLeft(aggregate, memberId, deps) {
     }
     if (spy.currentSpeakerIndex >= spy.speakOrder.length) events.push(openVote(aggregate, deps));
     else {
-      spy.speakerTurnId = idOf(deps, 'speaker'); session.workflow.activeMemberId = spy.speakOrder[spy.currentSpeakerIndex];
+      const now = nowOf(deps);
+      spy.speakerTurnId = idOf(deps, 'speaker'); spy.speakTurnStartedAt = now;
+      session.workflow.activeMemberId = spy.speakOrder[spy.currentSpeakerIndex];
       session.workflow.turnId = spy.speakerTurnId;
+      session.workflow.phaseStartedAt = now;
       events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: session.workflow.activeMemberId, tieBreak: spy.tieBreak }));
     }
   }

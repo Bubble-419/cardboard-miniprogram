@@ -24,7 +24,7 @@ exports.main = async (event) => {
     });
     if (action === 'history') return await app.readHistory(roomId, { userId }, {
       limit: event && event.limit,
-      beforeStartedAt: event && event.beforeStartedAt
+      beforeOrdinal: event && event.beforeOrdinal
     });
     if (action === 'session') return await app.readSessionSnapshot(roomId, event && event.sessionId, { userId });
     if (action === 'leaderboard') return await app.readLeaderboard(roomId, event && event.sessionId, { userId });

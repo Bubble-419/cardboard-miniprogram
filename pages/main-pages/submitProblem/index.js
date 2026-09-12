@@ -117,11 +117,7 @@ Page(withPageInteractionLock({
       const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true) return;
 
-      const roomBG = normalizeBG(result.selectedBG)
-        || normalizeBG(getApp().globalData.selectedBG);
-      if (roomBG) {
-        this._syncCategoriesFromBG(roomBG);
-      }
+      this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
 
       await this._syncMembersFromResult(result);
     } catch (e) {
@@ -164,9 +160,7 @@ Page(withPageInteractionLock({
       followNavigation: true,
       onSnapshot: (result) => {
         if (!this._pageAlive || this._pageVisible === false) return;
-        const roomBG = normalizeBG(result.selectedBG)
-          || normalizeBG(getApp().globalData.selectedBG);
-        if (roomBG) this._syncCategoriesFromBG(roomBG);
+        this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
         this._syncMembersFromResult(result);
         const session = result.view && result.view.session;
         const progress = session && session.progress && session.progress.contributionProgress || {};

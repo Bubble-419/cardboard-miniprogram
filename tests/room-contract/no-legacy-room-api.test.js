@@ -75,6 +75,9 @@ test('旧房间云函数和已下线页面不再进入代码树', () => {
     assert.equal(fs.existsSync(path.join(root, 'cloudfunctions', name)), false, `旧云函数仍存在: ${name}`);
   });
   [
+    'pages/main-pages/createRoom',
+    'pages/main-pages/setRoom',
+    'pages/main-pages/firstplayer',
     'pages/main-pages/selectMode',
     'pages/main-pages/partnerMode/statement',
     'pages/main-pages/partnerMode/closingEnd',
@@ -86,4 +89,48 @@ test('旧房间云函数和已下线页面不再进入代码树', () => {
   ].forEach((relative) => {
     assert.equal(fs.existsSync(path.join(root, relative, 'index.js')), false, `已下线页面仍存在: ${relative}`);
   });
+});
+
+test('小程序运行时协议包不依赖未上传的 workspace node_modules', () => {
+  const runtimeFiles = [
+    path.join(root, 'packages/room-client/index.js'),
+    path.join(root, 'packages/room-projection/index.js'),
+    path.join(root, 'packages/room-contracts/index.js')
+  ];
+  runtimeFiles.forEach((file) => {
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /require\(['"]@cardboard\//,
+      `${path.relative(root, file)} 必须使用随小程序上传的相对依赖`);
+  });
+});
+
+test('语音转写不再绕过 V3 协议写旧房间', () => {
+  const source = fs.readFileSync(path.join(root, 'cloudfunctions/speechToText/src/entry.js'), 'utf8');
+  const client = fs.readFileSync(path.join(root, 'utils/partnerRoundSpeech.js'), 'utf8');
+  assert.doesNotMatch(source, /ROOMS_COLLECTION|partnerCurrentRoundContent|collection\s*\(\s*['"]rooms['"]\s*\)/);
+  assert.match(client, /dispatchRoomCommand\s*\(\s*['"]APPEND_ARTIFACT['"]/);
+  assert.match(client, /segmentContext\s*=\s*\{ roomId, sessionId: session\.sessionId, turnId: turn\.turnId, phase \}/);
+  assert.match(client, /workflowStep: context\.phase === ['"]discussion['"]/);
+});
+
+test('历史回看按 sessionId 读取归档 View，不使用当前房间快照', () => {
+  const home = fs.readFileSync(path.join(root, 'pages/main-pages/aaa/index.js'), 'utf8');
+  const cards = fs.readFileSync(path.join(root, 'pages/main-pages/aaa/index.wxml'), 'utf8');
+  const game = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/gamepage/index.js'), 'utf8');
+  assert.match(cards, /data-session-id="\{\{item\.sessionId\}\}"/);
+  assert.match(home, /sessionId=\$\{encodeURIComponent\(sessionId\)\}/);
+  assert.match(game, /getRoomSessionPageSnapshot\(roomId, sessionId\)/);
+});
+
+test('扫码路径只在尚未加入时携带 fromScan，房间号主动加入后不重复提交', () => {
+  const home = fs.readFileSync(path.join(root, 'pages/main-pages/aaa/index.js'), 'utf8');
+  assert.match(home, /async _handleMiniProgramPathScan[\s\S]*?await this\._goToScanJoinRoom\(roomId\)/);
+  assert.match(home, /async _joinRoomAndGo[\s\S]*?await this\._goToRoomPage\(roomId\)/);
+});
+
+test('瞬时声贝信号必须绑定当前 sessionId 和 turnId', () => {
+  const source = fs.readFileSync(path.join(root, 'cloudfunctions/roomSignal/src/entry.js'), 'utf8');
+  const page = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/specialMove/index.js'), 'utf8');
+  assert.match(source, /session\.sessionId !== sessionId/);
+  assert.match(source, /turn\.turnId !== turnId/);
+  assert.match(page, /data:\s*\{ roomId, sessionId, turnId, signalType:/);
 });

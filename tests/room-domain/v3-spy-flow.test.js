@@ -76,6 +76,8 @@ test('Spy 发言、投票、淘汰与两侧胜负自动推进', async () => {
   snapshot = await h.snapshot('host');
   assert.notEqual(snapshot.view.session.publicModeState.gameId, gameId);
   assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
+  const stored = h.repo.rooms.get('12345678').facts;
+  assert.equal(Object.values(stored.secrets).some((item) => item.gameId === gameId), false);
 });
 
 test('Spy 全员弃票产生无淘汰轮结果，并可开始下一轮', async () => {
@@ -88,10 +90,54 @@ test('Spy 全员弃票产生无淘汰轮结果，并可开始下一轮', async (
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
   assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedMemberId, null);
-  await h.command('u2', 'START_NEXT_SPY_ROUND', { context: { sessionId, gameId } });
+  await h.command('u2', 'START_NEXT_SPY_ROUND', {
+    context: { sessionId, gameId, roundNo: snapshot.view.session.publicModeState.roundNo }
+  });
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.publicModeState.roundNo, 2);
   assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
+});
+
+test('Spy 房主强制开票必须绑定当前发言令牌', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  let snapshot = await h.snapshot('host');
+  const oldSpeakerTurnId = snapshot.view.session.publicModeState.speakerTurnId;
+  const speakerUserId = userForMember(snapshot, snapshot.view.session.publicModeState.currentSpeakerMemberId);
+  await h.command(speakerUserId, 'ADVANCE_SPY_SPEAKER', {
+    context: { sessionId, gameId, speakerTurnId: oldSpeakerTurnId }
+  });
+  snapshot = await h.snapshot('host');
+  const stale = await h.command('host', 'OPEN_SPY_VOTE', {
+    context: { sessionId, gameId, speakerTurnId: oldSpeakerTurnId }
+  });
+  assert.equal(stale.errCode, 'STALE_CONTEXT');
+  assert.equal((await h.command('host', 'OPEN_SPY_VOTE', {
+    context: { sessionId, gameId, speakerTurnId: snapshot.view.session.publicModeState.speakerTurnId }
+  })).ok, true);
+});
+
+test('Spy 中途淘汰只公开淘汰者身份，不公开任何词语或其他身份', async () => {
+  const { h, sessionId, gameId } = await seedSpy(4);
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const cards = {};
+  for (const userId of ['host', 'u2', 'u3', 'u4']) {
+    cards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;
+  }
+  const targetUser = Object.keys(cards).find((userId) => cards[userId].role === 'civilian');
+  const targetMemberId = (await h.snapshot(targetUser)).view.actor.memberId;
+  for (const userId of ['host', 'u2', 'u3', 'u4']) {
+    const payload = userId === targetUser ? { abstain: true } : { targetMemberId };
+    await h.command(userId, 'SUBMIT_SPY_VOTE', { context: { sessionId, gameId, voteSessionId }, payload });
+  }
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
+  assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedRole, 'civilian');
+  assert.equal(snapshot.view.session.publicModeState.reveal.length, 0);
+  const publicJson = JSON.stringify(snapshot.view.session);
+  assert.equal(publicJson.includes('苹果'), false);
+  assert.equal(publicJson.includes('"梨"'), false);
 });
 
 test('Spy 超时后的目标票由服务端强制记为弃票', async () => {
@@ -108,4 +154,60 @@ test('Spy 超时后的目标票由服务端强制记为弃票', async () => {
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.actor.voteStatus.vote, 'abstain');
   assert.equal(snapshot.view.actor.voteStatus.targetMemberId, null);
+});
+
+test('Spy 已投票成员离开后从当轮进度移除，其他成员仍需完成投票', async () => {
+  const { h, sessionId, gameId } = await seedSpy(4);
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const cards = {};
+  for (const userId of ['host', 'u2', 'u3', 'u4']) {
+    cards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;
+  }
+  const leavingUser = ['u2', 'u3', 'u4'].find((userId) => cards[userId].role === 'civilian');
+  const remainingUsers = ['u2', 'u3', 'u4'].filter((userId) => userId !== leavingUser);
+
+  await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+  });
+  await h.command(leavingUser, 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+  });
+  await h.command(leavingUser, 'LEAVE_ROOM');
+  await h.command(remainingUsers[0], 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+  });
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_VOTE');
+  await h.command(remainingUsers[1], 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+  });
+  assert.equal((await h.snapshot('host')).view.session.workflow.step, 'SPY_RESULT');
+});
+
+test('Spy 离房成员已经提交的票不再参与当轮淘汰', async () => {
+  const { h, sessionId, gameId } = await seedSpy(5);
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const cards = {};
+  for (const userId of ['host', 'u2', 'u3', 'u4', 'u5']) {
+    cards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;
+  }
+  const leavingUser = ['u2', 'u3', 'u4', 'u5'].find((userId) => cards[userId].role === 'civilian');
+  const targetUser = ['host', 'u2', 'u3', 'u4', 'u5']
+    .find((userId) => userId !== leavingUser && cards[userId].role === 'civilian');
+  const targetMemberId = (await h.snapshot(targetUser)).view.actor.memberId;
+
+  await h.command(leavingUser, 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { targetMemberId }
+  });
+  await h.command(leavingUser, 'LEAVE_ROOM');
+  for (const userId of ['host', 'u2', 'u3', 'u4', 'u5'].filter((id) => id !== leavingUser)) {
+    await h.command(userId, 'SUBMIT_SPY_VOTE', {
+      context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+    });
+  }
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
+  assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedMemberId, null);
 });

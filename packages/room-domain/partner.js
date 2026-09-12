@@ -4,7 +4,7 @@ const { COMMAND_TYPES } = require('@cardboard/room-contracts');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, memberById, assertHost, assertParticipant,
   assertSession, assertTurn, activeParticipantIds, activeParticipantsBySeat, isActiveParticipant,
-  MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
+  progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
 function partnerState(aggregate) {
@@ -92,20 +92,24 @@ function assertPartnerSession(aggregate, context, steps) {
 }
 
 function appendArtifact(aggregate, command, actor, deps) {
-  const turnCheck = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN, WORKFLOW_STEP.PARTNER_STATEMENT,
+  const sessionCheck = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN, WORKFLOW_STEP.PARTNER_STATEMENT,
     WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]);
-  if (!turnCheck.ok) {
-    const closing = partnerState(aggregate) && partnerState(aggregate).closing;
-    if (!closing || closing.sourceTurnId !== command.context.turnId || ![WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW].includes(aggregate.currentSession.workflow.step)) return turnCheck;
-  }
+  if (!sessionCheck.ok) return sessionCheck;
+  const partner = partnerState(aggregate);
+  const turn = partner && partner.activeTurn;
+  const closing = partner && partner.closing;
+  const activeContext = !!(turn && turn.turnId === command.context.turnId);
+  const closingContext = !!(closing && closing.sourceTurnId === command.context.turnId
+    && [WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]
+      .includes(sessionCheck.session.workflow.step));
+  if (!activeContext && !closingContext) return fail(ERR.STALE_CONTEXT, '素材所属行动轮已经变化');
   const host = aggregate.room.hostMemberId === actor.memberId;
-  const turn = partnerState(aggregate).activeTurn;
-  if (!host && (!turn || turn.activeMemberId !== actor.memberId)) return fail(ERR.INVALID_TRANSITION, '当前成员不能写入素材');
+  if (!host && (!activeContext || turn.activeMemberId !== actor.memberId)) {
+    return fail(ERR.INVALID_TRANSITION, '当前成员不能写入素材');
+  }
   const facts = ensureFacts(aggregate);
   const operationId = String(command.payload.operationId || '').trim();
   if (!operationId) return fail(ERR.INVALID_ARGUMENT, 'operationId 必填');
-  const key = `${command.context.sessionId}:${operationId}`;
-  if (facts.artifacts[key]) return domainOk(aggregate, [event(EVENT_TYPES.ARTIFACT_APPENDED, { operationId, duplicate: true })], { kind: 'ACCEPTED', operationId });
   const stageByStep = {
     [WORKFLOW_STEP.PARTNER_TURN]: 'PLAY',
     [WORKFLOW_STEP.PARTNER_STATEMENT]: 'DISCUSSION',
@@ -113,15 +117,32 @@ function appendArtifact(aggregate, command, actor, deps) {
     [WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]: 'CLOSING_REVIEW'
   };
   const stage = stageByStep[aggregate.currentSession.workflow.step];
-  const count = Object.values(facts.artifacts).filter((item) => item.turnId === command.context.turnId && item.stage === stage && !item.removed).length;
-  if (count >= 200) return fail(ERR.LIMIT_EXCEEDED, '当前阶段素材已达到 200 条上限');
+  const nonHostCanAppend = activeContext
+    && aggregate.currentSession.workflow.step === WORKFLOW_STEP.PARTNER_TURN
+    && turn.activeMemberId === actor.memberId;
+  if (!host && !nonHostCanAppend) {
+    return fail(ERR.INVALID_TRANSITION, '当前阶段仅房主可以新增素材');
+  }
   const text = command.payload.text == null ? null : String(command.payload.text).trim();
   if (text && text.length > 500) return fail(ERR.LIMIT_EXCEEDED, '共享文本最多 500 字');
   if (!text && !command.payload.fileRef) return fail(ERR.INVALID_ARGUMENT, '素材内容不能为空');
+  const fileRef = command.payload.fileRef || null;
+  const kind = command.payload.kind || (fileRef ? 'IMAGE' : 'TEXT');
+  const key = `${command.context.sessionId}:${operationId}`;
+  const existing = facts.artifacts[key];
+  if (existing) {
+    const sameOperation = existing.turnId === command.context.turnId && existing.stage === stage
+      && existing.kind === kind && existing.text === text && existing.fileRef === fileRef;
+    if (!sameOperation) return fail(ERR.COMMAND_ID_CONFLICT, 'operationId 已用于其他素材');
+    return domainOk(aggregate, [event(EVENT_TYPES.ARTIFACT_APPENDED, { operationId, duplicate: true })],
+      { kind: 'ACCEPTED', operationId, artifactId: existing.artifactId });
+  }
+  const count = Object.values(facts.artifacts).filter((item) => item.turnId === command.context.turnId && item.stage === stage && !item.removed).length;
+  if (count >= 200) return fail(ERR.LIMIT_EXCEEDED, '当前阶段素材已达到 200 条上限');
   const artifact = {
     artifactId: idOf(deps, 'artifact'), operationId, sessionId: command.context.sessionId,
-    turnId: command.context.turnId, stage, kind: command.payload.kind || (command.payload.fileRef ? 'IMAGE' : 'TEXT'),
-    text, fileRef: command.payload.fileRef || null, authorMemberId: actor.memberId, entityVersion: 1,
+    turnId: command.context.turnId, stage, kind,
+    text, fileRef, authorMemberId: actor.memberId, entityVersion: 1,
     removed: false, createdAt: nowOf(deps), updatedAt: nowOf(deps)
   };
   facts.artifacts[key] = artifact;
@@ -166,7 +187,9 @@ function resolveClosing(aggregate, deps) {
   const partner = partnerState(aggregate);
   const closing = partner.closing;
   const facts = ensureFacts(aggregate);
-  const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId);
+  const requiredVoters = new Set(closing.requiredMemberIds);
+  const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId
+    && requiredVoters.has(row.memberId));
   const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === 'question');
   const summary = archiveActiveTurn(aggregate, question ? 'CLOSING_QUESTIONED' : 'CLOSING_ACCEPTED', null, deps);
   const dirty = summary ? [{ kind: 'turns', id: summary.turnId }] : [];
@@ -238,7 +261,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
   if (type === COMMAND_TYPES.START_PARTNER_STATEMENT) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]); if (!check.ok) return check;
-    if (check.turn.scoreProgress.submittedMemberIds.length !== check.turn.scoreProgress.requiredMemberIds.length) return fail(ERR.INVALID_TRANSITION, '评分尚未完成');
+    if (!progressComplete(check.turn.scoreProgress)) return fail(ERR.INVALID_TRANSITION, '评分尚未完成');
     check.turn.phase = 'STATEMENT'; check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
     check.turn.silentStartedAt = null; check.turn.silentDeadlineAt = null;
     check.session.workflow.step = WORKFLOW_STEP.PARTNER_STATEMENT; check.session.workflow.phaseStartedAt = nowOf(deps);
@@ -301,7 +324,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     const events = [event(EVENT_TYPES.PARTNER_CLOSING_VOTE_RECORDED, { closingVoteSessionId: closing.closingVoteSessionId,
       votedCount: closing.submittedMemberIds.length, requiredCount: closing.requiredMemberIds.length })];
     const dirty = [{ kind: 'votes', id: key }];
-    if (closing.submittedMemberIds.length === closing.requiredMemberIds.length) {
+    if (progressComplete(closing)) {
       const resolved = resolveClosing(aggregate, deps); events.push(...resolved.events); dirty.push(...resolved.dirty);
     }
     return domainOk(aggregate, events, { kind: 'ACCEPTED' }, dirty);
@@ -323,8 +346,8 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     check.session.status = SESSION_STATUS.COMPLETED; check.session.completedAt = nowOf(deps);
     check.session.result = { mode: MODE.PARTNER,
       leaderboard: Object.keys(totals).map((memberId) => ({ memberId, totalStars: totals[memberId] })).sort((a, b) => b.totalStars - a.totalStars),
-      turnCount: turns.length,
-      turns: turns.slice().sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((row) => clone(row)) };
+      // 完整 Turn 保留在独立事实表；Session 只保存有界汇总，避免文档随游戏时长无限增长。
+      turnCount: turns.length };
     return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_COMPLETED, { sessionId: check.session.sessionId, mode: MODE.PARTNER })]);
   }
 
@@ -333,14 +356,34 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
 
 function handlePartnerParticipantLeft(aggregate, memberId, deps) {
   const session = aggregate.currentSession; const partner = partnerState(aggregate); const events = []; const dirtyFacts = [];
-  if (!partner) return { events, dirtyFacts };
+  if (!partner) {
+    const contribution = session && session.progress && session.progress.contributionProgress;
+    if (session && session.workflow.step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS
+      && contribution && progressComplete(contribution)) {
+      session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
+      session.workflow.phaseStartedAt = nowOf(deps);
+      events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: session.sessionId }));
+    }
+    if (session && session.workflow.step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+      && session.setup.proposedFirstMemberId === memberId) {
+      session.setup.proposedFirstMemberId = null;
+      session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      session.workflow.activeMemberId = null;
+      session.workflow.turnId = null;
+      session.workflow.phaseStartedAt = nowOf(deps);
+      events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId }));
+    }
+    return { events, dirtyFacts };
+  }
   partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => id !== memberId);
   if (partner.activeTurn) {
     partner.activeTurn.scoreProgress.requiredMemberIds = partner.activeTurn.scoreProgress.requiredMemberIds.filter((id) => id !== memberId);
+    partner.activeTurn.scoreProgress.submittedMemberIds = partner.activeTurn.scoreProgress.submittedMemberIds.filter((id) => id !== memberId);
     session.progress.scoreProgress = clone(partner.activeTurn.scoreProgress);
   }
   if (partner.closing) {
     partner.closing.requiredMemberIds = partner.closing.requiredMemberIds.filter((id) => id !== memberId);
+    partner.closing.submittedMemberIds = partner.closing.submittedMemberIds.filter((id) => id !== memberId);
     if (partner.closing.initiatorMemberId === memberId) {
       const summary = archiveActiveTurn(aggregate, 'ABANDONED', null, deps);
       if (summary) { dirtyFacts.push({ kind: 'turns', id: summary.turnId }); events.push(event(EVENT_TYPES.PARTNER_TURN_ABANDONED, { turnId: summary.turnId })); }
@@ -349,7 +392,7 @@ function handlePartnerParticipantLeft(aggregate, memberId, deps) {
       if (next) events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: next.turnId, memberId: next.activeMemberId, roundNo: next.roundNo }));
       return { events, dirtyFacts };
     }
-    if (partner.closing.submittedMemberIds.length === partner.closing.requiredMemberIds.length) {
+    if (progressComplete(partner.closing)) {
       const resolved = resolveClosing(aggregate, deps); events.push(...resolved.events); dirtyFacts.push(...resolved.dirty);
     }
   }

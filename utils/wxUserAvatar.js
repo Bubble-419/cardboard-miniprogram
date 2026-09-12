@@ -131,10 +131,10 @@ async function getOptionalProfileForRoom() {
   }
 }
 
-function buildRoomJoinPayload(profile, extra = {}) {
-  const data = { ...extra };
+function buildRoomJoinPayload(profile) {
+  const data = {};
   if (profile && profile.avatarUrl) {
-    data.avatarUrl = profile.avatarUrl;
+    data.avatarRef = profile.avatarUrl;
     if (profile.nickName) data.nickName = profile.nickName;
   }
   return data;

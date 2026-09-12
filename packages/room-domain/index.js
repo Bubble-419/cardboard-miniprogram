@@ -9,6 +9,7 @@ const { reduceSpyCommand, handleSpyParticipantLeft } = require('./spy');
 const {
   clone, event, domainOk, fail, idOf, nowOf, normalizeHalfStarScore, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, activeParticipantIds, activeParticipantsBySeat, nextSeat,
+  progressComplete,
   createMember, createRoomAggregate, assertRoom, assertMember, assertHost, assertParticipant, assertSession,
   newSession, normalizeScenario, markParticipantLeft, normalizeMode, LIFECYCLE, MODE, SESSION_STATUS,
   WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS
@@ -45,8 +46,26 @@ function createCommand(aggregate, command, actorUserId, deps) {
 function joinCommand(aggregate, command, actorUserId, deps) {
   const check = assertRoom(aggregate); if (!check.ok) return check;
   const existing = memberByUserId(aggregate.room, actorUserId);
-  if (existing) return domainOk(aggregate, [event(EVENT_TYPES.MEMBER_JOINED, { memberId: existing.memberId, duplicate: true })],
-    { kind: 'ROOM_JOINED', roomId: aggregate.room.roomId, memberId: existing.memberId });
+  if (existing) {
+    const profile = existing.profile;
+    let changed = false;
+    const assign = (key, value) => {
+      if (profile[key] === value) return;
+      profile[key] = value;
+      changed = true;
+    };
+    if (command.payload.nickName != null) assign('nickName', String(command.payload.nickName).trim());
+    if (command.payload.avatarRef !== undefined) assign('avatarRef', command.payload.avatarRef || null);
+    if (command.payload.avatarIndex !== undefined) {
+      assign('avatarIndex', command.payload.avatarIndex == null ? null : Number(command.payload.avatarIndex));
+    }
+    if (command.payload.color != null) assign('color', String(command.payload.color));
+    const events = changed
+      ? [event(EVENT_TYPES.MEMBER_PROFILE_UPDATED, { memberId: existing.memberId, profile: clone(profile) })]
+      : [event(EVENT_TYPES.MEMBER_JOINED, { memberId: existing.memberId, duplicate: true })];
+    return domainOk(aggregate, events,
+      { kind: 'ROOM_JOINED', roomId: aggregate.room.roomId, memberId: existing.memberId });
+  }
   if (aggregate.room.members.length >= MAX_SEATS) return fail(ERR.ROOM_FULL);
   const seatNo = nextSeat(aggregate.room);
   const member = createMember(aggregate.room, actorUserId, command.payload, idOf(deps, 'member'), seatNo, nowOf(deps), 'PLAYER');
@@ -71,8 +90,8 @@ function updateMemberProfile(aggregate, command, actorUserId) {
     if (!name || name.length > 20) return fail(ERR.INVALID_ARGUMENT, '昵称必须是 1～20 字');
     profile.nickName = name;
   }
-  if (command.payload.avatarRef !== undefined || command.payload.avatarUrl !== undefined) {
-    profile.avatarRef = command.payload.avatarRef || command.payload.avatarUrl || null;
+  if (command.payload.avatarRef !== undefined) {
+    profile.avatarRef = command.payload.avatarRef || null;
   }
   if (command.payload.avatarIndex !== undefined) profile.avatarIndex = command.payload.avatarIndex == null ? null : Number(command.payload.avatarIndex);
   if (command.payload.color) profile.color = String(command.payload.color);
@@ -167,16 +186,32 @@ function startSession(aggregate, command, actorUserId, deps) {
 
 function setScenario(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { steps: [WORKFLOW_STEP.CHOOSE_SCENARIO] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, { steps: [
+    WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
+    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+  ] }); if (!check.ok) return check;
   if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
   const normalized = normalizeScenario(command.payload, check.session.mode); if (!normalized.ok) return normalized;
+  const dirtyFacts = [];
+  // 配置页允许显式返回修改情境；旧问题必须原子清除，不能与新情境混用。
+  Object.entries(ensureFacts(aggregate).contributions).forEach(([key, row]) => {
+    if (row.sessionId !== check.session.sessionId) return;
+    delete aggregate.facts.contributions[key];
+    dirtyFacts.push({ kind: 'contributions', id: key, remove: true });
+  });
   check.session.setup.scenarioSource = normalized.source; check.session.setup.scenario = normalized.scenario;
+  check.session.setup.selectedProblemId = null;
+  check.session.setup.proposedFirstMemberId = null;
+  check.session.progress = {};
   if (check.session.mode === MODE.PARTNER && normalized.source !== 'OFFLINE') {
     check.session.workflow.step = WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS;
     check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
   } else check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
   check.session.workflow.phaseStartedAt = nowOf(deps);
-  return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SET, { source: normalized.source, nextStep: check.session.workflow.step })]);
+  return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SET, {
+    source: normalized.source, nextStep: check.session.workflow.step
+  })], { kind: 'ACCEPTED' }, dirtyFacts);
 }
 
 function submitDesignProblem(aggregate, command, actorUserId, deps) {
@@ -192,7 +227,7 @@ function submitDesignProblem(aggregate, command, actorUserId, deps) {
   if (!progress.submittedMemberIds.includes(auth.member.memberId)) progress.submittedMemberIds.push(auth.member.memberId);
   const events = [event(EVENT_TYPES.DESIGN_PROBLEM_SUBMITTED, { memberId: auth.member.memberId,
     submittedCount: progress.submittedMemberIds.length, requiredCount: progress.requiredMemberIds.length })];
-  if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) {
+  if (progressComplete(progress)) {
     check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM; check.session.workflow.phaseStartedAt = nowOf(deps);
     events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: check.session.sessionId }));
   }
@@ -202,7 +237,10 @@ function submitDesignProblem(aggregate, command, actorUserId, deps) {
 
 function updateDesignProblem(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
+    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+  ] }); if (!check.ok) return check;
   const contributionId = String(command.payload.contributionId || '');
   const entry = Object.entries(ensureFacts(aggregate).contributions).find(([, row]) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
   if (!entry) return fail(ERR.STALE_CONTEXT, '设计问题不存在');
@@ -216,18 +254,27 @@ function updateDesignProblem(aggregate, command, actorUserId, deps) {
 
 function selectDesignProblem(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
+    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+  ] }); if (!check.ok) return check;
   const contributionId = String(command.payload.contributionId || '');
   const problem = Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
   if (!problem) return fail(ERR.STALE_CONTEXT, '设计问题不存在');
-  check.session.setup.selectedProblemId = contributionId; check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+  check.session.setup.selectedProblemId = contributionId;
+  check.session.setup.proposedFirstMemberId = null;
+  check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+  check.session.workflow.activeMemberId = null;
+  check.session.workflow.turnId = null;
   check.session.workflow.phaseStartedAt = nowOf(deps);
   return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTED, { contributionId })]);
 }
 
 function selectFirstPlayer(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, {
+    steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]
+  }); if (!check.ok) return check;
   const memberId = String(command.payload.memberId || '');
   if (!activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, '首位成员不可用');
   check.session.setup.proposedFirstMemberId = memberId;
@@ -345,8 +392,32 @@ function authorizeRoomRead(aggregate, actorUserId) {
   return auth.ok ? { ok: true, aggregate, member: auth.member } : auth;
 }
 
+/** 归档场次允许已离房参与者回看；身份绑定只存在服务端 Session 文档中。 */
+function authorizeSessionRead(aggregate, actorUserId) {
+  if (!aggregate || !aggregate.room || !aggregate.currentSession) return fail(ERR.ROOM_NOT_FOUND);
+  const liveMember = memberByUserId(aggregate.room, actorUserId);
+  if (liveMember) return { ok: true, aggregate, member: liveMember };
+  const session = aggregate.currentSession;
+  if (![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status)) {
+    return fail(ERR.NOT_MEMBER);
+  }
+  const participant = (session.participants || []).find((item) => String(item.userId) === String(actorUserId));
+  if (!participant) return fail(ERR.NOT_MEMBER);
+  return { ok: true, aggregate, member: {
+    memberId: participant.memberId,
+    userId: actorUserId,
+    seatNo: participant.seatNoAtStart,
+    profile: {
+      nickName: participant.nickName,
+      avatarRef: participant.avatarRef || null,
+      avatarIndex: participant.avatarIndex == null ? null : participant.avatarIndex,
+      color: participant.color
+    }
+  } };
+}
+
 module.exports = {
-  reduceCommand, authorizeRoomRead, createRoomAggregate, normalizeHalfStarScore,
+  reduceCommand, authorizeRoomRead, authorizeSessionRead, createRoomAggregate, normalizeHalfStarScore,
   memberByUserId, memberById, sortedMembers, minimumPlayers,
   ...require('./spy')
 };

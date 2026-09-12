@@ -24,25 +24,23 @@ function commandContext(type, explicit) {
     if (session.activeTurn) context.turnId = session.activeTurn.turnId;
     else if (partner && partner.closing) context.turnId = partner.closing.sourceTurnId;
   }
+  if (tokens.includes('workflowStep') && context.workflowStep == null && session) {
+    context.workflowStep = session.workflow.step;
+  }
   if (tokens.includes('closingVoteSessionId') && context.closingVoteSessionId == null && partner && partner.closing) {
     context.closingVoteSessionId = partner.closing.closingVoteSessionId;
   }
   if (tokens.includes('gameId') && context.gameId == null && spy) context.gameId = spy.gameId;
   if (tokens.includes('speakerTurnId') && context.speakerTurnId == null && spy) context.speakerTurnId = spy.speakerTurnId;
   if (tokens.includes('voteSessionId') && context.voteSessionId == null && spy) context.voteSessionId = spy.voteSessionId;
+  if (tokens.includes('roundNo') && context.roundNo == null && spy) context.roundNo = spy.roundNo;
   return context;
 }
 
 function normalizeCommand(input) {
-  const aliases = { START_STATEMENT: 'START_PARTNER_STATEMENT', ADVANCE_TURN: 'ADVANCE_PARTNER_TURN' };
-  const type = aliases[input.type] || input.type;
-  const payload = { ...(input.payload || {}) };
-  if (type === 'REORDER_SEATS' && !payload.orderedMemberIds && Array.isArray(payload.userIdOrder)) {
-    payload.orderedMemberIds = payload.userIdOrder.slice();
-    delete payload.userIdOrder;
-  }
+  const type = input.type;
   return { type, roomId: input.roomId, commandId: input.commandId,
-    context: commandContext(type, input.context), payload };
+    context: commandContext(type, input.context), payload: { ...(input.payload || {}) } };
 }
 
 function createFacade(client) {
@@ -61,9 +59,9 @@ function createFacade(client) {
     getState: () => client.getState(),
     getSnapshot: () => projectPageSnapshot(client.getView(), client.getState()),
     getAppliedRevision: () => client.getState().seq,
-    history: (query) => client.history(query),
-    sessionSnapshot: (sessionId) => client.sessionSnapshot(sessionId),
-    leaderboard: (sessionId) => client.leaderboard(sessionId),
+    history: (query, roomId) => client.history(query, roomId),
+    sessionSnapshot: (sessionId, roomId) => client.sessionSnapshot(sessionId, roomId),
+    leaderboard: (sessionId, roomId) => client.leaderboard(sessionId, roomId),
     pause: () => client.pause(),
     resume: () => client.resume(),
     dispose: () => client.close(),
@@ -110,9 +108,46 @@ async function dispatchRoomCommand(type, payload, context, options) {
 }
 
 async function getRoomPageSnapshot(roomId, options) {
-  const session = await openRoomSession(roomId);
-  if (options && options.refresh) await session.refresh();
-  return session.getSnapshot();
+  let session;
+  try {
+    session = await openRoomSession(roomId);
+    if (options && options.refresh) await session.refresh();
+  } catch (error) {
+    return { ok: false, roomId, errCode: error.code || error.errCode || 'DEPENDENCY_UNAVAILABLE',
+      errMsg: error.message || error.errMsg || '读取房间失败', members: [], memberCount: 0,
+      roomState: null, view: null, ephemeral: {} };
+  }
+  const snapshot = session.getSnapshot();
+  if (snapshot.ok === false) return snapshot;
+  if (roomId && session.roomId !== roomId) {
+    return { ok: false, roomId,
+      errCode: session.roomId ? 'ALREADY_IN_ROOM' : 'NOT_MEMBER',
+      errMsg: session.roomId ? '当前账号属于其他房间' : '您已不在该房间',
+      members: [], memberCount: 0, roomState: null, view: null, ephemeral: {} };
+  }
+  return snapshot;
+}
+
+async function getRoomHistory(roomId, query) {
+  const session = ensureRoomSession();
+  return session.history(query || {}, roomId);
+}
+
+/** 将归档场次的 MemberView 投影为现有页面唯一消费的 PageSnapshot。 */
+async function getRoomSessionPageSnapshot(roomId, sessionId) {
+  // 历史读取不绑定当前活跃房间；离房、被踢或已加入新房间后仍可读取自己参与过的归档场次。
+  const session = ensureRoomSession();
+  const result = await session.sessionSnapshot(sessionId, roomId);
+  if (!result || result.ok !== true) return result;
+  return projectPageSnapshot(result.view, {
+    roomId: result.roomId,
+    seq: result.seq || 0,
+    stateVersion: result.stateVersion || 0,
+    status: 'READY',
+    historical: true,
+    ephemeral: {},
+    serverNow: result.serverTime
+  });
 }
 
 function disposeRoomSession() {
@@ -160,5 +195,6 @@ function unbindPageFromRoomSession(page) {
 }
 
 module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
-  getRoomPageSnapshot, disposeRoomSession, pauseRoomSession, resumeRoomSession,
+  getRoomPageSnapshot, getRoomHistory, getRoomSessionPageSnapshot,
+  disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, commandContext };

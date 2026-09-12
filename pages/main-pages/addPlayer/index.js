@@ -572,8 +572,7 @@ Page(withPageInteractionLock({
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const joinPayload = buildRoomJoinPayload(profile, { roomId });
-      delete joinPayload.roomId;
+      const joinPayload = buildRoomJoinPayload(profile);
       const result = await dispatchRoomCommand('JOIN_ROOM', joinPayload, {}, { roomId });
       if (result.ok !== true) {
         this._joinInFlight = false;
@@ -1439,7 +1438,7 @@ Page(withPageInteractionLock({
 
     this._reorderInFlight = true;
     try {
-      const result = await this._dispatchRoomCommand('REORDER_SEATS', { userIdOrder });
+      const result = await this._dispatchRoomCommand('REORDER_SEATS', { orderedMemberIds: userIdOrder });
       if (!result || result.ok !== true) {
         wx.showToast({
           title: (result && result.errMsg) || '顺序同步失败',

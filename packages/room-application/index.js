@@ -5,13 +5,21 @@ const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, ERR,
   fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString
 } = require('@cardboard/room-contracts');
-const { reduceCommand, authorizeRoomRead, memberByUserId } = require('@cardboard/room-domain');
+const { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require('@cardboard/room-domain');
 const {
   clone, projectPublicView, projectActorView, projectMemberView, projectRoute, createPublicPatch
 } = require('@cardboard/room-projection');
 
 const DEFAULT_SYNC_LIMIT = 100;
 const MAX_SYNC_BACKLOG = 300;
+
+function isRoomId(value) {
+  return typeof value === 'string' && /^\d{8}$/.test(value);
+}
+
+function isOpaqueId(value) {
+  return isNonEmptyString(value) && value.length <= 128;
+}
 
 function hash(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -94,7 +102,7 @@ function createRoomApplication(repo, options) {
   const appOptions = options || {};
   const now = () => Number(typeof appOptions.now === 'function' ? appOptions.now() : (appOptions.now || Date.now()));
 
-  async function ephemeral(roomId) {
+  async function ephemeral(roomId, aggregate) {
     let rows = [];
     let signalRows = [];
     try {
@@ -103,8 +111,10 @@ function createRoomApplication(repo, options) {
       rows = [];
     }
     const cutoff = now() - (appOptions.presenceTtlMs || 15000);
+    const currentMemberIds = new Set((aggregate && aggregate.room && aggregate.room.members || [])
+      .map((member) => member.memberId));
     const byMemberId = {};
-    (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff).forEach((row) => {
+    (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff && currentMemberIds.has(row.memberId)).forEach((row) => {
       if (!byMemberId[row.memberId] || byMemberId[row.memberId].lastSeenAt < row.lastSeenAt) {
         byMemberId[row.memberId] = { online: true, lastSeenAt: row.lastSeenAt };
       }
@@ -115,7 +125,18 @@ function createRoomApplication(repo, options) {
       signalRows = [];
     }
     const signals = {};
-    (signalRows || []).filter((row) => Number(row.expiresAt) > now()).forEach((row) => {
+    const activeTurn = aggregate && aggregate.currentSession
+      && aggregate.currentSession.modeState && aggregate.currentSession.modeState.partner
+      && aggregate.currentSession.modeState.partner.activeTurn;
+    (signalRows || []).filter((row) => {
+      if (Number(row.expiresAt) <= now()) return false;
+      if (row.signalType !== 'PARTNER_SILENT_SOUND') return true;
+      return !!(aggregate && aggregate.currentSession && activeTurn
+        && row.sessionId === aggregate.currentSession.sessionId
+        && row.turnId === activeTurn.turnId
+        && row.memberId === activeTurn.activeMemberId
+        && Number(activeTurn.silentDeadlineAt) > now());
+    }).forEach((row) => {
       if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
         signals[row.signalType] = { value: clone(row.value), memberId: row.memberId,
           updatedAt: row.updatedAt, expiresAt: row.expiresAt };
@@ -136,7 +157,7 @@ function createRoomApplication(repo, options) {
   async function readSnapshot(roomId, actorContext) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
     const aggregate = await repo.readAggregate(roomId);
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
@@ -147,26 +168,28 @@ function createRoomApplication(repo, options) {
       stateVersion: aggregate.room.stateVersion,
       viewSchemaVersion: VIEW_SCHEMA_VERSION,
       view: projectMemberView(auth.aggregate, actorUserId),
-      ephemeral: await ephemeral(roomId),
+      ephemeral: await ephemeral(roomId, aggregate),
       serverTime: now(),
-      minAvailableSeq: aggregate.room.minAvailableSeq
+      minAvailableSeq: aggregate.minAvailableSeq == null ? 1 : aggregate.minAvailableSeq
     });
   }
 
   async function readSessionSnapshot(roomId, sessionId, actorContext) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    if (!isNonEmptyString(roomId) || !isNonEmptyString(sessionId)) {
-      return fail(ERR.INVALID_ARGUMENT, 'roomId/sessionId 必填');
+    if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+      return fail(ERR.INVALID_ARGUMENT, 'roomId/sessionId 不合法');
     }
     if (typeof repo.readSessionAggregate !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
     const aggregate = await repo.readSessionAggregate(roomId, sessionId);
-    const auth = authorizeRoomRead(aggregate, actorUserId);
+    const auth = authorizeSessionRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     return okResult({
       protocolVersion: PROTOCOL_VERSION,
       roomId,
       sessionId,
+      seq: aggregate.room.eventSeq,
+      stateVersion: aggregate.room.stateVersion,
       viewSchemaVersion: VIEW_SCHEMA_VERSION,
       view: projectMemberView(auth.aggregate, actorUserId),
       serverTime: now()
@@ -176,6 +199,7 @@ function createRoomApplication(repo, options) {
   async function readHistory(roomId, actorContext, requestOptions) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
     const aggregate = await repo.readAggregate(roomId);
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
@@ -183,7 +207,7 @@ function createRoomApplication(repo, options) {
     const limit = Math.min(50, Math.max(1, Number(requestOptions && requestOptions.limit) || 20));
     const rows = await repo.listSessions(roomId, {
       limit,
-      beforeStartedAt: requestOptions && requestOptions.beforeStartedAt
+      beforeOrdinal: requestOptions && requestOptions.beforeOrdinal
     });
     const hasMore = rows.length > limit;
     const selected = rows.slice(0, limit);
@@ -201,7 +225,7 @@ function createRoomApplication(repo, options) {
       } : null
     }));
     return okResult({ protocolVersion: PROTOCOL_VERSION, roomId, sessions, hasMore,
-      nextBeforeStartedAt: hasMore && sessions.length ? sessions[sessions.length - 1].startedAt : null,
+      nextBeforeOrdinal: hasMore && sessions.length ? sessions[sessions.length - 1].ordinal : null,
       serverTime: now() });
   }
 
@@ -218,7 +242,7 @@ function createRoomApplication(repo, options) {
   async function sync(roomId, afterSeq, actorContext, requestOptions) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
     const baseSeq = Number(afterSeq);
     if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, 'afterSeq 必须是非负整数');
     const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
@@ -227,7 +251,7 @@ function createRoomApplication(repo, options) {
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     const currentSeq = aggregate.room.eventSeq;
-    const minAvailableSeq = aggregate.room.minAvailableSeq;
+    const minAvailableSeq = aggregate.minAvailableSeq == null ? 1 : aggregate.minAvailableSeq;
     const base = { protocolVersion: PROTOCOL_VERSION, viewSchemaVersion: VIEW_SCHEMA_VERSION,
       eventSchemaVersion: EVENT_SCHEMA_VERSION,
       afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
@@ -237,7 +261,9 @@ function createRoomApplication(repo, options) {
     }
     const available = (bundle.events || []).filter((item) => item.seq > baseSeq && item.seq <= currentSeq)
       .sort((a, b) => a.seq - b.seq);
-    if (available.length && available[0].seq !== baseSeq + 1) return okResult({ ...base, snapshotRequired: true });
+    if (currentSeq > baseSeq && (!available.length || available[0].seq !== baseSeq + 1)) {
+      return okResult({ ...base, snapshotRequired: true });
+    }
     for (let i = 1; i < available.length; i += 1) {
       if (available[i].seq !== available[i - 1].seq + 1) return okResult({ ...base, snapshotRequired: true });
     }
@@ -255,7 +281,7 @@ function createRoomApplication(repo, options) {
     if (!hasMore) {
       const actor = projectActorView(aggregate, actorUserId);
       actorView = { actor, route: projectRoute(aggregate, actor) };
-      projectedEphemeral = await ephemeral(roomId);
+      projectedEphemeral = await ephemeral(roomId, aggregate);
     }
     return okResult({ ...base, throughSeq, hasMore, events: clone(selected), actorView,
       ephemeral: projectedEphemeral, serverTime: now() });
@@ -269,23 +295,30 @@ function createRoomApplication(repo, options) {
     const envelope = validated.envelope;
     const commandNow = now();
     const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
-    const commandRoomId = isCreate
-      ? String(typeof repo.generateRoomId === 'function' ? repo.generateRoomId(envelope.commandId, actorUserId) : (10000000 + Math.floor(Math.random() * 90000000)))
-      : envelope.roomId;
+    const roomIdCandidates = isCreate
+      ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === 'function'
+        ? repo.generateRoomId(envelope.commandId, actorUserId, attempt)
+        : (10000000 + Math.floor(Math.random() * 90000000))))
+      : [];
+    const commandRoomId = isCreate ? roomIdCandidates[0] : envelope.roomId;
     const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
-    const seed = hash(`${appOptions.serverSecret || 'room-v3'}:${commandRoomId}:${envelope.commandId}`);
     const transaction = await repo.transactCommand({
       scopeKey, commandId: envelope.commandId, actorUserId, roomId: commandRoomId, type: envelope.type,
-      requestHash: requestHash(envelope), createdAt: commandNow
-    }, ({ aggregate: current, activeRoomId }) => {
+      roomIdCandidates, requestHash: requestHash(envelope), createdAt: commandNow
+    }, ({ aggregate: current, activeRoomId, resolvedRoomId }) => {
       if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+      if (isCreate && !resolvedRoomId) {
+        return { accepted: false, error: fail(ERR.DEPENDENCY_UNAVAILABLE, '暂时无法分配房间号') };
+      }
       if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
         return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
       }
+      const effectiveRoomId = resolvedRoomId || commandRoomId;
+      const seed = hash(`${appOptions.serverSecret || 'room-v3'}:${effectiveRoomId}:${envelope.commandId}`);
       const beforePublic = projectPublicView(current);
-      const domain = reduceCommand({ aggregate: current, command: { ...envelope, roomId: commandRoomId }, actorUserId,
+      const domain = reduceCommand({ aggregate: current, command: { ...envelope, roomId: effectiveRoomId }, actorUserId,
         deps: { now: commandNow, idFactory: deterministicIds(seed), random: deterministicRandom(seed),
-          wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => commandRoomId } });
+          wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => effectiveRoomId } });
       if (!domain.ok) return { accepted: false, error: domain };
       const next = domain.aggregate;
       const afterPublic = projectPublicView(next);
@@ -324,12 +357,17 @@ function createRoomApplication(repo, options) {
   async function heartbeat(roomId, actorContext, payload) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
+    const deviceSessionId = payload && payload.deviceSessionId;
+    if (deviceSessionId != null && !isOpaqueId(deviceSessionId)) {
+      return fail(ERR.INVALID_ARGUMENT, 'deviceSessionId 必须是 1～128 字符');
+    }
     const aggregate = await repo.readAggregate(roomId);
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     if (typeof repo.upsertPresence !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE, 'presence store unavailable');
     const row = await repo.upsertPresence({ roomId, memberId: auth.member.memberId,
-      deviceSessionId: payload && payload.deviceSessionId, lastSeenAt: now() });
+      deviceSessionId, lastSeenAt: now() });
     return okResult({ presence: row, seq: aggregate.room.eventSeq });
   }
 
@@ -357,8 +395,8 @@ function createInMemoryRoomRepository(options) {
 
   return {
     rooms, actions, events, activeRooms, presence, signals, sessions,
-    generateRoomId(commandId, actorUserId) {
-      if (options && typeof options.generateRoomId === 'function') return options.generateRoomId(commandId, actorUserId);
+    generateRoomId(commandId, actorUserId, attempt) {
+      if (options && typeof options.generateRoomId === 'function') return options.generateRoomId(commandId, actorUserId, attempt || 0);
       seq += 1;
       return String(seq);
     },
@@ -369,27 +407,32 @@ function createInMemoryRoomRepository(options) {
         const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
         return conflict ? { conflict: true } : { replayed: true, receipt: copy(existing) };
       }
-      const current = rooms.has(input.roomId) ? copy(rooms.get(input.roomId)) : null;
-      const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null });
+      let resolvedRoomId = input.roomId;
+      if (input.type === COMMAND_TYPES.CREATE_ROOM) {
+        resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
+      }
+      const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
+      const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null,
+        resolvedRoomId });
       const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
-        roomId: input.roomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
+        roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
         outcome: copy(decision.outcome || null), error: copy(decision.error || null),
         committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq, createdAt: input.createdAt };
       if (decision.accepted) {
         const beforeUsers = usersOf(current);
         const afterUsers = usersOf(decision.aggregate);
-        rooms.set(input.roomId, copy(decision.aggregate));
+        rooms.set(resolvedRoomId, copy(decision.aggregate));
         if (decision.aggregate.currentSession) {
           sessions.set(decision.aggregate.currentSession.sessionId, copy(decision.aggregate.currentSession));
-          sessionRooms.set(decision.aggregate.currentSession.sessionId, input.roomId);
+          sessionRooms.set(decision.aggregate.currentSession.sessionId, resolvedRoomId);
         }
         if (decision.archivedSession) {
           sessions.set(decision.archivedSession.sessionId, copy(decision.archivedSession));
-          sessionRooms.set(decision.archivedSession.sessionId, input.roomId);
+          sessionRooms.set(decision.archivedSession.sessionId, resolvedRoomId);
         }
         (decision.events || []).forEach((item) => {
-          if (!events.has(input.roomId)) events.set(input.roomId, []);
-          events.get(input.roomId).push(copy(item));
+          if (!events.has(resolvedRoomId)) events.set(resolvedRoomId, []);
+          events.get(resolvedRoomId).push(copy(item));
         });
         const afterIds = new Set(afterUsers.map((item) => item.userId));
         beforeUsers.filter((item) => !afterIds.has(item.userId)).forEach((item) => activeRooms.delete(item.userId));
@@ -406,7 +449,13 @@ function createInMemoryRoomRepository(options) {
       if (!aggregate || aggregate.room.lifecycle !== 'OPEN' || !member) return { dangling: true, roomId };
       return { roomId, memberId: member.memberId };
     },
-    async readAggregate(roomId) { return rooms.has(roomId) ? copy(rooms.get(roomId)) : null; },
+    async readAggregate(roomId) {
+      if (!rooms.has(roomId)) return null;
+      const aggregate = copy(rooms.get(roomId));
+      const firstEvent = (events.get(roomId) || [])[0];
+      aggregate.minAvailableSeq = firstEvent ? firstEvent.seq : aggregate.room.eventSeq + 1;
+      return aggregate;
+    },
     async readSessionAggregate(roomId, sessionId) {
       const stored = rooms.get(roomId);
       const session = sessions.get(sessionId)
@@ -424,16 +473,20 @@ function createInMemoryRoomRepository(options) {
       return copy({ room: stored.room, currentSession: session, facts });
     },
     async listSessions(roomId, requestOptions) {
-      const before = Number(requestOptions && requestOptions.beforeStartedAt);
+      const before = Number(requestOptions && requestOptions.beforeOrdinal);
       const limit = Number(requestOptions && requestOptions.limit) || 20;
       return copy([...sessions.values()].filter((session) => sessionRooms.get(session.sessionId) === roomId
         && ['COMPLETED', 'CANCELLED'].includes(session.status)
-        && (!Number.isFinite(before) || session.startedAt < before))
-        .sort((a, b) => b.startedAt - a.startedAt).slice(0, limit + 1));
+        && (!Number.isInteger(before) || session.ordinal < before))
+        .sort((a, b) => b.ordinal - a.ordinal).slice(0, limit + 1));
     },
     async readSyncState(roomId, afterSeq, limit) {
-      return { aggregate: rooms.has(roomId) ? copy(rooms.get(roomId)) : null,
-        events: copy((events.get(roomId) || []).filter((item) => item.seq > afterSeq).slice(0, limit)) };
+      const aggregate = rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
+      const roomEvents = events.get(roomId) || [];
+      if (aggregate) aggregate.minAvailableSeq = roomEvents.length
+        ? roomEvents[0].seq : aggregate.room.eventSeq + 1;
+      return { aggregate,
+        events: copy(roomEvents.filter((item) => item.seq > afterSeq).slice(0, limit)) };
     },
     async upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
       const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };

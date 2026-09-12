@@ -116,7 +116,7 @@
               </view>
               <view wx:elif="{{qrcodeStatus === 'load_error'}}" class="qrcode-placeholder">
                 <text class="qrcode-placeholder-text">房间数据加载失败</text>
-                <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '请检查云函数 getAddPlayerData 是否已重新部署'}}</text>
+                <text class="qrcode-placeholder-hint">{{qrcodeErrorHint || '请检查云函数 roomMedia 是否已重新部署'}}</text>
                 <button class="qrcode-retry-btn" catchtap="handleRetryQrcode">重试</button>
               </view>
               <view wx:else class="qrcode-placeholder">

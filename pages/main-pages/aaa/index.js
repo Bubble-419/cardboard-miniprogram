@@ -110,12 +110,14 @@ Page(withPageInteractionLock({
 
   onTapHistoryCard(e) {
     const roomId = e.currentTarget.dataset.roomId;
+    const sessionId = e.currentTarget.dataset.sessionId || '';
     if (!roomId) return;
     return runPageNavigation(this, async () => {
       getApp().globalData.roomId = roomId;
+      const sessionQuery = sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : '';
       return {
         method: 'navigateTo',
-        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review${sessionQuery}`
       };
     }, { loadingText: '正在打开历史…' });
   },
@@ -544,8 +546,8 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
-      // JOIN_ROOM 已经成功，不再带 fromScan 进入页面，避免 addPlayer 重复提交 JOIN_ROOM。
-      await this._goToRoomPage(roomId);
+      // 原始扫码结果只解析出了房间号，交给 addPlayer 完成唯一一次 JOIN_ROOM。
+      await this._goToScanJoinRoom(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
         wx.showToast({ title: '已取消扫码', icon: 'none' });
@@ -816,7 +818,8 @@ Page(withPageInteractionLock({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      await this._goToScanJoinRoom(roomId);
+      // 当前命令已经完成加入，直接进入大厅，避免 fromScan 再提交一次 JOIN_ROOM。
+      await this._goToRoomPage(roomId);
     } catch (err) {
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }

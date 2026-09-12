@@ -22,7 +22,9 @@ const {
   unbindPageFromRoomSession,
   getActiveRoomSession,
   dispatchRoomCommand,
-  getRoomPageSnapshot
+  getRoomPageSnapshot,
+  getRoomHistory,
+  getRoomSessionPageSnapshot
 } = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const {
@@ -1087,6 +1089,19 @@ Page(withPageInteractionLock({
       && roomSession.publicModeState.closing && roomSession.publicModeState.closing.sourceTurnId;
     const initialTurnId = activeTurnId || closingTurnId;
     if (!roomSession || !initialTurnId) return false;
+    const workflowByStage = {
+      PLAY: 'PARTNER_TURN',
+      DISCUSSION: 'PARTNER_STATEMENT',
+      CLOSING_REVIEW: 'PARTNER_CLOSING_REVIEW'
+    };
+    const initialWorkflowStep = workflowByStage[stage];
+    if (!initialWorkflowStep || roomSession.workflow.step !== initialWorkflowStep) return false;
+    // 一次编辑批次冻结同一业务令牌；期间即使仍是同一 turnId 但已经换阶段，剩余命令也必须整体失效。
+    const frozenContext = {
+      sessionId: roomSession.sessionId,
+      turnId: initialTurnId,
+      workflowStep: initialWorkflowStep
+    };
     const existing = (roomSession.activeArtifacts || []).filter((item) => item.stage === stage);
     const retained = new Set();
     try {
@@ -1100,7 +1115,7 @@ Page(withPageInteractionLock({
             kind: block.type === 'image' ? 'IMAGE' : 'TEXT',
             text: block.type === 'text' ? block.text : null,
             fileRef: block.type === 'image' ? block.url : null
-          });
+          }, frozenContext);
           if (!result || result.ok !== true) throw new Error(result && result.errMsg || '新增素材失败');
           continue;
         }
@@ -1109,17 +1124,17 @@ Page(withPageInteractionLock({
           const result = await dispatchRoomCommand('UPDATE_ARTIFACT', {
             operationId: found.operationId,
             text: block.text
-          }, { entityVersion: found.entityVersion });
+          }, { ...frozenContext, entityVersion: found.entityVersion });
           if (!result || result.ok !== true) throw new Error(result && result.errMsg || '修改素材失败');
         } else if (block.type === 'image' && block.url !== found.fileRef) {
           const removed = await dispatchRoomCommand('REMOVE_ARTIFACT', {
             operationId: found.operationId
-          }, { entityVersion: found.entityVersion });
+          }, { ...frozenContext, entityVersion: found.entityVersion });
           if (!removed || removed.ok !== true) throw new Error(removed && removed.errMsg || '替换图片失败');
           const appended = await dispatchRoomCommand('APPEND_ARTIFACT', {
             operationId: `${key || found.operationId}_replacement_${Date.now()}`,
             kind: 'IMAGE', fileRef: block.url
-          });
+          }, frozenContext);
           if (!appended || appended.ok !== true) throw new Error(appended && appended.errMsg || '替换图片失败');
         }
       }
@@ -1135,7 +1150,7 @@ Page(withPageInteractionLock({
         if (latestTurnId !== initialTurnId) return false;
         const result = await dispatchRoomCommand('REMOVE_ARTIFACT', {
           operationId: item.operationId
-        }, { entityVersion: item.entityVersion });
+        }, { ...frozenContext, entityVersion: item.entityVersion });
         if (!result || result.ok !== true) throw new Error(result && result.errMsg || '删除素材失败');
       }
       return true;
@@ -2473,7 +2488,22 @@ Page(withPageInteractionLock({
     let result = null;
 
     try {
-      result = await getRoomPageSnapshot(roomId, { refresh: true });
+      if (isHistoryReview) {
+        let sessionId = this.data.sessionId || '';
+        if (!sessionId) {
+          // 兼容升级前未记录 sessionId 的本地历史卡片：只选最近完成的搭档场次。
+          const history = await getRoomHistory(roomId, { limit: 20 });
+          const latestPartner = history && history.ok === true
+            ? (history.sessions || []).find((item) => item.mode === 'PARTNER' && item.status === 'COMPLETED')
+            : null;
+          sessionId = latestPartner && latestPartner.sessionId || '';
+        }
+        result = sessionId
+          ? await getRoomSessionPageSnapshot(roomId, sessionId)
+          : { ok: false, errCode: 'SESSION_NOT_FOUND', errMsg: '暂无可回看的搭档场次' };
+      } else {
+        result = await getRoomPageSnapshot(roomId, { refresh: true });
+      }
     } catch (e) {
       console.error('partner gamepage loadRoomData', e);
       result = null;

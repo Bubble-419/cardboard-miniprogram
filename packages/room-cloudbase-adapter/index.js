@@ -50,7 +50,7 @@ async function loadFactRows(store, kind, roomId, sessionId) {
   if (kind === 'messages') {
     // 表达消息是有界视图，只读取最新 40 条；历史消息无需参与领域裁决。
     const result = await store.collection(FACT_COLLECTION.messages).where({ roomId, sessionId })
-      .orderBy('createdAt', 'desc').limit(40).get();
+      .orderBy('createdAt', 'desc').orderBy('_id', 'desc').limit(40).get();
     return ((result && result.data) || []).map(cleanDoc).sort((a, b) => a.createdAt - b.createdAt);
   }
   const rows = [];
@@ -58,6 +58,7 @@ async function loadFactRows(store, kind, roomId, sessionId) {
     // 多读一条才能区分“恰好达到上限”和“已经超过上限”。
     const take = Math.min(QUERY_PAGE_SIZE, FACT_LIMITS[kind] + 1 - rows.length);
     const result = await store.collection(FACT_COLLECTION[kind]).where({ roomId, sessionId })
+      .orderBy('_factKey', 'asc')
       .skip(rows.length).limit(take).get();
     const page = (result && result.data) || [];
     rows.push(...page);
@@ -85,11 +86,19 @@ async function loadAggregate(store, roomId) {
   const currentSession = room.currentSessionId
     ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId)
     : null;
+  if (room.currentSessionId && (!currentSession || currentSession.roomId !== roomId)) {
+    throw Object.assign(new Error('Room.currentSessionId 指向无效场次'), { code: 'INTERNAL_ERROR' });
+  }
   if (currentSession) delete currentSession.roomId;
   const sessionId = currentSession && currentSession.sessionId;
   const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) =>
     [kind, await loadFactRows(store, kind, roomId, sessionId)]));
-  return { room, currentSession, facts: Object.fromEntries(entries) };
+  const firstEventResult = await store.collection(COLLECTIONS.events).where({ roomId })
+    .orderBy('seq', 'asc').limit(1).get();
+  const firstEvent = firstEventResult && firstEventResult.data && firstEventResult.data[0];
+  // Event 使用 TTL 后，最小可用水位必须从实际日志计算，不能依赖可能滞后的 Room 字段。
+  const minAvailableSeq = firstEvent ? Number(firstEvent.seq) : Number(room.eventSeq) + 1;
+  return { room, currentSession, facts: Object.fromEntries(entries), minAvailableSeq };
 }
 
 async function loadSessionAggregate(store, roomId, sessionId) {
@@ -119,8 +128,8 @@ function createCloudBaseRoomRepository(deps) {
   const db = deps && deps.db;
   if (!db || typeof db.runTransaction !== 'function') throw new Error('CloudBase transaction database required');
 
-  function generateRoomId(commandId, actorUserId) {
-    const value = parseInt(digest(`${actorUserId}:${commandId}:room`).slice(0, 12), 16);
+  function generateRoomId(commandId, actorUserId, attempt) {
+    const value = parseInt(digest(`${actorUserId}:${commandId}:room:${attempt || 0}`).slice(0, 12), 16);
     return String(10000000 + (value % 90000000));
   }
 
@@ -134,11 +143,21 @@ function createCloudBaseRoomRepository(deps) {
         return conflict ? { conflict: true } : { replayed: true, receipt: existing };
       }
       const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
-      const current = await loadAggregate(transaction, input.roomId);
-      const decision = handler({ aggregate: current, activeRoomId: active && active.roomId });
+      let resolvedRoomId = input.roomId;
+      if (input.type === 'CREATE_ROOM') {
+        resolvedRoomId = null;
+        for (const candidate of input.roomIdCandidates || [input.roomId]) {
+          if (!await safeGet(transaction, COLLECTIONS.rooms, candidate)) {
+            resolvedRoomId = candidate;
+            break;
+          }
+        }
+      }
+      const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
+      const decision = handler({ aggregate: current, activeRoomId: active && active.roomId, resolvedRoomId });
       const receipt = {
         scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
-        roomId: input.roomId, type: input.type, requestHash: input.requestHash,
+        roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash,
         accepted: decision.accepted === true, outcome: cleanDoc(decision.outcome),
         error: cleanDoc(decision.error), committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq,
         createdAt: input.createdAt
@@ -146,28 +165,33 @@ function createCloudBaseRoomRepository(deps) {
       if (decision.accepted) {
         const beforeUsers = openUsers(current);
         const afterUsers = openUsers(decision.aggregate);
-        await transaction.collection(COLLECTIONS.rooms).doc(input.roomId).set({ data: cleanDoc(decision.aggregate.room) });
+        await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
         if (decision.aggregate.currentSession) {
           const session = cleanDoc(decision.aggregate.currentSession);
           await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId)
-            .set({ data: { ...session, roomId: input.roomId } });
+            .set({ data: { ...session, roomId: resolvedRoomId } });
         }
         if (decision.archivedSession) {
           const archived = cleanDoc(decision.archivedSession);
           await transaction.collection(COLLECTIONS.sessions).doc(archived.sessionId)
-            .set({ data: { ...archived, roomId: input.roomId } });
+            .set({ data: { ...archived, roomId: resolvedRoomId } });
         }
         for (const dirty of decision.dirtyFacts || []) {
+          const factDocumentId = docId(`${resolvedRoomId}:${dirty.kind}:${dirty.id}`);
+          if (dirty.remove) {
+            await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(factDocumentId).remove();
+            continue;
+          }
           const row = factRow(decision.aggregate, dirty.kind, dirty.id);
           if (!row) continue;
           const sessionId = row.sessionId || (decision.aggregate.currentSession && decision.aggregate.currentSession.sessionId);
-          const data = { ...cleanDoc(row), roomId: input.roomId, sessionId };
+          const data = { ...cleanDoc(row), roomId: resolvedRoomId, sessionId };
           if (dirty.kind !== 'messages') data._factKey = dirty.id;
-          await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(docId(`${input.roomId}:${dirty.kind}:${dirty.id}`))
+          await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(factDocumentId)
             .set({ data });
         }
         for (const item of decision.events || []) {
-          await transaction.collection(COLLECTIONS.events).doc(`${input.roomId}_${String(item.seq).padStart(12, '0')}`)
+          await transaction.collection(COLLECTIONS.events).doc(`${resolvedRoomId}_${String(item.seq).padStart(12, '0')}`)
             .set({ data: cleanDoc(item) });
         }
         const afterIds = new Set(afterUsers.map((item) => item.userId));
@@ -195,14 +219,14 @@ function createCloudBaseRoomRepository(deps) {
 
   async function listSessions(roomId, options) {
     const size = Math.min(50, Math.max(1, Number(options && options.limit) || 20));
-    const before = Number(options && options.beforeStartedAt);
+    const before = Number(options && options.beforeOrdinal);
     const condition = {
       roomId,
       status: db.command.in(['COMPLETED', 'CANCELLED'])
     };
-    if (Number.isFinite(before)) condition.startedAt = db.command.lt(before);
+    if (Number.isInteger(before)) condition.ordinal = db.command.lt(before);
     const result = await db.collection(COLLECTIONS.sessions).where(condition)
-      .orderBy('startedAt', 'desc').limit(size + 1).get();
+      .orderBy('ordinal', 'desc').limit(size + 1).get();
     return (result && result.data || []).map(cleanDoc);
   }
 

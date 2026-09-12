@@ -22,11 +22,12 @@ exports.main = async (event) => {
     return await app.executeCommand(envelope, { userId });
   } catch (e) {
     console.error('roomCommand error', e);
+    const errCode = e.errCode || e.code || 'INTERNAL_ERROR';
     return {
       ok: false,
-      errCode: e.errCode || e.code || 'INTERNAL_ERROR',
+      errCode,
       errMsg: e.errMsg || e.message || 'roomCommand failed',
-      retryable: false
+      retryable: ['DEPENDENCY_UNAVAILABLE', 'RATE_LIMITED'].includes(errCode)
     };
   }
 };

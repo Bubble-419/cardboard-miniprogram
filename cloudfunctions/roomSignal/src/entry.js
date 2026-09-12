@@ -14,7 +14,11 @@ exports.main = async (event) => {
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
   const roomId = String(event && event.roomId || '');
   const signalType = String(event && event.signalType || '');
-  if (!roomId || signalType !== 'PARTNER_SILENT_SOUND') {
+  const sessionId = String(event && event.sessionId || '');
+  const turnId = String(event && event.turnId || '');
+  const rawValue = event && event.value;
+  if (!roomId || !sessionId || !turnId || signalType !== 'PARTNER_SILENT_SOUND'
+    || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };
   }
   try {
@@ -23,12 +27,14 @@ exports.main = async (event) => {
     const session = snapshot.view && snapshot.view.session;
     const actor = snapshot.view && snapshot.view.actor;
     const turn = session && session.activeTurn;
-    if (!turn || !actor || turn.activeMemberId !== actor.memberId || !turn.silentDeadlineAt) {
+    const now = Date.now();
+    if (!turn || !actor || session.sessionId !== sessionId || turn.turnId !== turnId
+      || turn.activeMemberId !== actor.memberId || Number(turn.silentDeadlineAt) <= now) {
       return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能发布静默声贝' };
     }
-    const now = Date.now();
-    const value = Math.min(1, Math.max(0, Number(event.value) || 0));
+    const value = Math.min(1, Math.max(0, rawValue));
     const row = { roomId, signalType, value, memberId: actor.memberId,
+      sessionId: session.sessionId, turnId: turn.turnId,
       updatedAt: now, expiresAt: Math.min(turn.silentDeadlineAt, now + 3000) };
     await db.collection(COLLECTIONS.signals).doc(docId(`${roomId}:${signalType}`)).set({ data: row });
     return { ok: true, signal: row };

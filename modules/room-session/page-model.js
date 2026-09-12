@@ -16,16 +16,32 @@ function routePageKey(routeName) {
 }
 
 function memberSeat(view, memberId) {
-  const member = view && view.room && view.room.members.find((item) => item.memberId === memberId);
-  if (member) return member.seatNo;
   const participant = view && view.session && (view.session.participants || [])
     .find((item) => item.memberId === memberId);
-  return participant ? participant.seatNoAtStart : null;
+  if (participant) return participant.seatNoAtStart;
+  const member = view && view.room && view.room.members.find((item) => item.memberId === memberId);
+  return member ? member.seatNo : null;
 }
 
-function pageMembers(view) {
+function pageMembers(view, historical) {
   if (!view || !view.room) return [];
-  return view.room.members.map((member) => ({
+  const liveById = new Map((view.room.members || []).map((member) => [member.memberId, member]));
+  const useFrozenParticipants = !!(view.session && Array.isArray(view.session.participants)
+    && (historical || (view.session.status === 'COMPLETED' && view.actor && view.actor.isParticipant)));
+  const source = useFrozenParticipants
+    ? view.session.participants.map((participant) => ({
+      memberId: participant.memberId,
+      seatNo: participant.seatNoAtStart,
+      nickName: participant.nickName,
+      avatarRef: participant.avatarRef || null,
+      avatarIndex: participant.avatarIndex,
+      color: participant.color,
+      joinedAt: liveById.get(participant.memberId) && liveById.get(participant.memberId).joinedAt,
+      participantStatus: participant.status
+    }))
+    : view.room.members;
+  // 历史/结算页使用场次冻结资料；大厅和进行中页使用当前 Room Member。
+  return source.slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
     _id: member.memberId,
     memberId: member.memberId,
     // 页面只拿到不可反查 openid 的 memberId。
@@ -37,6 +53,7 @@ function pageMembers(view) {
     avatarIndex: member.avatarIndex,
     avatarColor: member.color,
     joinedAt: member.joinedAt,
+    participantStatus: member.participantStatus || null,
     isMe: !!(view.actor && view.actor.memberId === member.memberId)
   }));
 }
@@ -66,8 +83,8 @@ function partnerContent(session, acceptedStages) {
 }
 
 function partnerSummary(view, summary) {
-  const member = view.room.members.find((item) => item.memberId === summary.activeMemberId)
-    || (view.session.participants || []).find((item) => item.memberId === summary.activeMemberId);
+  const member = (view.session.participants || []).find((item) => item.memberId === summary.activeMemberId)
+    || view.room.members.find((item) => item.memberId === summary.activeMemberId);
   const content = partnerContent({ activeArtifacts: summary.artifacts || [] }, ['PLAY', 'DISCUSSION']);
   const turnRecord = {
     playerIndex: member && (member.seatNo || member.seatNoAtStart),
@@ -88,6 +105,12 @@ function partnerSummary(view, summary) {
     ...content,
     turnRecords: [turnRecord]
   };
+}
+
+function clientClockTimestamp(value, offsetMs) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return value == null ? null : value;
+  return timestamp - (Number(offsetMs) || 0);
 }
 
 function spyPageState(view, session) {
@@ -133,6 +156,7 @@ function spyPageState(view, session) {
     speakOrder: (state.speakOrder || []).map((memberId) => memberSeat(view, memberId)),
     currentSpeakerIndex: state.currentSpeakerIndex || 0,
     speakerTurnId: state.speakerTurnId,
+    // 谁是卧底计时器显式使用 RoomClient.serverNow()，这里保留服务端时钟域。
     speakRoundStartedAt: state.speakRoundStartedAt,
     speakTurnStartedAt: state.speakTurnStartedAt,
     voteSessionId: state.voteSessionId,
@@ -160,18 +184,22 @@ function spyPageState(view, session) {
  * 现有 WXML 的页面模型。它只由 V3 MemberView 投影，不再保存或推断第二份远端事实。
  */
 function projectPageSnapshot(view, clientState) {
+  const state = clientState || {};
   if (!view) {
-    const lastError = clientState && clientState.error;
-    return { ok: !lastError, roomId: clientState && clientState.roomId,
+    const lastError = state.error;
+    return { ok: !lastError, roomId: state.roomId,
       errCode: lastError && lastError.errCode, errMsg: lastError && lastError.errMsg,
-      revision: clientState && clientState.seq || 0, members: [], memberCount: 0, roomState: null,
-      view: null, ephemeral: clientState && clientState.ephemeral || {} };
+      revision: state.seq || 0, stateVersion: state.stateVersion || 0,
+      members: [], memberCount: 0, roomState: null,
+      view: null, ephemeral: state.ephemeral || {} };
   }
   const session = view.session;
-  const members = pageMembers(view);
+  const clockOffsetMs = Number(state.serverClockOffsetMs) || 0;
+  const members = pageMembers(view, state.historical);
   const roomState = {
     protocolVersion: 3,
-    revision: clientState.seq,
+    revision: state.seq || 0,
+    stateVersion: state.stateVersion || 0,
     lifecycle: view.room.lifecycle,
     workflow: session && session.workflow,
     sessionId: session && session.sessionId || '',
@@ -193,15 +221,16 @@ function projectPageSnapshot(view, clientState) {
     roomState.currentPlayerName = activeMember && activeMember.nickName;
     roomState.currentRound = turn ? turn.ordinal : session.publicModeState.turnOrdinal;
     roomState.partnerRoundNo = turn ? turn.roundNo : session.publicModeState.roundNo;
-    roomState.partnerTurnStartedAt = turn && turn.turnStartedAt;
-    roomState.partnerRoundStartedAt = turn && turn.phaseStartedAt;
+    // 旧页面计时器使用 Date.now()；在 PageModel 边界把服务端时间锚点换算到本机时钟域。
+    roomState.partnerTurnStartedAt = turn && clientClockTimestamp(turn.turnStartedAt, clockOffsetMs);
+    roomState.partnerRoundStartedAt = turn && clientClockTimestamp(turn.phaseStartedAt, clockOffsetMs);
     roomState.partnerMasterMode = !!(turn && turn.masterMode);
-    const projectedNow = clientState && Number(clientState.serverNow);
+    const projectedNow = Number(state.serverNow);
     const serverNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
     roomState.partnerSilentMode = !!(turn && turn.silentDeadlineAt && turn.silentDeadlineAt > serverNow);
-    roomState.partnerSilentStartedAt = turn && turn.silentStartedAt;
-    const silentSignal = clientState && clientState.ephemeral && clientState.ephemeral.signals
-      && clientState.ephemeral.signals.PARTNER_SILENT_SOUND;
+    roomState.partnerSilentStartedAt = turn && clientClockTimestamp(turn.silentStartedAt, clockOffsetMs);
+    const silentSignal = state.ephemeral && state.ephemeral.signals
+      && state.ephemeral.signals.PARTNER_SILENT_SOUND;
     roomState.partnerSilentSoundLevel = silentSignal ? silentSignal.value : 0;
     roomState.partnerClosingStep = closing && closing.stage;
     roomState.closingVoteSessionId = closing && closing.closingVoteSessionId;
@@ -238,7 +267,8 @@ function projectPageSnapshot(view, clientState) {
     ok: true,
     protocolVersion: 3,
     roomId: view.room.roomId,
-    revision: clientState.seq,
+    revision: state.seq || 0,
+    stateVersion: state.stateVersion || 0,
     isHost: view.actor.role === 'HOST',
     role: view.actor.role === 'HOST' ? 'GOD' : 'PLAYER',
     members,
@@ -253,9 +283,10 @@ function projectPageSnapshot(view, clientState) {
     selectedDesignProblem: session && session.setup.selectedProblem,
     roomState,
     view,
-    ephemeral: clientState.ephemeral || {}
+    ephemeral: state.ephemeral || {}
   };
-  result.raw = result;
+  // legacy 页面仍读取 raw，但不能形成循环引用，否则 setData/日志序列化会失败。
+  result.raw = { ...result };
   return result;
 }
 

@@ -4,6 +4,6 @@
   "description": "跨账号环境共享鉴权，调用方 init 时自动触发",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest"
+    "wx-server-sdk": "2.6.3"
   }
 }

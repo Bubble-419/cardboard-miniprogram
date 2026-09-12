@@ -2,8 +2,8 @@
 
 const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR
-} = require('@cardboard/room-contracts');
-const { clone, applyEventGroup } = require('@cardboard/room-projection');
+} = require('../room-contracts/index');
+const { clone, applyEventGroup } = require('../room-projection/index');
 
 function defaultCommandId() {
   return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
@@ -40,6 +40,14 @@ function groupEvents(events) {
   return groups;
 }
 
+function isRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validPublicPatch(value) {
+  return isRecord(value) && isRecord(value.set) && Array.isArray(value.remove);
+}
+
 function createRoomClient(options) {
   const gateway = options && options.gateway;
   if (!gateway) throw new Error('RoomGateway required');
@@ -55,8 +63,10 @@ function createRoomClient(options) {
   let view = null;
   let ephemeral = {};
   let appliedSeq = 0;
+  let appliedStateVersion = 0;
   let stagingView = null;
   let stagingSeq = 0;
+  let stagingStateVersion = 0;
   let status = 'IDLE';
   let error = null;
   let timer = null;
@@ -71,7 +81,8 @@ function createRoomClient(options) {
 
   function state() {
     return {
-      roomId, view: clone(view), ephemeral: clone(ephemeral), seq: appliedSeq, status, error: clone(error),
+      roomId, view: clone(view), ephemeral: clone(ephemeral), seq: appliedSeq,
+      stateVersion: appliedStateVersion, status, error: clone(error),
       serverClockOffsetMs, serverNow: Date.now() + serverClockOffsetMs
     };
   }
@@ -99,14 +110,16 @@ function createRoomClient(options) {
 
   function schedule(delay) {
     cancelTimer();
-    if (disposed || paused || !roomId) return;
+    if (disposed || paused || (!roomId && status !== 'DEGRADED')) return;
     timer = setTimeoutFn(() => {
-      enqueue(syncUntilCurrent).catch((syncError) => console.warn('RoomClient sync', syncError));
+      const operation = roomId ? syncUntilCurrent : openInternal;
+      return enqueue(operation).catch((syncError) => console.warn('RoomClient sync', syncError));
     }, delay == null ? intervalMs : delay);
   }
 
   function enqueue(operation) {
-    const run = queue.then(operation, operation);
+    // Promise.then 会把上一任务的返回值作为参数传入；syncUntilCurrent 的首参有协议语义，必须显式隔离。
+    const run = queue.then(() => operation(), () => operation());
     queue = run.catch(() => undefined);
     return run;
   }
@@ -117,12 +130,25 @@ function createRoomClient(options) {
     view = null;
     ephemeral = {};
     appliedSeq = 0;
+    appliedStateVersion = 0;
     stagingView = null;
     stagingSeq = 0;
+    stagingStateVersion = 0;
     consecutiveSyncFailures = 0;
     serverClockOffsetMs = 0;
     status = nextStatus || 'IDLE';
     error = null;
+  }
+
+  function isTerminalRoomError(connectionError) {
+    return [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND]
+      .includes(connectionError && connectionError.code);
+  }
+
+  function disconnectFromError(connectionError) {
+    resetConnection('DISCONNECTED');
+    error = { errCode: connectionError.code, errMsg: connectionError.message };
+    publish();
   }
 
   function validateSnapshot(snapshot, targetRoomId) {
@@ -130,8 +156,10 @@ function createRoomClient(options) {
       && snapshot.protocolVersion === PROTOCOL_VERSION
       && snapshot.viewSchemaVersion === VIEW_SCHEMA_VERSION
       && Number.isInteger(snapshot.seq)
+      && Number.isInteger(snapshot.stateVersion)
       && snapshot.roomId === targetRoomId
-      && snapshot.view && snapshot.view.actor && snapshot.view.route;
+      && snapshot.view && snapshot.view.room && snapshot.view.room.roomId === targetRoomId
+      && snapshot.view.actor && snapshot.view.route;
   }
 
   async function replaceFromSnapshot(targetRoomId) {
@@ -146,8 +174,10 @@ function createRoomClient(options) {
     view = clone(snapshot.view);
     ephemeral = clone(snapshot.ephemeral || {});
     appliedSeq = snapshot.seq;
+    appliedStateVersion = snapshot.stateVersion;
     stagingView = null;
     stagingSeq = 0;
+    stagingStateVersion = 0;
     status = 'READY';
     error = null;
     consecutiveSyncFailures = 0;
@@ -169,6 +199,7 @@ function createRoomClient(options) {
     }
     if (batch.snapshotRequired) return { snapshotRequired: true };
     const baseSeq = stagingView ? stagingSeq : appliedSeq;
+    const baseStateVersion = stagingView ? stagingStateVersion : appliedStateVersion;
     if (Number(batch.afterSeq) !== baseSeq) throw Object.assign(new Error('同步水位不匹配'), { code: ERR.SNAPSHOT_REQUIRED });
     const roomCurrentSeq = Number(batch.roomCurrentSeq);
     if (!Number.isInteger(roomCurrentSeq) || roomCurrentSeq < baseSeq || typeof batch.hasMore !== 'boolean') {
@@ -176,6 +207,9 @@ function createRoomClient(options) {
     }
     const events = Array.isArray(batch.events) ? batch.events : null;
     if (!events) throw Object.assign(new Error('事件列表不合法'), { code: ERR.SNAPSHOT_REQUIRED });
+    if (batch.hasMore && events.length === 0) {
+      throw Object.assign(new Error('同步未推进水位'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
     const knownTypes = new Set(Object.values(EVENT_TYPES));
     if (events.some((item) => item.eventSchemaVersion !== EVENT_SCHEMA_VERSION
       || item.roomId !== roomId || !knownTypes.has(item.type))) {
@@ -186,12 +220,24 @@ function createRoomClient(options) {
       if (events[index].seq !== events[index - 1].seq + 1) throw Object.assign(new Error('事件不连续'), { code: ERR.SNAPSHOT_REQUIRED });
     }
     let candidate = clone(stagingView || view);
+    let candidateStateVersion = baseStateVersion;
     groupEvents(events).forEach((group) => {
       const commandId = group[0] && group[0].commandId;
       if (!commandId || group.some((item) => item.commandId !== commandId)) {
         throw Object.assign(new Error('事件组不合法'), { code: ERR.SNAPSHOT_REQUIRED });
       }
+      const groupStateVersion = group[0].stateVersion;
+      const lastIndex = group.length - 1;
+      if (!Number.isInteger(groupStateVersion)
+        || groupStateVersion !== candidateStateVersion + 1
+        || group.some((item) => item.stateVersion !== groupStateVersion)
+        || group.some((item, index) => index !== lastIndex && item.payload && item.payload.publicPatch)
+        || !validPublicPatch(group[lastIndex] && group[lastIndex].payload
+          && group[lastIndex].payload.publicPatch)) {
+        throw Object.assign(new Error('事件组缺少可信公开补丁'), { code: ERR.SNAPSHOT_REQUIRED });
+      }
       candidate = applyEventGroup(candidate, group);
+      candidateStateVersion = groupStateVersion;
     });
     const throughSeq = Number(batch.throughSeq);
     if (throughSeq !== (events.length ? events[events.length - 1].seq : baseSeq)) {
@@ -205,16 +251,22 @@ function createRoomClient(options) {
     if (batch.hasMore) {
       stagingView = candidate;
       stagingSeq = throughSeq;
+      stagingStateVersion = candidateStateVersion;
       return { hasMore: true };
     }
     if (!batch.actorView || !batch.actorView.actor || !batch.actorView.route) {
       throw Object.assign(new Error('最终同步批缺少成员私有投影'), { code: ERR.SNAPSHOT_REQUIRED });
     }
+    if (!candidate || !candidate.room || candidate.room.roomId !== roomId) {
+      throw Object.assign(new Error('事件投影房间不可信'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
     view = { ...candidate, actor: clone(batch.actorView.actor), route: clone(batch.actorView.route) };
     appliedSeq = throughSeq;
+    appliedStateVersion = candidateStateVersion;
     ephemeral = clone(batch.ephemeral || {});
     stagingView = null;
     stagingSeq = 0;
+    stagingStateVersion = 0;
     status = 'READY';
     error = null;
     consecutiveSyncFailures = 0;
@@ -249,16 +301,23 @@ function createRoomClient(options) {
       await maybePresence();
       return view;
     } catch (syncError) {
-      if ([ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND].includes(syncError.code)) {
-        resetConnection('DISCONNECTED');
-        error = { errCode: syncError.code, errMsg: syncError.message };
-        publish();
+      if (isTerminalRoomError(syncError)) {
+        disconnectFromError(syncError);
         return null;
       }
       if (syncError.code === ERR.SNAPSHOT_REQUIRED) {
         stagingView = null;
         stagingSeq = 0;
-        try { return await replaceFromSnapshot(roomId); } catch (snapshotError) { syncError = snapshotError; }
+        stagingStateVersion = 0;
+        try {
+          return await replaceFromSnapshot(roomId);
+        } catch (snapshotError) {
+          if (isTerminalRoomError(snapshotError)) {
+            disconnectFromError(snapshotError);
+            return null;
+          }
+          syncError = snapshotError;
+        }
       }
       status = 'DEGRADED';
       consecutiveSyncFailures += 1;
@@ -283,15 +342,19 @@ function createRoomClient(options) {
       current = await gateway.currentRoom();
     } catch (openError) {
       status = 'DEGRADED';
+      consecutiveSyncFailures += 1;
       error = { errCode: openError.code || ERR.DEPENDENCY_UNAVAILABLE,
         errMsg: openError.message || '查询当前房间失败' };
       publish();
+      schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
       return null;
     }
     if (!current || current.ok !== true) {
       status = 'DEGRADED';
+      consecutiveSyncFailures += 1;
       error = { errCode: current && current.errCode, errMsg: current && current.errMsg };
       publish();
+      schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
       return null;
     }
     if (!current.roomId) {
@@ -299,9 +362,23 @@ function createRoomClient(options) {
       publish();
       return null;
     }
-    await replaceFromSnapshot(current.roomId);
-    schedule(0);
-    return view;
+    try {
+      await replaceFromSnapshot(current.roomId);
+      schedule(0);
+      return view;
+    } catch (snapshotError) {
+      if (isTerminalRoomError(snapshotError)) {
+        disconnectFromError(snapshotError);
+        return null;
+      }
+      roomId = current.roomId;
+      status = 'DEGRADED';
+      error = { errCode: snapshotError.code || ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: snapshotError.message || '打开房间失败' };
+      publish();
+      schedule(intervalMs);
+      return null;
+    }
   }
 
   async function resumeInternal() {
@@ -314,16 +391,15 @@ function createRoomClient(options) {
     try {
       return await replaceFromSnapshot(roomId);
     } catch (resumeError) {
-      if ([ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND].includes(resumeError.code)) {
-        resetConnection('DISCONNECTED');
-        error = { errCode: resumeError.code, errMsg: resumeError.message };
+      if (isTerminalRoomError(resumeError)) {
+        disconnectFromError(resumeError);
       } else {
         status = 'DEGRADED';
         consecutiveSyncFailures += 1;
         error = { errCode: resumeError.code || ERR.DEPENDENCY_UNAVAILABLE,
           errMsg: resumeError.message || '恢复房间失败' };
       }
-      publish();
+      if (!isTerminalRoomError(resumeError)) publish();
       return view;
     } finally {
       const retryDelay = status === 'DEGRADED'
@@ -372,20 +448,24 @@ function createRoomClient(options) {
       return () => listeners.delete(id);
     },
     dispatch(input) { return enqueue(() => dispatchInternal(input || {})); },
-    refresh() { return enqueue(() => roomId ? replaceFromSnapshot(roomId) : openInternal()); },
-    history(query) {
-      return roomId && typeof gateway.history === 'function'
-        ? gateway.history(roomId, query || {})
+    // refresh 与前后台 resume 共享同一恢复语义：终态错误会断开，可恢复错误会进入退避重试。
+    refresh() { return enqueue(resumeInternal); },
+    history(query, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.history === 'function'
+        ? gateway.history(queryRoomId, query || {})
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    sessionSnapshot(sessionId) {
-      return roomId && typeof gateway.session === 'function'
-        ? gateway.session(roomId, sessionId)
+    sessionSnapshot(sessionId, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.session === 'function'
+        ? gateway.session(queryRoomId, sessionId)
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    leaderboard(sessionId) {
-      return roomId && typeof gateway.leaderboard === 'function'
-        ? gateway.leaderboard(roomId, sessionId)
+    leaderboard(sessionId, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.leaderboard === 'function'
+        ? gateway.leaderboard(queryRoomId, sessionId)
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     getView() { return clone(view); },

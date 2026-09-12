@@ -1,6 +1,6 @@
 'use strict';
 
-const { COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP } = require('@cardboard/room-contracts');
+const { COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, LIFECYCLE } = require('../room-contracts/index');
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -58,6 +58,8 @@ function projectPublicView(aggregate) {
 
   const contributions = Object.values(facts.contributions || {}).filter((item) => item.sessionId === session.sessionId);
   const selectedProblem = contributions.find((item) => item.contributionId === session.setup.selectedProblemId) || null;
+  const problemRevealSteps = [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
+    WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER];
   const participantView = (session.participants || []).map((item) => ({
     memberId: item.memberId,
     seatNoAtStart: item.seatNoAtStart,
@@ -97,7 +99,8 @@ function projectPublicView(aggregate) {
         text: selectedProblem.text,
         entityVersion: selectedProblem.entityVersion
       } : null,
-      designProblems: session.workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM
+      // 问题在收集完成前互不可见；进入选择阶段后持续投影，确保配置页返回时可完整还原。
+      designProblems: problemRevealSteps.includes(session.workflow.step)
         ? contributions.filter((item) => item.kind === 'DESIGN_PROBLEM').map((item) => ({
           contributionId: item.contributionId,
           memberId: item.memberId,
@@ -210,6 +213,11 @@ function capability(allowed, reason) {
   return { allowed: !!allowed, reason: allowed ? null : reason };
 }
 
+function progressComplete(progress) {
+  const submitted = new Set((progress && progress.submittedMemberIds) || []);
+  return ((progress && progress.requiredMemberIds) || []).every((memberId) => submitted.has(memberId));
+}
+
 function projectCapabilities(aggregate, actor) {
   const session = aggregate.currentSession;
   const step = session && session.workflow.step;
@@ -221,29 +229,59 @@ function projectCapabilities(aggregate, actor) {
   const isActorTurn = !!(turn && actor && turn.activeMemberId === actor.memberId);
   const caps = {};
   Object.values(COMMAND_TYPES).forEach((type) => { caps[type] = capability(false, 'INVALID_TRANSITION'); });
+  const liveActor = !!(actor && (aggregate.room.members || []).some((member) => member.memberId === actor.memberId));
+  // 历史投影和已解散房间严格只读，不能把归档 Session 误当成当前 Session 给出操作能力。
+  if (aggregate.room.lifecycle !== LIFECYCLE.OPEN
+    || !liveActor
+    || (session && aggregate.room.currentSessionId !== session.sessionId)) return caps;
   caps[COMMAND_TYPES.UPDATE_ROOM_PROFILE] = capability(isHost, 'HOST_REQUIRED');
-  caps[COMMAND_TYPES.UPDATE_MEMBER_PROFILE] = capability(!!actor, 'NOT_MEMBER');
+  caps[COMMAND_TYPES.UPDATE_MEMBER_PROFILE] = capability(liveActor, 'NOT_MEMBER');
   caps[COMMAND_TYPES.REORDER_SEATS] = capability(isHost && !session, isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED');
   caps[COMMAND_TYPES.LEAVE_ROOM] = capability(!!actor && !isHost, isHost ? 'HOST_CANNOT_LEAVE' : 'NOT_MEMBER');
   caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, 'HOST_REQUIRED');
   caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, 'HOST_REQUIRED');
   caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED');
-  caps[COMMAND_TYPES.SET_SCENARIO] = capability(isHost && step === WORKFLOW_STEP.CHOOSE_SCENARIO, 'INVALID_TRANSITION');
+  const scenarioConfigSteps = [WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
+    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER];
+  caps[COMMAND_TYPES.SET_SCENARIO] = capability(isHost && scenarioConfigSteps.includes(step), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(isHost && step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(isHost && step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER, 'INVALID_TRANSITION');
+  const problemSelectionSteps = [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
+    WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER];
+  caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost
+    && [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER].includes(step), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.REPLAY_WORKSHOP_SESSION] = caps[COMMAND_TYPES.RETURN_TO_LOBBY];
-  caps[COMMAND_TYPES.APPEND_ARTIFACT] = capability(!!turn && (isActorTurn || isHost), 'INVALID_TRANSITION');
+  const replayMinimum = session && session.mode === MODE.SPY ? 3 : 2;
+  caps[COMMAND_TYPES.REPLAY_WORKSHOP_SESSION] = capability(
+    isHost && !!session && session.status === SESSION_STATUS.COMPLETED
+      && aggregate.room.members.length >= replayMinimum,
+    'INVALID_TRANSITION'
+  );
+  const activeArtifactStage = !!turn
+    && [WORKFLOW_STEP.PARTNER_TURN, WORKFLOW_STEP.PARTNER_STATEMENT].includes(step)
+    && (isActorTurn || isHost);
+  const activeArtifactAppendStage = !!turn && (
+    (step === WORKFLOW_STEP.PARTNER_TURN && (isActorTurn || isHost))
+    || (step === WORKFLOW_STEP.PARTNER_STATEMENT && isHost)
+  );
+  const closingArtifactStage = isHost && !!(partner && partner.closing)
+    && [WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW].includes(step);
+  const canMutateArtifact = activeArtifactStage || closingArtifactStage;
+  caps[COMMAND_TYPES.APPEND_ARTIFACT] = capability(activeArtifactAppendStage || closingArtifactStage, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.UPDATE_ARTIFACT] = capability(canMutateArtifact, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.REMOVE_ARTIFACT] = capability(canMutateArtifact, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.SUBMIT_PARTNER_SCORE] = capability(isParticipant && !!turn && !isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN, isActorTurn ? 'SELF_SCORE' : 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.POST_PARTNER_MESSAGE] = capability(isParticipant && !!turn && ((step === WORKFLOW_STEP.PARTNER_TURN && !isActorTurn) || step === WORKFLOW_STEP.PARTNER_STATEMENT), 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.START_PARTNER_STATEMENT] = capability(isHost && !!turn && turn.scoreProgress.submittedMemberIds.length === turn.scoreProgress.requiredMemberIds.length, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.START_PARTNER_STATEMENT] = capability(isHost && step === WORKFLOW_STEP.PARTNER_TURN
+    && !!turn && progressComplete(turn.scoreProgress),
+  'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(!!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN
+    && !!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');
   const canClosingVote = isParticipant && !!partner && !!partner.closing
     && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE
     && partner.closing.initiatorMemberId !== actor.memberId
@@ -258,7 +296,9 @@ function projectCapabilities(aggregate, actor) {
   const spy = currentSpy(aggregate);
   const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
   caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy
+    && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step)
+    && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(isHost && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
     alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
@@ -303,9 +343,15 @@ function projectRoute(aggregate, actorView) {
 }
 
 function projectActorView(aggregate, actorUserId) {
-  const member = findMember(aggregate, actorUserId);
-  if (!member) return null;
   const session = aggregate.currentSession;
+  let member = findMember(aggregate, actorUserId);
+  if (!member && session && [SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status)) {
+    const historical = (session.participants || []).find((item) => String(item.userId) === String(actorUserId));
+    if (historical) {
+      member = { memberId: historical.memberId, seatNo: historical.seatNoAtStart };
+    }
+  }
+  if (!member) return null;
   const participant = session ? findParticipant(session, member.memberId) : null;
   const facts = aggregate.facts || {};
   const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
@@ -319,7 +365,7 @@ function projectActorView(aggregate, actorUserId) {
   const actor = {
     memberId: member.memberId,
     role: member.memberId === aggregate.room.hostMemberId ? 'HOST' : 'PLAYER',
-    seatNo: member.seatNo,
+    seatNo: participant ? participant.seatNoAtStart : member.seatNo,
     isParticipant: !!(participant && participant.status === 'ACTIVE'),
     contributionStatus: contribution ? { submitted: true, contributionId: contribution.contributionId, text: contribution.text, entityVersion: contribution.entityVersion } : { submitted: false },
     scoreStatus: score ? { submitted: true, scoreHalfSteps: score.scoreHalfSteps } : { submitted: false },

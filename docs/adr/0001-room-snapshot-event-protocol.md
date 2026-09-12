@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # 房间同步采用权威状态加短期有序事件

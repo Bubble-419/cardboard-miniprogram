@@ -13,7 +13,7 @@ function buildLeaderboard(snapshot) {
   const result = session && session.result || {};
   const members = snapshot && snapshot.members || [];
   const participants = session && session.participants || [];
-  const turns = Array.isArray(result.turns) ? result.turns : [];
+  const turns = Array.isArray(session && session.turnSummaries) ? session.turnSummaries : [];
   return (result.leaderboard || []).map((row) => {
     const member = members.find((item) => item.memberId === row.memberId)
       || participants.find((item) => item.memberId === row.memberId) || {};
@@ -32,7 +32,7 @@ function buildLeaderboard(snapshot) {
 
 Page(withPageInteractionLock({
   data: {
-    roomId: '', isSubScreen: false, isHost: false, leaderboard: [], loading: true,
+    roomId: '', sessionId: '', isSubScreen: false, isHost: false, leaderboard: [], loading: true,
     error: '', from: '', actioning: false
   },
 
@@ -54,7 +54,9 @@ Page(withPageInteractionLock({
 
   _applySnapshot(snapshot) {
     if (!snapshot || snapshot.ok !== true) return;
+    const session = snapshot.view && snapshot.view.session;
     this.setData({
+      sessionId: session && session.sessionId || '',
       isHost: snapshot.isHost === true,
       leaderboard: buildLeaderboard(snapshot),
       loading: false,
@@ -85,9 +87,12 @@ Page(withPageInteractionLock({
   },
 
   handleGlobalReview() {
+    const sessionQuery = this.data.sessionId
+      ? `&sessionId=${encodeURIComponent(this.data.sessionId)}`
+      : '';
     return runPageNavigation(this, async () => ({
       method: 'navigateTo',
-      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(this.data.roomId)}&mode=review`
+      url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(this.data.roomId)}&mode=review${sessionQuery}`
     }), { loadingText: '正在打开回顾…' });
   },
 

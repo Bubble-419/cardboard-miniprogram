@@ -138,6 +138,10 @@ function upsertHistoryWorkshop(entry) {
     list.unshift({
       id: entry.roomId,
       roomId: entry.roomId,
+      sessionId: entry.sessionId
+        || (reviewSnapshot && reviewSnapshot.roomState && reviewSnapshot.roomState.sessionId)
+        || prev.sessionId
+        || '',
       name: entry.name || prev.name || '脑暴工作坊',
       creator: entry.creator || prev.creator || '',
       time: entry.time || formatTime(entry.ts || Date.now()),

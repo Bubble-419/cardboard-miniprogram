@@ -3,7 +3,7 @@
 const { COMMAND_TYPES } = require('@cardboard/room-contracts');
 const {
   event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
-  activeParticipantIds, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
+  activeParticipantIds, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
 function reduceHalliCommand(aggregate, command, actorUserId, deps) {
@@ -12,6 +12,8 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
     const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
     if (!check.ok) return check;
     check.session.workflow.step = WORKFLOW_STEP.HALLI_CREATIVE;
+    check.session.workflow.activeMemberId = null;
+    check.session.workflow.turnId = null;
     check.session.workflow.phaseStartedAt = nowOf(deps);
     check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
     return domainOk(aggregate, [event(EVENT_TYPES.HALLI_CREATIVE_STARTED, { sessionId: check.session.sessionId })]);
@@ -33,7 +35,7 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
     if (!progress.submittedMemberIds.includes(actor.member.memberId)) progress.submittedMemberIds.push(actor.member.memberId);
     const events = [event(EVENT_TYPES.HALLI_IDEA_SUBMITTED, { memberId: actor.member.memberId,
       submittedCount: progress.submittedMemberIds.length, requiredCount: progress.requiredMemberIds.length })];
-    if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) {
+    if (progressComplete(progress)) {
       check.session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
       check.session.workflow.phaseStartedAt = nowOf(deps);
       events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: check.session.sessionId }));
@@ -58,15 +60,28 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
   return fail(ERR.INVALID_ARGUMENT, `未实现的 Halli 命令: ${command.type}`);
 }
 
-function handleHalliParticipantLeft(aggregate, memberId) {
+function handleHalliParticipantLeft(aggregate, memberId, deps) {
   const session = aggregate.currentSession;
   const events = [];
   if (!session || session.mode !== MODE.HALLI_GALLI) return { events, dirtyFacts: [] };
+  if (session.workflow.step === WORKFLOW_STEP.HALLI_ACTIVITY
+    && session.setup.proposedFirstMemberId === memberId) {
+    const replacement = activeParticipantIds(session)[0] || null;
+    session.setup.proposedFirstMemberId = replacement;
+    session.workflow.activeMemberId = replacement;
+    session.workflow.phaseStartedAt = nowOf(deps);
+    events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTED, {
+      memberId: replacement,
+      nextStep: WORKFLOW_STEP.HALLI_ACTIVITY,
+      reason: 'MEMBER_LEFT'
+    }));
+  }
   const progress = session.progress && session.progress.contributionProgress;
   if (progress) {
     progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+    progress.submittedMemberIds = progress.submittedMemberIds.filter((id) => id !== memberId);
     if (session.workflow.step === WORKFLOW_STEP.HALLI_CREATIVE
-      && progress.requiredMemberIds.every((id) => progress.submittedMemberIds.includes(id))) {
+      && progressComplete(progress)) {
       session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
       events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: session.sessionId }));
     }

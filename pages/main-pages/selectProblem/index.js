@@ -150,12 +150,7 @@ Page(withPageInteractionLock({
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
-      const roomBG = normalizeBG(result.selectedBG)
-        || normalizeBG(getApp().globalData.selectedBG);
-
-      if (roomBG) {
-        this._syncCategoriesFromBG(roomBG);
-      }
+      this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
 
       const patch = {
         workshopName: result.workshopName || '脑暴工作坊',
@@ -180,7 +175,8 @@ Page(withPageInteractionLock({
     if (!roomId) return;
     bindPageToRoomSession(this, {
       getRoomId: () => roomId,
-      followNavigation: true,
+      // 房主可能从后续配置页返回重新选题；该页确认后会主动跳转，无需状态路由立即推走。
+      followNavigation: false,
       onSnapshot: (result) => {
         if (!this._pageAlive || this._pageVisible === false) return;
         this._applyRoomSnapshot(result).catch((e) => console.warn('selectProblem snapshot', e));

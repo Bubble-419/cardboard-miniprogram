@@ -25,6 +25,10 @@ const TARGETS = {
   roomMedia: {
     entry: path.join(ROOT, 'cloudfunctions/roomMedia/src/entry.js'),
     outfile: path.join(ROOT, 'cloudfunctions/roomMedia/index.js')
+  },
+  speechToText: {
+    entry: path.join(ROOT, 'cloudfunctions/speechToText/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/speechToText/index.js')
   }
 };
 
@@ -65,6 +69,7 @@ function buildOne(name) {
     '--target=node18',
     '--format=cjs',
     '--external:wx-server-sdk',
+    '--external:tencentcloud-sdk-nodejs',
     ...aliasArgs,
     `--outfile=${target.outfile}`
   ]);

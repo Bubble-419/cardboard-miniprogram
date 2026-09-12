@@ -50,6 +50,10 @@ function isActiveParticipant(session, memberId) {
 }
 function activeParticipants(session) { return (session.participants || []).filter((item) => item.status === 'ACTIVE'); }
 function activeParticipantIds(session) { return activeParticipants(session).map((item) => item.memberId); }
+function progressComplete(progress) {
+  const submitted = new Set((progress && progress.submittedMemberIds) || []);
+  return ((progress && progress.requiredMemberIds) || []).every((memberId) => submitted.has(memberId));
+}
 function activeParticipantsBySeat(aggregate) {
   const ids = new Set(activeParticipantIds(aggregate.currentSession));
   return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
@@ -71,9 +75,9 @@ function createMember(room, userId, payload, memberId, seatNo, joinedAt, role) {
     role,
     profile: {
       nickName: String(payload.nickName || `玩家${seatNo}`).trim().slice(0, 20) || `玩家${seatNo}`,
-      avatarRef: payload.avatarRef || payload.avatarUrl || null,
+      avatarRef: payload.avatarRef || null,
       avatarIndex: payload.avatarIndex == null ? null : Number(payload.avatarIndex),
-      color: payload.color || payload.avatarColor || nextColor(room)
+      color: payload.color || nextColor(room)
     },
     joinedAt
   };
@@ -88,7 +92,6 @@ function createRoomAggregate(roomId, actorUserId, payload, deps) {
     lifecycle: LIFECYCLE.OPEN,
     stateVersion: 0,
     eventSeq: 0,
-    minAvailableSeq: 1,
     hostMemberId: memberId,
     workshopName: String(payload.workshopName || '脑暴工作坊').trim().slice(0, 20) || '脑暴工作坊',
     members: [],
@@ -124,6 +127,9 @@ function assertParticipant(aggregate, actorUserId) {
 function assertSession(aggregate, context, options) {
   const session = aggregate.currentSession;
   if (!session || !context || context.sessionId !== session.sessionId) return fail(ERR.STALE_CONTEXT, '场次已经变化');
+  if (context.workflowStep && context.workflowStep !== session.workflow.step) {
+    return fail(ERR.STALE_CONTEXT, '工作流步骤已经变化');
+  }
   if (options && options.mode && session.mode !== options.mode) return fail(ERR.INVALID_TRANSITION, '当前模式不匹配');
   if (options && options.steps && !options.steps.includes(session.workflow.step)) return fail(ERR.INVALID_TRANSITION);
   return okResult({ session });
@@ -140,6 +146,8 @@ function newSession(aggregate, mode, copiedSetup, deps) {
   const ordinal = (aggregate.room.sessionOrdinal || 0) + 1;
   const participants = sortedMembers(aggregate.room).map((member) => ({
     memberId: member.memberId,
+    // 仅服务端用于已离房成员读取自己的归档场次；Public/Member View 永不投影该字段。
+    userId: member.userId,
     seatNoAtStart: member.seatNo,
     status: 'ACTIVE',
     // 场次内展示使用冻结资料，成员中途离房后 Snapshot 仍可完整还原回合与榜单。
@@ -183,14 +191,18 @@ function markParticipantLeft(aggregate, memberId) {
   if (participant) participant.status = 'LEFT';
   ['contributionProgress'].forEach((key) => {
     const progress = session.progress && session.progress[key];
-    if (progress) progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+    if (progress) {
+      progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+      progress.submittedMemberIds = progress.submittedMemberIds.filter((id) => id !== memberId);
+    }
   });
 }
 
 module.exports = {
   clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
-  activeParticipantIds, activeParticipantsBySeat, nextSeat, nextColor, createMember, createRoomAggregate,
+  activeParticipantIds, activeParticipantsBySeat, progressComplete,
+  nextSeat, nextColor, createMember, createRoomAggregate,
   assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, newSession,
   normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,
   normalizeMode, LIFECYCLE
