@@ -1,482 +1,197 @@
 'use strict';
 
-const { MAX_SEATS } = require('@cardboard/room-contracts');
+const crypto = require('crypto');
+const { clone } = require('@cardboard/room-projection');
 
-const ROOMS = 'rooms';
-const MEMBERS = 'roomMembers';
-const COMMANDS = 'roomCommands';
-const PRESENCE = 'roomPresence';
-const SCORES = 'roomScores';
-const MESSAGES = 'roomMessages';
-const VOTES = 'roomVotes';
-const ARTIFACTS = 'roomArtifacts';
-const SECRETS = 'roomSecrets';
+// V3 使用独立物理集合，不读取或双写旧协议数据。
+const COLLECTIONS = Object.freeze({
+  rooms: 'roomV3Rooms', sessions: 'roomV3Sessions', active: 'roomV3ActiveByUser',
+  actions: 'roomV3Actions', events: 'roomV3Events', turns: 'roomV3Turns',
+  scores: 'roomV3Scores', votes: 'roomV3Votes', contributions: 'roomV3Contributions',
+  artifacts: 'roomV3Artifacts', messages: 'roomV3Messages', secrets: 'roomV3Secrets',
+  presence: 'roomV3Presence'
+});
 
-/**
- * CloudBase 仓储：将领域聚合映射到 rooms + roomMembers + roomCommands
- * @param {{ db: any, cloud?: any }} deps
- */
+const FACT_COLLECTION = Object.freeze({
+  turns: COLLECTIONS.turns, scores: COLLECTIONS.scores, votes: COLLECTIONS.votes,
+  contributions: COLLECTIONS.contributions, artifacts: COLLECTIONS.artifacts,
+  messages: COLLECTIONS.messages, secrets: COLLECTIONS.secrets
+});
+
+const FACT_LIMITS = Object.freeze({ turns: 600, scores: 1000, votes: 1000,
+  contributions: 20, artifacts: 1000, messages: 200, secrets: 12 });
+
+function digest(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
+function docId(value) { return digest(value).slice(0, 48); }
+function cleanDoc(value) {
+  if (!value) return null;
+  const next = clone(value);
+  delete next._id;
+  return next;
+}
+async function safeGet(store, collection, id) {
+  try {
+    const result = await store.collection(collection).doc(id).get();
+    return result && result.data ? cleanDoc(result.data) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function loadFactRows(store, kind, roomId, sessionId) {
+  if (!sessionId) return kind === 'messages' ? [] : {};
+  const query = store.collection(FACT_COLLECTION[kind]).where({ roomId, sessionId });
+  const result = await query.limit(FACT_LIMITS[kind]).get();
+  const rows = (result && result.data) || [];
+  if (kind === 'messages') return rows.map(cleanDoc).sort((a, b) => a.createdAt - b.createdAt);
+  const out = {};
+  rows.forEach((raw) => {
+    const row = cleanDoc(raw);
+    if (row && row._factKey) {
+      const key = row._factKey;
+      delete row._factKey;
+      out[key] = row;
+    }
+  });
+  return out;
+}
+
+async function loadAggregate(store, roomId) {
+  const room = await safeGet(store, COLLECTIONS.rooms, roomId);
+  if (!room) return null;
+  const currentSession = room.currentSessionId
+    ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId)
+    : null;
+  if (currentSession) delete currentSession.roomId;
+  const sessionId = currentSession && currentSession.sessionId;
+  const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) =>
+    [kind, await loadFactRows(store, kind, roomId, sessionId)]));
+  return { room, currentSession, facts: Object.fromEntries(entries) };
+}
+
+function factRow(aggregate, kind, id) {
+  if (!aggregate || !aggregate.facts) return null;
+  if (kind === 'messages') return (aggregate.facts.messages || []).find((item) => item.messageId === id) || null;
+  return aggregate.facts[kind] && aggregate.facts[kind][id];
+}
+
+function openUsers(aggregate) {
+  if (!aggregate || !aggregate.room || aggregate.room.lifecycle !== 'OPEN') return [];
+  return (aggregate.room.members || []).map((member) => ({ userId: member.userId,
+    roomId: aggregate.room.roomId, memberId: member.memberId }));
+}
+
 function createCloudBaseRoomRepository(deps) {
-  const db = deps.db;
-  if (!db) throw new Error('db required');
+  const db = deps && deps.db;
+  if (!db || typeof db.runTransaction !== 'function') throw new Error('CloudBase transaction database required');
 
-  async function generateRoomId(maxRetry) {
-    const retries = maxRetry || 5;
-    for (let i = 0; i < retries; i += 1) {
-      const roomId = String(Math.floor(10000000 + Math.random() * 90000000));
-      const exist = await db.collection(ROOMS).where({ roomId }).limit(1).get();
-      if (!exist.data || !exist.data.length) return roomId;
-    }
-    return String(Math.floor(10000000 + Math.random() * 90000000));
+  function generateRoomId(commandId, actorUserId) {
+    const value = parseInt(digest(`${actorUserId}:${commandId}:room`).slice(0, 12), 16);
+    return String(10000000 + (value % 90000000));
   }
 
-  function toAggregate(roomDoc, memberDocs) {
-    if (!roomDoc) return null;
-    const membersByUserId = {};
-    const seatMap = roomDoc.seatMap && typeof roomDoc.seatMap === 'object'
-      ? { ...roomDoc.seatMap }
-      : {};
-
-    (memberDocs || []).forEach((m) => {
-      if (!m || !m.userId) return;
-      const seatNo = m.playerIndex != null ? Number(m.playerIndex) : null;
-      membersByUserId[m.userId] = {
-        userId: m.userId,
-        seatNo,
-        role: m.role === 'GOD' || m.role === 'HOST' ? 'HOST' : 'PLAYER',
-        nickName: m.nickName || `玩家${seatNo || ''}`,
-        avatarUrl: m.avatarUrl || null,
-        avatarColor: m.avatarColor || '#5EC159',
-        avatarIndex: m.avatarIndex != null ? m.avatarIndex : null,
-        joinedAt: m.joinedAt || null,
-        _id: m._id
-      };
-      if (seatNo && !seatMap[String(seatNo)]) {
-        seatMap[String(seatNo)] = m.userId;
+  async function transactCommand(input, handler) {
+    return db.runTransaction(async (transaction) => {
+      const actionId = docId(`${input.scopeKey}:${input.commandId}`);
+      const existing = await safeGet(transaction, COLLECTIONS.actions, actionId);
+      if (existing) {
+        const conflict = existing.actorUserId !== input.actorUserId
+          || existing.requestHash !== input.requestHash || existing.type !== input.type;
+        return conflict ? { conflict: true } : { replayed: true, receipt: existing };
       }
-    });
-
-    // 若无 seatMap，从成员重建
-    if (!Object.keys(seatMap).length) {
-      Object.values(membersByUserId).forEach((m) => {
-        if (m.seatNo) seatMap[String(m.seatNo)] = m.userId;
-      });
-    }
-
-    return {
-      _id: roomDoc._id,
-      roomId: roomDoc.roomId,
-      schemaVersion: roomDoc.schemaVersion || 1,
-      protocolVersion: roomDoc.protocolVersion || 1,
-      lifecycle: roomDoc.lifecycle || (roomDoc.status === 'DISSOLVED' ? 'DISSOLVED' : 'LOBBY'),
-      status: roomDoc.status || 'CREATED',
-      hostUserId: roomDoc.hostUserId || roomDoc.creatorId,
-      creatorId: roomDoc.creatorId || roomDoc.hostUserId,
-      seatMap,
-      activeSessionId: roomDoc.activeSessionId || null,
-      revision: roomDoc.revision != null ? roomDoc.revision : 0,
-      workflow: roomDoc.workflow || null,
-      domainRevisions: roomDoc.domainRevisions || null,
-      progress: roomDoc.progress || null,
-      workshopName: roomDoc.workshopName || '脑暴工作坊',
-      membersByUserId,
-      selectedModeId: roomDoc.selectedModeId || null,
-      currentPage: roomDoc.currentPage || null,
-      brainstormProgressPage: roomDoc.brainstormProgressPage || null,
-      currentPlayerIndex: roomDoc.currentPlayerIndex != null ? Number(roomDoc.currentPlayerIndex) : null,
-      currentPlayerName: roomDoc.currentPlayerName || null,
-      currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
-      partnerGamePhase: roomDoc.partnerGamePhase || null,
-      partnerMasterMode: roomDoc.partnerMasterMode === true,
-      partnerSilentMode: roomDoc.partnerSilentMode === true,
-      partnerSilentStartedAt: roomDoc.partnerSilentStartedAt != null
-        ? Number(roomDoc.partnerSilentStartedAt)
-        : null,
-      partnerSilentSoundLevel: roomDoc.partnerSilentSoundLevel != null
-        ? Math.min(1, Math.max(0, Number(roomDoc.partnerSilentSoundLevel) || 0))
-        : 0,
-      partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries)
-        ? roomDoc.partnerRoundSummaries
-        : null,
-      partnerCurrentRoundContent: roomDoc.partnerCurrentRoundContent || null,
-      partnerRoundStartedAt: roomDoc.partnerRoundStartedAt || null,
-      spyGame: roomDoc.spyGame || null,
-      spyAssignments: roomDoc.spyAssignments || null,
-      secretsByUserId: null,
-      createdAt: roomDoc.createdAt,
-      updatedAt: roomDoc.updatedAt
-    };
-  }
-
-  function secretsFromLegacyAssignments(spyAssignments) {
-    const map = {};
-    if (!spyAssignments || typeof spyAssignments !== 'object') return map;
-    Object.keys(spyAssignments).forEach((seat) => {
-      const row = spyAssignments[seat];
-      if (!row || !row.userId) return;
-      map[row.userId] = {
-        playerIndex: row.playerIndex != null ? Number(row.playerIndex) : Number(seat),
-        userId: row.userId,
-        role: row.role,
-        word: row.word,
-        blurb: row.blurb || '',
-        name: row.name || ''
+      const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+      const current = await loadAggregate(transaction, input.roomId);
+      const decision = handler({ aggregate: current, activeRoomId: active && active.roomId });
+      const receipt = {
+        scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
+        roomId: input.roomId, type: input.type, requestHash: input.requestHash,
+        accepted: decision.accepted === true, outcome: cleanDoc(decision.outcome),
+        error: cleanDoc(decision.error), committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq,
+        createdAt: input.createdAt
       };
-    });
-    return map;
-  }
-
-  async function loadSecretsByUserId(roomId) {
-    try {
-      const res = await db.collection(SECRETS).where({ roomId }).limit(MAX_SEATS).get();
-      const map = {};
-      (res.data || []).forEach((doc) => {
-        if (!doc || !doc.userId) return;
-        map[doc.userId] = {
-          playerIndex: doc.playerIndex != null ? Number(doc.playerIndex) : null,
-          userId: doc.userId,
-          role: doc.role,
-          word: doc.word,
-          blurb: doc.blurb || '',
-          name: doc.name || ''
-        };
-      });
-      return map;
-    } catch (e) {
-      console.warn('load roomSecrets failed', e);
-      return {};
-    }
-  }
-
-  async function loadRoom(roomId) {
-    const roomRes = await db.collection(ROOMS).where({ roomId }).limit(1).get();
-    if (!roomRes.data || !roomRes.data.length) return null;
-    const roomDoc = roomRes.data[0];
-    const membersRes = await db
-      .collection(MEMBERS)
-      .where({ roomId })
-      .limit(MAX_SEATS)
-      .get();
-    const agg = toAggregate(roomDoc, membersRes.data || []);
-    let secretsByUserId = await loadSecretsByUserId(roomId);
-    if (!Object.keys(secretsByUserId).length) {
-      secretsByUserId = secretsFromLegacyAssignments(roomDoc.spyAssignments);
-    }
-    agg.secretsByUserId = Object.keys(secretsByUserId).length ? secretsByUserId : null;
-    return agg;
-  }
-
-  async function loadCommand(commandId) {
-    try {
-      const res = await db.collection(COMMANDS).doc(commandId).get();
-      return res && res.data ? res.data : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  async function saveCommandResult(row) {
-    const now = Date.now();
-    await db.collection(COMMANDS).doc(row.commandId).set({
-      data: {
-        commandId: row.commandId,
-        actorUserId: row.actorUserId,
-        roomId: row.roomId,
-        type: row.type,
-        result: row.result,
-        createdAt: now,
-        updatedAt: now
+      if (decision.accepted) {
+        const beforeUsers = openUsers(current);
+        const afterUsers = openUsers(decision.aggregate);
+        await transaction.collection(COLLECTIONS.rooms).doc(input.roomId).set({ data: cleanDoc(decision.aggregate.room) });
+        if (decision.aggregate.currentSession) {
+          const session = cleanDoc(decision.aggregate.currentSession);
+          await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId)
+            .set({ data: { ...session, roomId: input.roomId } });
+        }
+        if (decision.archivedSession) {
+          const archived = cleanDoc(decision.archivedSession);
+          await transaction.collection(COLLECTIONS.sessions).doc(archived.sessionId)
+            .set({ data: { ...archived, roomId: input.roomId } });
+        }
+        for (const dirty of decision.dirtyFacts || []) {
+          const row = factRow(decision.aggregate, dirty.kind, dirty.id);
+          if (!row) continue;
+          const sessionId = row.sessionId || (decision.aggregate.currentSession && decision.aggregate.currentSession.sessionId);
+          const data = { ...cleanDoc(row), roomId: input.roomId, sessionId };
+          if (dirty.kind !== 'messages') data._factKey = dirty.id;
+          await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(docId(`${input.roomId}:${dirty.kind}:${dirty.id}`))
+            .set({ data });
+        }
+        for (const item of decision.events || []) {
+          await transaction.collection(COLLECTIONS.events).doc(`${input.roomId}_${String(item.seq).padStart(12, '0')}`)
+            .set({ data: cleanDoc(item) });
+        }
+        const afterIds = new Set(afterUsers.map((item) => item.userId));
+        for (const member of beforeUsers) {
+          if (!afterIds.has(member.userId)) {
+            await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).remove();
+          }
+        }
+        for (const member of afterUsers) {
+          await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
+        }
       }
+      await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
+      return { replayed: false, receipt };
     });
   }
 
-  async function persistRoom(room, effects) {
-    const now = room.updatedAt || Date.now();
-    const _ = db.command;
-    // 对象字段必须用 _.set 整段替换：CloudBase update 对 null→object 不能点路径写入
-    // （否则会报 Cannot create field 'x' in element {lastResult: null}）
-    function setOrValue(val) {
-      if (val === null || val === undefined) return _.remove();
-      if (val && typeof val === 'object') return _.set(val);
-      return val;
-    }
+  async function readAggregate(roomId) {
+    return db.runTransaction((transaction) => loadAggregate(transaction, roomId));
+  }
 
-    const plainFields = {
-      roomId: room.roomId,
-      schemaVersion: room.schemaVersion,
-      protocolVersion: room.protocolVersion,
-      lifecycle: room.lifecycle,
-      status: room.status,
-      hostUserId: room.hostUserId,
-      creatorId: room.creatorId || room.hostUserId,
-      seatMap: room.seatMap || {},
-      activeSessionId: room.activeSessionId == null ? null : room.activeSessionId,
-      revision: room.revision,
-      workflow: room.workflow || null,
-      domainRevisions: room.domainRevisions || null,
-      progress: room.progress || null,
-      workshopName: room.workshopName,
-      selectedModeId: room.selectedModeId || null,
-      currentPage: room.currentPage || null,
-      brainstormProgressPage: room.brainstormProgressPage || null,
-      currentPlayerIndex: room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null,
-      currentPlayerName: room.currentPlayerName || null,
-      currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
-      partnerGamePhase: room.partnerGamePhase || null,
-      partnerMasterMode: room.partnerMasterMode === true,
-      partnerSilentMode: room.partnerSilentMode === true,
-      partnerSilentStartedAt: room.partnerSilentStartedAt == null
-        ? null
-        : Number(room.partnerSilentStartedAt),
-      partnerSilentSoundLevel: room.partnerSilentSoundLevel != null
-        ? Math.min(1, Math.max(0, Number(room.partnerSilentSoundLevel) || 0))
-        : 0,
-      partnerRoundSummaries: room.partnerRoundSummaries || null,
-      partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
-      partnerRoundStartedAt: room.partnerRoundStartedAt || null,
-      spyGame: room.spyGame || null,
-      // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
-      spyAssignments: room.spyAssignments || null,
-      updatedAt: now
-    };
-
-    if (effects && effects.created) {
-      plainFields.createdAt = room.createdAt || now;
-      await db.collection(ROOMS).add({ data: plainFields });
-    } else {
-      const roomFields = {
-        ...plainFields,
-        seatMap: setOrValue(room.seatMap),
-        workflow: setOrValue(room.workflow),
-        domainRevisions: setOrValue(room.domainRevisions),
-        progress: setOrValue(room.progress),
-        partnerRoundSummaries: setOrValue(room.partnerRoundSummaries),
-        partnerCurrentRoundContent: setOrValue(room.partnerCurrentRoundContent),
-        spyGame: setOrValue(room.spyGame),
-        spyAssignments: setOrValue(room.spyAssignments)
-      };
-      if (room._id) {
-        await db.collection(ROOMS).doc(room._id).update({ data: roomFields });
-      } else {
-        await db.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
-      }
-    }
-
-    if (effects && effects.dissolved) {
-      const all = await db.collection(MEMBERS).where({ roomId: room.roomId }).limit(20).get();
-      for (const m of all.data || []) {
-        await db.collection(MEMBERS).doc(m._id).remove();
-      }
-      return;
-    }
-
-    // 同步 roomMembers 读模型
-    const existing = await db.collection(MEMBERS).where({ roomId: room.roomId }).limit(20).get();
-    const byUser = {};
-    (existing.data || []).forEach((m) => {
-      byUser[m.userId] = m;
+  async function readSyncState(roomId, afterSeq, limit) {
+    return db.runTransaction(async (transaction) => {
+      const aggregate = await loadAggregate(transaction, roomId);
+      if (!aggregate) return { aggregate: null, events: [] };
+      const ceiling = aggregate.room.eventSeq;
+      const _ = db.command;
+      const result = await transaction.collection(COLLECTIONS.events)
+        .where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy('seq', 'asc').limit(limit).get();
+      return { aggregate, events: (result && result.data || []).map(cleanDoc) };
     });
-
-    const desiredIds = new Set(Object.keys(room.membersByUserId || {}));
-    for (const userId of Object.keys(byUser)) {
-      if (!desiredIds.has(userId)) {
-        await db.collection(MEMBERS).doc(byUser[userId]._id).remove();
-      }
-    }
-
-    for (const userId of desiredIds) {
-      const m = room.membersByUserId[userId];
-      const data = {
-        roomId: room.roomId,
-        userId,
-        role: m.role === 'HOST' ? 'GOD' : 'PLAYER',
-        nickName: m.nickName,
-        avatarUrl: m.avatarUrl,
-        avatarColor: m.avatarColor,
-        avatarIndex: m.avatarIndex,
-        playerIndex: m.seatNo,
-        joinedAt: m.joinedAt || now,
-        lastSeenAt: now
-      };
-      if (byUser[userId]) {
-        await db.collection(MEMBERS).doc(byUser[userId]._id).update({ data });
-      } else {
-        await db.collection(MEMBERS).add({ data });
-      }
-    }
-
-    // Partner 独立事实：评分 / 消息 / 投票 / 素材
-    if (effects && effects.scoreUpsert && room.scoresByKey && effects.scoreKey) {
-      const row = room.scoresByKey[effects.scoreKey];
-      if (row) {
-        const docId = `${room.roomId}_${row.turnId}_${row.scorerUserId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
-        try {
-          await db.collection(SCORES).doc(docId).set({
-            data: {
-              roomId: room.roomId,
-              turnId: row.turnId,
-              userId: row.scorerUserId,
-              currentPlayerIndex: row.activeSeatNo,
-              score: row.score,
-              updatedAt: row.updatedAt,
-              createdAt: row.updatedAt
-            }
-          });
-        } catch (e) {
-          console.warn('persist score failed', e);
-        }
-      }
-    }
-    if (effects && effects.messageAppended && Array.isArray(room.messages)) {
-      const msg = room.messages.find((m) => m && m.id === effects.messageId);
-      if (msg) {
-        try {
-          await db.collection(MESSAGES).add({
-            data: {
-              roomId: room.roomId,
-              messageId: msg.id,
-              text: msg.text,
-              at: msg.at,
-              round: msg.round,
-              phase: msg.phase,
-              anonKey: msg.anonKey
-            }
-          });
-        } catch (e) {
-          console.warn('persist message failed', e);
-        }
-      }
-    }
-    if (effects && effects.voteUpsert && room.votesByKey && effects.voteKey) {
-      const row = room.votesByKey[effects.voteKey];
-      if (row) {
-        const docId = `${row.voteSessionId}_${row.voterUserId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
-        try {
-          await db.collection(VOTES).doc(docId).set({
-            data: {
-              roomId: room.roomId,
-              voteSessionId: row.voteSessionId,
-              userId: row.voterUserId,
-              seatNo: row.seatNo,
-              vote: row.vote,
-              at: row.at
-            }
-          });
-        } catch (e) {
-          console.warn('persist vote failed', e);
-        }
-      }
-    }
-    if (effects && effects.artifactAppended && Array.isArray(room.artifacts)) {
-      const art = room.artifacts.find((a) => a && a.operationId === effects.operationId);
-      if (art) {
-        try {
-          await db.collection(ARTIFACTS).add({
-            data: {
-              roomId: room.roomId,
-              ...art
-            }
-          });
-        } catch (e) {
-          console.warn('persist artifact failed', e);
-        }
-      }
-    }
-
-    // Spy 密牌：独立集合，不进公开快照
-    if (effects && effects.secretsClear) {
-      try {
-        const existing = await db.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
-        for (const doc of existing.data || []) {
-          await db.collection(SECRETS).doc(doc._id).remove();
-        }
-      } catch (e) {
-        console.warn('clear roomSecrets failed', e);
-      }
-    } else if (effects && effects.secretsUpsert && room.secretsByUserId) {
-      try {
-        const existing = await db.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
-        for (const doc of existing.data || []) {
-          await db.collection(SECRETS).doc(doc._id).remove();
-        }
-      } catch (e) {
-        console.warn('clear roomSecrets failed', e);
-      }
-      for (const userId of Object.keys(room.secretsByUserId)) {
-        const row = room.secretsByUserId[userId];
-        if (!row) continue;
-        const docId = `${room.roomId}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
-        try {
-          await db.collection(SECRETS).doc(docId).set({
-            data: {
-              roomId: room.roomId,
-              userId,
-              playerIndex: row.playerIndex != null ? Number(row.playerIndex) : null,
-              role: row.role,
-              word: row.word,
-              blurb: row.blurb || '',
-              name: row.name || '',
-              updatedAt: now
-            }
-          });
-        } catch (e) {
-          console.warn('persist roomSecret failed', e);
-        }
-      }
-    }
   }
 
-  async function loadDomainData(roomId, domains) {
-    const out = {};
-    const wanted = domains || [];
-    if (wanted.includes('scores')) {
-      try {
-        const res = await db.collection(SCORES).where({ roomId }).limit(200).get();
-        out.scores = res.data || [];
-      } catch (e) {
-        out.scores = [];
-      }
-    }
-    return out;
+  async function findActiveRoom(userId) {
+    return db.runTransaction(async (transaction) => {
+      const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
+      if (!active) return null;
+      const aggregate = await loadAggregate(transaction, active.roomId);
+      const member = aggregate && aggregate.room.lifecycle === 'OPEN'
+        && (aggregate.room.members || []).find((item) => item.userId === userId);
+      return member ? { roomId: active.roomId, memberId: member.memberId }
+        : { dangling: true, roomId: active.roomId };
+    });
   }
 
-  async function upsertPresence({ roomId, userId, deviceSessionId }) {
-    const device = deviceSessionId || 'default';
-    const docId = `${roomId}_${userId}_${device}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
-    const now = Date.now();
-    const data = {
-      roomId,
-      userId,
-      deviceSessionId: device,
-      lastSeenAt: now,
-      online: true,
-      updatedAt: now
-    };
-    try {
-      await db.collection(PRESENCE).doc(docId).set({ data });
-    } catch (e) {
-      await db.collection(PRESENCE).add({ data: { ...data, _fallbackId: docId } });
-    }
-    return data;
+  async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
+    const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };
+    await db.collection(COLLECTIONS.presence).doc(docId(`${roomId}:${memberId}:${row.deviceSessionId}`)).set({ data: row });
+    return row;
   }
 
   async function listPresence(roomId) {
-    const res = await db.collection(PRESENCE).where({ roomId }).limit(50).get();
-    return res.data || [];
+    const result = await db.collection(COLLECTIONS.presence).where({ roomId }).limit(50).get();
+    return (result && result.data || []).map(cleanDoc);
   }
 
-  return {
-    generateRoomId,
-    loadRoom,
-    loadCommand,
-    saveCommandResult,
-    persistRoom,
-    loadDomainData,
-    upsertPresence,
-    listPresence
-  };
+  return { generateRoomId, transactCommand, readAggregate, readSyncState, findActiveRoom,
+    upsertPresence, listPresence };
 }
 
-module.exports = {
-  createCloudBaseRoomRepository
-};
+module.exports = { COLLECTIONS, createCloudBaseRoomRepository, digest, docId };

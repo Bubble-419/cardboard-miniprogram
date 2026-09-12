@@ -1,0 +1,187 @@
+'use strict';
+
+const {
+  PROTOCOL_VERSION, SCHEMA_VERSION, MAX_SEATS, LIFECYCLE, SESSION_STATUS, MODE, WORKFLOW_STEP,
+  EVENT_TYPES, ERR, fail, okResult, normalizeMode, isNonEmptyString
+} = require('@cardboard/room-contracts');
+
+const AVATAR_COLORS = ['#5EC159', '#4A90E2', '#E24A4A', '#E2B84A', '#9B59B6', '#1ABC9C'];
+
+function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
+function event(type, payload) { return { type, payload: clone(payload || {}) }; }
+function domainOk(next, events, outcome, dirtyFacts) {
+  return okResult({ aggregate: next, events: events || [], outcome: outcome || { kind: 'ACCEPTED' }, dirtyFacts: dirtyFacts || [] });
+}
+function idOf(deps, prefix) {
+  if (deps && typeof deps.idFactory === 'function') return deps.idFactory(prefix);
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+function nowOf(deps) { return Number(deps && deps.now) || Date.now(); }
+function normalizeHalfStarScore(raw, halfSteps) {
+  if (halfSteps != null && halfSteps !== '') {
+    const steps = Number(halfSteps);
+    return Number.isInteger(steps) && steps >= 0 && steps <= 10 ? steps / 2 : null;
+  }
+  if (raw == null || raw === '') return null;
+  const score = Number(raw);
+  if (!Number.isFinite(score)) return null;
+  const steps = Math.round(score * 2);
+  return steps >= 0 && steps <= 10 ? steps / 2 : null;
+}
+function ensureFacts(aggregate) {
+  aggregate.facts = aggregate.facts || {};
+  ['turns', 'scores', 'votes', 'contributions', 'artifacts', 'secrets'].forEach((key) => {
+    aggregate.facts[key] = aggregate.facts[key] || {};
+  });
+  aggregate.facts.messages = Array.isArray(aggregate.facts.messages) ? aggregate.facts.messages : [];
+  return aggregate.facts;
+}
+function sortedMembers(room) { return (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo); }
+function memberByUserId(room, userId) { return (room.members || []).find((item) => String(item.userId) === String(userId)) || null; }
+function memberById(room, memberId) { return (room.members || []).find((item) => item.memberId === memberId) || null; }
+function isHost(room, member) { return !!(member && room.hostMemberId === member.memberId); }
+function participantById(session, memberId) { return ((session && session.participants) || []).find((item) => item.memberId === memberId) || null; }
+function isActiveParticipant(session, memberId) {
+  const participant = participantById(session, memberId);
+  return !!(participant && participant.status === 'ACTIVE');
+}
+function activeParticipants(session) { return (session.participants || []).filter((item) => item.status === 'ACTIVE'); }
+function activeParticipantIds(session) { return activeParticipants(session).map((item) => item.memberId); }
+function activeParticipantsBySeat(aggregate) {
+  const ids = new Set(activeParticipantIds(aggregate.currentSession));
+  return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
+}
+function nextSeat(room) {
+  const used = new Set((room.members || []).map((item) => item.seatNo));
+  for (let seatNo = 1; seatNo <= MAX_SEATS; seatNo += 1) if (!used.has(seatNo)) return seatNo;
+  return null;
+}
+function nextColor(room) {
+  const used = new Set((room.members || []).map((item) => item.profile && item.profile.color));
+  return AVATAR_COLORS.find((color) => !used.has(color)) || AVATAR_COLORS[0];
+}
+function createMember(room, userId, payload, memberId, seatNo, joinedAt, role) {
+  return {
+    memberId,
+    userId,
+    seatNo,
+    role,
+    profile: {
+      nickName: String(payload.nickName || `玩家${seatNo}`).trim().slice(0, 20) || `玩家${seatNo}`,
+      avatarRef: payload.avatarRef || payload.avatarUrl || null,
+      avatarIndex: payload.avatarIndex == null ? null : Number(payload.avatarIndex),
+      color: payload.color || payload.avatarColor || nextColor(room)
+    },
+    joinedAt
+  };
+}
+function createRoomAggregate(roomId, actorUserId, payload, deps) {
+  const now = nowOf(deps);
+  const memberId = idOf(deps, 'member');
+  const room = {
+    roomId,
+    protocolVersion: PROTOCOL_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    lifecycle: LIFECYCLE.OPEN,
+    stateVersion: 0,
+    eventSeq: 0,
+    minAvailableSeq: 1,
+    hostMemberId: memberId,
+    workshopName: String(payload.workshopName || '脑暴工作坊').trim().slice(0, 20) || '脑暴工作坊',
+    members: [],
+    currentSessionId: null,
+    sessionOrdinal: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+  room.members.push(createMember(room, actorUserId, payload, memberId, 1, now, 'HOST'));
+  return { room, currentSession: null, facts: { turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {} } };
+}
+function assertRoom(aggregate) {
+  if (!aggregate || !aggregate.room) return fail(ERR.ROOM_NOT_FOUND);
+  if (aggregate.room.lifecycle === LIFECYCLE.DISSOLVED) return fail(ERR.ROOM_DISSOLVED);
+  return okResult();
+}
+function assertMember(aggregate, actorUserId) {
+  const base = assertRoom(aggregate);
+  if (!base.ok) return base;
+  const member = memberByUserId(aggregate.room, actorUserId);
+  return member ? okResult({ member }) : fail(ERR.NOT_MEMBER);
+}
+function assertHost(aggregate, actorUserId) {
+  const auth = assertMember(aggregate, actorUserId);
+  if (!auth.ok) return auth;
+  return isHost(aggregate.room, auth.member) ? auth : fail(ERR.HOST_REQUIRED);
+}
+function assertParticipant(aggregate, actorUserId) {
+  const auth = assertMember(aggregate, actorUserId);
+  if (!auth.ok) return auth;
+  return isActiveParticipant(aggregate.currentSession, auth.member.memberId) ? auth : fail(ERR.NOT_PARTICIPANT);
+}
+function assertSession(aggregate, context, options) {
+  const session = aggregate.currentSession;
+  if (!session || !context || context.sessionId !== session.sessionId) return fail(ERR.STALE_CONTEXT, '场次已经变化');
+  if (options && options.mode && session.mode !== options.mode) return fail(ERR.INVALID_TRANSITION, '当前模式不匹配');
+  if (options && options.steps && !options.steps.includes(session.workflow.step)) return fail(ERR.INVALID_TRANSITION);
+  return okResult({ session });
+}
+function assertTurn(aggregate, context, steps) {
+  const check = assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
+  if (!check.ok) return check;
+  const partner = check.session.modeState.partner;
+  if (!partner || !partner.activeTurn || partner.activeTurn.turnId !== context.turnId) return fail(ERR.STALE_CONTEXT, '行动轮已经变化');
+  return okResult({ session: check.session, partner, turn: partner.activeTurn });
+}
+function newSession(aggregate, mode, copiedSetup, deps) {
+  const now = nowOf(deps);
+  const ordinal = (aggregate.room.sessionOrdinal || 0) + 1;
+  const participants = sortedMembers(aggregate.room).map((member) => ({
+    memberId: member.memberId, seatNoAtStart: member.seatNo, status: 'ACTIVE'
+  }));
+  const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : WORKFLOW_STEP.CHOOSE_SCENARIO;
+  const session = {
+    sessionId: idOf(deps, 'session'), ordinal, status: SESSION_STATUS.CONFIGURING, mode, participants,
+    setup: { scenarioSource: null, scenario: null, selectedProblemId: null, proposedFirstMemberId: null, ...(clone(copiedSetup) || {}) },
+    workflow: { step, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
+    progress: {}, modeState: {}, result: null, startedAt: now, completedAt: null, updatedAt: now
+  };
+  aggregate.room.sessionOrdinal = ordinal;
+  aggregate.room.currentSessionId = session.sessionId;
+  aggregate.currentSession = session;
+  return session;
+}
+function normalizeScenario(payload, mode) {
+  const source = String(payload.source || payload.scenarioSource || '').toUpperCase();
+  if (!['OFFLINE', 'CASE', 'HISTORY', 'CUSTOM'].includes(source)) return fail(ERR.INVALID_ARGUMENT, '未知情境来源');
+  if (source === 'OFFLINE') return okResult({ source, scenario: null });
+  const input = payload.scenario && typeof payload.scenario === 'object' ? payload.scenario : payload;
+  const scenario = {
+    scene: String(input.scene || '').trim().slice(0, 100),
+    user: String(input.user || '').trim().slice(0, 100),
+    function: String(input.function || '').trim().slice(0, 100)
+  };
+  if (mode === MODE.PARTNER) scenario.platform = String(input.platform || '').trim().slice(0, 100);
+  if (!scenario.scene || !scenario.user || !scenario.function || (mode === MODE.PARTNER && !scenario.platform)) {
+    return fail(ERR.INVALID_ARGUMENT, '情境字段不完整');
+  }
+  return okResult({ source, scenario });
+}
+function markParticipantLeft(aggregate, memberId) {
+  const session = aggregate.currentSession;
+  if (!session) return;
+  const participant = participantById(session, memberId);
+  if (participant) participant.status = 'LEFT';
+  ['contributionProgress'].forEach((key) => {
+    const progress = session.progress && session.progress[key];
+    if (progress) progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+  });
+}
+
+module.exports = {
+  clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, ensureFacts, sortedMembers,
+  memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
+  activeParticipantIds, activeParticipantsBySeat, nextSeat, nextColor, createMember, createRoomAggregate,
+  assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, newSession,
+  normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,
+  normalizeMode, LIFECYCLE
+};

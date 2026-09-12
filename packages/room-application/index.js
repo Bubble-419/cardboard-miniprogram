@@ -1,253 +1,333 @@
 'use strict';
 
+const crypto = require('crypto');
 const {
-  COMMAND_TYPES,
-  ERR,
-  fail,
-  okResult,
-  validateCommandEnvelope,
-  isNonEmptyString
+  PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, ERR,
+  fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString
 } = require('@cardboard/room-contracts');
+const { reduceCommand, authorizeRoomRead, memberByUserId } = require('@cardboard/room-domain');
 const {
-  executeCommand,
-  buildHead,
-  projectSnapshot,
-  authorizeRoomRead
-} = require('@cardboard/room-domain');
+  clone, projectPublicView, projectActorView, projectMemberView, projectRoute, createPublicPatch
+} = require('@cardboard/room-projection');
 
-/**
- * @typedef {object} RoomRepository
- * @property {(roomId: string) => Promise<object|null>} loadRoom
- * @property {(commandId: string) => Promise<object|null>} loadCommand
- * @property {(input: object) => Promise<void>} saveCommandResult
- * @property {(room: object, effects: object) => Promise<void>} persistRoom
- * @property {() => string} [generateRoomId]
- * @property {(roomId: string, domains: string[]) => Promise<object>} [loadDomainData]
- * @property {(input: { roomId: string, userId: string, deviceSessionId?: string }) => Promise<object>} [upsertPresence]
- * @property {(roomId: string) => Promise<object[]>} [listPresence]
- */
+const DEFAULT_SYNC_LIMIT = 100;
+const MAX_SYNC_BACKLOG = 300;
 
-function createRoomApplication(repo, options) {
-  if (!repo || typeof repo.loadRoom !== 'function') {
-    throw new Error('RoomRepository required');
-  }
-  const appOptions = options || {};
+function hash(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex');
+}
 
-  async function execute(rawEnvelope, actorContext) {
-    const actorUserId = actorContext && actorContext.userId;
-    if (!actorUserId) {
-      return fail(ERR.UNAUTHENTICATED);
+function deterministicRandom(seed) {
+  let counter = 0;
+  return () => {
+    const bytes = crypto.createHash('sha256').update(`${seed}:${counter++}`).digest();
+    return bytes.readUInt32BE(0) / 0x100000000;
+  };
+}
+
+function deterministicIds(seed) {
+  let counter = 0;
+  return (prefix) => `${prefix}_${hash(`${seed}:${prefix}:${counter++}`).slice(0, 20)}`;
+}
+
+function requestHash(envelope) {
+  return hash(stableStringify({ type: envelope.type, context: envelope.context, payload: envelope.payload }));
+}
+
+function markCommittedFacts(aggregate, dirtyFacts, commitSeq) {
+  const facts = aggregate && aggregate.facts;
+  if (!facts) return;
+  (dirtyFacts || []).forEach(({ kind, id }) => {
+    if (kind === 'messages') {
+      const row = (facts.messages || []).find((item) => item.messageId === id);
+      if (row) row.commitSeq = commitSeq;
+      return;
     }
+    const bucket = facts[kind];
+    if (bucket && bucket[id]) bucket[id].commitSeq = commitSeq;
+  });
+}
 
+function buildEvents(envelope, domainEvents, room, beforePublic, afterPublic, occurredAt) {
+  const events = domainEvents && domainEvents.length ? domainEvents : [];
+  if (!events.length) throw new Error('accepted command must produce at least one event');
+  const firstSeq = room.eventSeq + 1;
+  const stateVersion = room.stateVersion + 1;
+  const patch = createPublicPatch(beforePublic, afterPublic);
+  return events.map((item, index) => ({
+    eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    roomId: room.roomId,
+    seq: firstSeq + index,
+    stateVersion,
+    commandId: envelope.commandId,
+    commandEventIndex: index + 1,
+    commandEventCount: events.length,
+    sessionId: envelope.context.sessionId || (afterPublic && afterPublic.session ? afterPublic.session.sessionId : null),
+    type: item.type,
+    payload: index === events.length - 1 ? { ...(clone(item.payload) || {}), publicPatch: patch } : clone(item.payload || {}),
+    occurredAt
+  }));
+}
+
+function eventGroups(events) {
+  const groups = [];
+  (events || []).forEach((item) => {
+    const last = groups[groups.length - 1];
+    if (!last || last[0].commandId !== item.commandId) groups.push([item]);
+    else last.push(item);
+  });
+  return groups;
+}
+
+function validEventGroup(group) {
+  if (!group.length) return false;
+  const count = group[0].commandEventCount;
+  return group.length === count && group.every((item, index) =>
+    item.eventSchemaVersion === EVENT_SCHEMA_VERSION
+      && item.commandEventCount === count
+      && item.commandEventIndex === index + 1);
+}
+
+/** 应用层只编排事务、投影与同步；所有业务裁决留在领域 Reducer。 */
+function createRoomApplication(repo, options) {
+  if (!repo || typeof repo.transactCommand !== 'function') throw new Error('RoomRepository required');
+  const appOptions = options || {};
+  const now = () => Number(typeof appOptions.now === 'function' ? appOptions.now() : (appOptions.now || Date.now()));
+
+  async function ephemeral(roomId) {
+    if (typeof repo.listPresence !== 'function') return {};
+    const rows = await repo.listPresence(roomId);
+    const cutoff = now() - (appOptions.presenceTtlMs || 15000);
+    const byMemberId = {};
+    (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff).forEach((row) => {
+      if (!byMemberId[row.memberId] || byMemberId[row.memberId].lastSeenAt < row.lastSeenAt) {
+        byMemberId[row.memberId] = { online: true, lastSeenAt: row.lastSeenAt };
+      }
+    });
+    return { presenceByMemberId: byMemberId };
+  }
+
+  async function readCurrentRoom(actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    const found = await repo.findActiveRoom(actorUserId);
+    if (!found) return okResult({ roomId: null, membershipId: null });
+    if (found.dangling) return fail(ERR.INTERNAL_ERROR, '当前房间索引不一致', { recoverable: true });
+    return okResult({ roomId: found.roomId, membershipId: found.memberId });
+  }
+
+  async function readSnapshot(roomId, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
+    const aggregate = await repo.readAggregate(roomId);
+    const auth = authorizeRoomRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
+    return okResult({
+      protocolVersion: PROTOCOL_VERSION,
+      roomId,
+      seq: aggregate.room.eventSeq,
+      stateVersion: aggregate.room.stateVersion,
+      viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      view: projectMemberView(auth.aggregate, actorUserId),
+      ephemeral: await ephemeral(roomId),
+      serverTime: now(),
+      minAvailableSeq: aggregate.room.minAvailableSeq
+    });
+  }
+
+  async function sync(roomId, afterSeq, actorContext, requestOptions) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
+    const baseSeq = Number(afterSeq);
+    if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, 'afterSeq 必须是非负整数');
+    const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
+    const bundle = await repo.readSyncState(roomId, baseSeq, MAX_SYNC_BACKLOG + 1);
+    const aggregate = bundle && bundle.aggregate;
+    const auth = authorizeRoomRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
+    const currentSeq = aggregate.room.eventSeq;
+    const minAvailableSeq = aggregate.room.minAvailableSeq;
+    const base = { afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
+      snapshotRequired: false, events: [], actorView: null, ephemeral: {}, serverTime: now() };
+    if (baseSeq > currentSeq || baseSeq < minAvailableSeq - 1 || currentSeq - baseSeq > MAX_SYNC_BACKLOG) {
+      return okResult({ ...base, snapshotRequired: true });
+    }
+    const available = (bundle.events || []).filter((item) => item.seq > baseSeq && item.seq <= currentSeq)
+      .sort((a, b) => a.seq - b.seq);
+    if (available.length && available[0].seq !== baseSeq + 1) return okResult({ ...base, snapshotRequired: true });
+    for (let i = 1; i < available.length; i += 1) {
+      if (available[i].seq !== available[i - 1].seq + 1) return okResult({ ...base, snapshotRequired: true });
+    }
+    const selected = [];
+    for (const group of eventGroups(available)) {
+      if (!validEventGroup(group)) return okResult({ ...base, snapshotRequired: true });
+      if (selected.length && selected.length + group.length > limit) break;
+      selected.push(...group);
+      if (selected.length >= limit) break;
+    }
+    const throughSeq = selected.length ? selected[selected.length - 1].seq : baseSeq;
+    const hasMore = throughSeq < currentSeq;
+    let actorView = null;
+    let projectedEphemeral = {};
+    if (!hasMore) {
+      const actor = projectActorView(aggregate, actorUserId);
+      actorView = { actor, route: projectRoute(aggregate, actor) };
+      projectedEphemeral = await ephemeral(roomId);
+    }
+    return okResult({ ...base, throughSeq, hasMore, events: clone(selected), actorView,
+      ephemeral: projectedEphemeral, serverTime: now() });
+  }
+
+  async function executeCommand(rawEnvelope, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     const validated = validateCommandEnvelope(rawEnvelope);
     if (!validated.ok) return validated;
     const envelope = validated.envelope;
-
-    const existingCmd = await repo.loadCommand(envelope.commandId);
-    if (existingCmd) {
-      if (
-        String(existingCmd.actorUserId) !== String(actorUserId) ||
-        (existingCmd.roomId && envelope.roomId && String(existingCmd.roomId) !== String(envelope.roomId))
-      ) {
-        return fail(ERR.COMMAND_ID_CONFLICT);
+    const commandNow = now();
+    const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
+    const commandRoomId = isCreate
+      ? String(typeof repo.generateRoomId === 'function' ? repo.generateRoomId(envelope.commandId, actorUserId) : (10000000 + Math.floor(Math.random() * 90000000)))
+      : envelope.roomId;
+    const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
+    const seed = hash(`${appOptions.serverSecret || 'room-v3'}:${commandRoomId}:${envelope.commandId}`);
+    const transaction = await repo.transactCommand({
+      scopeKey, commandId: envelope.commandId, actorUserId, roomId: commandRoomId, type: envelope.type,
+      requestHash: requestHash(envelope), createdAt: commandNow
+    }, ({ aggregate: current, activeRoomId }) => {
+      if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+      if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
+        return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
       }
-      return existingCmd.result;
-    }
-
-    let room = null;
-    if (envelope.type !== COMMAND_TYPES.CREATE_ROOM) {
-      room = await repo.loadRoom(envelope.roomId);
-    }
-
-    const domainResult = executeCommand({
-      room,
-      envelope,
-      actorUserId,
-      roomIdFactory: repo.generateRoomId
-        ? () => repo.generateRoomId()
-        : undefined,
-      now: appOptions.now || Date.now(),
-      wordPairPicker: appOptions.wordPairPicker,
-      random: appOptions.random
+      const beforePublic = projectPublicView(current);
+      const domain = reduceCommand({ aggregate: current, command: { ...envelope, roomId: commandRoomId }, actorUserId,
+        deps: { now: commandNow, idFactory: deterministicIds(seed), random: deterministicRandom(seed),
+          wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => commandRoomId } });
+      if (!domain.ok) return { accepted: false, error: domain };
+      const next = domain.aggregate;
+      const afterPublic = projectPublicView(next);
+      const events = buildEvents(envelope, domain.events, next.room, beforePublic, afterPublic, commandNow);
+      next.room.stateVersion += 1;
+      next.room.eventSeq = events[events.length - 1].seq;
+      next.room.updatedAt = commandNow;
+      markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
+      return { accepted: true, aggregate: next, events, dirtyFacts: domain.dirtyFacts || [],
+        archivedSession: next.archivedSession || null,
+        outcome: { ...(domain.outcome || { kind: 'ACCEPTED' }), roomId: next.room.roomId,
+          committedThroughSeq: next.room.eventSeq } };
     });
 
-    if (!domainResult.ok) {
-      return {
-        ...domainResult,
-        commandId: envelope.commandId
-      };
-    }
-
-    if (!(domainResult.effects && domainResult.effects.readOnly)) {
-      await repo.persistRoom(domainResult.room, domainResult.effects || {});
-    }
-
-    const success = okResult({
-      commandId: envelope.commandId,
-      appliedRevision: domainResult.appliedRevision,
-      changedDomains: domainResult.changedDomains || [],
-      head: domainResult.head || buildHead(domainResult.room, actorUserId),
-      effects: domainResult.effects || {},
-      roomId: domainResult.room.roomId
-    });
-    if (domainResult.effects && domainResult.effects.card) {
-      success.card = domainResult.effects.card;
-    }
-    if (domainResult.effects && domainResult.effects.spyGame) {
-      success.spyGame = domainResult.effects.spyGame;
-    }
-    if (domainResult.effects && domainResult.effects.legacyPage) {
-      success.currentPage = domainResult.effects.legacyPage;
-    }
-    ['settled', 'tied', 'finished', 'autoVote', 'already', 'restarted'].forEach((key) => {
-      if (domainResult.effects && domainResult.effects[key] != null) {
-        success[key] = domainResult.effects[key];
+    if (transaction.conflict) return fail(ERR.COMMAND_ID_CONFLICT, undefined, { commandId: envelope.commandId });
+    const receipt = transaction.receipt;
+    if (!receipt.accepted) {
+      const rejected = { ...receipt.error, commandId: envelope.commandId };
+      if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
+        const catchup = await sync(commandRoomId, envelope.knownSeq, actorContext).catch(() => null);
+        if (catchup && catchup.ok) rejected.sync = catchup;
       }
-    });
-
-    await repo.saveCommandResult({
-      commandId: envelope.commandId,
-      actorUserId,
-      roomId: domainResult.room.roomId,
-      type: envelope.type,
-      result: success
-    });
-
-    return success;
+      return rejected;
+    }
+    const outcome = receipt.outcome;
+    const response = okResult({ commandId: envelope.commandId, outcome,
+      traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}` });
+    if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
+      response.sync = { snapshotRequired: true, roomId: outcome.roomId };
+    } else if (![COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+      response.sync = await sync(outcome.roomId, envelope.knownSeq, actorContext);
+    }
+    return response;
   }
 
-  /** 只读 head：不写库、不增加 revision */
-  async function readHead(roomId, actorContext) {
-    const actorUserId = actorContext && actorContext.userId;
-    if (!isNonEmptyString(roomId)) {
-      return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
-    }
-    const room = await repo.loadRoom(roomId);
-    const auth = authorizeRoomRead(room, actorUserId);
-    if (!auth.ok) return auth;
-    return okResult({ head: buildHead(auth.room, actorUserId) });
-  }
-
-  /** 按域快照：无业务写副作用 */
-  async function readSnapshot(roomId, actorContext, request) {
-    const actorUserId = actorContext && actorContext.userId;
-    if (!isNonEmptyString(roomId)) {
-      return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
-    }
-    const room = await repo.loadRoom(roomId);
-    const auth = authorizeRoomRead(room, actorUserId);
-    if (!auth.ok) return auth;
-
-    const domains = (request && request.domains) || ['members'];
-    let extraDomainData = {};
-    if (typeof repo.loadDomainData === 'function') {
-      extraDomainData = await repo.loadDomainData(roomId, domains);
-    }
-
-    const snapshot = projectSnapshot(auth.room, {
-      actorUserId,
-      domains,
-      clientDomainRevisions: (request && request.domainRevisions) || {},
-      extraDomainData
-    });
-    return okResult({ snapshot, head: buildHead(auth.room, actorUserId) });
-  }
-
-  /**
-   * Presence 心跳：不修改 seatMap / revision / 成员资格
-   */
   async function heartbeat(roomId, actorContext, payload) {
     const actorUserId = actorContext && actorContext.userId;
-    if (!isNonEmptyString(roomId)) {
-      return fail(ERR.INVALID_ARGUMENT, 'roomId 必填');
-    }
-    if (!isNonEmptyString(actorUserId)) {
-      return fail(ERR.UNAUTHENTICATED);
-    }
-    const room = await repo.loadRoom(roomId);
-    const auth = authorizeRoomRead(room, actorUserId);
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    const aggregate = await repo.readAggregate(roomId);
+    const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
-
-    if (typeof repo.upsertPresence !== 'function') {
-      return fail(ERR.DEPENDENCY_UNAVAILABLE, 'presence store unavailable');
-    }
-
-    const row = await repo.upsertPresence({
-      roomId,
-      userId: actorUserId,
-      deviceSessionId: payload && payload.deviceSessionId
-    });
-
-    return okResult({
-      presence: row,
-      revision: auth.room.revision
-    });
+    if (typeof repo.upsertPresence !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE, 'presence store unavailable');
+    const row = await repo.upsertPresence({ roomId, memberId: auth.member.memberId,
+      deviceSessionId: payload && payload.deviceSessionId, lastSeenAt: now() });
+    return okResult({ presence: row, seq: aggregate.room.eventSeq });
   }
 
-  return { execute, readHead, readSnapshot, heartbeat };
+  return { executeCommand, readCurrentRoom, readSnapshot, sync, heartbeat };
 }
 
 function createInMemoryRoomRepository(options) {
   const rooms = new Map();
-  const commands = new Map();
+  const actions = new Map();
+  const events = new Map();
+  const activeRooms = new Map();
   const presence = new Map();
-  const domainExtras = new Map();
+  const sessions = new Map();
   let seq = 10000000;
+  const copy = (value) => clone(value);
+  const receiptKey = (scopeKey, commandId) => `${scopeKey}:${commandId}`;
+  const usersOf = (aggregate) => {
+    if (!aggregate || aggregate.room.lifecycle !== 'OPEN') return [];
+    return (aggregate.room.members || []).map((member) => ({ userId: member.userId,
+      roomId: aggregate.room.roomId, memberId: member.memberId }));
+  };
 
   return {
-    rooms,
-    commands,
-    presence,
-    domainExtras,
-    generateRoomId() {
-      if (options && typeof options.generateRoomId === 'function') {
-        return options.generateRoomId();
-      }
+    rooms, actions, events, activeRooms, presence, sessions,
+    generateRoomId(commandId, actorUserId) {
+      if (options && typeof options.generateRoomId === 'function') return options.generateRoomId(commandId, actorUserId);
       seq += 1;
       return String(seq);
     },
-    async loadRoom(roomId) {
-      const room = rooms.get(roomId);
-      return room ? JSON.parse(JSON.stringify(room)) : null;
+    async transactCommand(input, handler) {
+      const key = receiptKey(input.scopeKey, input.commandId);
+      const existing = actions.get(key);
+      if (existing) {
+        const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
+        return conflict ? { conflict: true } : { replayed: true, receipt: copy(existing) };
+      }
+      const current = rooms.has(input.roomId) ? copy(rooms.get(input.roomId)) : null;
+      const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null });
+      const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
+        roomId: input.roomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
+        outcome: copy(decision.outcome || null), error: copy(decision.error || null),
+        committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq, createdAt: input.createdAt };
+      if (decision.accepted) {
+        const beforeUsers = usersOf(current);
+        const afterUsers = usersOf(decision.aggregate);
+        rooms.set(input.roomId, copy(decision.aggregate));
+        if (decision.archivedSession) sessions.set(decision.archivedSession.sessionId, copy(decision.archivedSession));
+        (decision.events || []).forEach((item) => {
+          if (!events.has(input.roomId)) events.set(input.roomId, []);
+          events.get(input.roomId).push(copy(item));
+        });
+        const afterIds = new Set(afterUsers.map((item) => item.userId));
+        beforeUsers.filter((item) => !afterIds.has(item.userId)).forEach((item) => activeRooms.delete(item.userId));
+        afterUsers.forEach((item) => activeRooms.set(item.userId, item.roomId));
+      }
+      actions.set(key, copy(receipt));
+      return { replayed: false, receipt: copy(receipt) };
     },
-    async loadCommand(commandId) {
-      return commands.get(commandId) || null;
+    async findActiveRoom(userId) {
+      const roomId = activeRooms.get(userId);
+      if (!roomId) return null;
+      const aggregate = rooms.get(roomId);
+      const member = aggregate && memberByUserId(aggregate.room, userId);
+      if (!aggregate || aggregate.room.lifecycle !== 'OPEN' || !member) return { dangling: true, roomId };
+      return { roomId, memberId: member.memberId };
     },
-    async saveCommandResult(row) {
-      commands.set(row.commandId, row);
+    async readAggregate(roomId) { return rooms.has(roomId) ? copy(rooms.get(roomId)) : null; },
+    async readSyncState(roomId, afterSeq, limit) {
+      return { aggregate: rooms.has(roomId) ? copy(rooms.get(roomId)) : null,
+        events: copy((events.get(roomId) || []).filter((item) => item.seq > afterSeq).slice(0, limit)) };
     },
-    async persistRoom(room) {
-      rooms.set(room.roomId, JSON.parse(JSON.stringify(room)));
+    async upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
+      const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };
+      presence.set(`${roomId}:${memberId}:${row.deviceSessionId}`, row);
+      return copy(row);
     },
-    async loadDomainData(roomId, domains) {
-      const bag = domainExtras.get(roomId) || {};
-      const out = {};
-      (domains || []).forEach((d) => {
-        if (d !== 'members' && Object.prototype.hasOwnProperty.call(bag, d)) {
-          out[d] = bag[d];
-        }
-      });
-      return out;
-    },
-    async upsertPresence({ roomId, userId, deviceSessionId }) {
-      const key = `${roomId}:${userId}:${deviceSessionId || 'default'}`;
-      const row = {
-        roomId,
-        userId,
-        deviceSessionId: deviceSessionId || 'default',
-        lastSeenAt: Date.now(),
-        online: true
-      };
-      presence.set(key, row);
-      return row;
-    },
-    async listPresence(roomId) {
-      return [...presence.values()].filter((p) => p.roomId === roomId);
-    }
+    async listPresence(roomId) { return copy([...presence.values()].filter((item) => item.roomId === roomId)); }
   };
 }
 
-module.exports = {
-  createRoomApplication,
-  createInMemoryRoomRepository
-};
+module.exports = { createRoomApplication, createInMemoryRoomRepository, hash, deterministicRandom, deterministicIds,
+  markCommittedFacts, validEventGroup };

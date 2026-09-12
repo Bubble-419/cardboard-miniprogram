@@ -6,6 +6,7 @@
   "type": "commonjs",
   "dependencies": {
     "@cardboard/room-contracts": "workspace:*",
-    "@cardboard/room-domain": "workspace:*"
+    "@cardboard/room-domain": "workspace:*",
+    "@cardboard/room-projection": "workspace:*"
   }
 }

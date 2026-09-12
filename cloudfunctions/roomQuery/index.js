@@ -9,167 +9,1180 @@ var __commonJS = (cb, mod) => function __require() {
 var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
-    var PROTOCOL_VERSION = 2;
-    var SCHEMA_VERSION = 2;
+    var PROTOCOL_VERSION = 3;
+    var SCHEMA_VERSION = 3;
+    var VIEW_SCHEMA_VERSION = 1;
+    var EVENT_SCHEMA_VERSION = 1;
     var MAX_SEATS = 6;
-    var LIFECYCLE = {
-      LOBBY: "LOBBY",
-      ACTIVE: "ACTIVE",
-      DISSOLVED: "DISSOLVED"
-    };
-    var COMMAND_TYPES = {
+    var LIFECYCLE = Object.freeze({ OPEN: "OPEN", DISSOLVED: "DISSOLVED" });
+    var SESSION_STATUS = Object.freeze({
+      CONFIGURING: "CONFIGURING",
+      RUNNING: "RUNNING",
+      COMPLETED: "COMPLETED",
+      CANCELLED: "CANCELLED"
+    });
+    var MODE = Object.freeze({ PARTNER: "PARTNER", HALLI_GALLI: "HALLI_GALLI", SPY: "SPY" });
+    var WORKFLOW_STEP = Object.freeze({
+      CHOOSE_SCENARIO: "CHOOSE_SCENARIO",
+      COLLECT_DESIGN_PROBLEMS: "COLLECT_DESIGN_PROBLEMS",
+      SELECT_DESIGN_PROBLEM: "SELECT_DESIGN_PROBLEM",
+      SELECT_FIRST_PLAYER: "SELECT_FIRST_PLAYER",
+      CONFIRM_FIRST_PLAYER: "CONFIRM_FIRST_PLAYER",
+      PARTNER_TURN: "PARTNER_TURN",
+      PARTNER_STATEMENT: "PARTNER_STATEMENT",
+      PARTNER_CLOSING_VOTE: "PARTNER_CLOSING_VOTE",
+      PARTNER_CLOSING_RUNE: "PARTNER_CLOSING_RUNE",
+      PARTNER_CLOSING_REVIEW: "PARTNER_CLOSING_REVIEW",
+      HALLI_ACTIVITY: "HALLI_ACTIVITY",
+      HALLI_CREATIVE: "HALLI_CREATIVE",
+      HALLI_SUMMARY: "HALLI_SUMMARY",
+      SPY_INTRO: "SPY_INTRO",
+      SPY_SPEAK: "SPY_SPEAK",
+      SPY_TIE_SPEAK: "SPY_TIE_SPEAK",
+      SPY_VOTE: "SPY_VOTE",
+      SPY_RESULT: "SPY_RESULT",
+      SPY_SETTLED: "SPY_SETTLED"
+    });
+    var COMMAND_TYPES = Object.freeze({
       CREATE_ROOM: "CREATE_ROOM",
+      UPDATE_ROOM_PROFILE: "UPDATE_ROOM_PROFILE",
       JOIN_ROOM: "JOIN_ROOM",
-      LEAVE_ROOM: "LEAVE_ROOM",
-      REORDER_SEATS: "REORDER_SEATS",
-      DISSOLVE_ROOM: "DISSOLVE_ROOM",
       UPDATE_MEMBER_PROFILE: "UPDATE_MEMBER_PROFILE",
-      // Partner
-      SUBMIT_SCORE: "SUBMIT_SCORE",
-      START_STATEMENT: "START_STATEMENT",
-      ADVANCE_TURN: "ADVANCE_TURN",
-      POST_MESSAGE: "POST_MESSAGE",
-      SUBMIT_CLOSING_VOTE: "SUBMIT_CLOSING_VOTE",
+      REORDER_SEATS: "REORDER_SEATS",
+      LEAVE_ROOM: "LEAVE_ROOM",
+      KICK_MEMBER: "KICK_MEMBER",
+      DISSOLVE_ROOM: "DISSOLVE_ROOM",
+      START_WORKSHOP_SESSION: "START_WORKSHOP_SESSION",
+      SET_SCENARIO: "SET_SCENARIO",
+      SUBMIT_DESIGN_PROBLEM: "SUBMIT_DESIGN_PROBLEM",
+      UPDATE_DESIGN_PROBLEM: "UPDATE_DESIGN_PROBLEM",
+      SELECT_DESIGN_PROBLEM: "SELECT_DESIGN_PROBLEM",
+      SELECT_FIRST_PLAYER: "SELECT_FIRST_PLAYER",
+      CONFIRM_FIRST_PLAYER: "CONFIRM_FIRST_PLAYER",
+      CANCEL_WORKSHOP_SESSION: "CANCEL_WORKSHOP_SESSION",
+      RETURN_TO_LOBBY: "RETURN_TO_LOBBY",
+      REPLAY_WORKSHOP_SESSION: "REPLAY_WORKSHOP_SESSION",
       APPEND_ARTIFACT: "APPEND_ARTIFACT",
-      // Spy（Phase 6）
-      SPY_START_ASSIGN: "SPY_START_ASSIGN",
-      SPY_GET_MY_CARD: "SPY_GET_MY_CARD",
-      SPY_START_SPEAK: "SPY_START_SPEAK",
-      SPY_ADVANCE_SPEAKER: "SPY_ADVANCE_SPEAKER",
-      SPY_SUBMIT_VOTE: "SPY_SUBMIT_VOTE",
-      SPY_CONFIRM_RESULT: "SPY_CONFIRM_RESULT",
-      SPY_NEXT_ROUND: "SPY_NEXT_ROUND",
-      SPY_CONTINUE: "SPY_CONTINUE",
-      SPY_RESTART: "SPY_RESTART"
-    };
-    var ERR = {
+      UPDATE_ARTIFACT: "UPDATE_ARTIFACT",
+      REMOVE_ARTIFACT: "REMOVE_ARTIFACT",
+      SUBMIT_PARTNER_SCORE: "SUBMIT_PARTNER_SCORE",
+      POST_PARTNER_MESSAGE: "POST_PARTNER_MESSAGE",
+      START_PARTNER_STATEMENT: "START_PARTNER_STATEMENT",
+      ADVANCE_PARTNER_TURN: "ADVANCE_PARTNER_TURN",
+      USE_PARTNER_SPECIAL: "USE_PARTNER_SPECIAL",
+      END_PARTNER_SILENT: "END_PARTNER_SILENT",
+      SUBMIT_PARTNER_CLOSING_VOTE: "SUBMIT_PARTNER_CLOSING_VOTE",
+      ADVANCE_PARTNER_CLOSING: "ADVANCE_PARTNER_CLOSING",
+      COMPLETE_PARTNER_SESSION: "COMPLETE_PARTNER_SESSION",
+      END_HALLI_ACTIVITY: "END_HALLI_ACTIVITY",
+      SUBMIT_HALLI_IDEA: "SUBMIT_HALLI_IDEA",
+      COMPLETE_HALLI_SESSION: "COMPLETE_HALLI_SESSION",
+      START_SPY_GAME: "START_SPY_GAME",
+      ADVANCE_SPY_SPEAKER: "ADVANCE_SPY_SPEAKER",
+      OPEN_SPY_VOTE: "OPEN_SPY_VOTE",
+      SUBMIT_SPY_VOTE: "SUBMIT_SPY_VOTE",
+      START_NEXT_SPY_ROUND: "START_NEXT_SPY_ROUND",
+      RESTART_SPY_GAME: "RESTART_SPY_GAME",
+      COMPLETE_SPY_SESSION: "COMPLETE_SPY_SESSION"
+    });
+    var EVENT_TYPES = Object.freeze([
+      "ROOM_CREATED",
+      "ROOM_PROFILE_UPDATED",
+      "ROOM_DISSOLVED",
+      "ROOM_RETURNED_TO_LOBBY",
+      "MEMBER_JOINED",
+      "MEMBER_PROFILE_UPDATED",
+      "SEATS_REORDERED",
+      "MEMBER_LEFT",
+      "MEMBER_KICKED",
+      "WORKSHOP_SESSION_STARTED",
+      "WORKSHOP_SESSION_CANCELLED",
+      "WORKSHOP_SESSION_REPLAYED",
+      "WORKSHOP_SESSION_COMPLETED",
+      "SCENARIO_SET",
+      "DESIGN_PROBLEM_SUBMITTED",
+      "DESIGN_PROBLEM_UPDATED",
+      "DESIGN_PROBLEM_SELECTED",
+      "PROBLEM_COLLECTION_COMPLETED",
+      "FIRST_PLAYER_SELECTED",
+      "PARTNER_TURN_STARTED",
+      "PARTNER_TURN_COMPLETED",
+      "PARTNER_TURN_ABANDONED",
+      "PARTNER_SCORE_RECORDED",
+      "PARTNER_STATEMENT_STARTED",
+      "PARTNER_SPECIAL_USED",
+      "PARTNER_SILENT_ENDED",
+      "PARTNER_CLOSING_VOTE_STARTED",
+      "PARTNER_CLOSING_VOTE_RECORDED",
+      "PARTNER_CLOSING_QUESTIONED",
+      "PARTNER_CLOSING_ACCEPTED",
+      "PARTNER_CLOSING_REVIEW_STARTED",
+      "ARTIFACT_APPENDED",
+      "ARTIFACT_UPDATED",
+      "ARTIFACT_REMOVED",
+      "PARTNER_MESSAGE_POSTED",
+      "HALLI_CREATIVE_STARTED",
+      "HALLI_IDEA_SUBMITTED",
+      "HALLI_SUMMARY_READY",
+      "SPY_ROLES_ASSIGNED",
+      "SPY_SPEAKER_STARTED",
+      "SPY_SPEAKER_FINISHED",
+      "SPY_VOTE_OPENED",
+      "SPY_VOTE_RECORDED",
+      "SPY_VOTE_TIED",
+      "SPY_PLAYER_ELIMINATED",
+      "SPY_ROUND_COMPLETED",
+      "SPY_ROUND_STARTED",
+      "SPY_GAME_SETTLED",
+      "SPY_GAME_RESTARTED"
+    ].reduce((out, type) => {
+      out[type] = type;
+      return out;
+    }, {}));
+    var ERR = Object.freeze({
       INVALID_ARGUMENT: "INVALID_ARGUMENT",
       UNAUTHENTICATED: "UNAUTHENTICATED",
       ROOM_NOT_FOUND: "ROOM_NOT_FOUND",
+      ROOM_DISSOLVED: "ROOM_DISSOLVED",
+      ALREADY_IN_ROOM: "ALREADY_IN_ROOM",
       ROOM_FULL: "ROOM_FULL",
+      LIMIT_EXCEEDED: "LIMIT_EXCEEDED",
       NOT_MEMBER: "NOT_MEMBER",
+      NOT_PARTICIPANT: "NOT_PARTICIPANT",
       HOST_REQUIRED: "HOST_REQUIRED",
       HOST_CANNOT_LEAVE: "HOST_CANNOT_LEAVE",
-      SESSION_MISMATCH: "SESSION_MISMATCH",
-      REVISION_CONFLICT: "REVISION_CONFLICT",
+      STALE_CONTEXT: "STALE_CONTEXT",
       INVALID_TRANSITION: "INVALID_TRANSITION",
+      SELF_SCORE: "SELF_SCORE",
+      ALREADY_VOTED: "ALREADY_VOTED",
       COMMAND_ID_CONFLICT: "COMMAND_ID_CONFLICT",
-      COMMAND_IN_PROGRESS: "COMMAND_IN_PROGRESS",
       RATE_LIMITED: "RATE_LIMITED",
       DEPENDENCY_UNAVAILABLE: "DEPENDENCY_UNAVAILABLE",
       INTERNAL_ERROR: "INTERNAL_ERROR",
-      ROOM_DISSOLVED: "ROOM_DISSOLVED",
-      SELF_SCORE: "SELF_SCORE",
-      ALREADY_VOTED: "ALREADY_VOTED",
       NOT_ENOUGH_PLAYERS: "NOT_ENOUGH_PLAYERS",
-      GAME_IN_PROGRESS: "GAME_IN_PROGRESS",
-      NO_CARD: "NO_CARD",
-      NO_WORD_PAIR: "NO_WORD_PAIR"
-    };
-    var ERR_MSG = {
+      NO_WORD_PAIR: "NO_WORD_PAIR",
+      SNAPSHOT_REQUIRED: "SNAPSHOT_REQUIRED"
+    });
+    var ERR_MSG = Object.freeze({
       [ERR.INVALID_ARGUMENT]: "\u53C2\u6570\u4E0D\u5408\u6CD5",
       [ERR.UNAUTHENTICATED]: "\u672A\u767B\u5F55",
       [ERR.ROOM_NOT_FOUND]: "\u623F\u95F4\u4E0D\u5B58\u5728",
+      [ERR.ROOM_DISSOLVED]: "\u623F\u95F4\u5DF2\u89E3\u6563",
+      [ERR.ALREADY_IN_ROOM]: "\u5DF2\u7ECF\u52A0\u5165\u5176\u4ED6\u623F\u95F4",
       [ERR.ROOM_FULL]: "\u623F\u95F4\u5DF2\u6EE1",
+      [ERR.LIMIT_EXCEEDED]: "\u5185\u5BB9\u8D85\u8FC7\u4E0A\u9650",
       [ERR.NOT_MEMBER]: "\u975E\u623F\u95F4\u6210\u5458",
+      [ERR.NOT_PARTICIPANT]: "\u4E0D\u662F\u5F53\u524D\u573A\u6B21\u53C2\u4E0E\u8005",
       [ERR.HOST_REQUIRED]: "\u4EC5\u623F\u4E3B\u53EF\u64CD\u4F5C",
       [ERR.HOST_CANNOT_LEAVE]: "\u623F\u4E3B\u8BF7\u4F7F\u7528\u89E3\u6563\u623F\u95F4",
-      [ERR.SESSION_MISMATCH]: "\u573A\u6B21\u5DF2\u53D8\u66F4",
-      [ERR.REVISION_CONFLICT]: "\u623F\u95F4\u72B6\u6001\u5DF2\u66F4\u65B0",
+      [ERR.STALE_CONTEXT]: "\u64CD\u4F5C\u4E0A\u4E0B\u6587\u5DF2\u8FC7\u671F",
       [ERR.INVALID_TRANSITION]: "\u5F53\u524D\u6B65\u9AA4\u4E0D\u5141\u8BB8\u8BE5\u64CD\u4F5C",
+      [ERR.SELF_SCORE]: "\u5F53\u524D\u884C\u52A8\u8005\u65E0\u9700\u8BC4\u5206",
+      [ERR.ALREADY_VOTED]: "\u5DF2\u7ECF\u63D0\u4EA4\u8FC7\u6295\u7968",
       [ERR.COMMAND_ID_CONFLICT]: "commandId \u51B2\u7A81",
-      [ERR.COMMAND_IN_PROGRESS]: "\u547D\u4EE4\u5904\u7406\u4E2D",
       [ERR.RATE_LIMITED]: "\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41",
       [ERR.DEPENDENCY_UNAVAILABLE]: "\u4F9D\u8D56\u6682\u65F6\u4E0D\u53EF\u7528",
       [ERR.INTERNAL_ERROR]: "\u670D\u52A1\u5F02\u5E38",
-      [ERR.ROOM_DISSOLVED]: "\u623F\u95F4\u5DF2\u89E3\u6563",
-      [ERR.SELF_SCORE]: "\u5F53\u524D\u51FA\u724C\u73A9\u5BB6\u65E0\u9700\u6253\u5206",
-      [ERR.ALREADY_VOTED]: "\u60A8\u5DF2\u8868\u6001",
       [ERR.NOT_ENOUGH_PLAYERS]: "\u4EBA\u6570\u4E0D\u8DB3",
-      [ERR.GAME_IN_PROGRESS]: "\u672C\u5C40\u5DF2\u5728\u8FDB\u884C\u4E2D",
-      [ERR.NO_CARD]: "\u5C1A\u672A\u5206\u914D\u8EAB\u4EFD",
-      [ERR.NO_WORD_PAIR]: "\u8BCD\u5E93\u4E3A\u7A7A"
-    };
+      [ERR.NO_WORD_PAIR]: "\u8BCD\u5E93\u4E3A\u7A7A",
+      [ERR.SNAPSHOT_REQUIRED]: "\u9700\u8981\u91CD\u65B0\u83B7\u53D6\u5FEB\u7167"
+    });
+    var COMMAND_CONTEXT = Object.freeze({
+      SET_SCENARIO: ["sessionId"],
+      SUBMIT_DESIGN_PROBLEM: ["sessionId"],
+      UPDATE_DESIGN_PROBLEM: ["sessionId", "entityVersion"],
+      SELECT_DESIGN_PROBLEM: ["sessionId"],
+      SELECT_FIRST_PLAYER: ["sessionId"],
+      CONFIRM_FIRST_PLAYER: ["sessionId"],
+      CANCEL_WORKSHOP_SESSION: ["sessionId"],
+      RETURN_TO_LOBBY: ["sessionId"],
+      REPLAY_WORKSHOP_SESSION: ["sessionId"],
+      APPEND_ARTIFACT: ["sessionId", "turnId"],
+      UPDATE_ARTIFACT: ["sessionId", "turnId", "entityVersion"],
+      REMOVE_ARTIFACT: ["sessionId", "turnId", "entityVersion"],
+      SUBMIT_PARTNER_SCORE: ["sessionId", "turnId"],
+      POST_PARTNER_MESSAGE: ["sessionId", "turnId"],
+      START_PARTNER_STATEMENT: ["sessionId", "turnId"],
+      ADVANCE_PARTNER_TURN: ["sessionId", "turnId"],
+      USE_PARTNER_SPECIAL: ["sessionId", "turnId"],
+      END_PARTNER_SILENT: ["sessionId", "turnId"],
+      SUBMIT_PARTNER_CLOSING_VOTE: ["sessionId", "closingVoteSessionId"],
+      ADVANCE_PARTNER_CLOSING: ["sessionId"],
+      COMPLETE_PARTNER_SESSION: ["sessionId"],
+      END_HALLI_ACTIVITY: ["sessionId"],
+      SUBMIT_HALLI_IDEA: ["sessionId"],
+      COMPLETE_HALLI_SESSION: ["sessionId"],
+      START_SPY_GAME: ["sessionId"],
+      ADVANCE_SPY_SPEAKER: ["sessionId", "gameId", "speakerTurnId"],
+      OPEN_SPY_VOTE: ["sessionId", "gameId"],
+      SUBMIT_SPY_VOTE: ["sessionId", "gameId", "voteSessionId"],
+      START_NEXT_SPY_ROUND: ["sessionId", "gameId"],
+      RESTART_SPY_GAME: ["sessionId", "gameId"],
+      COMPLETE_SPY_SESSION: ["sessionId", "gameId"]
+    });
     function fail(errCode, errMsg, extra) {
       return {
         ok: false,
         errCode,
         errMsg: errMsg || ERR_MSG[errCode] || errCode,
-        retryable: errCode === ERR.DEPENDENCY_UNAVAILABLE || errCode === ERR.COMMAND_IN_PROGRESS,
+        retryable: errCode === ERR.DEPENDENCY_UNAVAILABLE || errCode === ERR.RATE_LIMITED,
         ...extra || {}
       };
     }
     function okResult(fields) {
       return { ok: true, ...fields || {} };
     }
-    function isNonEmptyString(v) {
-      return typeof v === "string" && v.trim().length > 0;
+    function isNonEmptyString(value) {
+      return typeof value === "string" && value.trim().length > 0;
     }
-    function isCommandId(v) {
-      return typeof v === "string" && v.trim().length >= 4 && v.trim().length <= 64;
+    function normalizeMode(value) {
+      return {
+        partner: MODE.PARTNER,
+        PARTNER: MODE.PARTNER,
+        halliGalli: MODE.HALLI_GALLI,
+        HALLI_GALLI: MODE.HALLI_GALLI,
+        spy: MODE.SPY,
+        SPY: MODE.SPY
+      }[String(value || "").trim()] || null;
+    }
+    function validatePayload(type, payload) {
+      if (type === COMMAND_TYPES.START_WORKSHOP_SESSION && !normalizeMode(payload.mode)) {
+        return fail(ERR.INVALID_ARGUMENT, "mode \u5FC5\u987B\u662F PARTNER\u3001HALLI_GALLI \u6216 SPY");
+      }
+      if (type === COMMAND_TYPES.SUBMIT_PARTNER_SCORE) {
+        const steps = Number(payload.scoreHalfSteps);
+        if (!Number.isInteger(steps) || steps < 0 || steps > 10) return fail(ERR.INVALID_ARGUMENT, "scoreHalfSteps \u5FC5\u987B\u662F 0\uFF5E10 \u7684\u6574\u6570");
+      }
+      const textLimits = {
+        [COMMAND_TYPES.POST_PARTNER_MESSAGE]: ["text", 40, "\u6D88\u606F"],
+        [COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM]: ["text", 50, "\u8BBE\u8BA1\u95EE\u9898"],
+        [COMMAND_TYPES.SUBMIT_HALLI_IDEA]: ["text", 120, "\u521B\u610F"]
+      };
+      if (textLimits[type]) {
+        const [field, limit, label] = textLimits[type];
+        const text = String(payload[field] || "").trim();
+        if (!text) return fail(ERR.INVALID_ARGUMENT, `${label}\u4E0D\u80FD\u4E3A\u7A7A`);
+        if (text.length > limit) return fail(ERR.LIMIT_EXCEEDED, `${label}\u6700\u591A ${limit} \u5B57`);
+      }
+      if (type === COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE && !["pass", "question"].includes(payload.vote)) {
+        return fail(ERR.INVALID_ARGUMENT, "vote \u5FC5\u987B\u662F pass \u6216 question");
+      }
+      if (type === COMMAND_TYPES.USE_PARTNER_SPECIAL && !["HELP_LUCK", "SILENT", "MASTER", "CLOSING"].includes(payload.kind)) {
+        return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u7279\u6B8A\u884C\u52A8");
+      }
+      return okResult();
     }
     function validateCommandEnvelope(raw) {
-      if (!raw || typeof raw !== "object") {
-        return fail(ERR.INVALID_ARGUMENT, "command envelope \u5FC5\u586B");
+      if (!raw || typeof raw !== "object") return fail(ERR.INVALID_ARGUMENT, "command envelope \u5FC5\u586B");
+      if (Number(raw.protocolVersion) !== PROTOCOL_VERSION) return fail(ERR.INVALID_ARGUMENT, `\u4EC5\u652F\u6301 protocolVersion=${PROTOCOL_VERSION}`);
+      const type = String(raw.type || "");
+      if (!Object.values(COMMAND_TYPES).includes(type)) return fail(ERR.INVALID_ARGUMENT, `\u672A\u77E5\u547D\u4EE4\u7C7B\u578B: ${type}`);
+      if (!isNonEmptyString(raw.commandId) || raw.commandId.trim().length > 128) return fail(ERR.INVALID_ARGUMENT, "commandId \u5FC5\u987B\u662F 1\uFF5E128 \u5B57\u7B26");
+      if (type !== COMMAND_TYPES.CREATE_ROOM && !isNonEmptyString(raw.roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
+      const knownSeq = raw.knownSeq == null ? 0 : Number(raw.knownSeq);
+      if (!Number.isInteger(knownSeq) || knownSeq < 0) return fail(ERR.INVALID_ARGUMENT, "knownSeq \u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570");
+      const context = raw.context && typeof raw.context === "object" ? raw.context : {};
+      const payload = raw.payload && typeof raw.payload === "object" ? raw.payload : {};
+      for (const key of COMMAND_CONTEXT[type] || []) {
+        if (context[key] == null || context[key] === "") return fail(ERR.INVALID_ARGUMENT, `context.${key} \u5FC5\u586B`);
       }
-      const type = raw.type;
-      if (!Object.prototype.hasOwnProperty.call(COMMAND_TYPES, type) && !Object.values(COMMAND_TYPES).includes(type)) {
-        return fail(ERR.INVALID_ARGUMENT, `\u672A\u77E5\u547D\u4EE4\u7C7B\u578B: ${type}`);
-      }
-      if (!isCommandId(raw.commandId)) {
-        return fail(ERR.INVALID_ARGUMENT, "commandId \u5FC5\u586B");
-      }
-      const protocolVersion = raw.protocolVersion == null ? PROTOCOL_VERSION : Number(raw.protocolVersion);
-      if (protocolVersion !== PROTOCOL_VERSION) {
-        return fail(ERR.INVALID_ARGUMENT, `\u4EC5\u652F\u6301 protocolVersion=${PROTOCOL_VERSION}`);
-      }
-      if (type !== COMMAND_TYPES.CREATE_ROOM && !isNonEmptyString(raw.roomId)) {
-        return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
-      }
-      const needsRevision = type !== COMMAND_TYPES.CREATE_ROOM && type !== COMMAND_TYPES.JOIN_ROOM && type !== COMMAND_TYPES.SUBMIT_SCORE && type !== COMMAND_TYPES.POST_MESSAGE && type !== COMMAND_TYPES.SUBMIT_CLOSING_VOTE && type !== COMMAND_TYPES.APPEND_ARTIFACT && type !== COMMAND_TYPES.SPY_GET_MY_CARD && type !== COMMAND_TYPES.SPY_SUBMIT_VOTE;
-      if (needsRevision) {
-        if (raw.expectedRevision == null || !Number.isFinite(Number(raw.expectedRevision))) {
-          return fail(ERR.INVALID_ARGUMENT, "expectedRevision \u5FC5\u586B");
-        }
-      }
-      return okResult({
-        envelope: {
-          protocolVersion: PROTOCOL_VERSION,
-          roomId: raw.roomId ? String(raw.roomId).trim() : "",
-          sessionId: raw.sessionId || null,
-          commandId: String(raw.commandId),
-          expectedRevision: raw.expectedRevision == null ? null : Number(raw.expectedRevision),
-          type,
-          payload: raw.payload && typeof raw.payload === "object" ? raw.payload : {},
-          clientSentAt: raw.clientSentAt != null ? Number(raw.clientSentAt) : null
-        }
-      });
+      const payloadResult = validatePayload(type, payload);
+      if (!payloadResult.ok) return payloadResult;
+      return okResult({ envelope: {
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: raw.commandId.trim(),
+        roomId: isNonEmptyString(raw.roomId) ? raw.roomId.trim() : "",
+        knownSeq,
+        type,
+        context: { ...context },
+        payload: { ...payload },
+        clientSentAt: Number.isFinite(Number(raw.clientSentAt)) ? Number(raw.clientSentAt) : null
+      } });
     }
-    function emptyDomainRevisions() {
-      return {
-        members: 0,
-        session: 0,
-        scores: 0,
-        contributions: 0,
-        artifacts: 0,
-        messages: 0,
-        votes: 0
-      };
+    function stableStringify(value) {
+      if (value === null || typeof value !== "object") return JSON.stringify(value);
+      if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
     }
     module2.exports = {
       PROTOCOL_VERSION,
       SCHEMA_VERSION,
+      VIEW_SCHEMA_VERSION,
+      EVENT_SCHEMA_VERSION,
       MAX_SEATS,
       LIFECYCLE,
+      SESSION_STATUS,
+      MODE,
+      WORKFLOW_STEP,
       COMMAND_TYPES,
+      EVENT_TYPES,
       ERR,
       ERR_MSG,
+      COMMAND_CONTEXT,
       fail,
       okResult,
+      isNonEmptyString,
+      normalizeMode,
       validateCommandEnvelope,
-      emptyDomainRevisions,
-      isNonEmptyString
+      stableStringify
     };
+  }
+});
+
+// packages/room-domain/model.js
+var require_model = __commonJS({
+  "packages/room-domain/model.js"(exports2, module2) {
+    "use strict";
+    var {
+      PROTOCOL_VERSION,
+      SCHEMA_VERSION,
+      MAX_SEATS,
+      LIFECYCLE,
+      SESSION_STATUS,
+      MODE,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR,
+      fail,
+      okResult,
+      normalizeMode,
+      isNonEmptyString
+    } = require_room_contracts();
+    var AVATAR_COLORS = ["#5EC159", "#4A90E2", "#E24A4A", "#E2B84A", "#9B59B6", "#1ABC9C"];
+    function clone(value) {
+      return value == null ? value : JSON.parse(JSON.stringify(value));
+    }
+    function event(type, payload) {
+      return { type, payload: clone(payload || {}) };
+    }
+    function domainOk(next, events, outcome, dirtyFacts) {
+      return okResult({ aggregate: next, events: events || [], outcome: outcome || { kind: "ACCEPTED" }, dirtyFacts: dirtyFacts || [] });
+    }
+    function idOf(deps, prefix) {
+      if (deps && typeof deps.idFactory === "function") return deps.idFactory(prefix);
+      return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    }
+    function nowOf(deps) {
+      return Number(deps && deps.now) || Date.now();
+    }
+    function normalizeHalfStarScore(raw, halfSteps) {
+      if (halfSteps != null && halfSteps !== "") {
+        const steps2 = Number(halfSteps);
+        return Number.isInteger(steps2) && steps2 >= 0 && steps2 <= 10 ? steps2 / 2 : null;
+      }
+      if (raw == null || raw === "") return null;
+      const score = Number(raw);
+      if (!Number.isFinite(score)) return null;
+      const steps = Math.round(score * 2);
+      return steps >= 0 && steps <= 10 ? steps / 2 : null;
+    }
+    function ensureFacts(aggregate) {
+      aggregate.facts = aggregate.facts || {};
+      ["turns", "scores", "votes", "contributions", "artifacts", "secrets"].forEach((key) => {
+        aggregate.facts[key] = aggregate.facts[key] || {};
+      });
+      aggregate.facts.messages = Array.isArray(aggregate.facts.messages) ? aggregate.facts.messages : [];
+      return aggregate.facts;
+    }
+    function sortedMembers(room) {
+      return (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo);
+    }
+    function memberByUserId(room, userId) {
+      return (room.members || []).find((item) => String(item.userId) === String(userId)) || null;
+    }
+    function memberById(room, memberId) {
+      return (room.members || []).find((item) => item.memberId === memberId) || null;
+    }
+    function isHost(room, member) {
+      return !!(member && room.hostMemberId === member.memberId);
+    }
+    function participantById(session, memberId) {
+      return (session && session.participants || []).find((item) => item.memberId === memberId) || null;
+    }
+    function isActiveParticipant(session, memberId) {
+      const participant = participantById(session, memberId);
+      return !!(participant && participant.status === "ACTIVE");
+    }
+    function activeParticipants(session) {
+      return (session.participants || []).filter((item) => item.status === "ACTIVE");
+    }
+    function activeParticipantIds(session) {
+      return activeParticipants(session).map((item) => item.memberId);
+    }
+    function activeParticipantsBySeat(aggregate) {
+      const ids = new Set(activeParticipantIds(aggregate.currentSession));
+      return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
+    }
+    function nextSeat(room) {
+      const used = new Set((room.members || []).map((item) => item.seatNo));
+      for (let seatNo = 1; seatNo <= MAX_SEATS; seatNo += 1) if (!used.has(seatNo)) return seatNo;
+      return null;
+    }
+    function nextColor(room) {
+      const used = new Set((room.members || []).map((item) => item.profile && item.profile.color));
+      return AVATAR_COLORS.find((color) => !used.has(color)) || AVATAR_COLORS[0];
+    }
+    function createMember(room, userId, payload, memberId, seatNo, joinedAt, role) {
+      return {
+        memberId,
+        userId,
+        seatNo,
+        role,
+        profile: {
+          nickName: String(payload.nickName || `\u73A9\u5BB6${seatNo}`).trim().slice(0, 20) || `\u73A9\u5BB6${seatNo}`,
+          avatarRef: payload.avatarRef || payload.avatarUrl || null,
+          avatarIndex: payload.avatarIndex == null ? null : Number(payload.avatarIndex),
+          color: payload.color || payload.avatarColor || nextColor(room)
+        },
+        joinedAt
+      };
+    }
+    function createRoomAggregate(roomId, actorUserId, payload, deps) {
+      const now = nowOf(deps);
+      const memberId = idOf(deps, "member");
+      const room = {
+        roomId,
+        protocolVersion: PROTOCOL_VERSION,
+        schemaVersion: SCHEMA_VERSION,
+        lifecycle: LIFECYCLE.OPEN,
+        stateVersion: 0,
+        eventSeq: 0,
+        minAvailableSeq: 1,
+        hostMemberId: memberId,
+        workshopName: String(payload.workshopName || "\u8111\u66B4\u5DE5\u4F5C\u574A").trim().slice(0, 20) || "\u8111\u66B4\u5DE5\u4F5C\u574A",
+        members: [],
+        currentSessionId: null,
+        sessionOrdinal: 0,
+        createdAt: now,
+        updatedAt: now
+      };
+      room.members.push(createMember(room, actorUserId, payload, memberId, 1, now, "HOST"));
+      return { room, currentSession: null, facts: { turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {} } };
+    }
+    function assertRoom(aggregate) {
+      if (!aggregate || !aggregate.room) return fail(ERR.ROOM_NOT_FOUND);
+      if (aggregate.room.lifecycle === LIFECYCLE.DISSOLVED) return fail(ERR.ROOM_DISSOLVED);
+      return okResult();
+    }
+    function assertMember(aggregate, actorUserId) {
+      const base = assertRoom(aggregate);
+      if (!base.ok) return base;
+      const member = memberByUserId(aggregate.room, actorUserId);
+      return member ? okResult({ member }) : fail(ERR.NOT_MEMBER);
+    }
+    function assertHost(aggregate, actorUserId) {
+      const auth = assertMember(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      return isHost(aggregate.room, auth.member) ? auth : fail(ERR.HOST_REQUIRED);
+    }
+    function assertParticipant(aggregate, actorUserId) {
+      const auth = assertMember(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      return isActiveParticipant(aggregate.currentSession, auth.member.memberId) ? auth : fail(ERR.NOT_PARTICIPANT);
+    }
+    function assertSession(aggregate, context, options) {
+      const session = aggregate.currentSession;
+      if (!session || !context || context.sessionId !== session.sessionId) return fail(ERR.STALE_CONTEXT, "\u573A\u6B21\u5DF2\u7ECF\u53D8\u5316");
+      if (options && options.mode && session.mode !== options.mode) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u6A21\u5F0F\u4E0D\u5339\u914D");
+      if (options && options.steps && !options.steps.includes(session.workflow.step)) return fail(ERR.INVALID_TRANSITION);
+      return okResult({ session });
+    }
+    function assertTurn(aggregate, context, steps) {
+      const check = assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
+      if (!check.ok) return check;
+      const partner = check.session.modeState.partner;
+      if (!partner || !partner.activeTurn || partner.activeTurn.turnId !== context.turnId) return fail(ERR.STALE_CONTEXT, "\u884C\u52A8\u8F6E\u5DF2\u7ECF\u53D8\u5316");
+      return okResult({ session: check.session, partner, turn: partner.activeTurn });
+    }
+    function newSession(aggregate, mode, copiedSetup, deps) {
+      const now = nowOf(deps);
+      const ordinal = (aggregate.room.sessionOrdinal || 0) + 1;
+      const participants = sortedMembers(aggregate.room).map((member) => ({
+        memberId: member.memberId,
+        seatNoAtStart: member.seatNo,
+        status: "ACTIVE"
+      }));
+      const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : WORKFLOW_STEP.CHOOSE_SCENARIO;
+      const session = {
+        sessionId: idOf(deps, "session"),
+        ordinal,
+        status: SESSION_STATUS.CONFIGURING,
+        mode,
+        participants,
+        setup: { scenarioSource: null, scenario: null, selectedProblemId: null, proposedFirstMemberId: null, ...clone(copiedSetup) || {} },
+        workflow: { step, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
+        progress: {},
+        modeState: {},
+        result: null,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now
+      };
+      aggregate.room.sessionOrdinal = ordinal;
+      aggregate.room.currentSessionId = session.sessionId;
+      aggregate.currentSession = session;
+      return session;
+    }
+    function normalizeScenario(payload, mode) {
+      const source = String(payload.source || payload.scenarioSource || "").toUpperCase();
+      if (!["OFFLINE", "CASE", "HISTORY", "CUSTOM"].includes(source)) return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u60C5\u5883\u6765\u6E90");
+      if (source === "OFFLINE") return okResult({ source, scenario: null });
+      const input = payload.scenario && typeof payload.scenario === "object" ? payload.scenario : payload;
+      const scenario = {
+        scene: String(input.scene || "").trim().slice(0, 100),
+        user: String(input.user || "").trim().slice(0, 100),
+        function: String(input.function || "").trim().slice(0, 100)
+      };
+      if (mode === MODE.PARTNER) scenario.platform = String(input.platform || "").trim().slice(0, 100);
+      if (!scenario.scene || !scenario.user || !scenario.function || mode === MODE.PARTNER && !scenario.platform) {
+        return fail(ERR.INVALID_ARGUMENT, "\u60C5\u5883\u5B57\u6BB5\u4E0D\u5B8C\u6574");
+      }
+      return okResult({ source, scenario });
+    }
+    function markParticipantLeft(aggregate, memberId) {
+      const session = aggregate.currentSession;
+      if (!session) return;
+      const participant = participantById(session, memberId);
+      if (participant) participant.status = "LEFT";
+      ["contributionProgress"].forEach((key) => {
+        const progress = session.progress && session.progress[key];
+        if (progress) progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+      });
+    }
+    module2.exports = {
+      clone,
+      event,
+      domainOk,
+      fail,
+      okResult,
+      idOf,
+      nowOf,
+      normalizeHalfStarScore,
+      ensureFacts,
+      sortedMembers,
+      memberByUserId,
+      memberById,
+      isHost,
+      participantById,
+      isActiveParticipant,
+      activeParticipants,
+      activeParticipantIds,
+      activeParticipantsBySeat,
+      nextSeat,
+      nextColor,
+      createMember,
+      createRoomAggregate,
+      assertRoom,
+      assertMember,
+      assertHost,
+      assertParticipant,
+      assertSession,
+      assertTurn,
+      newSession,
+      normalizeScenario,
+      markParticipantLeft,
+      isNonEmptyString,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR,
+      MAX_SEATS,
+      normalizeMode,
+      LIFECYCLE
+    };
+  }
+});
+
+// packages/room-domain/partner.js
+var require_partner = __commonJS({
+  "packages/room-domain/partner.js"(exports2, module2) {
+    "use strict";
+    var { COMMAND_TYPES } = require_room_contracts();
+    var {
+      clone,
+      event,
+      domainOk,
+      fail,
+      idOf,
+      nowOf,
+      ensureFacts,
+      memberById,
+      assertHost,
+      assertParticipant,
+      assertSession,
+      assertTurn,
+      activeParticipantIds,
+      activeParticipantsBySeat,
+      isActiveParticipant,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR
+    } = require_model();
+    function partnerState(aggregate) {
+      return aggregate.currentSession && aggregate.currentSession.modeState.partner;
+    }
+    function orderedParticipantIds(aggregate, firstMemberId) {
+      const ids = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
+      const index = ids.indexOf(firstMemberId);
+      return index < 0 ? ids : ids.slice(index).concat(ids.slice(0, index));
+    }
+    function startPartnerFlow(aggregate, firstMemberId, deps) {
+      const session = aggregate.currentSession;
+      const order = orderedParticipantIds(aggregate, firstMemberId);
+      session.modeState.partner = { roundNo: 1, turnOrdinal: 0, roundRemainingMemberIds: order, activeTurn: null, closing: null };
+      session.status = SESSION_STATUS.RUNNING;
+      return startPartnerTurn(aggregate, order[0], deps, true);
+    }
+    function startPartnerTurn(aggregate, memberId, deps, countsForRound) {
+      const session = aggregate.currentSession;
+      const partner = partnerState(aggregate);
+      const now = nowOf(deps);
+      partner.turnOrdinal += 1;
+      const requiredMemberIds = activeParticipantIds(session).filter((id) => id !== memberId);
+      const turn = {
+        turnId: idOf(deps, "turn"),
+        ordinal: partner.turnOrdinal,
+        roundNo: partner.roundNo,
+        activeMemberId: memberId,
+        countsForRound: countsForRound !== false,
+        phase: "PLAY",
+        turnStartedAt: now,
+        phaseStartedAt: now,
+        specialUsed: null,
+        masterMode: false,
+        silentStartedAt: null,
+        silentDeadlineAt: null,
+        scoreProgress: { requiredMemberIds, submittedMemberIds: [] }
+      };
+      partner.activeTurn = turn;
+      session.workflow = {
+        step: WORKFLOW_STEP.PARTNER_TURN,
+        roundNo: partner.roundNo,
+        activeMemberId: memberId,
+        turnId: turn.turnId,
+        phaseStartedAt: now
+      };
+      session.progress.scoreProgress = clone(turn.scoreProgress);
+      session.updatedAt = now;
+      return turn;
+    }
+    function scoreRowsForTurn(aggregate, turnId) {
+      return Object.values(ensureFacts(aggregate).scores).filter((row) => row.turnId === turnId);
+    }
+    function archiveActiveTurn(aggregate, reason, statementResult, deps) {
+      const facts = ensureFacts(aggregate);
+      const session = aggregate.currentSession;
+      const partner = partnerState(aggregate);
+      const turn = partner.activeTurn;
+      if (!turn) return null;
+      const scores = scoreRowsForTurn(aggregate, turn.turnId);
+      const total = scores.reduce((sum, row) => sum + row.scoreHalfSteps / 2, 0);
+      const summary = {
+        sessionId: session.sessionId,
+        turnId: turn.turnId,
+        turnOrdinal: turn.ordinal,
+        roundNo: turn.roundNo,
+        activeMemberId: turn.activeMemberId,
+        reason,
+        statementResult: statementResult || null,
+        avgScore: scores.length ? total / scores.length : null,
+        scoredCount: scores.length,
+        totalStars: total,
+        startedAt: turn.turnStartedAt,
+        completedAt: nowOf(deps)
+      };
+      facts.turns[turn.turnId] = summary;
+      if (turn.countsForRound) {
+        partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => id !== turn.activeMemberId);
+      }
+      partner.activeTurn = null;
+      session.workflow.turnId = null;
+      session.workflow.activeMemberId = null;
+      return summary;
+    }
+    function beginNextPartnerTurn(aggregate, deps) {
+      const session = aggregate.currentSession;
+      const partner = partnerState(aggregate);
+      const valid = new Set(activeParticipantIds(session));
+      partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => valid.has(id));
+      if (!partner.roundRemainingMemberIds.length) {
+        partner.roundNo += 1;
+        partner.roundRemainingMemberIds = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
+      }
+      const nextMemberId = partner.roundRemainingMemberIds[0];
+      return nextMemberId ? startPartnerTurn(aggregate, nextMemberId, deps, true) : null;
+    }
+    function assertPartnerSession(aggregate, context, steps) {
+      return assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
+    }
+    function appendArtifact(aggregate, command, actor, deps) {
+      const turnCheck = assertTurn(aggregate, command.context, [
+        WORKFLOW_STEP.PARTNER_TURN,
+        WORKFLOW_STEP.PARTNER_STATEMENT,
+        WORKFLOW_STEP.PARTNER_CLOSING_RUNE,
+        WORKFLOW_STEP.PARTNER_CLOSING_REVIEW
+      ]);
+      if (!turnCheck.ok) {
+        const closing = partnerState(aggregate) && partnerState(aggregate).closing;
+        if (!closing || closing.sourceTurnId !== command.context.turnId || ![WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW].includes(aggregate.currentSession.workflow.step)) return turnCheck;
+      }
+      const host = aggregate.room.hostMemberId === actor.memberId;
+      const turn = partnerState(aggregate).activeTurn;
+      if (!host && (!turn || turn.activeMemberId !== actor.memberId)) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u6210\u5458\u4E0D\u80FD\u5199\u5165\u7D20\u6750");
+      const facts = ensureFacts(aggregate);
+      const operationId = String(command.payload.operationId || "").trim();
+      if (!operationId) return fail(ERR.INVALID_ARGUMENT, "operationId \u5FC5\u586B");
+      const key = `${command.context.sessionId}:${operationId}`;
+      if (facts.artifacts[key]) return domainOk(aggregate, [event(EVENT_TYPES.ARTIFACT_APPENDED, { operationId, duplicate: true })], { kind: "ACCEPTED", operationId });
+      const stageByStep = {
+        [WORKFLOW_STEP.PARTNER_TURN]: "PLAY",
+        [WORKFLOW_STEP.PARTNER_STATEMENT]: "DISCUSSION",
+        [WORKFLOW_STEP.PARTNER_CLOSING_RUNE]: "CLOSING_RUNE",
+        [WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]: "CLOSING_REVIEW"
+      };
+      const stage = stageByStep[aggregate.currentSession.workflow.step];
+      const count = Object.values(facts.artifacts).filter((item) => item.turnId === command.context.turnId && item.stage === stage && !item.removed).length;
+      if (count >= 200) return fail(ERR.LIMIT_EXCEEDED, "\u5F53\u524D\u9636\u6BB5\u7D20\u6750\u5DF2\u8FBE\u5230 200 \u6761\u4E0A\u9650");
+      const text = command.payload.text == null ? null : String(command.payload.text).trim();
+      if (text && text.length > 500) return fail(ERR.LIMIT_EXCEEDED, "\u5171\u4EAB\u6587\u672C\u6700\u591A 500 \u5B57");
+      if (!text && !command.payload.fileRef) return fail(ERR.INVALID_ARGUMENT, "\u7D20\u6750\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+      const artifact = {
+        artifactId: idOf(deps, "artifact"),
+        operationId,
+        sessionId: command.context.sessionId,
+        turnId: command.context.turnId,
+        stage,
+        kind: command.payload.kind || (command.payload.fileRef ? "IMAGE" : "TEXT"),
+        text,
+        fileRef: command.payload.fileRef || null,
+        authorMemberId: actor.memberId,
+        entityVersion: 1,
+        removed: false,
+        createdAt: nowOf(deps),
+        updatedAt: nowOf(deps)
+      };
+      facts.artifacts[key] = artifact;
+      return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.ARTIFACT_APPENDED, { artifactId: artifact.artifactId, operationId })],
+        { kind: "ACCEPTED", artifactId: artifact.artifactId },
+        [{ kind: "artifacts", id: key }]
+      );
+    }
+    function updateArtifact(aggregate, command, actor, remove, deps) {
+      const sessionCheck = assertPartnerSession(aggregate, command.context, [
+        WORKFLOW_STEP.PARTNER_TURN,
+        WORKFLOW_STEP.PARTNER_STATEMENT,
+        WORKFLOW_STEP.PARTNER_CLOSING_RUNE,
+        WORKFLOW_STEP.PARTNER_CLOSING_REVIEW
+      ]);
+      if (!sessionCheck.ok) return sessionCheck;
+      const facts = ensureFacts(aggregate);
+      const operationId = String(command.payload.operationId || "").trim();
+      const key = `${command.context.sessionId}:${operationId}`;
+      const artifact = facts.artifacts[key];
+      if (!artifact || artifact.turnId !== command.context.turnId) return fail(ERR.STALE_CONTEXT, "\u7D20\u6750\u4E0D\u5B58\u5728\u6216\u5DF2\u6362\u8F6E");
+      if (Number(command.context.entityVersion) !== artifact.entityVersion) return fail(ERR.STALE_CONTEXT, "\u7D20\u6750\u5DF2\u7ECF\u66F4\u65B0");
+      const host = aggregate.room.hostMemberId === actor.memberId;
+      if (!host && artifact.authorMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION, "\u4E0D\u80FD\u4FEE\u6539\u5176\u4ED6\u6210\u5458\u7D20\u6750");
+      const partner = partnerState(aggregate);
+      const activeContext = partner.activeTurn && partner.activeTurn.turnId === artifact.turnId;
+      const closingContext = partner.closing && partner.closing.sourceTurnId === artifact.turnId && ["CLOSING_RUNE", "CLOSING_REVIEW"].includes(artifact.stage);
+      if (!activeContext && !closingContext) return fail(ERR.STALE_CONTEXT, "\u7D20\u6750\u6240\u5C5E\u884C\u52A8\u8F6E\u5DF2\u7ECF\u5F52\u6863");
+      if (remove) artifact.removed = true;
+      else {
+        const text = String(command.payload.text || "").trim();
+        if (!text) return fail(ERR.INVALID_ARGUMENT, "\u7D20\u6750\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
+        if (text.length > 500) return fail(ERR.LIMIT_EXCEEDED, "\u5171\u4EAB\u6587\u672C\u6700\u591A 500 \u5B57");
+        artifact.text = text;
+        if (command.payload.fileRef !== void 0) artifact.fileRef = command.payload.fileRef || null;
+      }
+      artifact.entityVersion += 1;
+      artifact.updatedAt = nowOf(deps);
+      const type = remove ? EVENT_TYPES.ARTIFACT_REMOVED : EVENT_TYPES.ARTIFACT_UPDATED;
+      return domainOk(
+        aggregate,
+        [event(type, { artifactId: artifact.artifactId, entityVersion: artifact.entityVersion })],
+        { kind: "ACCEPTED", artifactId: artifact.artifactId, entityVersion: artifact.entityVersion },
+        [{ kind: "artifacts", id: key }]
+      );
+    }
+    function resolveClosing(aggregate, deps) {
+      const session = aggregate.currentSession;
+      const partner = partnerState(aggregate);
+      const closing = partner.closing;
+      const facts = ensureFacts(aggregate);
+      const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId);
+      const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === "question");
+      const summary = archiveActiveTurn(aggregate, question ? "CLOSING_QUESTIONED" : "CLOSING_ACCEPTED", null, deps);
+      const dirty = summary ? [{ kind: "turns", id: summary.turnId }] : [];
+      if (question) {
+        closing.stage = "QUESTIONED";
+        let countsForRound = partner.roundRemainingMemberIds.includes(question.memberId);
+        if (countsForRound) {
+          partner.roundRemainingMemberIds = [question.memberId].concat(partner.roundRemainingMemberIds.filter((id) => id !== question.memberId));
+        }
+        const turn = startPartnerTurn(aggregate, question.memberId, deps, countsForRound);
+        partner.closing = null;
+        return { events: [
+          event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, reason: summary.reason }),
+          event(EVENT_TYPES.PARTNER_CLOSING_QUESTIONED, { memberId: question.memberId }),
+          event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: question.memberId, roundNo: turn.roundNo })
+        ], dirty };
+      }
+      closing.stage = "RUNE";
+      session.workflow = {
+        step: WORKFLOW_STEP.PARTNER_CLOSING_RUNE,
+        roundNo: partner.roundNo,
+        activeMemberId: null,
+        turnId: closing.sourceTurnId,
+        phaseStartedAt: nowOf(deps)
+      };
+      return { events: [
+        event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, reason: summary.reason }),
+        event(EVENT_TYPES.PARTNER_CLOSING_ACCEPTED, { closingVoteSessionId: closing.closingVoteSessionId })
+      ], dirty };
+    }
+    function reducePartnerCommand(aggregate, command, actorUserId, deps) {
+      const type = command.type;
+      const actorCheck = assertParticipant(aggregate, actorUserId);
+      const memberCheck = type === COMMAND_TYPES.COMPLETE_PARTNER_SESSION || type === COMMAND_TYPES.ADVANCE_PARTNER_CLOSING ? assertHost(aggregate, actorUserId) : actorCheck;
+      if (!memberCheck.ok) return memberCheck;
+      const actor = memberCheck.member;
+      if (type === COMMAND_TYPES.APPEND_ARTIFACT) return appendArtifact(aggregate, command, actor, deps);
+      if (type === COMMAND_TYPES.UPDATE_ARTIFACT) return updateArtifact(aggregate, command, actor, false, deps);
+      if (type === COMMAND_TYPES.REMOVE_ARTIFACT) return updateArtifact(aggregate, command, actor, true, deps);
+      if (type === COMMAND_TYPES.SUBMIT_PARTNER_SCORE) {
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
+        if (!check.ok) return check;
+        if (check.turn.activeMemberId === actor.memberId) return fail(ERR.SELF_SCORE);
+        if (!check.turn.scoreProgress.requiredMemberIds.includes(actor.memberId)) return fail(ERR.NOT_PARTICIPANT);
+        const facts = ensureFacts(aggregate);
+        const key = `${check.turn.turnId}:${actor.memberId}`;
+        facts.scores[key] = {
+          sessionId: check.session.sessionId,
+          turnId: check.turn.turnId,
+          memberId: actor.memberId,
+          scoreHalfSteps: Number(command.payload.scoreHalfSteps),
+          updatedAt: nowOf(deps)
+        };
+        if (!check.turn.scoreProgress.submittedMemberIds.includes(actor.memberId)) check.turn.scoreProgress.submittedMemberIds.push(actor.memberId);
+        check.session.progress.scoreProgress = clone(check.turn.scoreProgress);
+        return domainOk(
+          aggregate,
+          [event(EVENT_TYPES.PARTNER_SCORE_RECORDED, {
+            turnId: check.turn.turnId,
+            scoredCount: check.turn.scoreProgress.submittedMemberIds.length,
+            requiredCount: check.turn.scoreProgress.requiredMemberIds.length
+          })],
+          { kind: "ACCEPTED" },
+          [{ kind: "scores", id: key }]
+        );
+      }
+      if (type === COMMAND_TYPES.POST_PARTNER_MESSAGE) {
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN, WORKFLOW_STEP.PARTNER_STATEMENT]);
+        if (!check.ok) return check;
+        if (check.session.workflow.step === WORKFLOW_STEP.PARTNER_TURN && check.turn.activeMemberId === actor.memberId) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u884C\u52A8\u8005\u4E0D\u80FD\u53D1\u9001\u533F\u540D\u8868\u8FBE");
+        const facts = ensureFacts(aggregate);
+        const message = {
+          messageId: idOf(deps, "message"),
+          sessionId: check.session.sessionId,
+          turnId: check.turn.turnId,
+          text: String(command.payload.text).trim(),
+          anonKey: `anon_${actor.memberId.slice(-6)}`,
+          authorMemberId: actor.memberId,
+          createdAt: nowOf(deps)
+        };
+        facts.messages.push(message);
+        if (facts.messages.length > 200) facts.messages.splice(0, facts.messages.length - 200);
+        return domainOk(
+          aggregate,
+          [event(EVENT_TYPES.PARTNER_MESSAGE_POSTED, { messageId: message.messageId })],
+          { kind: "ACCEPTED", messageId: message.messageId },
+          [{ kind: "messages", id: message.messageId }]
+        );
+      }
+      if (type === COMMAND_TYPES.START_PARTNER_STATEMENT) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
+        if (!check.ok) return check;
+        if (check.turn.scoreProgress.submittedMemberIds.length !== check.turn.scoreProgress.requiredMemberIds.length) return fail(ERR.INVALID_TRANSITION, "\u8BC4\u5206\u5C1A\u672A\u5B8C\u6210");
+        check.turn.phase = "STATEMENT";
+        check.turn.phaseStartedAt = nowOf(deps);
+        check.turn.masterMode = false;
+        check.turn.silentStartedAt = null;
+        check.turn.silentDeadlineAt = null;
+        check.session.workflow.step = WORKFLOW_STEP.PARTNER_STATEMENT;
+        check.session.workflow.phaseStartedAt = nowOf(deps);
+        return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_STATEMENT_STARTED, { turnId: check.turn.turnId })]);
+      }
+      if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]);
+        if (!check.ok) return check;
+        const summary = archiveActiveTurn(aggregate, "COMPLETED", command.payload.statementResult || null, deps);
+        const turn = beginNextPartnerTurn(aggregate, deps);
+        if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
+        return domainOk(
+          aggregate,
+          [
+            event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),
+            event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: turn.activeMemberId, roundNo: turn.roundNo })
+          ],
+          { kind: "ACCEPTED", turnId: turn.turnId },
+          [{ kind: "turns", id: summary.turnId }]
+        );
+      }
+      if (type === COMMAND_TYPES.USE_PARTNER_SPECIAL) {
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
+        if (!check.ok) return check;
+        if (check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u884C\u52A8\u8005\u53EF\u4F7F\u7528");
+        if (check.turn.specialUsed) return fail(ERR.INVALID_TRANSITION, "\u672C\u884C\u52A8\u8F6E\u5DF2\u7ECF\u4F7F\u7528\u7279\u6B8A\u884C\u52A8");
+        const kind = command.payload.kind;
+        check.turn.specialUsed = kind;
+        const events = [event(EVENT_TYPES.PARTNER_SPECIAL_USED, { turnId: check.turn.turnId, kind })];
+        if (kind === "MASTER") check.turn.masterMode = true;
+        if (kind === "SILENT") {
+          check.turn.silentStartedAt = nowOf(deps);
+          check.turn.silentDeadlineAt = nowOf(deps) + 60 * 1e3;
+        }
+        if (kind === "CLOSING") {
+          const voteSessionId = idOf(deps, "closing");
+          const requiredMemberIds = activeParticipantIds(check.session).filter((id) => id !== actor.memberId);
+          partnerState(aggregate).closing = {
+            closingVoteSessionId: voteSessionId,
+            sourceTurnId: check.turn.turnId,
+            initiatorMemberId: actor.memberId,
+            requiredMemberIds,
+            submittedMemberIds: [],
+            stage: "VOTE",
+            createdAt: nowOf(deps)
+          };
+          check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_VOTE;
+          check.session.workflow.phaseStartedAt = nowOf(deps);
+          events.push(event(EVENT_TYPES.PARTNER_CLOSING_VOTE_STARTED, { closingVoteSessionId: voteSessionId, initiatorMemberId: actor.memberId }));
+        }
+        return domainOk(aggregate, events);
+      }
+      if (type === COMMAND_TYPES.END_PARTNER_SILENT) {
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
+        if (!check.ok) return check;
+        const host = aggregate.room.hostMemberId === actor.memberId;
+        if (!host && check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION);
+        if (!check.turn.silentDeadlineAt) return fail(ERR.INVALID_TRANSITION, "\u9759\u9ED8\u884C\u52A8\u672A\u5F00\u542F");
+        check.turn.silentDeadlineAt = null;
+        check.turn.silentStartedAt = null;
+        return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_SILENT_ENDED, { turnId: check.turn.turnId })]);
+      }
+      if (type === COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE) {
+        const check = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_CLOSING_VOTE]);
+        if (!check.ok) return check;
+        const closing = partnerState(aggregate).closing;
+        if (!closing || closing.closingVoteSessionId !== command.context.closingVoteSessionId) return fail(ERR.STALE_CONTEXT, "\u6536\u5C3E\u6295\u7968\u5DF2\u7ECF\u53D8\u5316");
+        if (closing.initiatorMemberId === actor.memberId) return fail(ERR.ALREADY_VOTED, "\u53D1\u8D77\u8005\u5DF2\u7ECF\u81EA\u52A8\u901A\u8FC7");
+        if (!closing.requiredMemberIds.includes(actor.memberId)) return fail(ERR.NOT_PARTICIPANT);
+        if (closing.submittedMemberIds.includes(actor.memberId)) return fail(ERR.ALREADY_VOTED);
+        const facts = ensureFacts(aggregate);
+        const key = `${closing.closingVoteSessionId}:${actor.memberId}`;
+        facts.votes[key] = {
+          sessionId: check.session.sessionId,
+          voteSessionId: closing.closingVoteSessionId,
+          memberId: actor.memberId,
+          vote: command.payload.vote,
+          createdAt: nowOf(deps)
+        };
+        closing.submittedMemberIds.push(actor.memberId);
+        const events = [event(EVENT_TYPES.PARTNER_CLOSING_VOTE_RECORDED, {
+          closingVoteSessionId: closing.closingVoteSessionId,
+          votedCount: closing.submittedMemberIds.length,
+          requiredCount: closing.requiredMemberIds.length
+        })];
+        const dirty = [{ kind: "votes", id: key }];
+        if (closing.submittedMemberIds.length === closing.requiredMemberIds.length) {
+          const resolved = resolveClosing(aggregate, deps);
+          events.push(...resolved.events);
+          dirty.push(...resolved.dirty);
+        }
+        return domainOk(aggregate, events, { kind: "ACCEPTED" }, dirty);
+      }
+      if (type === COMMAND_TYPES.ADVANCE_PARTNER_CLOSING) {
+        const check = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_CLOSING_RUNE]);
+        if (!check.ok) return check;
+        const partner = partnerState(aggregate);
+        partner.closing.stage = "REVIEW";
+        check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_REVIEW;
+        check.session.workflow.phaseStartedAt = nowOf(deps);
+        return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_CLOSING_REVIEW_STARTED, { sourceTurnId: partner.closing.sourceTurnId })]);
+      }
+      if (type === COMMAND_TYPES.COMPLETE_PARTNER_SESSION) {
+        const check = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]);
+        if (!check.ok) return check;
+        const turns = Object.values(ensureFacts(aggregate).turns).filter((row) => row.sessionId === check.session.sessionId);
+        const totals = {};
+        turns.forEach((row) => {
+          totals[row.activeMemberId] = (totals[row.activeMemberId] || 0) + (row.totalStars || 0);
+        });
+        check.session.status = SESSION_STATUS.COMPLETED;
+        check.session.completedAt = nowOf(deps);
+        check.session.result = {
+          mode: MODE.PARTNER,
+          leaderboard: Object.keys(totals).map((memberId) => ({ memberId, totalStars: totals[memberId] })).sort((a, b) => b.totalStars - a.totalStars),
+          turnCount: turns.length,
+          turns: turns.slice().sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((row) => clone(row))
+        };
+        return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_COMPLETED, { sessionId: check.session.sessionId, mode: MODE.PARTNER })]);
+      }
+      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Partner \u547D\u4EE4: ${type}`);
+    }
+    function handlePartnerParticipantLeft(aggregate, memberId, deps) {
+      const session = aggregate.currentSession;
+      const partner = partnerState(aggregate);
+      const events = [];
+      const dirtyFacts = [];
+      if (!partner) return { events, dirtyFacts };
+      partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => id !== memberId);
+      if (partner.activeTurn) {
+        partner.activeTurn.scoreProgress.requiredMemberIds = partner.activeTurn.scoreProgress.requiredMemberIds.filter((id) => id !== memberId);
+        session.progress.scoreProgress = clone(partner.activeTurn.scoreProgress);
+      }
+      if (partner.closing) {
+        partner.closing.requiredMemberIds = partner.closing.requiredMemberIds.filter((id) => id !== memberId);
+        if (partner.closing.initiatorMemberId === memberId) {
+          const summary = archiveActiveTurn(aggregate, "ABANDONED", null, deps);
+          if (summary) {
+            dirtyFacts.push({ kind: "turns", id: summary.turnId });
+            events.push(event(EVENT_TYPES.PARTNER_TURN_ABANDONED, { turnId: summary.turnId }));
+          }
+          partner.closing = null;
+          const next = beginNextPartnerTurn(aggregate, deps);
+          if (next) events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: next.turnId, memberId: next.activeMemberId, roundNo: next.roundNo }));
+          return { events, dirtyFacts };
+        }
+        if (partner.closing.submittedMemberIds.length === partner.closing.requiredMemberIds.length) {
+          const resolved = resolveClosing(aggregate, deps);
+          events.push(...resolved.events);
+          dirtyFacts.push(...resolved.dirty);
+        }
+      }
+      if (partner.activeTurn && partner.activeTurn.activeMemberId === memberId) {
+        const summary = archiveActiveTurn(aggregate, "ABANDONED", null, deps);
+        dirtyFacts.push({ kind: "turns", id: summary.turnId });
+        events.push(event(EVENT_TYPES.PARTNER_TURN_ABANDONED, { turnId: summary.turnId }));
+        const next = beginNextPartnerTurn(aggregate, deps);
+        if (next) events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: next.turnId, memberId: next.activeMemberId, roundNo: next.roundNo }));
+      }
+      return { events, dirtyFacts };
+    }
+    module2.exports = { reducePartnerCommand, startPartnerFlow, startPartnerTurn, handlePartnerParticipantLeft, archiveActiveTurn };
+  }
+});
+
+// packages/room-domain/halli.js
+var require_halli = __commonJS({
+  "packages/room-domain/halli.js"(exports2, module2) {
+    "use strict";
+    var { COMMAND_TYPES } = require_room_contracts();
+    var {
+      event,
+      domainOk,
+      fail,
+      idOf,
+      nowOf,
+      ensureFacts,
+      assertHost,
+      assertParticipant,
+      assertSession,
+      activeParticipantIds,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR
+    } = require_model();
+    function reduceHalliCommand(aggregate, command, actorUserId, deps) {
+      if (command.type === COMMAND_TYPES.END_HALLI_ACTIVITY) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
+        if (!check.ok) return check;
+        check.session.workflow.step = WORKFLOW_STEP.HALLI_CREATIVE;
+        check.session.workflow.phaseStartedAt = nowOf(deps);
+        check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
+        return domainOk(aggregate, [event(EVENT_TYPES.HALLI_CREATIVE_STARTED, { sessionId: check.session.sessionId })]);
+      }
+      if (command.type === COMMAND_TYPES.SUBMIT_HALLI_IDEA) {
+        const actor = assertParticipant(aggregate, actorUserId);
+        if (!actor.ok) return actor;
+        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_CREATIVE] });
+        if (!check.ok) return check;
+        const facts = ensureFacts(aggregate);
+        const key = `${check.session.sessionId}:HALLI_IDEA:${actor.member.memberId}`;
+        const previous = facts.contributions[key];
+        facts.contributions[key] = {
+          contributionId: previous ? previous.contributionId : idOf(deps, "idea"),
+          sessionId: check.session.sessionId,
+          kind: "HALLI_IDEA",
+          memberId: actor.member.memberId,
+          text: String(command.payload.text).trim(),
+          entityVersion: previous ? previous.entityVersion + 1 : 1,
+          createdAt: previous ? previous.createdAt : nowOf(deps),
+          updatedAt: nowOf(deps)
+        };
+        const progress = check.session.progress.contributionProgress;
+        if (!progress.submittedMemberIds.includes(actor.member.memberId)) progress.submittedMemberIds.push(actor.member.memberId);
+        const events = [event(EVENT_TYPES.HALLI_IDEA_SUBMITTED, {
+          memberId: actor.member.memberId,
+          submittedCount: progress.submittedMemberIds.length,
+          requiredCount: progress.requiredMemberIds.length
+        })];
+        if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) {
+          check.session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
+          check.session.workflow.phaseStartedAt = nowOf(deps);
+          events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: check.session.sessionId }));
+        }
+        return domainOk(
+          aggregate,
+          events,
+          { kind: "ACCEPTED", contributionId: facts.contributions[key].contributionId },
+          [{ kind: "contributions", id: key }]
+        );
+      }
+      if (command.type === COMMAND_TYPES.COMPLETE_HALLI_SESSION) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_SUMMARY] });
+        if (!check.ok) return check;
+        const ideas = Object.values(ensureFacts(aggregate).contributions).filter((item) => item.sessionId === check.session.sessionId && item.kind === "HALLI_IDEA");
+        check.session.status = SESSION_STATUS.COMPLETED;
+        check.session.completedAt = nowOf(deps);
+        check.session.result = { mode: MODE.HALLI_GALLI, ideaCount: ideas.length };
+        return domainOk(aggregate, [event(
+          EVENT_TYPES.WORKSHOP_SESSION_COMPLETED,
+          { sessionId: check.session.sessionId, mode: MODE.HALLI_GALLI }
+        )]);
+      }
+      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Halli \u547D\u4EE4: ${command.type}`);
+    }
+    function handleHalliParticipantLeft(aggregate, memberId) {
+      const session = aggregate.currentSession;
+      const events = [];
+      if (!session || session.mode !== MODE.HALLI_GALLI) return { events, dirtyFacts: [] };
+      const progress = session.progress && session.progress.contributionProgress;
+      if (progress) {
+        progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
+        if (session.workflow.step === WORKFLOW_STEP.HALLI_CREATIVE && progress.requiredMemberIds.every((id) => progress.submittedMemberIds.includes(id))) {
+          session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
+          events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: session.sessionId }));
+        }
+      }
+      return { events, dirtyFacts: [] };
+    }
+    module2.exports = { reduceHalliCommand, handleHalliParticipantLeft };
   }
 });
 
@@ -294,709 +1307,411 @@ var require_spyWordPairs = __commonJS({
 var require_spy = __commonJS({
   "packages/room-domain/spy.js"(exports2, module2) {
     "use strict";
+    var { COMMAND_TYPES } = require_room_contracts();
+    var { SPY_WORD_PAIRS } = require_spyWordPairs();
     var {
-      COMMAND_TYPES,
-      ERR,
+      clone,
+      event,
+      domainOk,
       fail,
-      okResult
-    } = require_room_contracts();
-    var { pickRandomWordPair: pickLibraryWordPair } = require_spyWordPairs();
-    var SPY_PHASE = {
-      INTRO: "intro",
-      ASSIGN: "assign",
-      SPEAK: "speak",
-      VOTE: "vote",
-      RESULT: "result",
-      NEXT_ROUND: "nextRound",
-      SETTLE: "settle"
-    };
-    var SPY_PAGE = {
-      intro: "spymodeindex",
-      assign: "spyassign",
-      speak: "spyspeak",
-      vote: "spyvote",
-      result: "spyresult",
-      nextRound: "spynextround",
-      settle: "spysettle"
-    };
-    var MIN_PLAYERS = 3;
-    var SPEAK_ROUND_MS = 5 * 60 * 1e3;
-    var SPEAK_TURN_MS = 60 * 1e3;
-    var VOTE_ROUND_MS = 2 * 60 * 1e3;
-    var DEFAULT_WORD_PAIRS = null;
-    function pageForPhase(phase) {
-      return SPY_PAGE[phase] || SPY_PAGE.intro;
+      idOf,
+      nowOf,
+      ensureFacts,
+      assertHost,
+      assertParticipant,
+      assertSession,
+      activeParticipantsBySeat,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR
+    } = require_model();
+    function randomOf(deps) {
+      return deps && typeof deps.random === "function" ? deps.random : Math.random;
     }
-    function getDefaultSpyCount(playerCount) {
-      const n = Number(playerCount) || 0;
-      if (n < 3) return 0;
-      if (n <= 6) return 1;
-      return 2;
-    }
-    function shuffle(list, random) {
-      const rnd = typeof random === "function" ? random : Math.random;
-      const arr = list.slice();
-      for (let i = arr.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(rnd() * (i + 1));
-        const tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
+    function shuffle(items, random) {
+      const list = items.slice();
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
       }
-      return arr;
+      return list;
     }
-    function pickDefaultWordPair() {
-      if (typeof pickLibraryWordPair === "function") {
-        return pickLibraryWordPair();
-      }
+    function spyState(aggregate) {
+      return aggregate.currentSession && aggregate.currentSession.modeState.spy;
+    }
+    function alivePlayers(spy) {
+      return (spy.players || []).filter((player) => player.alive && !player.left);
+    }
+    function playerByMemberId(spy, memberId) {
+      return (spy.players || []).find((player) => player.memberId === memberId) || null;
+    }
+    function secretByMemberId(aggregate, gameId, memberId) {
+      return ensureFacts(aggregate).secrets[`${gameId}:${memberId}`] || null;
+    }
+    function winnerSide(aggregate, spy) {
+      const alive = alivePlayers(spy);
+      const spies = alive.filter((player) => (secretByMemberId(aggregate, spy.gameId, player.memberId) || {}).role === "spy");
+      const civilians = alive.length - spies.length;
+      if (!spies.length) return "civilian";
+      if (spies.length >= civilians) return "spy";
       return null;
     }
-    function samePlayerIndex(a, b) {
-      if (a == null || b == null) return false;
-      return Number(a) === Number(b);
+    function reveal(aggregate, spy) {
+      return (spy.players || []).map((player) => {
+        const secret = secretByMemberId(aggregate, spy.gameId, player.memberId) || {};
+        return {
+          memberId: player.memberId,
+          nickName: player.nickName,
+          role: secret.role || null,
+          word: secret.word || null,
+          alive: player.alive,
+          left: player.left
+        };
+      });
     }
-    function indexIncludes(list, index) {
-      if (!Array.isArray(list) || index == null) return false;
-      const n = Number(index);
-      return list.some((item) => Number(item) === n);
+    function pickWords(deps) {
+      if (deps && typeof deps.wordPairPicker === "function") return deps.wordPairPicker(randomOf(deps));
+      if (!SPY_WORD_PAIRS.length) return null;
+      const random = randomOf(deps);
+      const pair = SPY_WORD_PAIRS[Math.floor(random() * SPY_WORD_PAIRS.length)];
+      const swap = random() < 0.5;
+      return {
+        id: pair.id,
+        civilianWord: swap ? pair.wordB : pair.wordA,
+        civilianBlurb: swap ? pair.blurbB : pair.blurbA,
+        spyWord: swap ? pair.wordA : pair.wordB,
+        spyBlurb: swap ? pair.blurbA : pair.blurbB
+      };
     }
-    function getAliveIndexSet(players) {
-      return new Set(
-        (players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true).map((p) => Number(p.playerIndex))
+    function startSpeaker(aggregate, order, deps, tieBreak) {
+      const session = aggregate.currentSession;
+      const spy = spyState(aggregate);
+      spy.speakOrder = order.slice();
+      spy.currentSpeakerIndex = 0;
+      spy.speakerTurnId = idOf(deps, "speaker");
+      spy.speakRoundStartedAt = nowOf(deps);
+      spy.speakTurnStartedAt = nowOf(deps);
+      spy.voteProgress = null;
+      spy.tieBreak = tieBreak === true;
+      session.workflow = {
+        step: tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK,
+        roundNo: spy.roundNo,
+        activeMemberId: order[0] || null,
+        turnId: spy.speakerTurnId,
+        phaseStartedAt: nowOf(deps)
+      };
+      return event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: order[0] || null, tieBreak: spy.tieBreak });
+    }
+    function openVote(aggregate, deps) {
+      const session = aggregate.currentSession;
+      const spy = spyState(aggregate);
+      const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
+      spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
+      session.workflow = {
+        step: WORKFLOW_STEP.SPY_VOTE,
+        roundNo: spy.roundNo,
+        activeMemberId: null,
+        turnId: spy.voteProgress.voteSessionId,
+        phaseStartedAt: nowOf(deps)
+      };
+      return event(EVENT_TYPES.SPY_VOTE_OPENED, { voteSessionId: spy.voteProgress.voteSessionId, requiredCount: requiredMemberIds.length, tieBreak: spy.tieBreak });
+    }
+    function startGame(aggregate, deps, restarted) {
+      const session = aggregate.currentSession;
+      const facts = ensureFacts(aggregate);
+      const participants = activeParticipantsBySeat(aggregate);
+      if (participants.length < 3) return fail(ERR.NOT_ENOUGH_PLAYERS, "Spy \u81F3\u5C11\u9700\u8981 3 \u4EBA");
+      const words = pickWords(deps);
+      if (!words) return fail(ERR.NO_WORD_PAIR);
+      const random = randomOf(deps);
+      const shuffled = shuffle(participants, random);
+      const spyMemberId = shuffled[0].memberId;
+      const gameId = idOf(deps, "spy");
+      const players = participants.map((member) => ({
+        memberId: member.memberId,
+        seatNoAtStart: member.seatNo,
+        nickName: member.profile.nickName,
+        avatarRef: member.profile.avatarRef || null,
+        alive: true,
+        left: false
+      }));
+      players.forEach((player) => {
+        const isSpy = player.memberId === spyMemberId;
+        const key = `${gameId}:${player.memberId}`;
+        facts.secrets[key] = {
+          gameId,
+          sessionId: session.sessionId,
+          memberId: player.memberId,
+          role: isSpy ? "spy" : "civilian",
+          word: isSpy ? words.spyWord : words.civilianWord,
+          blurb: isSpy ? words.spyBlurb : words.civilianBlurb,
+          createdAt: nowOf(deps)
+        };
+      });
+      session.modeState.spy = {
+        gameId,
+        roundNo: 1,
+        wordPairId: words.id || null,
+        players,
+        speakOrder: [],
+        currentSpeakerIndex: 0,
+        speakerTurnId: null,
+        voteProgress: null,
+        tieBreak: false,
+        lastResult: null,
+        winnerSide: null,
+        reveal: []
+      };
+      session.status = SESSION_STATUS.RUNNING;
+      const events = [];
+      if (restarted) events.push(event(EVENT_TYPES.SPY_GAME_RESTARTED, { gameId }));
+      events.push(event(EVENT_TYPES.SPY_ROLES_ASSIGNED, { gameId, playerCount: players.length, spyCount: 1 }));
+      events.push(startSpeaker(aggregate, shuffle(players.map((player) => player.memberId), random), deps, false));
+      return domainOk(
+        aggregate,
+        events,
+        { kind: "ACCEPTED", gameId },
+        players.map((player) => ({ kind: "secrets", id: `${gameId}:${player.memberId}` }))
       );
     }
-    function findSpeakIndex(order, players, from) {
-      const alive = getAliveIndexSet(players);
-      const list = order || [];
-      let i = Math.max(0, Number(from) || 0);
-      while (i < list.length && !alive.has(Number(list[i]))) {
-        i += 1;
-      }
-      return i;
+    function assertSpy(aggregate, context, steps) {
+      const check = assertSession(aggregate, context, { mode: MODE.SPY, steps });
+      if (!check.ok) return check;
+      const spy = spyState(aggregate);
+      if (!spy || context.gameId && spy.gameId !== context.gameId) return fail(ERR.STALE_CONTEXT, "Spy \u6E38\u620F\u5DF2\u7ECF\u53D8\u5316");
+      return { ...check, spy };
     }
-    function listPlayableMembers(room) {
-      const seatMap = room.seatMap || {};
-      const byUser = room.membersByUserId || {};
-      return Object.keys(seatMap).map((seat) => {
-        const userId = seatMap[seat];
-        const m = byUser[userId];
-        if (!userId || !m) return null;
-        return {
-          userId,
-          seatNo: Number(seat),
-          playerIndex: Number(seat),
-          nickName: m.nickName || `\u73A9\u5BB6${seat}`,
-          avatarUrl: m.avatarUrl || null,
-          avatarIndex: m.avatarIndex != null ? m.avatarIndex : null
-        };
-      }).filter(Boolean).sort((a, b) => a.seatNo - b.seatNo);
-    }
-    function emptyVoteStatus() {
-      return {
-        votedPlayerIndexes: [],
-        abstainPlayerIndexes: [],
-        tally: {},
-        ballots: {}
-      };
-    }
-    function assignmentsMap(room) {
-      if (room.spyAssignments && typeof room.spyAssignments === "object") {
-        return room.spyAssignments;
-      }
-      const secrets = room.secretsByUserId || {};
-      const out = {};
-      Object.keys(secrets).forEach((userId) => {
-        const row = secrets[userId];
-        if (!row) return;
-        const seat = row.playerIndex != null ? String(row.playerIndex) : null;
-        if (seat) out[seat] = { ...row, userId };
+    function resolveVote(aggregate, deps) {
+      const session = aggregate.currentSession;
+      const spy = spyState(aggregate);
+      const facts = ensureFacts(aggregate);
+      const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === spy.voteProgress.voteSessionId);
+      const tally = {};
+      rows.forEach((row) => {
+        if (row.targetMemberId) tally[row.targetMemberId] = (tally[row.targetMemberId] || 0) + 1;
       });
-      return out;
-    }
-    function resolveWinnerSide(players) {
-      const alive = (players || []).filter((p) => p && p.alive !== false);
-      const spies = alive.filter((p) => p.role === "spy");
-      const civilians = alive.filter((p) => p.role === "civilian");
-      if (spies.length === 0) return "civilian";
-      if (spies.length >= civilians.length) return "spy";
-      return null;
-    }
-    function buildRevealList(spyGame, assignments) {
-      return (spyGame.players || []).filter((p) => p && p.leftRoom !== true).map((p) => {
-        const card = assignments[String(p.playerIndex)] || {};
-        return {
-          playerIndex: p.playerIndex,
-          name: p.name || card.name || `\u73A9\u5BB6${p.playerIndex}`,
-          role: card.role || null,
-          word: card.word || null,
-          alive: p.alive !== false
-        };
-      });
-    }
-    function beginSpeakPhase(spyGame, speakOrder, now) {
-      const order = speakOrder || spyGame.speakOrder || [];
-      const first = findSpeakIndex(order, spyGame.players, 0);
-      return {
-        ...spyGame,
-        phase: SPY_PHASE.SPEAK,
-        speakOrder: order,
-        currentSpeakIndex: first,
-        speakRoundStartedAt: now,
-        speakTurnStartedAt: first < order.length ? now : 0,
-        speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
-        voteStartedAt: 0,
-        voteStatus: emptyVoteStatus()
-      };
-    }
-    function beginVotePhase(spyGame, now) {
-      return {
-        ...spyGame,
-        phase: SPY_PHASE.VOTE,
-        voteStartedAt: now,
-        voteStatus: emptyVoteStatus(),
-        speakTurnStartedAt: 0
-      };
-    }
-    function publicSpyGame(spyGame, assignments) {
-      if (!spyGame) return null;
-      const phase = spyGame.phase;
-      const voteStatus = spyGame.voteStatus || {};
-      const aliveCount = (spyGame.players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true).length;
-      const votedCount = (voteStatus.votedPlayerIndexes || []).length;
-      const revealWords = phase === SPY_PHASE.SETTLE;
-      const base = {
-        phase,
-        spyCount: spyGame.spyCount,
-        round: spyGame.round,
-        wordPairId: spyGame.wordPairId || null,
-        civilianWord: revealWords ? spyGame.civilianWord : null,
-        civilianBlurb: revealWords ? spyGame.civilianBlurb : null,
-        spyWord: revealWords ? spyGame.spyWord : null,
-        spyBlurb: revealWords ? spyGame.spyBlurb : null,
-        players: (spyGame.players || []).filter((p) => p && p.leftRoom !== true).map((p) => ({
-          playerIndex: p.playerIndex,
-          name: p.name,
-          avatarUrl: p.avatarUrl || null,
-          avatarIndex: p.avatarIndex != null ? p.avatarIndex : null,
-          alive: p.alive !== false,
-          leftRoom: p.leftRoom === true
-        })),
-        speakOrder: spyGame.speakOrder || [],
-        currentSpeakIndex: spyGame.currentSpeakIndex != null ? spyGame.currentSpeakIndex : 0,
-        speakRoundStartedAt: spyGame.speakRoundStartedAt || 0,
-        speakTurnStartedAt: spyGame.speakTurnStartedAt || 0,
-        voteStartedAt: spyGame.voteStartedAt || 0,
-        speakRoundMs: spyGame.speakRoundMs || SPEAK_ROUND_MS,
-        speakTurnMs: spyGame.speakTurnMs || SPEAK_TURN_MS,
-        voteDeadlineMs: spyGame.voteDeadlineMs || VOTE_ROUND_MS,
-        voteStatus: {
-          votedPlayerIndexes: Array.isArray(voteStatus.votedPlayerIndexes) ? voteStatus.votedPlayerIndexes : [],
-          abstainPlayerIndexes: Array.isArray(voteStatus.abstainPlayerIndexes) ? voteStatus.abstainPlayerIndexes : [],
-          votedCount,
-          totalVoters: aliveCount
-        },
-        lastResult: spyGame.lastResult || null,
-        winnerSide: spyGame.winnerSide || null,
-        tieBreak: spyGame.tieBreak === true
-      };
-      if (revealWords) {
-        const reveal = buildRevealList(spyGame, assignments || {});
-        base.reveal = reveal;
-        if (base.lastResult) {
-          base.lastResult = { ...base.lastResult, reveal };
-        }
+      const max = Math.max(0, ...Object.values(tally));
+      const top = max ? Object.keys(tally).filter((memberId) => tally[memberId] === max) : [];
+      if (top.length > 1) {
+        spy.lastResult = { eliminatedMemberId: null, maxVotes: max, tied: true, tiedMemberIds: top, tallies: tally, winnerSide: null };
+        const started = startSpeaker(aggregate, shuffle(top, randomOf(deps)), deps, true);
+        return [event(EVENT_TYPES.SPY_VOTE_TIED, { memberIds: top, maxVotes: max }), started];
       }
-      return base;
-    }
-    function assertRevision(room, expectedRevision) {
-      if (expectedRevision != null && Number(expectedRevision) !== Number(room.revision)) {
-        return fail(ERR.REVISION_CONFLICT, null, { currentRevision: room.revision });
+      let eliminated = null;
+      if (top.length === 1) {
+        eliminated = playerByMemberId(spy, top[0]);
+        if (eliminated) eliminated.alive = false;
       }
-      return null;
-    }
-    function actorSeatNo(room, actorUserId) {
-      const seat = Object.keys(room.seatMap || {}).find(
-        (s) => String(room.seatMap[s]) === String(actorUserId)
-      );
-      return seat != null ? Number(seat) : null;
-    }
-    function patchSpyRoom(room, spyGame, page, ts, extras) {
-      const domainRevisions = {
-        ...room.domainRevisions || {},
-        session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
-      };
-      const order = spyGame.speakOrder || [];
-      const cur = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
-      const activeSeatNo = cur < order.length ? Number(order[cur]) : null;
-      return {
-        ...room,
-        ...extras || {},
-        selectedModeId: room.selectedModeId || "spy",
-        currentPage: page,
-        brainstormProgressPage: page,
-        spyGame,
-        domainRevisions,
-        revision: room.revision + 1,
-        updatedAt: ts,
-        workflow: {
-          mode: "SPY",
-          step: `SPY_${String(spyGame.phase || "INTRO").toUpperCase()}`,
-          roundNo: spyGame.round || 1,
-          turnId: `spy_r${spyGame.round || 1}_s${activeSeatNo != null ? activeSeatNo : 0}`,
-          activeSeatNo,
-          deadlineAt: spyGame.phase === SPY_PHASE.SPEAK && spyGame.speakTurnStartedAt ? spyGame.speakTurnStartedAt + (spyGame.speakTurnMs || SPEAK_TURN_MS) : null
-        }
-      };
-    }
-    function okSpy(commandId, next, effects) {
-      const assignments = next.spyAssignments || assignmentsMap(next);
-      return okResult({
-        commandId,
-        appliedRevision: next.revision,
-        changedDomains: ["session"],
-        room: next,
-        effects: {
-          legacyPage: next.currentPage,
-          spyGame: publicSpyGame(next.spyGame, assignments),
-          ...effects || {}
-        }
-      });
-    }
-    function resolveVote(room, spyGame, ts, random) {
-      const assignments = assignmentsMap(room);
-      const tally = spyGame.voteStatus && spyGame.voteStatus.tally || {};
-      let maxVotes = 0;
-      let topIndexes = [];
-      Object.keys(tally).forEach((key) => {
-        const count = Number(tally[key]) || 0;
-        const idx = Number(key);
-        if (count > maxVotes) {
-          maxVotes = count;
-          topIndexes = [idx];
-        } else if (count === maxVotes && count > 0) {
-          topIndexes.push(idx);
-        }
-      });
-      const publicTallies = { ...tally };
-      if (maxVotes > 0 && topIndexes.length > 1) {
-        const tiedOrder = shuffle(topIndexes.slice(), random);
-        let nextGame2 = {
-          ...spyGame,
-          lastResult: {
-            eliminatedIndex: null,
-            eliminatedRole: null,
-            eliminatedName: "",
-            maxVotes,
-            tied: true,
-            tiedIndexes: topIndexes,
-            tallies: publicTallies,
-            winnerSide: null
-          },
-          tieBreak: true,
-          winnerSide: null
-        };
-        nextGame2 = beginSpeakPhase(nextGame2, tiedOrder, ts);
-        const page2 = pageForPhase(SPY_PHASE.SPEAK);
-        const next2 = patchSpyRoom(room, nextGame2, page2, ts);
-        return okSpy(null, next2, { tied: true, settled: false });
-      }
-      let eliminatedIndex = null;
-      let eliminatedRole = null;
-      let eliminatedName = "";
-      let nextGame = { ...spyGame };
-      if (maxVotes > 0 && topIndexes.length === 1) {
-        eliminatedIndex = topIndexes[0];
-        const card = assignments[String(eliminatedIndex)];
-        eliminatedRole = card ? card.role : null;
-        const snap = (nextGame.players || []).find((p) => samePlayerIndex(p.playerIndex, eliminatedIndex));
-        eliminatedName = snap && snap.name || card && card.name || `\u73A9\u5BB6${eliminatedIndex}`;
-        nextGame.players = (nextGame.players || []).map((p) => samePlayerIndex(p.playerIndex, eliminatedIndex) ? { ...p, alive: false } : p);
-      }
-      const rolePlayers = (nextGame.players || []).map((p) => {
-        const card = assignments[String(p.playerIndex)] || {};
-        return { role: card.role || "civilian", alive: p.alive !== false };
-      });
-      const winnerSide = resolveWinnerSide(rolePlayers);
-      nextGame.lastResult = {
-        eliminatedIndex,
-        eliminatedRole,
-        eliminatedName,
-        maxVotes,
+      const winner = winnerSide(aggregate, spy);
+      const eliminatedSecret = eliminated ? secretByMemberId(aggregate, spy.gameId, eliminated.memberId) : null;
+      spy.lastResult = {
+        eliminatedMemberId: eliminated && eliminated.memberId,
+        eliminatedName: eliminated && eliminated.nickName,
+        maxVotes: max,
         tied: false,
-        tallies: publicTallies,
-        winnerSide
+        tallies: tally,
+        winnerSide: winner
       };
-      nextGame.winnerSide = winnerSide;
-      nextGame.tieBreak = false;
-      if (winnerSide) {
-        nextGame.phase = SPY_PHASE.SETTLE;
-        const reveal = buildRevealList(nextGame, assignments);
-        nextGame.lastResult = { ...nextGame.lastResult, reveal };
-        const page2 = pageForPhase(SPY_PHASE.SETTLE);
-        const next2 = patchSpyRoom(room, nextGame, page2, ts);
-        return okSpy(null, next2, { settled: true });
+      const events = [];
+      if (eliminated) events.push(event(
+        EVENT_TYPES.SPY_PLAYER_ELIMINATED,
+        { memberId: eliminated.memberId, nickName: eliminated.nickName, maxVotes: max }
+      ));
+      if (winner) {
+        spy.winnerSide = winner;
+        spy.reveal = reveal(aggregate, spy);
+        session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
+        session.workflow.phaseStartedAt = nowOf(deps);
+        events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
+      } else {
+        session.workflow.step = WORKFLOW_STEP.SPY_RESULT;
+        session.workflow.phaseStartedAt = nowOf(deps);
+        events.push(event(EVENT_TYPES.SPY_ROUND_COMPLETED, { roundNo: spy.roundNo, eliminatedMemberId: eliminated && eliminated.memberId, tallies: tally }));
       }
-      nextGame.phase = SPY_PHASE.RESULT;
-      const page = pageForPhase(SPY_PHASE.RESULT);
-      const next = patchSpyRoom(room, nextGame, page, ts);
-      return okSpy(null, next, { settled: false });
+      return events;
     }
-    function executeSpyCommand(ctx) {
-      const {
-        room,
-        envelope,
-        actorUserId,
-        ts,
-        wordPairPicker,
-        random
-      } = ctx;
-      const { type, commandId, expectedRevision, payload } = envelope;
-      const seatNo = actorSeatNo(room, actorUserId);
-      const isHost = String(room.hostUserId) === String(actorUserId);
-      if (type === COMMAND_TYPES.SPY_GET_MY_CARD) {
-        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
-        const secrets = room.secretsByUserId || {};
-        const secret = secrets[actorUserId];
-        if (!secret) return fail(ERR.NO_CARD);
-        const speakOrder = room.spyGame && room.spyGame.speakOrder || [];
-        const playerIndex = secret.playerIndex != null ? Number(secret.playerIndex) : Number(seatNo);
-        const speakOrderRank = speakOrder.findIndex((idx) => Number(idx) === playerIndex) + 1;
-        return okResult({
-          commandId,
-          appliedRevision: room.revision,
-          changedDomains: [],
-          room,
-          effects: {
-            readOnly: true,
-            card: {
-              playerIndex,
-              role: secret.role,
-              word: secret.word,
-              blurb: secret.blurb,
-              speakOrderRank: speakOrderRank > 0 ? speakOrderRank : null,
-              speakOrderTotal: speakOrder.length
-            },
-            spyGame: publicSpyGame(room.spyGame, assignmentsMap(room))
-          }
-        });
+    function reduceSpyCommand(aggregate, command, actorUserId, deps) {
+      if (command.type === COMMAND_TYPES.START_SPY_GAME) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSession(aggregate, command.context, { mode: MODE.SPY, steps: [WORKFLOW_STEP.SPY_INTRO] });
+        if (!check.ok) return check;
+        return startGame(aggregate, deps, false);
       }
-      if (type === COMMAND_TYPES.SPY_START_ASSIGN) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const revErr = assertRevision(room, expectedRevision);
-        if (revErr) return revErr;
-        const players = listPlayableMembers(room);
-        if (players.length < MIN_PLAYERS) {
-          return fail(ERR.NOT_ENOUGH_PLAYERS, `\u81F3\u5C11\u9700\u8981 ${MIN_PLAYERS} \u540D\u73A9\u5BB6`);
+      const actor = assertParticipant(aggregate, actorUserId);
+      if (!actor.ok) return actor;
+      if (command.type === COMMAND_TYPES.ADVANCE_SPY_SPEAKER) {
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK]);
+        if (!check.ok) return check;
+        if (check.spy.speakerTurnId !== command.context.speakerTurnId) return fail(ERR.STALE_CONTEXT, "\u53D1\u8A00\u8F6E\u5DF2\u7ECF\u53D8\u5316");
+        const current = check.spy.speakOrder[check.spy.currentSpeakerIndex];
+        if (current !== actor.member.memberId) return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u53D1\u8A00\u8005\u53EF\u4EE5\u7ED3\u675F\u53D1\u8A00");
+        const events = [event(EVENT_TYPES.SPY_SPEAKER_FINISHED, { speakerTurnId: check.spy.speakerTurnId, memberId: current })];
+        check.spy.currentSpeakerIndex += 1;
+        while (check.spy.currentSpeakerIndex < check.spy.speakOrder.length) {
+          const player = playerByMemberId(check.spy, check.spy.speakOrder[check.spy.currentSpeakerIndex]);
+          if (player && player.alive && !player.left) break;
+          check.spy.currentSpeakerIndex += 1;
         }
-        const phase = room.spyGame && room.spyGame.phase;
-        if (phase && phase !== SPY_PHASE.INTRO && phase !== SPY_PHASE.SETTLE) {
-          return fail(ERR.GAME_IN_PROGRESS);
+        if (check.spy.currentSpeakerIndex >= check.spy.speakOrder.length) events.push(openVote(aggregate, deps));
+        else {
+          check.spy.speakerTurnId = idOf(deps, "speaker");
+          check.spy.speakTurnStartedAt = nowOf(deps);
+          check.session.workflow.activeMemberId = check.spy.speakOrder[check.spy.currentSpeakerIndex];
+          check.session.workflow.turnId = check.spy.speakerTurnId;
+          check.session.workflow.phaseStartedAt = nowOf(deps);
+          events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, {
+            speakerTurnId: check.spy.speakerTurnId,
+            memberId: check.session.workflow.activeMemberId,
+            tieBreak: check.spy.tieBreak
+          }));
         }
-        const pair = typeof wordPairPicker === "function" ? wordPairPicker() : pickDefaultWordPair(random);
-        if (!pair || !pair.civilianWord || !pair.spyWord) {
-          return fail(ERR.NO_WORD_PAIR);
+        return domainOk(aggregate, events);
+      }
+      if (command.type === COMMAND_TYPES.OPEN_SPY_VOTE) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK]);
+        if (!check.ok) return check;
+        return domainOk(aggregate, [openVote(aggregate, deps)]);
+      }
+      if (command.type === COMMAND_TYPES.SUBMIT_SPY_VOTE) {
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_VOTE]);
+        if (!check.ok) return check;
+        const progress = check.spy.voteProgress;
+        if (!progress || progress.voteSessionId !== command.context.voteSessionId) return fail(ERR.STALE_CONTEXT, "\u6295\u7968\u573A\u6B21\u5DF2\u7ECF\u53D8\u5316");
+        const player = playerByMemberId(check.spy, actor.member.memberId);
+        if (!player || !player.alive || player.left) return fail(ERR.INVALID_TRANSITION, "\u51FA\u5C40\u6210\u5458\u4E0D\u80FD\u6295\u7968");
+        if (progress.submittedMemberIds.includes(actor.member.memberId)) return fail(ERR.ALREADY_VOTED);
+        const abstain = command.payload.abstain === true;
+        const targetMemberId = abstain ? null : String(command.payload.targetMemberId || "");
+        if (!abstain) {
+          if (!targetMemberId || targetMemberId === actor.member.memberId) return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u5176\u4ED6\u5B58\u6D3B\u6210\u5458");
+          const target = playerByMemberId(check.spy, targetMemberId);
+          if (!target || !target.alive || target.left) return fail(ERR.INVALID_ARGUMENT, "\u6295\u7968\u76EE\u6807\u4E0D\u53EF\u7528");
         }
-        const spyCount = getDefaultSpyCount(players.length);
-        const shuffled = shuffle(players, random);
-        const secretsByUserId = {};
-        const assignmentsBySeat = {};
-        shuffled.forEach((m, index) => {
-          const isSpy = index < spyCount;
-          const row = {
-            playerIndex: m.playerIndex,
-            userId: m.userId,
-            role: isSpy ? "spy" : "civilian",
-            word: isSpy ? pair.spyWord : pair.civilianWord,
-            blurb: isSpy ? pair.spyBlurb || "" : pair.civilianBlurb || "",
-            name: m.nickName
-          };
-          secretsByUserId[m.userId] = row;
-          assignmentsBySeat[String(m.playerIndex)] = row;
-        });
-        const speakOrder = shuffle(players.map((m) => m.playerIndex), random);
-        const playerSnaps = players.map((m) => ({
-          playerIndex: m.playerIndex,
-          name: m.nickName,
-          avatarUrl: m.avatarUrl,
-          avatarIndex: m.avatarIndex,
-          alive: true
-        }));
-        let spyGame = {
-          phase: SPY_PHASE.SPEAK,
-          spyCount,
-          round: 1,
-          wordPairId: pair.id || null,
-          civilianWord: pair.civilianWord,
-          civilianBlurb: pair.civilianBlurb || "",
-          spyWord: pair.spyWord,
-          spyBlurb: pair.spyBlurb || "",
-          players: playerSnaps,
-          speakOrder,
-          currentSpeakIndex: 0,
-          speakRoundStartedAt: 0,
-          speakTurnStartedAt: 0,
-          voteStartedAt: 0,
-          speakRoundMs: SPEAK_ROUND_MS,
-          speakTurnMs: SPEAK_TURN_MS,
-          voteDeadlineMs: VOTE_ROUND_MS,
-          voteStatus: emptyVoteStatus(),
-          lastResult: null,
-          winnerSide: null,
-          tieBreak: false
+        const facts = ensureFacts(aggregate);
+        const key = `${progress.voteSessionId}:${actor.member.memberId}`;
+        facts.votes[key] = {
+          sessionId: check.session.sessionId,
+          voteSessionId: progress.voteSessionId,
+          memberId: actor.member.memberId,
+          vote: abstain ? "abstain" : "target",
+          targetMemberId,
+          createdAt: nowOf(deps)
         };
-        spyGame = beginSpeakPhase(spyGame, speakOrder, ts);
-        const page = pageForPhase(SPY_PHASE.SPEAK);
-        const next = patchSpyRoom(room, spyGame, page, ts, {
-          spyAssignments: assignmentsBySeat,
-          secretsByUserId,
-          selectedModeId: "spy"
-        });
-        const result = okSpy(commandId, next, {
-          spyStarted: true,
-          secretsUpsert: true,
-          combinedStartSpeak: true,
-          payloadNote: payload || null
-        });
-        result.commandId = commandId;
-        return result;
+        progress.submittedMemberIds.push(actor.member.memberId);
+        const events = [event(EVENT_TYPES.SPY_VOTE_RECORDED, {
+          voteSessionId: progress.voteSessionId,
+          votedCount: progress.submittedMemberIds.length,
+          requiredCount: progress.requiredMemberIds.length
+        })];
+        if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) events.push(...resolveVote(aggregate, deps));
+        return domainOk(aggregate, events, { kind: "ACCEPTED" }, [{ kind: "votes", id: key }]);
       }
-      if (type === COMMAND_TYPES.SPY_START_SPEAK) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const revErr = assertRevision(room, expectedRevision);
-        if (revErr) return revErr;
-        if (room.spyGame && room.spyGame.phase === SPY_PHASE.SPEAK && payload && payload.forceVote) {
-          let spyGame = { ...room.spyGame };
-          const order = spyGame.speakOrder || [];
-          spyGame.currentSpeakIndex = order.length;
-          spyGame = beginVotePhase(spyGame, ts);
-          const page = pageForPhase(SPY_PHASE.VOTE);
-          const next = patchSpyRoom(room, spyGame, page, ts);
-          const result = okSpy(commandId, next, { autoVote: true, finished: true });
-          result.commandId = commandId;
-          return result;
+      if (command.type === COMMAND_TYPES.START_NEXT_SPY_ROUND) {
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_RESULT]);
+        if (!check.ok) return check;
+        const alive = alivePlayers(check.spy);
+        if (alive.length < 2) return fail(ERR.INVALID_TRANSITION, "\u5B58\u6D3B\u4EBA\u6570\u4E0D\u8DB3");
+        const previousResult = check.spy.lastResult;
+        check.spy.roundNo += 1;
+        check.spy.lastResult = null;
+        check.spy.voteProgress = null;
+        check.spy.tieBreak = false;
+        let order = alive.slice().sort((a, b) => a.seatNoAtStart - b.seatNoAtStart).map((player) => player.memberId);
+        const eliminated = check.spy.players.find((player) => !player.alive && previousResult && player.memberId === previousResult.eliminatedMemberId);
+        if (eliminated) {
+          const index = order.findIndex((memberId) => playerByMemberId(check.spy, memberId).seatNoAtStart > eliminated.seatNoAtStart);
+          if (index > 0) order = order.slice(index).concat(order.slice(0, index));
         }
-        if (room.spyGame && room.spyGame.phase === SPY_PHASE.SPEAK) {
-          return okResult({
-            commandId,
-            appliedRevision: room.revision,
-            changedDomains: [],
-            room,
-            effects: {
-              readOnly: true,
-              already: true,
-              spyGame: publicSpyGame(room.spyGame, assignmentsMap(room)),
-              legacyPage: pageForPhase(SPY_PHASE.SPEAK)
-            }
-          });
-        }
-        return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u5206\u724C\u5F00\u5C40");
+        const events = [event(EVENT_TYPES.SPY_ROUND_STARTED, { roundNo: check.spy.roundNo }), startSpeaker(aggregate, order, deps, false)];
+        return domainOk(aggregate, events);
       }
-      if (type === COMMAND_TYPES.SPY_ADVANCE_SPEAKER) {
-        const revErr = assertRevision(room, expectedRevision);
-        if (revErr) return revErr;
-        let spyGame = room.spyGame ? { ...room.spyGame } : null;
-        if (!spyGame || spyGame.phase !== SPY_PHASE.SPEAK) {
-          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u4E0D\u5728\u53D1\u8A00\u9636\u6BB5");
-        }
-        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
-        const order = spyGame.speakOrder || [];
-        const curIdx = spyGame.currentSpeakIndex != null ? Number(spyGame.currentSpeakIndex) : 0;
-        const currentPlayerIndex = curIdx < order.length ? order[curIdx] : null;
-        const isCurrentSpeaker = currentPlayerIndex != null && samePlayerIndex(seatNo, currentPlayerIndex);
-        if (payload && payload.forceVote) {
-          if (!isHost) return fail(ERR.HOST_REQUIRED);
-          spyGame.currentSpeakIndex = order.length;
-          spyGame = beginVotePhase(spyGame, ts);
-          const page = pageForPhase(SPY_PHASE.VOTE);
-          const next2 = patchSpyRoom(room, spyGame, page, ts);
-          const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
-          result2.commandId = commandId;
-          return result2;
-        }
-        if (!isCurrentSpeaker) {
-          return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u53D1\u8A00\u8005\u53EF\u7ED3\u675F\u53D1\u8A00");
-        }
-        const nextIdx = findSpeakIndex(order, spyGame.players, curIdx + 1);
-        if (nextIdx >= order.length) {
-          spyGame.currentSpeakIndex = order.length;
-          spyGame = beginVotePhase(spyGame, ts);
-          const page = pageForPhase(SPY_PHASE.VOTE);
-          const next2 = patchSpyRoom(room, spyGame, page, ts);
-          const result2 = okSpy(commandId, next2, { finished: true, autoVote: true });
-          result2.commandId = commandId;
-          return result2;
-        }
-        spyGame.currentSpeakIndex = nextIdx;
-        spyGame.speakTurnStartedAt = ts;
-        spyGame.speakTurnMs = spyGame.speakTurnMs || SPEAK_TURN_MS;
-        const next = patchSpyRoom(room, spyGame, pageForPhase(SPY_PHASE.SPEAK), ts);
-        const result = okSpy(commandId, next, { finished: false });
-        result.commandId = commandId;
-        return result;
+      if (command.type === COMMAND_TYPES.RESTART_SPY_GAME) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SETTLED]);
+        if (!check.ok) return check;
+        return startGame(aggregate, deps, true);
       }
-      if (type === COMMAND_TYPES.SPY_SUBMIT_VOTE) {
-        if (!seatNo) return fail(ERR.NOT_MEMBER);
-        let spyGame = room.spyGame ? { ...room.spyGame } : null;
-        if (!spyGame || spyGame.phase !== SPY_PHASE.VOTE) {
-          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u4E0D\u5728\u6295\u7968\u9636\u6BB5");
-        }
-        const mySnap = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, seatNo));
-        if (!mySnap || mySnap.alive === false) {
-          return fail(ERR.INVALID_TRANSITION, "\u5DF2\u51FA\u5C40\u65E0\u6CD5\u6295\u7968");
-        }
-        const voteStatus = {
-          votedPlayerIndexes: [...spyGame.voteStatus && spyGame.voteStatus.votedPlayerIndexes || []],
-          abstainPlayerIndexes: [...spyGame.voteStatus && spyGame.voteStatus.abstainPlayerIndexes || []],
-          tally: { ...spyGame.voteStatus && spyGame.voteStatus.tally || {} },
-          ballots: { ...spyGame.voteStatus && spyGame.voteStatus.ballots || {} }
-        };
-        if (indexIncludes(voteStatus.votedPlayerIndexes, seatNo)) {
-          return fail(ERR.ALREADY_VOTED, "\u5DF2\u6295\u7968\uFF0C\u4E0D\u53EF\u4FEE\u6539");
-        }
-        const isAbstain = !!(payload && payload.abstain);
-        if (isAbstain) {
-          voteStatus.abstainPlayerIndexes.push(seatNo);
-          voteStatus.ballots[String(seatNo)] = { abstain: true, targetPlayerIndex: null };
-          voteStatus.votedPlayerIndexes.push(seatNo);
-        } else {
-          const targetPlayerIndex = Number(payload && payload.targetPlayerIndex);
-          if (!targetPlayerIndex || samePlayerIndex(targetPlayerIndex, seatNo)) {
-            return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u4E00\u540D\u5176\u4ED6\u73A9\u5BB6");
-          }
-          const target = (spyGame.players || []).find((p) => samePlayerIndex(p.playerIndex, targetPlayerIndex));
-          if (!target || target.alive === false) {
-            return fail(ERR.INVALID_ARGUMENT, "\u76EE\u6807\u4E0D\u53EF\u6295\u7968");
-          }
-          const key = String(targetPlayerIndex);
-          voteStatus.tally[key] = (Number(voteStatus.tally[key]) || 0) + 1;
-          voteStatus.ballots[String(seatNo)] = { abstain: false, targetPlayerIndex };
-          voteStatus.votedPlayerIndexes.push(seatNo);
-        }
-        spyGame.voteStatus = voteStatus;
-        const aliveVoters = (spyGame.players || []).filter((p) => p && p.alive !== false && p.leftRoom !== true);
-        const allVoted = aliveVoters.every((p) => indexIncludes(voteStatus.votedPlayerIndexes, p.playerIndex));
-        if (allVoted) {
-          const resolved = resolveVote(room, spyGame, ts, random);
-          resolved.commandId = commandId;
-          return resolved;
-        }
-        const next = patchSpyRoom(room, spyGame, pageForPhase(SPY_PHASE.VOTE), ts);
-        const result = okSpy(commandId, next, {});
-        result.commandId = commandId;
-        return result;
+      if (command.type === COMMAND_TYPES.COMPLETE_SPY_SESSION) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SETTLED]);
+        if (!check.ok) return check;
+        check.session.status = SESSION_STATUS.COMPLETED;
+        check.session.completedAt = nowOf(deps);
+        check.session.result = { mode: MODE.SPY, winnerSide: check.spy.winnerSide, reveal: clone(check.spy.reveal) };
+        return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_COMPLETED, { sessionId: check.session.sessionId, mode: MODE.SPY })]);
       }
-      if (type === COMMAND_TYPES.SPY_CONFIRM_RESULT) {
-        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
-        return okResult({
-          commandId,
-          appliedRevision: room.revision,
-          changedDomains: [],
-          room,
-          effects: {
-            readOnly: true,
-            deprecated: true,
-            spyGame: publicSpyGame(room.spyGame, assignmentsMap(room)),
-            legacyPage: room.currentPage || pageForPhase(room.spyGame && room.spyGame.phase)
-          }
-        });
-      }
-      if (type === COMMAND_TYPES.SPY_NEXT_ROUND || type === COMMAND_TYPES.SPY_CONTINUE) {
-        if (!seatNo && !isHost) return fail(ERR.NOT_MEMBER);
-        const revErr = assertRevision(room, expectedRevision);
-        if (revErr) return revErr;
-        let spyGame = room.spyGame ? { ...room.spyGame } : null;
-        if (!spyGame) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u65E0\u6CD5\u8FDB\u5165\u4E0B\u4E00\u8F6E");
-        if (spyGame.phase === SPY_PHASE.SPEAK && !spyGame.tieBreak) {
-          return okResult({
-            commandId,
-            appliedRevision: room.revision,
-            changedDomains: [],
-            room,
-            effects: {
-              readOnly: true,
-              already: true,
-              spyGame: publicSpyGame(spyGame, assignmentsMap(room))
-            }
-          });
-        }
-        if (spyGame.phase !== SPY_PHASE.RESULT && spyGame.phase !== SPY_PHASE.NEXT_ROUND) {
-          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u65E0\u6CD5\u8FDB\u5165\u4E0B\u4E00\u8F6E");
-        }
-        const alive = (spyGame.players || []).filter((p) => p.alive !== false && p.leftRoom !== true).map((p) => Number(p.playerIndex));
-        if (alive.length < 2) {
-          return fail(ERR.INVALID_TRANSITION, "\u5B58\u6D3B\u4EBA\u6570\u4E0D\u8DB3");
-        }
-        let speakOrder = shuffle(alive, random);
-        const eliminated = spyGame.lastResult && spyGame.lastResult.eliminatedIndex;
-        if (eliminated != null) {
-          const oldOrder = spyGame.speakOrder || [];
-          const elimPos = oldOrder.findIndex((idx) => samePlayerIndex(idx, eliminated));
-          if (elimPos >= 0) {
-            const aliveSet = new Set(alive);
-            const rotated = [];
-            for (let i = 1; i <= oldOrder.length; i += 1) {
-              const idx = Number(oldOrder[(elimPos + i) % oldOrder.length]);
-              if (aliveSet.has(idx)) rotated.push(idx);
-            }
-            if (rotated.length) speakOrder = rotated;
-          }
-        }
-        spyGame.round = (spyGame.round || 1) + 1;
-        spyGame.tieBreak = false;
-        spyGame.winnerSide = null;
-        spyGame = beginSpeakPhase(spyGame, speakOrder, ts);
-        const page = pageForPhase(SPY_PHASE.SPEAK);
-        const next = patchSpyRoom(room, spyGame, page, ts);
-        const result = okSpy(commandId, next, {});
-        result.commandId = commandId;
-        return result;
-      }
-      if (type === COMMAND_TYPES.SPY_RESTART) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const revErr = assertRevision(room, expectedRevision);
-        if (revErr) return revErr;
-        const page = pageForPhase(SPY_PHASE.INTRO);
-        const domainRevisions = {
-          ...room.domainRevisions || {},
-          session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
-        };
-        const next = {
-          ...room,
-          currentPage: page,
-          brainstormProgressPage: page,
-          spyGame: null,
-          spyAssignments: null,
-          secretsByUserId: null,
-          workflow: null,
-          domainRevisions,
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["session"],
-          room: next,
-          effects: {
-            legacyPage: page,
-            spyGame: null,
-            secretsClear: true,
-            restarted: true
-          }
-        });
-      }
-      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Spy \u547D\u4EE4: ${type}`);
+      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Spy \u547D\u4EE4: ${command.type}`);
     }
-    module2.exports = {
-      SPY_PHASE,
-      SPY_PAGE,
-      MIN_PLAYERS,
-      executeSpyCommand,
-      publicSpyGame,
-      pageForPhase,
-      getDefaultSpyCount,
-      resolveWinnerSide,
-      DEFAULT_WORD_PAIRS
-    };
+    function handleSpyParticipantLeft(aggregate, memberId, deps) {
+      const session = aggregate.currentSession;
+      const spy = spyState(aggregate);
+      const events = [];
+      if (!session || session.mode !== MODE.SPY || !spy) return { events, dirtyFacts: [] };
+      const player = playerByMemberId(spy, memberId);
+      if (!player) return { events, dirtyFacts: [] };
+      player.left = true;
+      player.alive = false;
+      if (spy.voteProgress) {
+        spy.voteProgress.requiredMemberIds = spy.voteProgress.requiredMemberIds.filter((id) => id !== memberId);
+        if (session.workflow.step === WORKFLOW_STEP.SPY_VOTE && spy.voteProgress.requiredMemberIds.every((id) => spy.voteProgress.submittedMemberIds.includes(id))) {
+          events.push(...resolveVote(aggregate, deps));
+          return { events, dirtyFacts: [] };
+        }
+      }
+      const winner = winnerSide(aggregate, spy);
+      if (winner && session.workflow.step !== WORKFLOW_STEP.SPY_SETTLED) {
+        spy.winnerSide = winner;
+        spy.reveal = reveal(aggregate, spy);
+        session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
+        events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
+        return { events, dirtyFacts: [] };
+      }
+      const current = spy.speakOrder[spy.currentSpeakerIndex];
+      if ([WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(session.workflow.step) && current === memberId) {
+        spy.currentSpeakerIndex += 1;
+        while (spy.currentSpeakerIndex < spy.speakOrder.length) {
+          const next = playerByMemberId(spy, spy.speakOrder[spy.currentSpeakerIndex]);
+          if (next && next.alive && !next.left) break;
+          spy.currentSpeakerIndex += 1;
+        }
+        if (spy.currentSpeakerIndex >= spy.speakOrder.length) events.push(openVote(aggregate, deps));
+        else {
+          spy.speakerTurnId = idOf(deps, "speaker");
+          session.workflow.activeMemberId = spy.speakOrder[spy.currentSpeakerIndex];
+          session.workflow.turnId = spy.speakerTurnId;
+          events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: session.workflow.activeMemberId, tieBreak: spy.tieBreak }));
+        }
+      }
+      return { events, dirtyFacts: [] };
+    }
+    function publicSpyGame(spy) {
+      if (!spy) return null;
+      return {
+        gameId: spy.gameId,
+        roundNo: spy.roundNo,
+        players: clone(spy.players),
+        speakOrder: clone(spy.speakOrder),
+        currentSpeakerIndex: spy.currentSpeakerIndex,
+        speakerTurnId: spy.speakerTurnId,
+        voteProgress: spy.voteProgress ? {
+          voteSessionId: spy.voteProgress.voteSessionId,
+          submittedCount: spy.voteProgress.submittedMemberIds.length,
+          requiredCount: spy.voteProgress.requiredMemberIds.length
+        } : null,
+        tieBreak: spy.tieBreak,
+        lastResult: clone(spy.lastResult),
+        winnerSide: spy.winnerSide,
+        reveal: spy.winnerSide ? clone(spy.reveal) : []
+      };
+    }
+    module2.exports = { reduceSpyCommand, handleSpyParticipantLeft, publicSpyGame, winnerSide, shuffle };
   }
 });
 
@@ -1004,929 +1719,875 @@ var require_spy = __commonJS({
 var require_room_domain = __commonJS({
   "packages/room-domain/index.js"(exports2, module2) {
     "use strict";
+    var { COMMAND_TYPES } = require_room_contracts();
+    var model = require_model();
+    var { reducePartnerCommand, startPartnerFlow, handlePartnerParticipantLeft } = require_partner();
+    var { reduceHalliCommand, handleHalliParticipantLeft } = require_halli();
+    var { reduceSpyCommand, handleSpyParticipantLeft } = require_spy();
     var {
-      PROTOCOL_VERSION,
-      SCHEMA_VERSION,
-      MAX_SEATS,
-      LIFECYCLE,
-      COMMAND_TYPES,
-      ERR,
+      clone,
+      event,
+      domainOk,
       fail,
-      okResult,
-      emptyDomainRevisions,
-      isNonEmptyString
-    } = require_room_contracts();
-    var { executeSpyCommand } = require_spy();
-    var AVATAR_COLORS = [
-      "#5EC159",
-      "#4A90E2",
-      "#E24A4A",
-      "#E2B84A",
-      "#9B59B6",
-      "#1ABC9C",
-      "#E67E22",
-      "#3498DB"
-    ];
-    function allocateSeatNo(seatMap) {
-      const used = new Set(
-        Object.keys(seatMap || {}).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n))
+      idOf,
+      nowOf,
+      normalizeHalfStarScore,
+      ensureFacts,
+      sortedMembers,
+      memberByUserId,
+      memberById,
+      isHost,
+      activeParticipantIds,
+      activeParticipantsBySeat,
+      nextSeat,
+      createMember,
+      createRoomAggregate,
+      assertRoom,
+      assertMember,
+      assertHost,
+      assertParticipant,
+      assertSession,
+      newSession,
+      normalizeScenario,
+      markParticipantLeft,
+      normalizeMode,
+      LIFECYCLE,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      EVENT_TYPES,
+      ERR,
+      MAX_SEATS
+    } = model;
+    var PARTNER_COMMANDS = /* @__PURE__ */ new Set([
+      COMMAND_TYPES.APPEND_ARTIFACT,
+      COMMAND_TYPES.UPDATE_ARTIFACT,
+      COMMAND_TYPES.REMOVE_ARTIFACT,
+      COMMAND_TYPES.SUBMIT_PARTNER_SCORE,
+      COMMAND_TYPES.POST_PARTNER_MESSAGE,
+      COMMAND_TYPES.START_PARTNER_STATEMENT,
+      COMMAND_TYPES.ADVANCE_PARTNER_TURN,
+      COMMAND_TYPES.USE_PARTNER_SPECIAL,
+      COMMAND_TYPES.END_PARTNER_SILENT,
+      COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE,
+      COMMAND_TYPES.ADVANCE_PARTNER_CLOSING,
+      COMMAND_TYPES.COMPLETE_PARTNER_SESSION
+    ]);
+    var HALLI_COMMANDS = /* @__PURE__ */ new Set([
+      COMMAND_TYPES.END_HALLI_ACTIVITY,
+      COMMAND_TYPES.SUBMIT_HALLI_IDEA,
+      COMMAND_TYPES.COMPLETE_HALLI_SESSION
+    ]);
+    var SPY_COMMANDS = /* @__PURE__ */ new Set([
+      COMMAND_TYPES.START_SPY_GAME,
+      COMMAND_TYPES.ADVANCE_SPY_SPEAKER,
+      COMMAND_TYPES.OPEN_SPY_VOTE,
+      COMMAND_TYPES.SUBMIT_SPY_VOTE,
+      COMMAND_TYPES.START_NEXT_SPY_ROUND,
+      COMMAND_TYPES.RESTART_SPY_GAME,
+      COMMAND_TYPES.COMPLETE_SPY_SESSION
+    ]);
+    function minimumPlayers(mode) {
+      return mode === MODE.SPY ? 3 : 2;
+    }
+    function createCommand(aggregate, command, actorUserId, deps) {
+      if (aggregate) return fail(ERR.INVALID_TRANSITION, "\u623F\u95F4\u5DF2\u7ECF\u5B58\u5728");
+      const roomId = command.roomId || deps && deps.roomIdFactory && deps.roomIdFactory();
+      if (!roomId) return fail(ERR.INTERNAL_ERROR, "\u65E0\u6CD5\u751F\u6210\u623F\u95F4\u53F7");
+      const next = createRoomAggregate(roomId, actorUserId, command.payload, deps);
+      return domainOk(
+        next,
+        [event(EVENT_TYPES.ROOM_CREATED, { roomId, hostMemberId: next.room.hostMemberId })],
+        { kind: "ROOM_CREATED", roomId, memberId: next.room.hostMemberId }
       );
-      for (let seat = 1; seat <= MAX_SEATS; seat += 1) {
-        if (!used.has(seat)) return seat;
-      }
-      return null;
     }
-    function pickAvatarColor(seatMap, membersByUserId) {
-      const used = [];
-      Object.values(seatMap || {}).forEach((userId) => {
-        const m = membersByUserId[userId];
-        if (m && m.avatarColor) used.push(m.avatarColor);
+    function joinCommand(aggregate, command, actorUserId, deps) {
+      const check = assertRoom(aggregate);
+      if (!check.ok) return check;
+      const existing = memberByUserId(aggregate.room, actorUserId);
+      if (existing) return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.MEMBER_JOINED, { memberId: existing.memberId, duplicate: true })],
+        { kind: "ROOM_JOINED", roomId: aggregate.room.roomId, memberId: existing.memberId }
+      );
+      if (aggregate.room.members.length >= MAX_SEATS) return fail(ERR.ROOM_FULL);
+      const seatNo = nextSeat(aggregate.room);
+      const member = createMember(aggregate.room, actorUserId, command.payload, idOf(deps, "member"), seatNo, nowOf(deps), "PLAYER");
+      aggregate.room.members.push(member);
+      return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.MEMBER_JOINED, { memberId: member.memberId, seatNo })],
+        { kind: "ROOM_JOINED", roomId: aggregate.room.roomId, memberId: member.memberId }
+      );
+    }
+    function updateRoomProfile(aggregate, command, actorUserId) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const name = String(command.payload.workshopName || "").trim() || "\u8111\u66B4\u5DE5\u4F5C\u574A";
+      if (name.length > 20) return fail(ERR.LIMIT_EXCEEDED, "\u623F\u95F4\u540D\u79F0\u6700\u591A 20 \u5B57");
+      aggregate.room.workshopName = name;
+      return domainOk(aggregate, [event(EVENT_TYPES.ROOM_PROFILE_UPDATED, { workshopName: name })]);
+    }
+    function updateMemberProfile(aggregate, command, actorUserId) {
+      const auth = assertMember(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const profile = auth.member.profile;
+      if (command.payload.nickName != null) {
+        const name = String(command.payload.nickName).trim();
+        if (!name || name.length > 20) return fail(ERR.INVALID_ARGUMENT, "\u6635\u79F0\u5FC5\u987B\u662F 1\uFF5E20 \u5B57");
+        profile.nickName = name;
+      }
+      if (command.payload.avatarRef !== void 0 || command.payload.avatarUrl !== void 0) {
+        profile.avatarRef = command.payload.avatarRef || command.payload.avatarUrl || null;
+      }
+      if (command.payload.avatarIndex !== void 0) profile.avatarIndex = command.payload.avatarIndex == null ? null : Number(command.payload.avatarIndex);
+      if (command.payload.color) profile.color = String(command.payload.color);
+      return domainOk(aggregate, [event(EVENT_TYPES.MEMBER_PROFILE_UPDATED, { memberId: auth.member.memberId, profile: clone(profile) })]);
+    }
+    function reorderSeats(aggregate, command, actorUserId) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const session = aggregate.currentSession;
+      if (session && [SESSION_STATUS.CONFIGURING, SESSION_STATUS.RUNNING].includes(session.status)) return fail(ERR.INVALID_TRANSITION, "\u573A\u6B21\u8FDB\u884C\u4E2D\u4E0D\u80FD\u8C03\u6574\u5E2D\u4F4D");
+      const order = Array.isArray(command.payload.orderedMemberIds) ? command.payload.orderedMemberIds.map(String) : [];
+      const current = (aggregate.room.members || []).map((member) => member.memberId).sort();
+      if (order.length !== current.length || order.slice().sort().join("|") !== current.join("|")) return fail(ERR.STALE_CONTEXT, "\u6210\u5458\u96C6\u5408\u5DF2\u7ECF\u53D8\u5316");
+      order.forEach((memberId, index) => {
+        memberById(aggregate.room, memberId).seatNo = index + 1;
       });
-      const available = AVATAR_COLORS.filter((c) => !used.includes(c));
-      return available.length ? available[0] : AVATAR_COLORS[0];
+      aggregate.room.members.sort((a, b) => a.seatNo - b.seatNo);
+      return domainOk(aggregate, [event(EVENT_TYPES.SEATS_REORDERED, { orderedMemberIds: order })]);
     }
-    function normalizeHalfStarScore(raw, halfSteps) {
-      if (halfSteps != null && halfSteps !== "") {
-        const steps2 = parseInt(halfSteps, 10);
-        if (Number.isFinite(steps2) && steps2 >= 0 && steps2 <= 10) {
-          return steps2 / 2;
+    function cancelCurrentSession(aggregate, reason, deps, events) {
+      const session = aggregate.currentSession;
+      if (!session) return;
+      session.status = SESSION_STATUS.CANCELLED;
+      session.completedAt = nowOf(deps);
+      session.result = { cancelledReason: reason };
+      aggregate.archivedSession = clone(session);
+      aggregate.currentSession = null;
+      aggregate.room.currentSessionId = null;
+      events.push(event(EVENT_TYPES.WORKSHOP_SESSION_CANCELLED, { sessionId: session.sessionId, reason }));
+    }
+    function removeMember(aggregate, target, kicked, deps) {
+      const events = [event(
+        kicked ? EVENT_TYPES.MEMBER_KICKED : EVENT_TYPES.MEMBER_LEFT,
+        { memberId: target.memberId, seatNo: target.seatNo }
+      )];
+      const dirtyFacts = [];
+      markParticipantLeft(aggregate, target.memberId);
+      const session = aggregate.currentSession;
+      if (session && [SESSION_STATUS.CONFIGURING, SESSION_STATUS.RUNNING].includes(session.status)) {
+        if (session.status === SESSION_STATUS.CONFIGURING && activeParticipantIds(session).length < minimumPlayers(session.mode)) {
+          cancelCurrentSession(aggregate, "NOT_ENOUGH_PLAYERS", deps, events);
+        } else if ((session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI) && activeParticipantIds(session).length <= 1) {
+          cancelCurrentSession(aggregate, "NOT_ENOUGH_PLAYERS", deps, events);
+        } else if (session.mode === MODE.PARTNER) {
+          const side = handlePartnerParticipantLeft(aggregate, target.memberId, deps);
+          events.push(...side.events);
+          dirtyFacts.push(...side.dirtyFacts);
+        } else if (session.mode === MODE.HALLI_GALLI) {
+          const side = handleHalliParticipantLeft(aggregate, target.memberId, deps);
+          events.push(...side.events);
+          dirtyFacts.push(...side.dirtyFacts);
+        } else if (session.mode === MODE.SPY) {
+          const side = handleSpyParticipantLeft(aggregate, target.memberId, deps);
+          events.push(...side.events);
+          dirtyFacts.push(...side.dirtyFacts);
         }
       }
-      if (raw == null || raw === "") return null;
-      const n = typeof raw === "number" ? raw : Number(raw);
-      if (!Number.isFinite(n)) return null;
-      const steps = Math.round(n * 2);
-      if (steps < 0 || steps > 10) return null;
-      return steps / 2;
+      aggregate.room.members = aggregate.room.members.filter((member) => member.memberId !== target.memberId);
+      return domainOk(aggregate, events, { kind: kicked ? "MEMBER_KICKED" : "LEFT_ROOM", memberId: target.memberId }, dirtyFacts);
     }
-    function mergeTurnRecords(clientList, serverList) {
-      const map = /* @__PURE__ */ new Map();
-      const push = (rec) => {
-        if (!rec || typeof rec !== "object") return;
-        const key = rec.playerIndex != null ? String(rec.playerIndex) : `_${map.size}`;
-        const prev = map.get(key);
-        if (!prev) {
-          map.set(key, { ...rec });
-          return;
-        }
-        const merged = { ...prev, ...rec };
-        if (prev.avgScore != null && rec.avgScore == null) {
-          merged.avgScore = prev.avgScore;
-          if (prev.scoredCount != null && merged.scoredCount == null) {
-            merged.scoredCount = prev.scoredCount;
-          }
-        }
-        map.set(key, merged);
+    function leaveRoom(aggregate, actorUserId, deps) {
+      const auth = assertMember(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      if (isHost(aggregate.room, auth.member)) return fail(ERR.HOST_CANNOT_LEAVE);
+      return removeMember(aggregate, auth.member, false, deps);
+    }
+    function kickMember(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const target = memberById(aggregate.room, String(command.payload.memberId || ""));
+      if (!target) return fail(ERR.STALE_CONTEXT, "\u76EE\u6807\u6210\u5458\u5DF2\u7ECF\u79BB\u5F00");
+      if (isHost(aggregate.room, target)) return fail(ERR.INVALID_ARGUMENT, "\u4E0D\u80FD\u79FB\u9664\u623F\u4E3B");
+      return removeMember(aggregate, target, true, deps);
+    }
+    function dissolveRoom(aggregate, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      if (aggregate.currentSession && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(aggregate.currentSession.status)) {
+        aggregate.currentSession.status = SESSION_STATUS.CANCELLED;
+        aggregate.currentSession.completedAt = nowOf(deps);
+        aggregate.currentSession.result = { cancelledReason: "ROOM_DISSOLVED" };
+        aggregate.archivedSession = clone(aggregate.currentSession);
+      }
+      aggregate.room.lifecycle = LIFECYCLE.DISSOLVED;
+      aggregate.room.currentSessionId = null;
+      aggregate.dissolvedMemberUserIds = aggregate.room.members.map((member) => member.userId);
+      aggregate.currentSession = null;
+      return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.ROOM_DISSOLVED, { roomId: aggregate.room.roomId })],
+        { kind: "ROOM_DISSOLVED", roomId: aggregate.room.roomId }
+      );
+    }
+    function startSession(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
+      const mode = normalizeMode(command.payload.mode);
+      if (!mode) return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u6A21\u5F0F");
+      if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} \u4EBA\u6570\u4E0D\u8DB3`);
+      const session = newSession(aggregate, mode, null, deps);
+      return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.WORKSHOP_SESSION_STARTED, { sessionId: session.sessionId, mode })],
+        { kind: "SESSION_STARTED", sessionId: session.sessionId }
+      );
+    }
+    function setScenario(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { steps: [WORKFLOW_STEP.CHOOSE_SCENARIO] });
+      if (!check.ok) return check;
+      if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
+      const normalized = normalizeScenario(command.payload, check.session.mode);
+      if (!normalized.ok) return normalized;
+      check.session.setup.scenarioSource = normalized.source;
+      check.session.setup.scenario = normalized.scenario;
+      if (check.session.mode === MODE.PARTNER && normalized.source !== "OFFLINE") {
+        check.session.workflow.step = WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS;
+        check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
+      } else check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      check.session.workflow.phaseStartedAt = nowOf(deps);
+      return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SET, { source: normalized.source, nextStep: check.session.workflow.step })]);
+    }
+    function submitDesignProblem(aggregate, command, actorUserId, deps) {
+      const auth = assertParticipant(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS] });
+      if (!check.ok) return check;
+      const facts = ensureFacts(aggregate);
+      const key = `${check.session.sessionId}:DESIGN_PROBLEM:${auth.member.memberId}`;
+      const previous = facts.contributions[key];
+      facts.contributions[key] = {
+        contributionId: previous ? previous.contributionId : idOf(deps, "problem"),
+        sessionId: check.session.sessionId,
+        kind: "DESIGN_PROBLEM",
+        memberId: auth.member.memberId,
+        text: String(command.payload.text).trim(),
+        entityVersion: previous ? previous.entityVersion + 1 : 1,
+        createdAt: previous ? previous.createdAt : nowOf(deps),
+        updatedAt: nowOf(deps)
       };
-      (Array.isArray(serverList) ? serverList : []).forEach(push);
-      (Array.isArray(clientList) ? clientList : []).forEach(push);
-      return Array.from(map.values());
+      const progress = check.session.progress.contributionProgress;
+      if (!progress.submittedMemberIds.includes(auth.member.memberId)) progress.submittedMemberIds.push(auth.member.memberId);
+      const events = [event(EVENT_TYPES.DESIGN_PROBLEM_SUBMITTED, {
+        memberId: auth.member.memberId,
+        submittedCount: progress.submittedMemberIds.length,
+        requiredCount: progress.requiredMemberIds.length
+      })];
+      if (progress.submittedMemberIds.length === progress.requiredMemberIds.length) {
+        check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
+        check.session.workflow.phaseStartedAt = nowOf(deps);
+        events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: check.session.sessionId }));
+      }
+      return domainOk(
+        aggregate,
+        events,
+        { kind: "ACCEPTED", contributionId: facts.contributions[key].contributionId },
+        [{ kind: "contributions", id: key }]
+      );
     }
-    function buildCapabilities(room, actorUserId) {
-      const seatNo = findSeatNo(room.seatMap, actorUserId);
-      const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
-      const isMember = !!(seatNo || isHost);
-      const inLobby = room.lifecycle === LIFECYCLE.LOBBY;
-      return {
-        joinRoom: {
-          allowed: room.lifecycle !== LIFECYCLE.DISSOLVED && memberCount(room.seatMap) < MAX_SEATS,
-          reason: room.lifecycle === LIFECYCLE.DISSOLVED ? "ROOM_DISSOLVED" : memberCount(room.seatMap) >= MAX_SEATS ? "ROOM_FULL" : null
-        },
-        leaveRoom: {
-          allowed: isMember && !isHost,
-          reason: !isMember ? "NOT_MEMBER" : isHost ? "HOST_CANNOT_LEAVE" : null
-        },
-        reorderSeats: {
-          allowed: isHost && inLobby,
-          reason: !isHost ? "HOST_ONLY" : !inLobby ? "INVALID_TRANSITION" : null
-        },
-        dissolveRoom: {
-          allowed: isHost,
-          reason: isHost ? null : "HOST_ONLY"
-        },
-        submitScore: {
-          allowed: isMember && !(room.workflow && room.workflow.activeSeatNo != null && Number(seatNo) === Number(room.workflow.activeSeatNo)),
-          reason: !isMember ? "NOT_MEMBER" : room.workflow && Number(seatNo) === Number(room.workflow.activeSeatNo) ? "SELF_SCORE" : null
-        },
-        startStatement: {
-          allowed: (() => {
-            if (!isHost || !room.progress) return false;
-            const actingSeat = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null;
-            const roundNo = room.workflow && room.workflow.roundNo != null ? Number(room.workflow.roundNo) : room.currentRound != null ? Number(room.currentRound) : 1;
-            const expectedTurnId = room.workflow && room.workflow.turnId || (actingSeat != null ? `turn_r${roundNo}_s${actingSeat}` : null);
-            const progressFresh = !!(expectedTurnId && room.progress.turnId && room.progress.turnId === expectedTurnId);
-            if (!progressFresh) return false;
-            const required = Math.max(
-              Number(room.progress.requiredScoreCount) || 0,
-              Math.max(0, memberCount(room.seatMap) - 1)
-            );
-            return required > 0 && (room.progress.scoredCount || 0) >= required;
-          })(),
-          reason: !isHost ? "HOST_ONLY" : "SCORES_INCOMPLETE"
-        }
+    function updateDesignProblem(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM] });
+      if (!check.ok) return check;
+      const contributionId = String(command.payload.contributionId || "");
+      const entry = Object.entries(ensureFacts(aggregate).contributions).find(([, row]) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
+      if (!entry) return fail(ERR.STALE_CONTEXT, "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728");
+      const [key, problem] = entry;
+      if (problem.entityVersion !== Number(command.context.entityVersion)) return fail(ERR.STALE_CONTEXT, "\u8BBE\u8BA1\u95EE\u9898\u5DF2\u7ECF\u66F4\u65B0");
+      const text = String(command.payload.text || "").trim();
+      if (!text || text.length > 50) return fail(ERR.LIMIT_EXCEEDED, "\u8BBE\u8BA1\u95EE\u9898\u5FC5\u987B\u662F 1\uFF5E50 \u5B57");
+      problem.text = text;
+      problem.entityVersion += 1;
+      problem.updatedAt = nowOf(deps);
+      return domainOk(
+        aggregate,
+        [event(EVENT_TYPES.DESIGN_PROBLEM_UPDATED, { contributionId, entityVersion: problem.entityVersion })],
+        { kind: "ACCEPTED", entityVersion: problem.entityVersion },
+        [{ kind: "contributions", id: key }]
+      );
+    }
+    function selectDesignProblem(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM] });
+      if (!check.ok) return check;
+      const contributionId = String(command.payload.contributionId || "");
+      const problem = Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
+      if (!problem) return fail(ERR.STALE_CONTEXT, "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728");
+      check.session.setup.selectedProblemId = contributionId;
+      check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      check.session.workflow.phaseStartedAt = nowOf(deps);
+      return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTED, { contributionId })]);
+    }
+    function selectFirstPlayer(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER] });
+      if (!check.ok) return check;
+      const memberId = String(command.payload.memberId || "");
+      if (!activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, "\u9996\u4F4D\u6210\u5458\u4E0D\u53EF\u7528");
+      check.session.setup.proposedFirstMemberId = memberId;
+      if (check.session.mode === MODE.PARTNER) check.session.workflow.step = WORKFLOW_STEP.CONFIRM_FIRST_PLAYER;
+      else if (check.session.mode === MODE.HALLI_GALLI) {
+        check.session.status = SESSION_STATUS.RUNNING;
+        check.session.workflow.step = WORKFLOW_STEP.HALLI_ACTIVITY;
+        check.session.workflow.activeMemberId = memberId;
+      } else return fail(ERR.INVALID_TRANSITION);
+      check.session.workflow.phaseStartedAt = nowOf(deps);
+      return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTED, { memberId, nextStep: check.session.workflow.step })]);
+    }
+    function confirmFirstPlayer(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER] });
+      if (!check.ok) return check;
+      const memberId = String(command.payload.memberId || check.session.setup.proposedFirstMemberId || "");
+      if (memberId !== check.session.setup.proposedFirstMemberId || !activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, "\u9996\u4F4D\u6210\u5458\u5DF2\u7ECF\u53D8\u5316");
+      const turn = startPartnerFlow(aggregate, memberId, deps);
+      return domainOk(aggregate, [event(
+        EVENT_TYPES.PARTNER_TURN_STARTED,
+        { turnId: turn.turnId, memberId, roundNo: turn.roundNo }
+      )], { kind: "ACCEPTED", turnId: turn.turnId });
+    }
+    function cancelSession(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context);
+      if (!check.ok) return check;
+      if ([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(check.session.status)) return fail(ERR.INVALID_TRANSITION);
+      const events = [];
+      cancelCurrentSession(aggregate, "HOST_CANCELLED", deps, events);
+      return domainOk(aggregate, events, { kind: "SESSION_CANCELLED" });
+    }
+    function returnToLobby(aggregate, command, actorUserId) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context);
+      if (!check.ok) return check;
+      if (check.session.status !== SESSION_STATUS.COMPLETED) return fail(ERR.INVALID_TRANSITION, "\u573A\u6B21\u5C1A\u672A\u5B8C\u6210");
+      aggregate.archivedSession = clone(check.session);
+      aggregate.currentSession = null;
+      aggregate.room.currentSessionId = null;
+      return domainOk(aggregate, [event(EVENT_TYPES.ROOM_RETURNED_TO_LOBBY, { sessionId: check.session.sessionId })], { kind: "LOBBY" });
+    }
+    function replaySession(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context);
+      if (!check.ok) return check;
+      if (check.session.status !== SESSION_STATUS.COMPLETED) return fail(ERR.INVALID_TRANSITION, "\u573A\u6B21\u5C1A\u672A\u5B8C\u6210");
+      const old = clone(check.session);
+      const oldSelectedProblem = old.setup.selectedProblemId ? Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === old.sessionId && row.contributionId === old.setup.selectedProblemId) : null;
+      const setup = {
+        scenarioSource: old.setup.scenarioSource,
+        scenario: old.setup.scenario,
+        selectedProblemId: old.setup.selectedProblemId,
+        proposedFirstMemberId: old.setup.proposedFirstMemberId
       };
+      aggregate.archivedSession = old;
+      const session = newSession(aggregate, old.mode, setup, deps);
+      const dirtyFacts = [];
+      if (session.mode === MODE.PARTNER && oldSelectedProblem) {
+        const copied = {
+          ...clone(oldSelectedProblem),
+          contributionId: idOf(deps, "problem"),
+          sessionId: session.sessionId,
+          entityVersion: 1,
+          createdAt: nowOf(deps),
+          updatedAt: nowOf(deps)
+        };
+        const key = `${session.sessionId}:DESIGN_PROBLEM:${copied.memberId}`;
+        ensureFacts(aggregate).contributions[key] = copied;
+        session.setup.selectedProblemId = copied.contributionId;
+        dirtyFacts.push({ kind: "contributions", id: key });
+      }
+      const events = [event(EVENT_TYPES.WORKSHOP_SESSION_REPLAYED, { previousSessionId: old.sessionId, sessionId: session.sessionId, mode: session.mode })];
+      if (session.mode === MODE.PARTNER) {
+        const validFirst = activeParticipantIds(session).includes(setup.proposedFirstMemberId) ? setup.proposedFirstMemberId : activeParticipantsBySeat(aggregate)[0].memberId;
+        session.setup.proposedFirstMemberId = validFirst;
+        const turn = startPartnerFlow(aggregate, validFirst, deps);
+        events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: validFirst, roundNo: 1 }));
+      } else if (session.mode === MODE.HALLI_GALLI) session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      return domainOk(aggregate, events, { kind: "SESSION_REPLAYED", sessionId: session.sessionId }, dirtyFacts);
     }
-    function buildHead(room, actorUserId) {
-      const seatNo = findSeatNo(room.seatMap, actorUserId);
-      const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
-      return {
-        protocolVersion: room.protocolVersion || PROTOCOL_VERSION,
-        roomId: room.roomId,
-        schemaVersion: room.schemaVersion || SCHEMA_VERSION,
-        revision: room.revision,
-        lifecycle: room.lifecycle,
-        activeSessionId: room.activeSessionId || null,
-        workflow: room.workflow || null,
-        domainRevisions: room.domainRevisions || emptyDomainRevisions(),
-        progress: room.progress || {
-          scoredCount: 0,
-          requiredScoreCount: 0,
-          votedCount: 0,
-          requiredVoteCount: 0
-        },
-        actor: {
-          role: isHost ? "HOST" : seatNo ? "PLAYER" : "NONE",
-          seatNo: seatNo || null
-        },
-        capabilities: buildCapabilities(room, actorUserId),
-        serverTime: Date.now()
-      };
+    function reduceCommand(input) {
+      const command = input.command;
+      const deps = input.deps || {};
+      const actorUserId = input.actorUserId;
+      let aggregate = clone(input.aggregate);
+      if (command.type === COMMAND_TYPES.CREATE_ROOM) return createCommand(aggregate, command, actorUserId, deps);
+      if (!aggregate) return fail(ERR.ROOM_NOT_FOUND);
+      ensureFacts(aggregate);
+      let result;
+      switch (command.type) {
+        case COMMAND_TYPES.JOIN_ROOM:
+          result = joinCommand(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.UPDATE_ROOM_PROFILE:
+          result = updateRoomProfile(aggregate, command, actorUserId);
+          break;
+        case COMMAND_TYPES.UPDATE_MEMBER_PROFILE:
+          result = updateMemberProfile(aggregate, command, actorUserId);
+          break;
+        case COMMAND_TYPES.REORDER_SEATS:
+          result = reorderSeats(aggregate, command, actorUserId);
+          break;
+        case COMMAND_TYPES.LEAVE_ROOM:
+          result = leaveRoom(aggregate, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.KICK_MEMBER:
+          result = kickMember(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.DISSOLVE_ROOM:
+          result = dissolveRoom(aggregate, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.START_WORKSHOP_SESSION:
+          result = startSession(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.SET_SCENARIO:
+          result = setScenario(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM:
+          result = submitDesignProblem(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.UPDATE_DESIGN_PROBLEM:
+          result = updateDesignProblem(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.SELECT_DESIGN_PROBLEM:
+          result = selectDesignProblem(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.SELECT_FIRST_PLAYER:
+          result = selectFirstPlayer(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.CONFIRM_FIRST_PLAYER:
+          result = confirmFirstPlayer(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.CANCEL_WORKSHOP_SESSION:
+          result = cancelSession(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.RETURN_TO_LOBBY:
+          result = returnToLobby(aggregate, command, actorUserId);
+          break;
+        case COMMAND_TYPES.REPLAY_WORKSHOP_SESSION:
+          result = replaySession(aggregate, command, actorUserId, deps);
+          break;
+        default:
+          if (PARTNER_COMMANDS.has(command.type)) result = reducePartnerCommand(aggregate, command, actorUserId, deps);
+          else if (HALLI_COMMANDS.has(command.type)) result = reduceHalliCommand(aggregate, command, actorUserId, deps);
+          else if (SPY_COMMANDS.has(command.type)) result = reduceSpyCommand(aggregate, command, actorUserId, deps);
+          else result = fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684\u547D\u4EE4: ${command.type}`);
+      }
+      if (result.ok && result.aggregate && result.aggregate.room) {
+        result.aggregate.room.updatedAt = nowOf(deps);
+        if (result.aggregate.currentSession) result.aggregate.currentSession.updatedAt = nowOf(deps);
+      }
+      return result;
     }
-    function projectMembersDomain(room, actorUserId) {
-      const list = [];
-      const seatMap = room.seatMap || {};
-      Object.keys(seatMap).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b).forEach((seatNo) => {
-        const userId = seatMap[String(seatNo)];
-        const m = room.membersByUserId && room.membersByUserId[userId] || {};
-        list.push({
-          seatNo,
-          nickName: m.nickName || `\u73A9\u5BB6${seatNo}`,
-          avatarColor: m.avatarColor || "#5EC159",
-          avatarUrl: m.avatarUrl || null,
-          avatarIndex: m.avatarIndex != null ? m.avatarIndex : null,
-          role: m.role === "HOST" || seatNo === 1 ? "HOST" : "PLAYER",
-          isMe: String(userId) === String(actorUserId),
-          online: m.online !== false
-          // 不返回 userId / openid
-        });
-      });
-      return list;
-    }
-    function projectSnapshot(room, options) {
-      const actorUserId = options && options.actorUserId;
-      const requested = options && options.domains && options.domains.length ? options.domains : ["members"];
-      const clientRevs = options && options.clientDomainRevisions || {};
-      const serverRevs = room.domainRevisions || emptyDomainRevisions();
-      const extra = options && options.extraDomainData || {};
-      const domains = {};
-      requested.forEach((name) => {
-        const serverRev = serverRevs[name] != null ? serverRevs[name] : 0;
-        const clientRev = clientRevs[name] != null ? clientRevs[name] : -1;
-        if (clientRev >= serverRev && clientRev >= 0) {
-          return;
-        }
-        let data = null;
-        if (name === "members") {
-          data = projectMembersDomain(room, actorUserId);
-        } else if (Object.prototype.hasOwnProperty.call(extra, name)) {
-          data = extra[name];
-        } else {
-          data = name === "scores" || name === "votes" ? {} : [];
-        }
-        domains[name] = { revision: serverRev, data };
-      });
-      return {
-        roomId: room.roomId,
-        revision: room.revision,
-        domains,
-        serverTime: Date.now()
-      };
-    }
-    function authorizeRoomRead(room, actorUserId) {
-      if (!isNonEmptyString(actorUserId)) {
-        return fail(ERR.UNAUTHENTICATED);
-      }
-      if (!room) {
-        return fail(ERR.ROOM_NOT_FOUND);
-      }
-      if (room.lifecycle === LIFECYCLE.DISSOLVED || room.status === "DISSOLVED") {
-        return fail(ERR.ROOM_DISSOLVED);
-      }
-      const seatNo = findSeatNo(room.seatMap, actorUserId);
-      const isHost = room.hostUserId && String(room.hostUserId) === String(actorUserId);
-      if (!seatNo && !isHost) {
-        return fail(ERR.NOT_MEMBER);
-      }
-      return okResult({ room });
-    }
-    function findSeatNo(seatMap, userId) {
-      if (!userId || !seatMap) return null;
-      const entries = Object.entries(seatMap);
-      for (let i = 0; i < entries.length; i += 1) {
-        if (String(entries[i][1]) === String(userId)) {
-          return parseInt(entries[i][0], 10);
-        }
-      }
-      return null;
-    }
-    function memberCount(seatMap) {
-      return Object.keys(seatMap || {}).length;
-    }
-    function assertActor(actorUserId) {
-      if (!isNonEmptyString(actorUserId)) {
-        return fail(ERR.UNAUTHENTICATED);
-      }
-      return null;
-    }
-    function createRoomAggregate({ roomId, actorUserId, payload, now }) {
-      const nickName = isNonEmptyString(payload.nickName) ? String(payload.nickName).trim() : "\u73A9\u5BB61";
-      const avatarUrl = payload.avatarUrl || null;
-      const avatarColor = pickAvatarColor({}, {});
-      const member = {
-        userId: actorUserId,
-        seatNo: 1,
-        role: "HOST",
-        nickName,
-        avatarUrl,
-        avatarColor,
-        avatarIndex: avatarUrl ? null : 0,
-        joinedAt: now
-      };
-      return {
-        roomId,
-        schemaVersion: SCHEMA_VERSION,
-        protocolVersion: PROTOCOL_VERSION,
-        lifecycle: LIFECYCLE.LOBBY,
-        // 兼容旧字段
-        status: "CREATED",
-        hostUserId: actorUserId,
-        creatorId: actorUserId,
-        seatMap: { "1": actorUserId },
-        activeSessionId: null,
-        revision: 1,
-        workflow: null,
-        domainRevisions: { ...emptyDomainRevisions(), members: 1 },
-        progress: {
-          scoredCount: 0,
-          requiredScoreCount: 0,
-          votedCount: 0,
-          requiredVoteCount: 0
-        },
-        workshopName: isNonEmptyString(payload.workshopName) ? String(payload.workshopName).trim() : "\u8111\u66B4\u5DE5\u4F5C\u574A",
-        membersByUserId: { [actorUserId]: member },
-        createdAt: now,
-        updatedAt: now
-      };
-    }
-    function executeCommand({
-      room,
-      envelope,
-      actorUserId,
-      roomIdFactory,
-      now,
-      wordPairPicker,
-      random
-    }) {
-      const authErr = assertActor(actorUserId);
-      if (authErr) return authErr;
-      const ts = now || Date.now();
-      const { type, payload, expectedRevision, commandId, roomId } = envelope;
-      if (type === COMMAND_TYPES.CREATE_ROOM) {
-        if (room) {
-          return fail(ERR.INVALID_ARGUMENT, "\u623F\u95F4\u5DF2\u5B58\u5728");
-        }
-        const newRoomId = roomIdFactory ? roomIdFactory() : null;
-        if (!isNonEmptyString(newRoomId)) {
-          return fail(ERR.INTERNAL_ERROR, "\u65E0\u6CD5\u751F\u6210 roomId");
-        }
-        const next = createRoomAggregate({
-          roomId: newRoomId,
-          actorUserId,
-          payload: payload || {},
-          now: ts
-        });
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { created: true }
-        });
-      }
-      if (!room) {
-        return fail(ERR.ROOM_NOT_FOUND);
-      }
-      if (room.lifecycle === LIFECYCLE.DISSOLVED || room.status === "DISSOLVED") {
-        return fail(ERR.ROOM_DISSOLVED);
-      }
-      if (type === COMMAND_TYPES.JOIN_ROOM) {
-        const existingSeat = findSeatNo(room.seatMap, actorUserId);
-        if (existingSeat) {
-          const membersByUserId2 = { ...room.membersByUserId };
-          const prev = membersByUserId2[actorUserId] || {};
-          const nextMember = { ...prev };
-          if (isNonEmptyString(payload.nickName)) {
-            nextMember.nickName = String(payload.nickName).trim();
-          }
-          if (payload.avatarUrl !== void 0) {
-            nextMember.avatarUrl = payload.avatarUrl || null;
-          }
-          membersByUserId2[actorUserId] = nextMember;
-          const next2 = {
-            ...room,
-            membersByUserId: membersByUserId2,
-            updatedAt: ts
-          };
-          return okResult({
-            commandId,
-            appliedRevision: room.revision,
-            changedDomains: [],
-            room: next2,
-            head: buildHead(next2, actorUserId),
-            effects: { alreadyMember: true, seatNo: existingSeat }
-          });
-        }
-        if (memberCount(room.seatMap) >= MAX_SEATS) {
-          return fail(ERR.ROOM_FULL);
-        }
-        if (room.lifecycle !== LIFECYCLE.LOBBY && room.lifecycle !== LIFECYCLE.ACTIVE) {
-          return fail(ERR.INVALID_TRANSITION);
-        }
-        const seatNo = allocateSeatNo(room.seatMap);
-        if (seatNo == null) return fail(ERR.ROOM_FULL);
-        const nickName = isNonEmptyString(payload.nickName) ? String(payload.nickName).trim() : `\u73A9\u5BB6${seatNo}`;
-        const avatarUrl = payload.avatarUrl || null;
-        const avatarColor = pickAvatarColor(room.seatMap, room.membersByUserId || {});
-        const member = {
-          userId: actorUserId,
-          seatNo,
-          role: "PLAYER",
-          nickName,
-          avatarUrl,
-          avatarColor,
-          avatarIndex: avatarUrl ? null : Math.min(seatNo - 1, 8),
-          joinedAt: ts
-        };
-        const seatMap = { ...room.seatMap, [String(seatNo)]: actorUserId };
-        const membersByUserId = { ...room.membersByUserId || {}, [actorUserId]: member };
-        const domainRevisions = {
-          ...room.domainRevisions || emptyDomainRevisions(),
-          members: (room.domainRevisions && room.domainRevisions.members || 0) + 1
-        };
-        const next = {
-          ...room,
-          seatMap,
-          membersByUserId,
-          domainRevisions,
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { joined: true, seatNo }
-        });
-      }
-      {
-        const factTypes = [
-          COMMAND_TYPES.SUBMIT_SCORE,
-          COMMAND_TYPES.POST_MESSAGE,
-          COMMAND_TYPES.SUBMIT_CLOSING_VOTE,
-          COMMAND_TYPES.APPEND_ARTIFACT
-        ];
-        if (factTypes.includes(type)) {
-          const actorSeat2 = findSeatNo(room.seatMap, actorUserId);
-          const isHost2 = String(room.hostUserId) === String(actorUserId);
-          if (!actorSeat2 && !isHost2) {
-            return fail(ERR.NOT_MEMBER);
-          }
-          if (type === COMMAND_TYPES.SUBMIT_SCORE) {
-            const score = normalizeHalfStarScore(payload.score, payload.scoreHalfSteps);
-            if (score == null) {
-              return fail(ERR.INVALID_ARGUMENT, "score \u9700\u4E3A 0\uFF5E5\uFF0C\u6B65\u8FDB 0.5");
-            }
-            const activeSeatNo = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : payload.activeSeatNo != null ? Number(payload.activeSeatNo) : null;
-            if (activeSeatNo != null && Number(actorSeat2) === Number(activeSeatNo)) {
-              return fail(ERR.SELF_SCORE);
-            }
-            const turnId = room.workflow && room.workflow.turnId || payload.turnId || `turn_r${room.workflow && room.workflow.roundNo || 1}_s${activeSeatNo || 0}`;
-            const scores = { ...room.scoresByKey || {} };
-            const key = `${turnId}:${actorUserId}`;
-            scores[key] = {
-              turnId,
-              scorerUserId: actorUserId,
-              activeSeatNo,
-              score,
-              scoreHalfSteps: Math.round(score * 2),
-              updatedAt: ts
-            };
-            const required = Math.max(0, memberCount(room.seatMap) - 1);
-            const scoredUserIds = /* @__PURE__ */ new Set();
-            Object.keys(scores).forEach((k) => {
-              const row = scores[k];
-              if (row && row.turnId === turnId) scoredUserIds.add(row.scorerUserId);
-            });
-            const progress = {
-              scoredCount: scoredUserIds.size,
-              requiredScoreCount: required,
-              votedCount: room.progress && room.progress.votedCount || 0,
-              requiredVoteCount: room.progress && room.progress.requiredVoteCount || 0,
-              turnId
-            };
-            const domainRevisions = {
-              ...room.domainRevisions || emptyDomainRevisions(),
-              scores: (room.domainRevisions && room.domainRevisions.scores || 0) + 1
-            };
-            const next = {
-              ...room,
-              scoresByKey: scores,
-              progress,
-              domainRevisions,
-              revision: room.revision + 1,
-              updatedAt: ts
-            };
-            return okResult({
-              commandId,
-              appliedRevision: next.revision,
-              changedDomains: ["scores"],
-              room: next,
-              head: buildHead(next, actorUserId),
-              effects: {
-                scoreUpsert: true,
-                scoreKey: key,
-                scoredCount: progress.scoredCount,
-                totalRequired: required
-              }
-            });
-          }
-          if (type === COMMAND_TYPES.POST_MESSAGE) {
-            const text = typeof payload.text === "string" ? payload.text.trim() : "";
-            if (!text) return fail(ERR.INVALID_ARGUMENT, "\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
-            if (text.length > 40) return fail(ERR.INVALID_ARGUMENT, "\u6700\u591A 40 \u5B57");
-            const messageId = payload.messageId || `msg_${commandId}`;
-            const messages = Array.isArray(room.messages) ? room.messages.slice() : [];
-            if (!messages.some((m) => m && m.id === messageId)) {
-              messages.push({
-                id: messageId,
-                text,
-                at: ts,
-                round: payload.round != null ? Number(payload.round) : 0,
-                phase: payload.phase === "discussion" ? "discussion" : "play",
-                anonKey: payload.anonKey || null
-              });
-            }
-            const trimmed = messages.slice(-40);
-            const domainRevisions = {
-              ...room.domainRevisions || emptyDomainRevisions(),
-              messages: (room.domainRevisions && room.domainRevisions.messages || 0) + 1
-            };
-            const next = {
-              ...room,
-              messages: trimmed,
-              domainRevisions,
-              revision: room.revision + 1,
-              updatedAt: ts
-            };
-            return okResult({
-              commandId,
-              appliedRevision: next.revision,
-              changedDomains: ["messages"],
-              room: next,
-              head: buildHead(next, actorUserId),
-              effects: { messageAppended: true, messageId }
-            });
-          }
-          if (type === COMMAND_TYPES.SUBMIT_CLOSING_VOTE) {
-            const vote = String(payload.vote || "");
-            if (vote !== "pass" && vote !== "question") {
-              return fail(ERR.INVALID_ARGUMENT, "vote \u9700\u4E3A pass \u6216 question");
-            }
-            const voteSessionId = room.workflow && room.workflow.voteSessionId || payload.voteSessionId || `vote_${room.roomId}`;
-            const votes = { ...room.votesByKey || {} };
-            const key = `${voteSessionId}:${actorUserId}`;
-            if (votes[key]) {
-              return fail(ERR.ALREADY_VOTED);
-            }
-            votes[key] = {
-              voteSessionId,
-              voterUserId: actorUserId,
-              seatNo: actorSeat2,
-              vote,
-              at: ts
-            };
-            const required = memberCount(room.seatMap);
-            const votedCount = Object.keys(votes).filter((k) => votes[k].voteSessionId === voteSessionId).length;
-            const progress = {
-              ...room.progress || {},
-              votedCount,
-              requiredVoteCount: required
-            };
-            const domainRevisions = {
-              ...room.domainRevisions || emptyDomainRevisions(),
-              votes: (room.domainRevisions && room.domainRevisions.votes || 0) + 1
-            };
-            const next = {
-              ...room,
-              votesByKey: votes,
-              progress,
-              domainRevisions,
-              revision: room.revision + 1,
-              updatedAt: ts
-            };
-            return okResult({
-              commandId,
-              appliedRevision: next.revision,
-              changedDomains: ["votes"],
-              room: next,
-              head: buildHead(next, actorUserId),
-              effects: { voteUpsert: true, voteKey: key, votedCount, totalMembers: required }
-            });
-          }
-          if (type === COMMAND_TYPES.APPEND_ARTIFACT) {
-            const operationId = payload.operationId || commandId;
-            const artifacts = Array.isArray(room.artifacts) ? room.artifacts.slice() : [];
-            if (!artifacts.some((a) => a && a.operationId === operationId)) {
-              artifacts.push({
-                operationId,
-                kind: payload.kind || "text",
-                turnId: payload.turnId || null,
-                stage: payload.stage || "play",
-                body: payload.body || null,
-                at: ts
-              });
-            }
-            const domainRevisions = {
-              ...room.domainRevisions || emptyDomainRevisions(),
-              artifacts: (room.domainRevisions && room.domainRevisions.artifacts || 0) + 1
-            };
-            const next = {
-              ...room,
-              artifacts,
-              domainRevisions,
-              revision: room.revision + 1,
-              updatedAt: ts
-            };
-            return okResult({
-              commandId,
-              appliedRevision: next.revision,
-              changedDomains: ["artifacts"],
-              room: next,
-              head: buildHead(next, actorUserId),
-              effects: { artifactAppended: true, operationId }
-            });
-          }
-        }
-      }
-      if (String(type).indexOf("SPY_") === 0) {
-        const spyResult = executeSpyCommand({
-          room,
-          envelope,
-          actorUserId,
-          ts,
-          wordPairPicker,
-          random
-        });
-        if (!spyResult.ok) return spyResult;
-        return okResult({
-          ...spyResult,
-          head: spyResult.effects && spyResult.effects.readOnly ? buildHead(room, actorUserId) : buildHead(spyResult.room, actorUserId)
-        });
-      }
-      const actorSeat = findSeatNo(room.seatMap, actorUserId);
-      const isHost = String(room.hostUserId) === String(actorUserId);
-      if (!actorSeat && !isHost) {
-        return fail(ERR.NOT_MEMBER);
-      }
-      if (expectedRevision == null || Number(expectedRevision) !== Number(room.revision)) {
-        return fail(ERR.REVISION_CONFLICT, void 0, {
-          latestHead: buildHead(room, actorUserId)
-        });
-      }
-      if (type === COMMAND_TYPES.START_STATEMENT) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const progress = room.progress || {};
-        const actingSeat = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null;
-        const roundNo = room.workflow && room.workflow.roundNo != null ? Number(room.workflow.roundNo) : room.currentRound != null ? Number(room.currentRound) : 1;
-        const expectedTurnId = room.workflow && room.workflow.turnId || (actingSeat != null ? `turn_r${roundNo}_s${actingSeat}` : null);
-        const progressFresh = !!(expectedTurnId && progress.turnId && progress.turnId === expectedTurnId);
-        const scored = progressFresh ? progress.scoredCount || 0 : 0;
-        const required = Math.max(
-          progressFresh ? Number(progress.requiredScoreCount) || 0 : 0,
-          Math.max(0, memberCount(room.seatMap) - 1)
-        );
-        if (required <= 0 || scored < required) {
-          return fail(ERR.INVALID_TRANSITION, "\u8BC4\u5206\u672A\u5B8C\u6210");
-        }
-        const workflow = {
-          ...room.workflow || {},
-          mode: "PARTNER",
-          step: "DISCUSSION",
-          legacyPage: "gamepage"
-        };
-        const next = {
-          ...room,
-          lifecycle: LIFECYCLE.ACTIVE,
-          status: "STARTED",
-          currentPage: "gamepage",
-          brainstormProgressPage: "gamepage",
-          partnerGamePhase: "discussion",
-          partnerMasterMode: false,
-          partnerSilentMode: false,
-          partnerSilentStartedAt: null,
-          partnerSilentSoundLevel: 0,
-          workflow,
-          revision: room.revision + 1,
-          domainRevisions: {
-            ...room.domainRevisions || emptyDomainRevisions(),
-            session: (room.domainRevisions && room.domainRevisions.session || 0) + 1
-          },
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["session"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { startedStatement: true, legacyPage: "gamepage", partnerGamePhase: "discussion" }
-        });
-      }
-      if (type === COMMAND_TYPES.ADVANCE_TURN) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const seats = Object.keys(room.seatMap || {}).map((k) => parseInt(k, 10)).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
-        if (!seats.length) return fail(ERR.INVALID_TRANSITION, "\u65E0\u6709\u6548\u5E2D\u4F4D");
-        const fromPage = room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : NaN;
-        const fromWorkflow = room.workflow && room.workflow.activeSeatNo != null ? Number(room.workflow.activeSeatNo) : NaN;
-        const current = Number.isFinite(fromPage) && fromPage > 0 ? fromPage : Number.isFinite(fromWorkflow) && fromWorkflow > 0 ? fromWorkflow : seats[0];
-        const idx = seats.indexOf(current);
-        const nextSeat = seats[(idx >= 0 ? idx + 1 : 0) % seats.length];
-        const shouldIncrementRound = true;
-        const prevRoundNo = room.workflow && room.workflow.roundNo || (room.currentRound != null ? Number(room.currentRound) : 1);
-        const roundNo = prevRoundNo + (shouldIncrementRound ? 1 : 0);
-        const turnId = `turn_r${roundNo}_s${nextSeat}`;
-        const nextUserId = room.seatMap && room.seatMap[String(nextSeat)];
-        const nextMember = nextUserId && room.membersByUserId ? room.membersByUserId[nextUserId] : null;
-        const nextName = nextMember && nextMember.nickName || `\u73A9\u5BB6${nextSeat}`;
-        let partnerRoundSummaries = Array.isArray(room.partnerRoundSummaries) ? room.partnerRoundSummaries.slice() : [];
-        let partnerCurrentRoundContent = room.partnerCurrentRoundContent || null;
-        let partnerRoundStartedAt = room.partnerRoundStartedAt || null;
-        let currentRound = room.currentRound != null ? Number(room.currentRound) : prevRoundNo;
-        const clientSummary = payload && payload.roundSummary && typeof payload.roundSummary === "object" ? payload.roundSummary : null;
-        const serverContent = room.partnerCurrentRoundContent;
-        const archivedTurnRecords = mergeTurnRecords(
-          clientSummary && clientSummary.turnRecords,
-          serverContent && serverContent.turnRecords
-        );
-        const matchedAvg = archivedTurnRecords.find(
-          (t) => t && Number(t.playerIndex) === Number(current) && t.avgScore != null
-        ) || archivedTurnRecords.find((t) => t && t.avgScore != null);
-        partnerRoundSummaries.push({
-          round: currentRound,
-          ...clientSummary || {},
-          // 强制写入刚结束的出牌座位（覆盖客户端兜底），避免 (round-1)%n+1 误推
-          playerIndex: current,
-          playerName: room.currentPlayerName || `\u73A9\u5BB6${current}`,
-          archivedAt: ts,
-          playHistory: clientSummary && clientSummary.playHistory || serverContent && serverContent.playHistory || [],
-          discussionNotes: clientSummary && clientSummary.discussionNotes || serverContent && serverContent.discussionNotes || [],
-          playImages: clientSummary && clientSummary.playImages || serverContent && serverContent.playImages || [],
-          discussionImages: clientSummary && clientSummary.discussionImages || serverContent && serverContent.discussionImages || [],
-          playBlocks: clientSummary && clientSummary.playBlocks || serverContent && serverContent.playBlocks || [],
-          discussionBlocks: clientSummary && clientSummary.discussionBlocks || serverContent && serverContent.discussionBlocks || [],
-          voiceLines: clientSummary && clientSummary.voiceLines || serverContent && serverContent.voiceLines || [],
-          turnRecords: archivedTurnRecords,
-          avgScore: matchedAvg && matchedAvg.avgScore != null ? Number(matchedAvg.avgScore) : clientSummary && clientSummary.avgScore != null ? Number(clientSummary.avgScore) : null
-        });
-        partnerCurrentRoundContent = {
-          playHistory: [],
-          discussionNotes: [],
-          playImages: [],
-          discussionImages: [],
-          playBlocks: [],
-          discussionBlocks: [],
-          images: [],
-          voiceLines: [],
-          turnRecords: [],
-          aiSummary: { status: "pending" }
-        };
-        if (shouldIncrementRound) {
-          currentRound += 1;
-        }
-        partnerRoundStartedAt = ts;
-        const partnerTurnStartedAt = ts;
-        const workflow = {
-          ...room.workflow || {},
-          mode: "PARTNER",
-          step: "TURN_ACTIVE",
-          activeSeatNo: nextSeat,
-          roundNo,
-          turnId,
-          legacyPage: "gamepage"
-        };
-        const progress = {
-          scoredCount: 0,
-          requiredScoreCount: Math.max(0, seats.length - 1),
-          votedCount: 0,
-          requiredVoteCount: 0,
-          turnId
-        };
-        const next = {
-          ...room,
-          currentPage: "gamepage",
-          brainstormProgressPage: "gamepage",
-          currentPlayerIndex: nextSeat,
-          currentPlayerName: nextName,
-          currentRound,
-          partnerGamePhase: "play",
-          partnerMasterMode: false,
-          partnerSilentMode: false,
-          partnerSilentStartedAt: null,
-          partnerSilentSoundLevel: 0,
-          partnerRoundSummaries,
-          partnerCurrentRoundContent,
-          partnerRoundStartedAt,
-          partnerTurnStartedAt,
-          workflow,
-          progress,
-          scoresByKey: {},
-          revision: room.revision + 1,
-          domainRevisions: {
-            ...room.domainRevisions || emptyDomainRevisions(),
-            session: (room.domainRevisions && room.domainRevisions.session || 0) + 1,
-            scores: (room.domainRevisions && room.domainRevisions.scores || 0) + 1
-          },
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["session", "scores"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: {
-            advancedTurn: true,
-            activeSeatNo: nextSeat,
-            roundNo,
-            turnId,
-            incrementRound: shouldIncrementRound,
-            legacyPage: "gamepage"
-          }
-        });
-      }
-      if (type === COMMAND_TYPES.LEAVE_ROOM) {
-        if (isHost) {
-          return fail(ERR.HOST_CANNOT_LEAVE);
-        }
-        const seatMap = { ...room.seatMap };
-        delete seatMap[String(actorSeat)];
-        const membersByUserId = { ...room.membersByUserId || {} };
-        delete membersByUserId[actorUserId];
-        const domainRevisions = {
-          ...room.domainRevisions || emptyDomainRevisions(),
-          members: (room.domainRevisions && room.domainRevisions.members || 0) + 1
-        };
-        const next = {
-          ...room,
-          seatMap,
-          membersByUserId,
-          domainRevisions,
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { left: true, freedSeatNo: actorSeat }
-        });
-      }
-      if (type === COMMAND_TYPES.DISSOLVE_ROOM) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        const next = {
-          ...room,
-          lifecycle: LIFECYCLE.DISSOLVED,
-          status: "DISSOLVED",
-          seatMap: {},
-          membersByUserId: {},
-          domainRevisions: {
-            ...room.domainRevisions || emptyDomainRevisions(),
-            members: (room.domainRevisions && room.domainRevisions.members || 0) + 1
-          },
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { dissolved: true }
-        });
-      }
-      if (type === COMMAND_TYPES.REORDER_SEATS) {
-        if (!isHost) return fail(ERR.HOST_REQUIRED);
-        if (room.lifecycle !== LIFECYCLE.LOBBY) {
-          return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5927\u5385\u53EF\u8C03\u6574\u5E2D\u4F4D");
-        }
-        const order = Array.isArray(payload.userIdOrder) ? payload.userIdOrder : null;
-        if (!order || !order.length) {
-          return fail(ERR.INVALID_ARGUMENT, "userIdOrder \u5FC5\u586B");
-        }
-        const currentIds = Object.values(room.seatMap || {}).map(String).sort();
-        const nextIds = order.map(String).sort();
-        if (currentIds.length !== nextIds.length || currentIds.join(",") !== nextIds.join(",")) {
-          return fail(ERR.INVALID_ARGUMENT, "\u5E2D\u4F4D\u6210\u5458\u96C6\u5408\u5FC5\u987B\u4E00\u81F4");
-        }
-        if (order.length > MAX_SEATS) {
-          return fail(ERR.INVALID_ARGUMENT, "\u5E2D\u4F4D\u8D85\u51FA\u4E0A\u9650");
-        }
-        const seatMap = {};
-        const membersByUserId = { ...room.membersByUserId || {} };
-        order.forEach((uid, idx) => {
-          const seatNo = idx + 1;
-          seatMap[String(seatNo)] = uid;
-          if (membersByUserId[uid]) {
-            membersByUserId[uid] = {
-              ...membersByUserId[uid],
-              seatNo,
-              // 房主身份跟创建者，不跟座位号，避免拖拽换序把 GOD 角色转走
-              role: String(uid) === String(room.hostUserId) ? "HOST" : "PLAYER"
-            };
-          }
-        });
-        const domainRevisions = {
-          ...room.domainRevisions || emptyDomainRevisions(),
-          members: (room.domainRevisions && room.domainRevisions.members || 0) + 1
-        };
-        const next = {
-          ...room,
-          seatMap,
-          membersByUserId,
-          domainRevisions,
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { reordered: true }
-        });
-      }
-      if (type === COMMAND_TYPES.UPDATE_MEMBER_PROFILE) {
-        const membersByUserId = { ...room.membersByUserId || {} };
-        const prev = membersByUserId[actorUserId];
-        if (!prev) return fail(ERR.NOT_MEMBER);
-        const nextMember = { ...prev };
-        if (isNonEmptyString(payload.nickName)) {
-          nextMember.nickName = String(payload.nickName).trim();
-        }
-        if (payload.avatarUrl !== void 0) {
-          nextMember.avatarUrl = payload.avatarUrl || null;
-        }
-        membersByUserId[actorUserId] = nextMember;
-        const domainRevisions = {
-          ...room.domainRevisions || emptyDomainRevisions(),
-          members: (room.domainRevisions && room.domainRevisions.members || 0) + 1
-        };
-        const next = {
-          ...room,
-          membersByUserId,
-          domainRevisions,
-          revision: room.revision + 1,
-          updatedAt: ts
-        };
-        return okResult({
-          commandId,
-          appliedRevision: next.revision,
-          changedDomains: ["members"],
-          room: next,
-          head: buildHead(next, actorUserId),
-          effects: { profileUpdated: true }
-        });
-      }
-      return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684\u547D\u4EE4: ${type}`);
+    function authorizeRoomRead(aggregate, actorUserId) {
+      const auth = assertMember(aggregate, actorUserId);
+      return auth.ok ? { ok: true, aggregate, member: auth.member } : auth;
     }
     module2.exports = {
-      executeCommand,
-      buildHead,
-      buildCapabilities,
-      projectSnapshot,
-      projectMembersDomain,
+      reduceCommand,
       authorizeRoomRead,
-      allocateSeatNo,
-      findSeatNo,
       createRoomAggregate,
-      normalizeHalfStarScore
+      normalizeHalfStarScore,
+      memberByUserId,
+      memberById,
+      sortedMembers,
+      minimumPlayers,
+      ...require_spy()
+    };
+  }
+});
+
+// packages/room-projection/index.js
+var require_room_projection = __commonJS({
+  "packages/room-projection/index.js"(exports2, module2) {
+    "use strict";
+    var { COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP } = require_room_contracts();
+    function clone(value) {
+      return value == null ? value : JSON.parse(JSON.stringify(value));
+    }
+    function findMember(aggregate, userId) {
+      return (aggregate.room.members || []).find((member) => String(member.userId) === String(userId)) || null;
+    }
+    function findParticipant(session, memberId) {
+      return (session && session.participants || []).find((item) => item.memberId === memberId) || null;
+    }
+    function currentPartner(aggregate) {
+      return aggregate.currentSession && aggregate.currentSession.modeState ? aggregate.currentSession.modeState.partner || null : null;
+    }
+    function currentSpy(aggregate) {
+      return aggregate.currentSession && aggregate.currentSession.modeState ? aggregate.currentSession.modeState.spy || null : null;
+    }
+    function projectPublicView(aggregate) {
+      if (!aggregate || !aggregate.room) return null;
+      const room = aggregate.room;
+      const session = aggregate.currentSession;
+      const facts = aggregate.facts || {};
+      const publicView = {
+        room: {
+          roomId: room.roomId,
+          lifecycle: room.lifecycle,
+          workshopName: room.workshopName,
+          hostMemberId: room.hostMemberId,
+          members: (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
+            memberId: member.memberId,
+            seatNo: member.seatNo,
+            nickName: member.profile.nickName,
+            avatarRef: member.profile.avatarRef || null,
+            avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
+            color: member.profile.color
+          }))
+        },
+        session: null
+      };
+      if (!session) return publicView;
+      const contributions = Object.values(facts.contributions || {}).filter((item) => item.sessionId === session.sessionId);
+      const selectedProblem = contributions.find((item) => item.contributionId === session.setup.selectedProblemId) || null;
+      const participantView = (session.participants || []).map((item) => ({
+        memberId: item.memberId,
+        seatNoAtStart: item.seatNoAtStart,
+        status: item.status
+      }));
+      const rawProgress = session.progress || {};
+      const progress = {};
+      if (rawProgress.contributionProgress) {
+        progress.contributionProgress = {
+          submittedCount: rawProgress.contributionProgress.submittedMemberIds.length,
+          requiredCount: rawProgress.contributionProgress.requiredMemberIds.length
+        };
+      }
+      if (rawProgress.scoreProgress) {
+        progress.scoreProgress = {
+          submittedCount: rawProgress.scoreProgress.submittedMemberIds.length,
+          requiredCount: rawProgress.scoreProgress.requiredMemberIds.length
+        };
+      }
+      const view = {
+        sessionId: session.sessionId,
+        ordinal: session.ordinal,
+        status: session.status,
+        mode: session.mode,
+        participants: participantView,
+        setup: {
+          scenarioSource: session.setup.scenarioSource || null,
+          scenario: clone(session.setup.scenario || null),
+          proposedFirstMemberId: session.setup.proposedFirstMemberId || null,
+          selectedProblem: selectedProblem ? {
+            contributionId: selectedProblem.contributionId,
+            memberId: selectedProblem.memberId,
+            text: selectedProblem.text,
+            entityVersion: selectedProblem.entityVersion
+          } : null,
+          designProblems: session.workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM ? contributions.filter((item) => item.kind === "DESIGN_PROBLEM").map((item) => ({
+            contributionId: item.contributionId,
+            memberId: item.memberId,
+            text: item.text,
+            entityVersion: item.entityVersion
+          })) : []
+        },
+        workflow: clone(session.workflow),
+        progress,
+        publicModeState: {},
+        activeTurn: null,
+        activeArtifacts: [],
+        recentMessages: [],
+        result: clone(session.result || null)
+      };
+      if (session.mode === MODE.PARTNER) {
+        const partner = currentPartner(aggregate) || {};
+        const turn = partner.activeTurn || null;
+        view.publicModeState = {
+          roundNo: partner.roundNo || 1,
+          turnOrdinal: partner.turnOrdinal || 0,
+          closing: partner.closing ? {
+            closingVoteSessionId: partner.closing.closingVoteSessionId,
+            initiatorMemberId: partner.closing.initiatorMemberId,
+            votedCount: partner.closing.submittedMemberIds.length,
+            requiredCount: partner.closing.requiredMemberIds.length,
+            stage: partner.closing.stage,
+            sourceTurnId: partner.closing.sourceTurnId
+          } : null
+        };
+        if (turn) {
+          view.activeTurn = {
+            turnId: turn.turnId,
+            ordinal: turn.ordinal,
+            roundNo: turn.roundNo,
+            activeMemberId: turn.activeMemberId,
+            phase: turn.phase,
+            turnStartedAt: turn.turnStartedAt,
+            phaseStartedAt: turn.phaseStartedAt,
+            specialUsed: turn.specialUsed,
+            masterMode: turn.masterMode,
+            silentStartedAt: turn.silentStartedAt,
+            silentDeadlineAt: turn.silentDeadlineAt,
+            scoredCount: turn.scoreProgress.submittedMemberIds.length,
+            requiredScoreCount: turn.scoreProgress.requiredMemberIds.length
+          };
+        }
+        const relevantTurnId = turn ? turn.turnId : partner.closing && partner.closing.sourceTurnId;
+        view.activeArtifacts = Object.values(facts.artifacts || {}).filter((item) => item.sessionId === session.sessionId && item.turnId === relevantTurnId && !item.removed).sort((a, b) => a.createdAt - b.createdAt).map((item) => ({
+          artifactId: item.artifactId,
+          operationId: item.operationId,
+          turnId: item.turnId,
+          stage: item.stage,
+          kind: item.kind,
+          text: item.text,
+          fileRef: item.fileRef || null,
+          authorMemberId: item.authorMemberId,
+          entityVersion: item.entityVersion,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        }));
+        view.recentMessages = (facts.messages || []).filter((item) => item.sessionId === session.sessionId).slice(-40).map((item) => ({ messageId: item.messageId, text: item.text, anonKey: item.anonKey, createdAt: item.createdAt }));
+      } else if (session.mode === MODE.HALLI_GALLI) {
+        const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
+        const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
+        view.publicModeState = {
+          firstMemberId: session.setup.proposedFirstMemberId || null,
+          submittedMemberIds: ideas.map((item) => item.memberId),
+          ideas: reveal ? ideas.map((item) => ({ memberId: item.memberId, text: item.text })) : []
+        };
+      } else if (session.mode === MODE.SPY) {
+        const spy = currentSpy(aggregate) || {};
+        view.publicModeState = {
+          gameId: spy.gameId || null,
+          roundNo: spy.roundNo || 1,
+          players: clone(spy.players || []),
+          speakerTurnId: spy.speakerTurnId || null,
+          currentSpeakerMemberId: spy.speakOrder && spy.currentSpeakerIndex < spy.speakOrder.length ? spy.speakOrder[spy.currentSpeakerIndex] : null,
+          voteSessionId: spy.voteProgress && spy.voteProgress.voteSessionId,
+          votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
+          requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
+          tieBreak: spy.tieBreak === true,
+          lastResult: clone(spy.lastResult || null),
+          winnerSide: spy.winnerSide || null,
+          reveal: session.workflow.step === WORKFLOW_STEP.SPY_SETTLED ? clone(spy.reveal || []) : []
+        };
+      }
+      publicView.session = view;
+      return publicView;
+    }
+    function capability(allowed, reason) {
+      return { allowed: !!allowed, reason: allowed ? null : reason };
+    }
+    function projectCapabilities(aggregate, actor) {
+      const session = aggregate.currentSession;
+      const step = session && session.workflow.step;
+      const participant = actor && session ? findParticipant(session, actor.memberId) : null;
+      const isParticipant = !!(participant && participant.status === "ACTIVE");
+      const isHost = !!(actor && actor.memberId === aggregate.room.hostMemberId);
+      const partner = currentPartner(aggregate);
+      const turn = partner && partner.activeTurn;
+      const isActorTurn = !!(turn && actor && turn.activeMemberId === actor.memberId);
+      const caps = {};
+      Object.values(COMMAND_TYPES).forEach((type) => {
+        caps[type] = capability(false, "INVALID_TRANSITION");
+      });
+      caps[COMMAND_TYPES.UPDATE_ROOM_PROFILE] = capability(isHost, "HOST_REQUIRED");
+      caps[COMMAND_TYPES.UPDATE_MEMBER_PROFILE] = capability(!!actor, "NOT_MEMBER");
+      caps[COMMAND_TYPES.REORDER_SEATS] = capability(isHost && !session, isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED");
+      caps[COMMAND_TYPES.LEAVE_ROOM] = capability(!!actor && !isHost, isHost ? "HOST_CANNOT_LEAVE" : "NOT_MEMBER");
+      caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, "HOST_REQUIRED");
+      caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, "HOST_REQUIRED");
+      caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED");
+      caps[COMMAND_TYPES.SET_SCENARIO] = capability(isHost && step === WORKFLOW_STEP.CHOOSE_SCENARIO, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(isHost && step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(isHost && step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.REPLAY_WORKSHOP_SESSION] = caps[COMMAND_TYPES.RETURN_TO_LOBBY];
+      caps[COMMAND_TYPES.APPEND_ARTIFACT] = capability(!!turn && (isActorTurn || isHost), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SUBMIT_PARTNER_SCORE] = capability(isParticipant && !!turn && !isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN, isActorTurn ? "SELF_SCORE" : "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.POST_PARTNER_MESSAGE] = capability(isParticipant && !!turn && (step === WORKFLOW_STEP.PARTNER_TURN && !isActorTurn || step === WORKFLOW_STEP.PARTNER_STATEMENT), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.START_PARTNER_STATEMENT] = capability(isHost && !!turn && turn.scoreProgress.submittedMemberIds.length === turn.scoreProgress.requiredMemberIds.length, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(!!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(isParticipant && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.COMPLETE_PARTNER_SESSION] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.END_HALLI_ACTIVITY] = capability(isHost && step === WORKFLOW_STEP.HALLI_ACTIVITY, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SUBMIT_HALLI_IDEA] = capability(isParticipant && step === WORKFLOW_STEP.HALLI_CREATIVE, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.COMPLETE_HALLI_SESSION] = capability(isHost && step === WORKFLOW_STEP.HALLI_SUMMARY, "INVALID_TRANSITION");
+      const spy = currentSpy(aggregate);
+      const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
+      caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(isHost && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(alive && step === WORKFLOW_STEP.SPY_VOTE, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.START_NEXT_SPY_ROUND] = capability(alive && step === WORKFLOW_STEP.SPY_RESULT, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.RESTART_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.COMPLETE_SPY_SESSION] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, "INVALID_TRANSITION");
+      return caps;
+    }
+    function projectRoute(aggregate, actorView) {
+      const session = aggregate.currentSession;
+      if (!session) return { name: "addPlayer", params: {} };
+      if (!actorView.isParticipant) return { name: "addPlayer", params: { observing: true } };
+      const step = session.workflow.step;
+      const host = actorView.role === "HOST";
+      const routes = {
+        [WORKFLOW_STEP.CHOOSE_SCENARIO]: host ? "modeIndex" : "subAwait",
+        [WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS]: "submitProblem",
+        [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM]: host ? "selectProblem" : "subAwait",
+        [WORKFLOW_STEP.SELECT_FIRST_PLAYER]: host ? "selectPlayer" : "subAwait",
+        [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]: "confirmFirstPlayer",
+        [WORKFLOW_STEP.PARTNER_TURN]: "partnerGame",
+        [WORKFLOW_STEP.PARTNER_STATEMENT]: "partnerGame",
+        [WORKFLOW_STEP.PARTNER_CLOSING_VOTE]: "closingStatement",
+        [WORKFLOW_STEP.PARTNER_CLOSING_RUNE]: "partnerGame",
+        [WORKFLOW_STEP.PARTNER_CLOSING_REVIEW]: "partnerGame",
+        [WORKFLOW_STEP.HALLI_ACTIVITY]: "halliGame",
+        [WORKFLOW_STEP.HALLI_CREATIVE]: "creativeInput",
+        [WORKFLOW_STEP.HALLI_SUMMARY]: "creativeSummary",
+        [WORKFLOW_STEP.SPY_INTRO]: "spyIntro",
+        [WORKFLOW_STEP.SPY_SPEAK]: "spySpeak",
+        [WORKFLOW_STEP.SPY_TIE_SPEAK]: "spySpeak",
+        [WORKFLOW_STEP.SPY_VOTE]: "spyVote",
+        [WORKFLOW_STEP.SPY_RESULT]: "spyResult",
+        [WORKFLOW_STEP.SPY_SETTLED]: "spySettle"
+      };
+      if (session.status === SESSION_STATUS.COMPLETED) {
+        if (session.mode === MODE.PARTNER) return { name: "leaderboard", params: {} };
+        if (session.mode === MODE.HALLI_GALLI) return { name: "creativeSummary", params: {} };
+        return { name: "spySettle", params: {} };
+      }
+      if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
+        return { name: "creativeSummary", params: {} };
+      }
+      return { name: routes[step] || "addPlayer", params: { phase: step } };
+    }
+    function projectActorView(aggregate, actorUserId) {
+      const member = findMember(aggregate, actorUserId);
+      if (!member) return null;
+      const session = aggregate.currentSession;
+      const participant = session ? findParticipant(session, member.memberId) : null;
+      const facts = aggregate.facts || {};
+      const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
+      const contribution = session ? Object.values(facts.contributions || {}).find((item) => item.sessionId === session.sessionId && item.memberId === member.memberId) : null;
+      const score = turn ? facts.scores && facts.scores[`${turn.turnId}:${member.memberId}`] : null;
+      const closing = currentPartner(aggregate) && currentPartner(aggregate).closing;
+      const spy = currentSpy(aggregate);
+      const voteSessionId = closing ? closing.closingVoteSessionId : spy && spy.voteProgress && spy.voteProgress.voteSessionId;
+      const vote = voteSessionId ? facts.votes && facts.votes[`${voteSessionId}:${member.memberId}`] : null;
+      const secret = spy ? facts.secrets && facts.secrets[`${spy.gameId}:${member.memberId}`] : null;
+      const actor = {
+        memberId: member.memberId,
+        role: member.memberId === aggregate.room.hostMemberId ? "HOST" : "PLAYER",
+        seatNo: member.seatNo,
+        isParticipant: !!(participant && participant.status === "ACTIVE"),
+        contributionStatus: contribution ? { submitted: true, contributionId: contribution.contributionId, text: contribution.text, entityVersion: contribution.entityVersion } : { submitted: false },
+        scoreStatus: score ? { submitted: true, scoreHalfSteps: score.scoreHalfSteps } : { submitted: false },
+        voteStatus: vote ? { submitted: true, vote: vote.vote, targetMemberId: vote.targetMemberId || null } : { submitted: false },
+        privateModeState: secret ? { gameId: secret.gameId, role: secret.role, word: secret.word, blurb: secret.blurb } : null
+      };
+      actor.capabilities = projectCapabilities(aggregate, actor);
+      return actor;
+    }
+    function projectMemberView(aggregate, actorUserId) {
+      const publicView = projectPublicView(aggregate);
+      const actor = projectActorView(aggregate, actorUserId);
+      if (!publicView || !actor) return null;
+      return { ...publicView, actor, route: projectRoute(aggregate, actor) };
+    }
+    function createPublicPatch(before, after) {
+      const set = {};
+      const remove = [];
+      function walk(left, right, path) {
+        if (JSON.stringify(left) === JSON.stringify(right)) return;
+        const bothObjects = left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right);
+        if (!bothObjects) {
+          set[path || "$"] = clone(right);
+          return;
+        }
+        const keys = /* @__PURE__ */ new Set([...Object.keys(left), ...Object.keys(right)]);
+        keys.forEach((key) => {
+          const nextPath = path ? `${path}.${key}` : key;
+          if (!Object.prototype.hasOwnProperty.call(right, key)) remove.push(nextPath);
+          else if (!Object.prototype.hasOwnProperty.call(left, key)) set[nextPath] = clone(right[key]);
+          else walk(left[key], right[key], nextPath);
+        });
+      }
+      walk(before, after, "");
+      return { set, remove };
+    }
+    function setPath(target, path, value) {
+      if (path === "$") return clone(value);
+      const parts = path.split(".");
+      let cursor = target;
+      for (let i = 0; i < parts.length - 1; i += 1) {
+        if (!cursor[parts[i]] || typeof cursor[parts[i]] !== "object") cursor[parts[i]] = {};
+        cursor = cursor[parts[i]];
+      }
+      cursor[parts[parts.length - 1]] = clone(value);
+      return target;
+    }
+    function removePath(target, path) {
+      const parts = path.split(".");
+      let cursor = target;
+      for (let i = 0; i < parts.length - 1; i += 1) {
+        if (!cursor || typeof cursor !== "object") return;
+        cursor = cursor[parts[i]];
+      }
+      if (cursor && typeof cursor === "object") delete cursor[parts[parts.length - 1]];
+    }
+    function applyPublicPatch(view, patch) {
+      let next = clone(view || {});
+      Object.keys(patch && patch.set || {}).sort((a, b) => a.split(".").length - b.split(".").length).forEach((path) => {
+        next = setPath(next, path, patch.set[path]);
+      });
+      (patch && patch.remove || []).forEach((path) => removePath(next, path));
+      return next;
+    }
+    function applyEventGroup(view, events) {
+      if (!Array.isArray(events) || !events.length) return clone(view);
+      const count = events[0].commandEventCount;
+      if (events.length !== count || events.some((event, index) => event.commandEventIndex !== index + 1 || event.commandEventCount !== count)) {
+        const error = new Error("incomplete event group");
+        error.code = "SNAPSHOT_REQUIRED";
+        throw error;
+      }
+      let publicPart = clone(view || {});
+      delete publicPart.actor;
+      delete publicPart.route;
+      events.forEach((event) => {
+        if (event.payload && event.payload.publicPatch) publicPart = applyPublicPatch(publicPart, event.payload.publicPatch);
+      });
+      return { ...publicPart, actor: view && view.actor, route: view && view.route };
+    }
+    module2.exports = {
+      clone,
+      projectPublicView,
+      projectActorView,
+      projectMemberView,
+      projectCapabilities,
+      projectRoute,
+      createPublicPatch,
+      applyPublicPatch,
+      applyEventGroup
     };
   }
 });
@@ -1935,211 +2596,396 @@ var require_room_domain = __commonJS({
 var require_room_application = __commonJS({
   "packages/room-application/index.js"(exports2, module2) {
     "use strict";
+    var crypto = require("crypto");
     var {
+      PROTOCOL_VERSION,
+      VIEW_SCHEMA_VERSION,
+      EVENT_SCHEMA_VERSION,
       COMMAND_TYPES,
       ERR,
       fail,
       okResult,
       validateCommandEnvelope,
+      stableStringify,
       isNonEmptyString
     } = require_room_contracts();
+    var { reduceCommand, authorizeRoomRead, memberByUserId } = require_room_domain();
     var {
-      executeCommand,
-      buildHead,
-      projectSnapshot,
-      authorizeRoomRead
-    } = require_room_domain();
-    function createRoomApplication2(repo, options) {
-      if (!repo || typeof repo.loadRoom !== "function") {
-        throw new Error("RoomRepository required");
-      }
-      const appOptions = options || {};
-      async function execute(rawEnvelope, actorContext) {
-        const actorUserId = actorContext && actorContext.userId;
-        if (!actorUserId) {
-          return fail(ERR.UNAUTHENTICATED);
+      clone,
+      projectPublicView,
+      projectActorView,
+      projectMemberView,
+      projectRoute,
+      createPublicPatch
+    } = require_room_projection();
+    var DEFAULT_SYNC_LIMIT = 100;
+    var MAX_SYNC_BACKLOG = 300;
+    function hash(value) {
+      return crypto.createHash("sha256").update(String(value)).digest("hex");
+    }
+    function deterministicRandom(seed) {
+      let counter = 0;
+      return () => {
+        const bytes = crypto.createHash("sha256").update(`${seed}:${counter++}`).digest();
+        return bytes.readUInt32BE(0) / 4294967296;
+      };
+    }
+    function deterministicIds(seed) {
+      let counter = 0;
+      return (prefix) => `${prefix}_${hash(`${seed}:${prefix}:${counter++}`).slice(0, 20)}`;
+    }
+    function requestHash(envelope) {
+      return hash(stableStringify({ type: envelope.type, context: envelope.context, payload: envelope.payload }));
+    }
+    function markCommittedFacts(aggregate, dirtyFacts, commitSeq) {
+      const facts = aggregate && aggregate.facts;
+      if (!facts) return;
+      (dirtyFacts || []).forEach(({ kind, id }) => {
+        if (kind === "messages") {
+          const row = (facts.messages || []).find((item) => item.messageId === id);
+          if (row) row.commitSeq = commitSeq;
+          return;
         }
+        const bucket = facts[kind];
+        if (bucket && bucket[id]) bucket[id].commitSeq = commitSeq;
+      });
+    }
+    function buildEvents(envelope, domainEvents, room, beforePublic, afterPublic, occurredAt) {
+      const events = domainEvents && domainEvents.length ? domainEvents : [];
+      if (!events.length) throw new Error("accepted command must produce at least one event");
+      const firstSeq = room.eventSeq + 1;
+      const stateVersion = room.stateVersion + 1;
+      const patch = createPublicPatch(beforePublic, afterPublic);
+      return events.map((item, index) => ({
+        eventSchemaVersion: EVENT_SCHEMA_VERSION,
+        roomId: room.roomId,
+        seq: firstSeq + index,
+        stateVersion,
+        commandId: envelope.commandId,
+        commandEventIndex: index + 1,
+        commandEventCount: events.length,
+        sessionId: envelope.context.sessionId || (afterPublic && afterPublic.session ? afterPublic.session.sessionId : null),
+        type: item.type,
+        payload: index === events.length - 1 ? { ...clone(item.payload) || {}, publicPatch: patch } : clone(item.payload || {}),
+        occurredAt
+      }));
+    }
+    function eventGroups(events) {
+      const groups = [];
+      (events || []).forEach((item) => {
+        const last = groups[groups.length - 1];
+        if (!last || last[0].commandId !== item.commandId) groups.push([item]);
+        else last.push(item);
+      });
+      return groups;
+    }
+    function validEventGroup(group) {
+      if (!group.length) return false;
+      const count = group[0].commandEventCount;
+      return group.length === count && group.every((item, index) => item.eventSchemaVersion === EVENT_SCHEMA_VERSION && item.commandEventCount === count && item.commandEventIndex === index + 1);
+    }
+    function createRoomApplication2(repo, options) {
+      if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
+      const appOptions = options || {};
+      const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
+      async function ephemeral(roomId) {
+        if (typeof repo.listPresence !== "function") return {};
+        const rows = await repo.listPresence(roomId);
+        const cutoff = now() - (appOptions.presenceTtlMs || 15e3);
+        const byMemberId = {};
+        (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff).forEach((row) => {
+          if (!byMemberId[row.memberId] || byMemberId[row.memberId].lastSeenAt < row.lastSeenAt) {
+            byMemberId[row.memberId] = { online: true, lastSeenAt: row.lastSeenAt };
+          }
+        });
+        return { presenceByMemberId: byMemberId };
+      }
+      async function readCurrentRoom(actorContext) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        const found = await repo.findActiveRoom(actorUserId);
+        if (!found) return okResult({ roomId: null, membershipId: null });
+        if (found.dangling) return fail(ERR.INTERNAL_ERROR, "\u5F53\u524D\u623F\u95F4\u7D22\u5F15\u4E0D\u4E00\u81F4", { recoverable: true });
+        return okResult({ roomId: found.roomId, membershipId: found.memberId });
+      }
+      async function readSnapshot(roomId, actorContext) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
+        const aggregate = await repo.readAggregate(roomId);
+        const auth = authorizeRoomRead(aggregate, actorUserId);
+        if (!auth.ok) return auth;
+        return okResult({
+          protocolVersion: PROTOCOL_VERSION,
+          roomId,
+          seq: aggregate.room.eventSeq,
+          stateVersion: aggregate.room.stateVersion,
+          viewSchemaVersion: VIEW_SCHEMA_VERSION,
+          view: projectMemberView(auth.aggregate, actorUserId),
+          ephemeral: await ephemeral(roomId),
+          serverTime: now(),
+          minAvailableSeq: aggregate.room.minAvailableSeq
+        });
+      }
+      async function sync(roomId, afterSeq, actorContext, requestOptions) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        if (!isNonEmptyString(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
+        const baseSeq = Number(afterSeq);
+        if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, "afterSeq \u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570");
+        const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
+        const bundle = await repo.readSyncState(roomId, baseSeq, MAX_SYNC_BACKLOG + 1);
+        const aggregate = bundle && bundle.aggregate;
+        const auth = authorizeRoomRead(aggregate, actorUserId);
+        if (!auth.ok) return auth;
+        const currentSeq = aggregate.room.eventSeq;
+        const minAvailableSeq = aggregate.room.minAvailableSeq;
+        const base = {
+          afterSeq: baseSeq,
+          throughSeq: baseSeq,
+          roomCurrentSeq: currentSeq,
+          hasMore: false,
+          snapshotRequired: false,
+          events: [],
+          actorView: null,
+          ephemeral: {},
+          serverTime: now()
+        };
+        if (baseSeq > currentSeq || baseSeq < minAvailableSeq - 1 || currentSeq - baseSeq > MAX_SYNC_BACKLOG) {
+          return okResult({ ...base, snapshotRequired: true });
+        }
+        const available = (bundle.events || []).filter((item) => item.seq > baseSeq && item.seq <= currentSeq).sort((a, b) => a.seq - b.seq);
+        if (available.length && available[0].seq !== baseSeq + 1) return okResult({ ...base, snapshotRequired: true });
+        for (let i = 1; i < available.length; i += 1) {
+          if (available[i].seq !== available[i - 1].seq + 1) return okResult({ ...base, snapshotRequired: true });
+        }
+        const selected = [];
+        for (const group of eventGroups(available)) {
+          if (!validEventGroup(group)) return okResult({ ...base, snapshotRequired: true });
+          if (selected.length && selected.length + group.length > limit) break;
+          selected.push(...group);
+          if (selected.length >= limit) break;
+        }
+        const throughSeq = selected.length ? selected[selected.length - 1].seq : baseSeq;
+        const hasMore = throughSeq < currentSeq;
+        let actorView = null;
+        let projectedEphemeral = {};
+        if (!hasMore) {
+          const actor = projectActorView(aggregate, actorUserId);
+          actorView = { actor, route: projectRoute(aggregate, actor) };
+          projectedEphemeral = await ephemeral(roomId);
+        }
+        return okResult({
+          ...base,
+          throughSeq,
+          hasMore,
+          events: clone(selected),
+          actorView,
+          ephemeral: projectedEphemeral,
+          serverTime: now()
+        });
+      }
+      async function executeCommand(rawEnvelope, actorContext) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         const validated = validateCommandEnvelope(rawEnvelope);
         if (!validated.ok) return validated;
         const envelope = validated.envelope;
-        const existingCmd = await repo.loadCommand(envelope.commandId);
-        if (existingCmd) {
-          if (String(existingCmd.actorUserId) !== String(actorUserId) || existingCmd.roomId && envelope.roomId && String(existingCmd.roomId) !== String(envelope.roomId)) {
-            return fail(ERR.COMMAND_ID_CONFLICT);
-          }
-          return existingCmd.result;
-        }
-        let room = null;
-        if (envelope.type !== COMMAND_TYPES.CREATE_ROOM) {
-          room = await repo.loadRoom(envelope.roomId);
-        }
-        const domainResult = executeCommand({
-          room,
-          envelope,
-          actorUserId,
-          roomIdFactory: repo.generateRoomId ? () => repo.generateRoomId() : void 0,
-          now: appOptions.now || Date.now(),
-          wordPairPicker: appOptions.wordPairPicker,
-          random: appOptions.random
-        });
-        if (!domainResult.ok) {
-          return {
-            ...domainResult,
-            commandId: envelope.commandId
-          };
-        }
-        if (!(domainResult.effects && domainResult.effects.readOnly)) {
-          await repo.persistRoom(domainResult.room, domainResult.effects || {});
-        }
-        const success = okResult({
-          commandId: envelope.commandId,
-          appliedRevision: domainResult.appliedRevision,
-          changedDomains: domainResult.changedDomains || [],
-          head: domainResult.head || buildHead(domainResult.room, actorUserId),
-          effects: domainResult.effects || {},
-          roomId: domainResult.room.roomId
-        });
-        if (domainResult.effects && domainResult.effects.card) {
-          success.card = domainResult.effects.card;
-        }
-        if (domainResult.effects && domainResult.effects.spyGame) {
-          success.spyGame = domainResult.effects.spyGame;
-        }
-        if (domainResult.effects && domainResult.effects.legacyPage) {
-          success.currentPage = domainResult.effects.legacyPage;
-        }
-        ["settled", "tied", "finished", "autoVote", "already", "restarted"].forEach((key) => {
-          if (domainResult.effects && domainResult.effects[key] != null) {
-            success[key] = domainResult.effects[key];
-          }
-        });
-        await repo.saveCommandResult({
+        const commandNow = now();
+        const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
+        const commandRoomId = isCreate ? String(typeof repo.generateRoomId === "function" ? repo.generateRoomId(envelope.commandId, actorUserId) : 1e7 + Math.floor(Math.random() * 9e7)) : envelope.roomId;
+        const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
+        const seed = hash(`${appOptions.serverSecret || "room-v3"}:${commandRoomId}:${envelope.commandId}`);
+        const transaction = await repo.transactCommand({
+          scopeKey,
           commandId: envelope.commandId,
           actorUserId,
-          roomId: domainResult.room.roomId,
+          roomId: commandRoomId,
           type: envelope.type,
-          result: success
+          requestHash: requestHash(envelope),
+          createdAt: commandNow
+        }, ({ aggregate: current, activeRoomId }) => {
+          if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+          if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
+            return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+          }
+          const beforePublic = projectPublicView(current);
+          const domain = reduceCommand({
+            aggregate: current,
+            command: { ...envelope, roomId: commandRoomId },
+            actorUserId,
+            deps: {
+              now: commandNow,
+              idFactory: deterministicIds(seed),
+              random: deterministicRandom(seed),
+              wordPairPicker: appOptions.wordPairPicker,
+              roomIdFactory: () => commandRoomId
+            }
+          });
+          if (!domain.ok) return { accepted: false, error: domain };
+          const next = domain.aggregate;
+          const afterPublic = projectPublicView(next);
+          const events = buildEvents(envelope, domain.events, next.room, beforePublic, afterPublic, commandNow);
+          next.room.stateVersion += 1;
+          next.room.eventSeq = events[events.length - 1].seq;
+          next.room.updatedAt = commandNow;
+          markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
+          return {
+            accepted: true,
+            aggregate: next,
+            events,
+            dirtyFacts: domain.dirtyFacts || [],
+            archivedSession: next.archivedSession || null,
+            outcome: {
+              ...domain.outcome || { kind: "ACCEPTED" },
+              roomId: next.room.roomId,
+              committedThroughSeq: next.room.eventSeq
+            }
+          };
         });
-        return success;
-      }
-      async function readHead(roomId, actorContext) {
-        const actorUserId = actorContext && actorContext.userId;
-        if (!isNonEmptyString(roomId)) {
-          return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
+        if (transaction.conflict) return fail(ERR.COMMAND_ID_CONFLICT, void 0, { commandId: envelope.commandId });
+        const receipt = transaction.receipt;
+        if (!receipt.accepted) {
+          const rejected = { ...receipt.error, commandId: envelope.commandId };
+          if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
+            const catchup = await sync(commandRoomId, envelope.knownSeq, actorContext).catch(() => null);
+            if (catchup && catchup.ok) rejected.sync = catchup;
+          }
+          return rejected;
         }
-        const room = await repo.loadRoom(roomId);
-        const auth = authorizeRoomRead(room, actorUserId);
-        if (!auth.ok) return auth;
-        return okResult({ head: buildHead(auth.room, actorUserId) });
-      }
-      async function readSnapshot(roomId, actorContext, request) {
-        const actorUserId = actorContext && actorContext.userId;
-        if (!isNonEmptyString(roomId)) {
-          return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
-        }
-        const room = await repo.loadRoom(roomId);
-        const auth = authorizeRoomRead(room, actorUserId);
-        if (!auth.ok) return auth;
-        const domains = request && request.domains || ["members"];
-        let extraDomainData = {};
-        if (typeof repo.loadDomainData === "function") {
-          extraDomainData = await repo.loadDomainData(roomId, domains);
-        }
-        const snapshot = projectSnapshot(auth.room, {
-          actorUserId,
-          domains,
-          clientDomainRevisions: request && request.domainRevisions || {},
-          extraDomainData
+        const outcome = receipt.outcome;
+        const response = okResult({
+          commandId: envelope.commandId,
+          outcome,
+          traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}`
         });
-        return okResult({ snapshot, head: buildHead(auth.room, actorUserId) });
+        if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
+          response.sync = { snapshotRequired: true, roomId: outcome.roomId };
+        } else if (![COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+          response.sync = await sync(outcome.roomId, envelope.knownSeq, actorContext);
+        }
+        return response;
       }
       async function heartbeat(roomId, actorContext, payload) {
         const actorUserId = actorContext && actorContext.userId;
-        if (!isNonEmptyString(roomId)) {
-          return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u586B");
-        }
-        if (!isNonEmptyString(actorUserId)) {
-          return fail(ERR.UNAUTHENTICATED);
-        }
-        const room = await repo.loadRoom(roomId);
-        const auth = authorizeRoomRead(room, actorUserId);
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        const aggregate = await repo.readAggregate(roomId);
+        const auth = authorizeRoomRead(aggregate, actorUserId);
         if (!auth.ok) return auth;
-        if (typeof repo.upsertPresence !== "function") {
-          return fail(ERR.DEPENDENCY_UNAVAILABLE, "presence store unavailable");
-        }
+        if (typeof repo.upsertPresence !== "function") return fail(ERR.DEPENDENCY_UNAVAILABLE, "presence store unavailable");
         const row = await repo.upsertPresence({
           roomId,
-          userId: actorUserId,
-          deviceSessionId: payload && payload.deviceSessionId
+          memberId: auth.member.memberId,
+          deviceSessionId: payload && payload.deviceSessionId,
+          lastSeenAt: now()
         });
-        return okResult({
-          presence: row,
-          revision: auth.room.revision
-        });
+        return okResult({ presence: row, seq: aggregate.room.eventSeq });
       }
-      return { execute, readHead, readSnapshot, heartbeat };
+      return { executeCommand, readCurrentRoom, readSnapshot, sync, heartbeat };
     }
     function createInMemoryRoomRepository(options) {
       const rooms = /* @__PURE__ */ new Map();
-      const commands = /* @__PURE__ */ new Map();
+      const actions = /* @__PURE__ */ new Map();
+      const events = /* @__PURE__ */ new Map();
+      const activeRooms = /* @__PURE__ */ new Map();
       const presence = /* @__PURE__ */ new Map();
-      const domainExtras = /* @__PURE__ */ new Map();
+      const sessions = /* @__PURE__ */ new Map();
       let seq = 1e7;
+      const copy = (value) => clone(value);
+      const receiptKey = (scopeKey, commandId) => `${scopeKey}:${commandId}`;
+      const usersOf = (aggregate) => {
+        if (!aggregate || aggregate.room.lifecycle !== "OPEN") return [];
+        return (aggregate.room.members || []).map((member) => ({
+          userId: member.userId,
+          roomId: aggregate.room.roomId,
+          memberId: member.memberId
+        }));
+      };
       return {
         rooms,
-        commands,
+        actions,
+        events,
+        activeRooms,
         presence,
-        domainExtras,
-        generateRoomId() {
-          if (options && typeof options.generateRoomId === "function") {
-            return options.generateRoomId();
-          }
+        sessions,
+        generateRoomId(commandId, actorUserId) {
+          if (options && typeof options.generateRoomId === "function") return options.generateRoomId(commandId, actorUserId);
           seq += 1;
           return String(seq);
         },
-        async loadRoom(roomId) {
-          const room = rooms.get(roomId);
-          return room ? JSON.parse(JSON.stringify(room)) : null;
-        },
-        async loadCommand(commandId) {
-          return commands.get(commandId) || null;
-        },
-        async saveCommandResult(row) {
-          commands.set(row.commandId, row);
-        },
-        async persistRoom(room) {
-          rooms.set(room.roomId, JSON.parse(JSON.stringify(room)));
-        },
-        async loadDomainData(roomId, domains) {
-          const bag = domainExtras.get(roomId) || {};
-          const out = {};
-          (domains || []).forEach((d) => {
-            if (d !== "members" && Object.prototype.hasOwnProperty.call(bag, d)) {
-              out[d] = bag[d];
-            }
-          });
-          return out;
-        },
-        async upsertPresence({ roomId, userId, deviceSessionId }) {
-          const key = `${roomId}:${userId}:${deviceSessionId || "default"}`;
-          const row = {
-            roomId,
-            userId,
-            deviceSessionId: deviceSessionId || "default",
-            lastSeenAt: Date.now(),
-            online: true
+        async transactCommand(input, handler) {
+          const key = receiptKey(input.scopeKey, input.commandId);
+          const existing = actions.get(key);
+          if (existing) {
+            const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
+            return conflict ? { conflict: true } : { replayed: true, receipt: copy(existing) };
+          }
+          const current = rooms.has(input.roomId) ? copy(rooms.get(input.roomId)) : null;
+          const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null });
+          const receipt = {
+            scopeKey: input.scopeKey,
+            commandId: input.commandId,
+            actorUserId: input.actorUserId,
+            roomId: input.roomId,
+            type: input.type,
+            requestHash: input.requestHash,
+            accepted: decision.accepted === true,
+            outcome: copy(decision.outcome || null),
+            error: copy(decision.error || null),
+            committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq,
+            createdAt: input.createdAt
           };
-          presence.set(key, row);
-          return row;
+          if (decision.accepted) {
+            const beforeUsers = usersOf(current);
+            const afterUsers = usersOf(decision.aggregate);
+            rooms.set(input.roomId, copy(decision.aggregate));
+            if (decision.archivedSession) sessions.set(decision.archivedSession.sessionId, copy(decision.archivedSession));
+            (decision.events || []).forEach((item) => {
+              if (!events.has(input.roomId)) events.set(input.roomId, []);
+              events.get(input.roomId).push(copy(item));
+            });
+            const afterIds = new Set(afterUsers.map((item) => item.userId));
+            beforeUsers.filter((item) => !afterIds.has(item.userId)).forEach((item) => activeRooms.delete(item.userId));
+            afterUsers.forEach((item) => activeRooms.set(item.userId, item.roomId));
+          }
+          actions.set(key, copy(receipt));
+          return { replayed: false, receipt: copy(receipt) };
+        },
+        async findActiveRoom(userId) {
+          const roomId = activeRooms.get(userId);
+          if (!roomId) return null;
+          const aggregate = rooms.get(roomId);
+          const member = aggregate && memberByUserId(aggregate.room, userId);
+          if (!aggregate || aggregate.room.lifecycle !== "OPEN" || !member) return { dangling: true, roomId };
+          return { roomId, memberId: member.memberId };
+        },
+        async readAggregate(roomId) {
+          return rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
+        },
+        async readSyncState(roomId, afterSeq, limit) {
+          return {
+            aggregate: rooms.has(roomId) ? copy(rooms.get(roomId)) : null,
+            events: copy((events.get(roomId) || []).filter((item) => item.seq > afterSeq).slice(0, limit))
+          };
+        },
+        async upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
+          const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
+          presence.set(`${roomId}:${memberId}:${row.deviceSessionId}`, row);
+          return copy(row);
         },
         async listPresence(roomId) {
-          return [...presence.values()].filter((p) => p.roomId === roomId);
+          return copy([...presence.values()].filter((item) => item.roomId === roomId));
         }
       };
     }
     module2.exports = {
       createRoomApplication: createRoomApplication2,
-      createInMemoryRoomRepository
+      createInMemoryRoomRepository,
+      hash,
+      deterministicRandom,
+      deterministicIds,
+      markCommittedFacts,
+      validEventGroup
     };
   }
 });
@@ -2148,434 +2994,210 @@ var require_room_application = __commonJS({
 var require_room_cloudbase_adapter = __commonJS({
   "packages/room-cloudbase-adapter/index.js"(exports2, module2) {
     "use strict";
-    var { MAX_SEATS } = require_room_contracts();
-    var ROOMS = "rooms";
-    var MEMBERS = "roomMembers";
-    var COMMANDS = "roomCommands";
-    var PRESENCE = "roomPresence";
-    var SCORES = "roomScores";
-    var MESSAGES = "roomMessages";
-    var VOTES = "roomVotes";
-    var ARTIFACTS = "roomArtifacts";
-    var SECRETS = "roomSecrets";
+    var crypto = require("crypto");
+    var { clone } = require_room_projection();
+    var COLLECTIONS = Object.freeze({
+      rooms: "roomV3Rooms",
+      sessions: "roomV3Sessions",
+      active: "roomV3ActiveByUser",
+      actions: "roomV3Actions",
+      events: "roomV3Events",
+      turns: "roomV3Turns",
+      scores: "roomV3Scores",
+      votes: "roomV3Votes",
+      contributions: "roomV3Contributions",
+      artifacts: "roomV3Artifacts",
+      messages: "roomV3Messages",
+      secrets: "roomV3Secrets",
+      presence: "roomV3Presence"
+    });
+    var FACT_COLLECTION = Object.freeze({
+      turns: COLLECTIONS.turns,
+      scores: COLLECTIONS.scores,
+      votes: COLLECTIONS.votes,
+      contributions: COLLECTIONS.contributions,
+      artifacts: COLLECTIONS.artifacts,
+      messages: COLLECTIONS.messages,
+      secrets: COLLECTIONS.secrets
+    });
+    var FACT_LIMITS = Object.freeze({
+      turns: 600,
+      scores: 1e3,
+      votes: 1e3,
+      contributions: 20,
+      artifacts: 1e3,
+      messages: 200,
+      secrets: 12
+    });
+    function digest(value) {
+      return crypto.createHash("sha256").update(String(value)).digest("hex");
+    }
+    function docId(value) {
+      return digest(value).slice(0, 48);
+    }
+    function cleanDoc(value) {
+      if (!value) return null;
+      const next = clone(value);
+      delete next._id;
+      return next;
+    }
+    async function safeGet(store, collection, id) {
+      try {
+        const result = await store.collection(collection).doc(id).get();
+        return result && result.data ? cleanDoc(result.data) : null;
+      } catch (error) {
+        return null;
+      }
+    }
+    async function loadFactRows(store, kind, roomId, sessionId) {
+      if (!sessionId) return kind === "messages" ? [] : {};
+      const query = store.collection(FACT_COLLECTION[kind]).where({ roomId, sessionId });
+      const result = await query.limit(FACT_LIMITS[kind]).get();
+      const rows = result && result.data || [];
+      if (kind === "messages") return rows.map(cleanDoc).sort((a, b) => a.createdAt - b.createdAt);
+      const out = {};
+      rows.forEach((raw) => {
+        const row = cleanDoc(raw);
+        if (row && row._factKey) {
+          const key = row._factKey;
+          delete row._factKey;
+          out[key] = row;
+        }
+      });
+      return out;
+    }
+    async function loadAggregate(store, roomId) {
+      const room = await safeGet(store, COLLECTIONS.rooms, roomId);
+      if (!room) return null;
+      const currentSession = room.currentSessionId ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId) : null;
+      if (currentSession) delete currentSession.roomId;
+      const sessionId = currentSession && currentSession.sessionId;
+      const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) => [kind, await loadFactRows(store, kind, roomId, sessionId)]));
+      return { room, currentSession, facts: Object.fromEntries(entries) };
+    }
+    function factRow(aggregate, kind, id) {
+      if (!aggregate || !aggregate.facts) return null;
+      if (kind === "messages") return (aggregate.facts.messages || []).find((item) => item.messageId === id) || null;
+      return aggregate.facts[kind] && aggregate.facts[kind][id];
+    }
+    function openUsers(aggregate) {
+      if (!aggregate || !aggregate.room || aggregate.room.lifecycle !== "OPEN") return [];
+      return (aggregate.room.members || []).map((member) => ({
+        userId: member.userId,
+        roomId: aggregate.room.roomId,
+        memberId: member.memberId
+      }));
+    }
     function createCloudBaseRoomRepository2(deps) {
-      const db2 = deps.db;
-      if (!db2) throw new Error("db required");
-      async function generateRoomId(maxRetry) {
-        const retries = maxRetry || 5;
-        for (let i = 0; i < retries; i += 1) {
-          const roomId = String(Math.floor(1e7 + Math.random() * 9e7));
-          const exist = await db2.collection(ROOMS).where({ roomId }).limit(1).get();
-          if (!exist.data || !exist.data.length) return roomId;
-        }
-        return String(Math.floor(1e7 + Math.random() * 9e7));
+      const db2 = deps && deps.db;
+      if (!db2 || typeof db2.runTransaction !== "function") throw new Error("CloudBase transaction database required");
+      function generateRoomId(commandId, actorUserId) {
+        const value = parseInt(digest(`${actorUserId}:${commandId}:room`).slice(0, 12), 16);
+        return String(1e7 + value % 9e7);
       }
-      function toAggregate(roomDoc, memberDocs) {
-        if (!roomDoc) return null;
-        const membersByUserId = {};
-        const seatMap = roomDoc.seatMap && typeof roomDoc.seatMap === "object" ? { ...roomDoc.seatMap } : {};
-        (memberDocs || []).forEach((m) => {
-          if (!m || !m.userId) return;
-          const seatNo = m.playerIndex != null ? Number(m.playerIndex) : null;
-          membersByUserId[m.userId] = {
-            userId: m.userId,
-            seatNo,
-            role: m.role === "GOD" || m.role === "HOST" ? "HOST" : "PLAYER",
-            nickName: m.nickName || `\u73A9\u5BB6${seatNo || ""}`,
-            avatarUrl: m.avatarUrl || null,
-            avatarColor: m.avatarColor || "#5EC159",
-            avatarIndex: m.avatarIndex != null ? m.avatarIndex : null,
-            joinedAt: m.joinedAt || null,
-            _id: m._id
-          };
-          if (seatNo && !seatMap[String(seatNo)]) {
-            seatMap[String(seatNo)] = m.userId;
+      async function transactCommand(input, handler) {
+        return db2.runTransaction(async (transaction) => {
+          const actionId = docId(`${input.scopeKey}:${input.commandId}`);
+          const existing = await safeGet(transaction, COLLECTIONS.actions, actionId);
+          if (existing) {
+            const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
+            return conflict ? { conflict: true } : { replayed: true, receipt: existing };
           }
-        });
-        if (!Object.keys(seatMap).length) {
-          Object.values(membersByUserId).forEach((m) => {
-            if (m.seatNo) seatMap[String(m.seatNo)] = m.userId;
-          });
-        }
-        return {
-          _id: roomDoc._id,
-          roomId: roomDoc.roomId,
-          schemaVersion: roomDoc.schemaVersion || 1,
-          protocolVersion: roomDoc.protocolVersion || 1,
-          lifecycle: roomDoc.lifecycle || (roomDoc.status === "DISSOLVED" ? "DISSOLVED" : "LOBBY"),
-          status: roomDoc.status || "CREATED",
-          hostUserId: roomDoc.hostUserId || roomDoc.creatorId,
-          creatorId: roomDoc.creatorId || roomDoc.hostUserId,
-          seatMap,
-          activeSessionId: roomDoc.activeSessionId || null,
-          revision: roomDoc.revision != null ? roomDoc.revision : 0,
-          workflow: roomDoc.workflow || null,
-          domainRevisions: roomDoc.domainRevisions || null,
-          progress: roomDoc.progress || null,
-          workshopName: roomDoc.workshopName || "\u8111\u66B4\u5DE5\u4F5C\u574A",
-          membersByUserId,
-          selectedModeId: roomDoc.selectedModeId || null,
-          currentPage: roomDoc.currentPage || null,
-          brainstormProgressPage: roomDoc.brainstormProgressPage || null,
-          currentPlayerIndex: roomDoc.currentPlayerIndex != null ? Number(roomDoc.currentPlayerIndex) : null,
-          currentPlayerName: roomDoc.currentPlayerName || null,
-          currentRound: roomDoc.currentRound != null ? Number(roomDoc.currentRound) : 1,
-          partnerGamePhase: roomDoc.partnerGamePhase || null,
-          partnerMasterMode: roomDoc.partnerMasterMode === true,
-          partnerSilentMode: roomDoc.partnerSilentMode === true,
-          partnerSilentStartedAt: roomDoc.partnerSilentStartedAt != null ? Number(roomDoc.partnerSilentStartedAt) : null,
-          partnerSilentSoundLevel: roomDoc.partnerSilentSoundLevel != null ? Math.min(1, Math.max(0, Number(roomDoc.partnerSilentSoundLevel) || 0)) : 0,
-          partnerRoundSummaries: Array.isArray(roomDoc.partnerRoundSummaries) ? roomDoc.partnerRoundSummaries : null,
-          partnerCurrentRoundContent: roomDoc.partnerCurrentRoundContent || null,
-          partnerRoundStartedAt: roomDoc.partnerRoundStartedAt || null,
-          spyGame: roomDoc.spyGame || null,
-          spyAssignments: roomDoc.spyAssignments || null,
-          secretsByUserId: null,
-          createdAt: roomDoc.createdAt,
-          updatedAt: roomDoc.updatedAt
-        };
-      }
-      function secretsFromLegacyAssignments(spyAssignments) {
-        const map = {};
-        if (!spyAssignments || typeof spyAssignments !== "object") return map;
-        Object.keys(spyAssignments).forEach((seat) => {
-          const row = spyAssignments[seat];
-          if (!row || !row.userId) return;
-          map[row.userId] = {
-            playerIndex: row.playerIndex != null ? Number(row.playerIndex) : Number(seat),
-            userId: row.userId,
-            role: row.role,
-            word: row.word,
-            blurb: row.blurb || "",
-            name: row.name || ""
+          const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+          const current = await loadAggregate(transaction, input.roomId);
+          const decision = handler({ aggregate: current, activeRoomId: active && active.roomId });
+          const receipt = {
+            scopeKey: input.scopeKey,
+            commandId: input.commandId,
+            actorUserId: input.actorUserId,
+            roomId: input.roomId,
+            type: input.type,
+            requestHash: input.requestHash,
+            accepted: decision.accepted === true,
+            outcome: cleanDoc(decision.outcome),
+            error: cleanDoc(decision.error),
+            committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq,
+            createdAt: input.createdAt
           };
-        });
-        return map;
-      }
-      async function loadSecretsByUserId(roomId) {
-        try {
-          const res = await db2.collection(SECRETS).where({ roomId }).limit(MAX_SEATS).get();
-          const map = {};
-          (res.data || []).forEach((doc) => {
-            if (!doc || !doc.userId) return;
-            map[doc.userId] = {
-              playerIndex: doc.playerIndex != null ? Number(doc.playerIndex) : null,
-              userId: doc.userId,
-              role: doc.role,
-              word: doc.word,
-              blurb: doc.blurb || "",
-              name: doc.name || ""
-            };
-          });
-          return map;
-        } catch (e) {
-          console.warn("load roomSecrets failed", e);
-          return {};
-        }
-      }
-      async function loadRoom(roomId) {
-        const roomRes = await db2.collection(ROOMS).where({ roomId }).limit(1).get();
-        if (!roomRes.data || !roomRes.data.length) return null;
-        const roomDoc = roomRes.data[0];
-        const membersRes = await db2.collection(MEMBERS).where({ roomId }).limit(MAX_SEATS).get();
-        const agg = toAggregate(roomDoc, membersRes.data || []);
-        let secretsByUserId = await loadSecretsByUserId(roomId);
-        if (!Object.keys(secretsByUserId).length) {
-          secretsByUserId = secretsFromLegacyAssignments(roomDoc.spyAssignments);
-        }
-        agg.secretsByUserId = Object.keys(secretsByUserId).length ? secretsByUserId : null;
-        return agg;
-      }
-      async function loadCommand(commandId) {
-        try {
-          const res = await db2.collection(COMMANDS).doc(commandId).get();
-          return res && res.data ? res.data : null;
-        } catch (e) {
-          return null;
-        }
-      }
-      async function saveCommandResult(row) {
-        const now = Date.now();
-        await db2.collection(COMMANDS).doc(row.commandId).set({
-          data: {
-            commandId: row.commandId,
-            actorUserId: row.actorUserId,
-            roomId: row.roomId,
-            type: row.type,
-            result: row.result,
-            createdAt: now,
-            updatedAt: now
+          if (decision.accepted) {
+            const beforeUsers = openUsers(current);
+            const afterUsers = openUsers(decision.aggregate);
+            await transaction.collection(COLLECTIONS.rooms).doc(input.roomId).set({ data: cleanDoc(decision.aggregate.room) });
+            if (decision.aggregate.currentSession) {
+              const session = cleanDoc(decision.aggregate.currentSession);
+              await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId).set({ data: { ...session, roomId: input.roomId } });
+            }
+            if (decision.archivedSession) {
+              const archived = cleanDoc(decision.archivedSession);
+              await transaction.collection(COLLECTIONS.sessions).doc(archived.sessionId).set({ data: { ...archived, roomId: input.roomId } });
+            }
+            for (const dirty of decision.dirtyFacts || []) {
+              const row = factRow(decision.aggregate, dirty.kind, dirty.id);
+              if (!row) continue;
+              const sessionId = row.sessionId || decision.aggregate.currentSession && decision.aggregate.currentSession.sessionId;
+              const data = { ...cleanDoc(row), roomId: input.roomId, sessionId };
+              if (dirty.kind !== "messages") data._factKey = dirty.id;
+              await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(docId(`${input.roomId}:${dirty.kind}:${dirty.id}`)).set({ data });
+            }
+            for (const item of decision.events || []) {
+              await transaction.collection(COLLECTIONS.events).doc(`${input.roomId}_${String(item.seq).padStart(12, "0")}`).set({ data: cleanDoc(item) });
+            }
+            const afterIds = new Set(afterUsers.map((item) => item.userId));
+            for (const member of beforeUsers) {
+              if (!afterIds.has(member.userId)) {
+                await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).remove();
+              }
+            }
+            for (const member of afterUsers) {
+              await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
+            }
           }
+          await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
+          return { replayed: false, receipt };
         });
       }
-      async function persistRoom(room, effects) {
-        const now = room.updatedAt || Date.now();
-        const _ = db2.command;
-        function setOrValue(val) {
-          if (val === null || val === void 0) return _.remove();
-          if (val && typeof val === "object") return _.set(val);
-          return val;
-        }
-        const plainFields = {
-          roomId: room.roomId,
-          schemaVersion: room.schemaVersion,
-          protocolVersion: room.protocolVersion,
-          lifecycle: room.lifecycle,
-          status: room.status,
-          hostUserId: room.hostUserId,
-          creatorId: room.creatorId || room.hostUserId,
-          seatMap: room.seatMap || {},
-          activeSessionId: room.activeSessionId == null ? null : room.activeSessionId,
-          revision: room.revision,
-          workflow: room.workflow || null,
-          domainRevisions: room.domainRevisions || null,
-          progress: room.progress || null,
-          workshopName: room.workshopName,
-          selectedModeId: room.selectedModeId || null,
-          currentPage: room.currentPage || null,
-          brainstormProgressPage: room.brainstormProgressPage || null,
-          currentPlayerIndex: room.currentPlayerIndex != null ? Number(room.currentPlayerIndex) : null,
-          currentPlayerName: room.currentPlayerName || null,
-          currentRound: room.currentRound != null ? Number(room.currentRound) : 1,
-          partnerGamePhase: room.partnerGamePhase || null,
-          partnerMasterMode: room.partnerMasterMode === true,
-          partnerSilentMode: room.partnerSilentMode === true,
-          partnerSilentStartedAt: room.partnerSilentStartedAt == null ? null : Number(room.partnerSilentStartedAt),
-          partnerSilentSoundLevel: room.partnerSilentSoundLevel != null ? Math.min(1, Math.max(0, Number(room.partnerSilentSoundLevel) || 0)) : 0,
-          partnerRoundSummaries: room.partnerRoundSummaries || null,
-          partnerCurrentRoundContent: room.partnerCurrentRoundContent || null,
-          partnerRoundStartedAt: room.partnerRoundStartedAt || null,
-          spyGame: room.spyGame || null,
-          // 兼容现网 spyGameAction：过渡期双写；权威密牌以 roomSecrets 为准
-          spyAssignments: room.spyAssignments || null,
-          updatedAt: now
-        };
-        if (effects && effects.created) {
-          plainFields.createdAt = room.createdAt || now;
-          await db2.collection(ROOMS).add({ data: plainFields });
-        } else {
-          const roomFields = {
-            ...plainFields,
-            seatMap: setOrValue(room.seatMap),
-            workflow: setOrValue(room.workflow),
-            domainRevisions: setOrValue(room.domainRevisions),
-            progress: setOrValue(room.progress),
-            partnerRoundSummaries: setOrValue(room.partnerRoundSummaries),
-            partnerCurrentRoundContent: setOrValue(room.partnerCurrentRoundContent),
-            spyGame: setOrValue(room.spyGame),
-            spyAssignments: setOrValue(room.spyAssignments)
-          };
-          if (room._id) {
-            await db2.collection(ROOMS).doc(room._id).update({ data: roomFields });
-          } else {
-            await db2.collection(ROOMS).where({ roomId: room.roomId }).update({ data: roomFields });
-          }
-        }
-        if (effects && effects.dissolved) {
-          const all = await db2.collection(MEMBERS).where({ roomId: room.roomId }).limit(20).get();
-          for (const m of all.data || []) {
-            await db2.collection(MEMBERS).doc(m._id).remove();
-          }
-          return;
-        }
-        const existing = await db2.collection(MEMBERS).where({ roomId: room.roomId }).limit(20).get();
-        const byUser = {};
-        (existing.data || []).forEach((m) => {
-          byUser[m.userId] = m;
+      async function readAggregate(roomId) {
+        return db2.runTransaction((transaction) => loadAggregate(transaction, roomId));
+      }
+      async function readSyncState(roomId, afterSeq, limit) {
+        return db2.runTransaction(async (transaction) => {
+          const aggregate = await loadAggregate(transaction, roomId);
+          if (!aggregate) return { aggregate: null, events: [] };
+          const ceiling = aggregate.room.eventSeq;
+          const _ = db2.command;
+          const result = await transaction.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
+          return { aggregate, events: (result && result.data || []).map(cleanDoc) };
         });
-        const desiredIds = new Set(Object.keys(room.membersByUserId || {}));
-        for (const userId of Object.keys(byUser)) {
-          if (!desiredIds.has(userId)) {
-            await db2.collection(MEMBERS).doc(byUser[userId]._id).remove();
-          }
-        }
-        for (const userId of desiredIds) {
-          const m = room.membersByUserId[userId];
-          const data = {
-            roomId: room.roomId,
-            userId,
-            role: m.role === "HOST" ? "GOD" : "PLAYER",
-            nickName: m.nickName,
-            avatarUrl: m.avatarUrl,
-            avatarColor: m.avatarColor,
-            avatarIndex: m.avatarIndex,
-            playerIndex: m.seatNo,
-            joinedAt: m.joinedAt || now,
-            lastSeenAt: now
-          };
-          if (byUser[userId]) {
-            await db2.collection(MEMBERS).doc(byUser[userId]._id).update({ data });
-          } else {
-            await db2.collection(MEMBERS).add({ data });
-          }
-        }
-        if (effects && effects.scoreUpsert && room.scoresByKey && effects.scoreKey) {
-          const row = room.scoresByKey[effects.scoreKey];
-          if (row) {
-            const docId = `${room.roomId}_${row.turnId}_${row.scorerUserId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-            try {
-              await db2.collection(SCORES).doc(docId).set({
-                data: {
-                  roomId: room.roomId,
-                  turnId: row.turnId,
-                  userId: row.scorerUserId,
-                  currentPlayerIndex: row.activeSeatNo,
-                  score: row.score,
-                  updatedAt: row.updatedAt,
-                  createdAt: row.updatedAt
-                }
-              });
-            } catch (e) {
-              console.warn("persist score failed", e);
-            }
-          }
-        }
-        if (effects && effects.messageAppended && Array.isArray(room.messages)) {
-          const msg = room.messages.find((m) => m && m.id === effects.messageId);
-          if (msg) {
-            try {
-              await db2.collection(MESSAGES).add({
-                data: {
-                  roomId: room.roomId,
-                  messageId: msg.id,
-                  text: msg.text,
-                  at: msg.at,
-                  round: msg.round,
-                  phase: msg.phase,
-                  anonKey: msg.anonKey
-                }
-              });
-            } catch (e) {
-              console.warn("persist message failed", e);
-            }
-          }
-        }
-        if (effects && effects.voteUpsert && room.votesByKey && effects.voteKey) {
-          const row = room.votesByKey[effects.voteKey];
-          if (row) {
-            const docId = `${row.voteSessionId}_${row.voterUserId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-            try {
-              await db2.collection(VOTES).doc(docId).set({
-                data: {
-                  roomId: room.roomId,
-                  voteSessionId: row.voteSessionId,
-                  userId: row.voterUserId,
-                  seatNo: row.seatNo,
-                  vote: row.vote,
-                  at: row.at
-                }
-              });
-            } catch (e) {
-              console.warn("persist vote failed", e);
-            }
-          }
-        }
-        if (effects && effects.artifactAppended && Array.isArray(room.artifacts)) {
-          const art = room.artifacts.find((a) => a && a.operationId === effects.operationId);
-          if (art) {
-            try {
-              await db2.collection(ARTIFACTS).add({
-                data: {
-                  roomId: room.roomId,
-                  ...art
-                }
-              });
-            } catch (e) {
-              console.warn("persist artifact failed", e);
-            }
-          }
-        }
-        if (effects && effects.secretsClear) {
-          try {
-            const existing2 = await db2.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
-            for (const doc of existing2.data || []) {
-              await db2.collection(SECRETS).doc(doc._id).remove();
-            }
-          } catch (e) {
-            console.warn("clear roomSecrets failed", e);
-          }
-        } else if (effects && effects.secretsUpsert && room.secretsByUserId) {
-          try {
-            const existing2 = await db2.collection(SECRETS).where({ roomId: room.roomId }).limit(MAX_SEATS).get();
-            for (const doc of existing2.data || []) {
-              await db2.collection(SECRETS).doc(doc._id).remove();
-            }
-          } catch (e) {
-            console.warn("clear roomSecrets failed", e);
-          }
-          for (const userId of Object.keys(room.secretsByUserId)) {
-            const row = room.secretsByUserId[userId];
-            if (!row) continue;
-            const docId = `${room.roomId}_${userId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-            try {
-              await db2.collection(SECRETS).doc(docId).set({
-                data: {
-                  roomId: room.roomId,
-                  userId,
-                  playerIndex: row.playerIndex != null ? Number(row.playerIndex) : null,
-                  role: row.role,
-                  word: row.word,
-                  blurb: row.blurb || "",
-                  name: row.name || "",
-                  updatedAt: now
-                }
-              });
-            } catch (e) {
-              console.warn("persist roomSecret failed", e);
-            }
-          }
-        }
       }
-      async function loadDomainData(roomId, domains) {
-        const out = {};
-        const wanted = domains || [];
-        if (wanted.includes("scores")) {
-          try {
-            const res = await db2.collection(SCORES).where({ roomId }).limit(200).get();
-            out.scores = res.data || [];
-          } catch (e) {
-            out.scores = [];
-          }
-        }
-        return out;
+      async function findActiveRoom(userId) {
+        return db2.runTransaction(async (transaction) => {
+          const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
+          if (!active) return null;
+          const aggregate = await loadAggregate(transaction, active.roomId);
+          const member = aggregate && aggregate.room.lifecycle === "OPEN" && (aggregate.room.members || []).find((item) => item.userId === userId);
+          return member ? { roomId: active.roomId, memberId: member.memberId } : { dangling: true, roomId: active.roomId };
+        });
       }
-      async function upsertPresence({ roomId, userId, deviceSessionId }) {
-        const device = deviceSessionId || "default";
-        const docId = `${roomId}_${userId}_${device}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-        const now = Date.now();
-        const data = {
-          roomId,
-          userId,
-          deviceSessionId: device,
-          lastSeenAt: now,
-          online: true,
-          updatedAt: now
-        };
-        try {
-          await db2.collection(PRESENCE).doc(docId).set({ data });
-        } catch (e) {
-          await db2.collection(PRESENCE).add({ data: { ...data, _fallbackId: docId } });
-        }
-        return data;
+      async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
+        const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
+        await db2.collection(COLLECTIONS.presence).doc(docId(`${roomId}:${memberId}:${row.deviceSessionId}`)).set({ data: row });
+        return row;
       }
       async function listPresence(roomId) {
-        const res = await db2.collection(PRESENCE).where({ roomId }).limit(50).get();
-        return res.data || [];
+        const result = await db2.collection(COLLECTIONS.presence).where({ roomId }).limit(50).get();
+        return (result && result.data || []).map(cleanDoc);
       }
       return {
         generateRoomId,
-        loadRoom,
-        loadCommand,
-        saveCommandResult,
-        persistRoom,
-        loadDomainData,
+        transactCommand,
+        readAggregate,
+        readSyncState,
+        findActiveRoom,
         upsertPresence,
         listPresence
       };
     }
-    module2.exports = {
-      createCloudBaseRoomRepository: createCloudBaseRoomRepository2
-    };
+    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId };
   }
 });
 
@@ -2590,15 +3212,14 @@ exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
   const roomId = event && event.roomId;
-  const action = event && event.action || "head";
+  const action = event && event.action || "current";
   try {
-    if (action === "snapshot") {
-      return await app.readSnapshot(roomId, { userId }, {
-        domains: event.domains,
-        domainRevisions: event.domainRevisions
-      });
-    }
-    return await app.readHead(roomId, { userId });
+    if (action === "current") return await app.readCurrentRoom({ userId });
+    if (action === "snapshot") return await app.readSnapshot(roomId, { userId });
+    if (action === "sync") return await app.sync(roomId, event && event.afterSeq, { userId }, {
+      limit: event && event.limit
+    });
+    return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: `\u672A\u77E5\u67E5\u8BE2 action: ${action}` };
   } catch (e) {
     console.error("roomQuery error", e);
     return {

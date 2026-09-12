@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..', 'packages');
 const map = {
   '@cardboard/room-contracts': path.join(root, 'room-contracts'),
   '@cardboard/room-domain': path.join(root, 'room-domain'),
+  '@cardboard/room-projection': path.join(root, 'room-projection'),
   '@cardboard/room-application': path.join(root, 'room-application'),
   '@cardboard/room-cloudbase-adapter': path.join(root, 'room-cloudbase-adapter'),
   '@cardboard/room-client': path.join(root, 'room-client')

@@ -9,10 +9,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 
-/**
- * V2 房间命令入口
- * event 可为完整 envelope，或 { type, roomId, payload, commandId, expectedRevision, ... }
- */
+/** V3 房间唯一业务写入口。调用者身份只取云函数上下文。 */
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
@@ -22,7 +19,7 @@ exports.main = async (event) => {
     : (event && event.command) || event || {};
 
   try {
-    return await app.execute(envelope, { userId });
+    return await app.executeCommand(envelope, { userId });
   } catch (e) {
     console.error('roomCommand error', e);
     return {

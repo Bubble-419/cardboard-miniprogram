@@ -44,6 +44,7 @@ function buildOne(name) {
   const aliasArgs = [
     `--alias:@cardboard/room-contracts=${path.join(ROOT, 'packages/room-contracts')}`,
     `--alias:@cardboard/room-domain=${path.join(ROOT, 'packages/room-domain')}`,
+    `--alias:@cardboard/room-projection=${path.join(ROOT, 'packages/room-projection')}`,
     `--alias:@cardboard/room-application=${path.join(ROOT, 'packages/room-application')}`,
     `--alias:@cardboard/room-cloudbase-adapter=${path.join(ROOT, 'packages/room-cloudbase-adapter')}`,
     `--alias:@cardboard/room-client=${path.join(ROOT, 'packages/room-client')}`

@@ -10,7 +10,7 @@ const db = cloud.database();
 const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 
 /**
- * Presence 心跳：不修改成员资格、席位或业务 revision
+ * Presence 心跳：不修改成员资格、席位、stateVersion 或 eventSeq
  * event: { roomId, deviceSessionId? }
  */
 exports.main = async (event) => {
