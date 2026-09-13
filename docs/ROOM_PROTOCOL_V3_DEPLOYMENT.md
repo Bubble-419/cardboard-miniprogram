@@ -47,7 +47,7 @@ flowchart TB
   SYNC[sync] --> EIDX[roomV3Events<br/>roomId ASC + seq ASC]
   HISTORY[history] --> SIDX[roomV3Sessions<br/>roomId ASC + status ASC + ordinal DESC]
   SNAPSHOT[snapshot/session] --> FIDX[事实集合<br/>roomId ASC + sessionId ASC + _factKey ASC]
-  MSG[latest messages] --> MIDX[roomV3Messages<br/>roomId ASC + sessionId ASC + createdAt DESC + _id DESC]
+  MSG[message history] --> MIDX[roomV3Messages<br/>roomId ASC + sessionId ASC + commitSeq DESC]
   EPHEMERAL[presence/signal] --> PIDX[roomId ASC]
 ```
 
@@ -60,7 +60,7 @@ flowchart TB
 | `roomV3Votes` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
 | `roomV3Contributions` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
 | `roomV3Artifacts` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Messages` | `roomId ASC, sessionId ASC, createdAt DESC, _id DESC` | 是 |
+| `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Secrets` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
 | `roomV3Presence` | `roomId ASC` | 是 |
 | `roomV3Signals` | `roomId ASC` | 是 |
@@ -130,6 +130,14 @@ cloudbase_auth
 | 开发环境 `QR_ENV_VERSION` | `develop` |
 | 体验环境 `QR_ENV_VERSION` | `trial` |
 | 正式环境 `QR_ENV_VERSION` | `release` |
+
+协议安全环境变量（仅 `roomCommand`）：
+
+| 变量 | 要求 |
+|---|---|
+| `ROOM_PROTOCOL_SERVER_SECRET` | 必填；至少 32 字节的随机密钥；各环境独立；发布新版本时保持稳定，不得暴露到小程序端 |
+
+该密钥用于以 HMAC 派生可重试但不可由客户端预测的领域随机种子。未配置时，`roomCommand` 会明确返回 `INTERNAL_ERROR`，不会退回公开常量。
 
 ## 6. 冒烟验收
 

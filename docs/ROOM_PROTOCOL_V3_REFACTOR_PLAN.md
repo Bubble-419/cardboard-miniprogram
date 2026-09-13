@@ -568,7 +568,7 @@ roomScores        UNIQUE(turnId, memberId), INDEX(roomId, sessionId, _factKey)
 roomVotes         UNIQUE(voteSessionId, memberId), INDEX(roomId, sessionId, _factKey)
 roomContributions UNIQUE(sessionId, kind, memberId), INDEX(roomId, sessionId, _factKey)
 roomArtifacts     UNIQUE(sessionId, operationId), INDEX(roomId, sessionId, _factKey)
-roomMessages      UNIQUE(sessionId, messageId), INDEX(roomId, sessionId, createdAt DESC, _id DESC)
+roomMessages      UNIQUE(sessionId, messageId), INDEX(roomId, sessionId, commitSeq DESC)
 roomSecrets       UNIQUE(gameId, memberId), INDEX(roomId, sessionId, _factKey)
 roomPresence      UNIQUE(roomId, memberId, deviceSessionId)
 ```

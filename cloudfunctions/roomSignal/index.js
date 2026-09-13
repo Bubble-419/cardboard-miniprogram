@@ -43,6 +43,24 @@ var require_room_contracts = __commonJS({
       SPY_RESULT: "SPY_RESULT",
       SPY_SETTLED: "SPY_SETTLED"
     });
+    var WORKFLOW_GROUPS = Object.freeze({
+      SCENARIO_CONFIG: Object.freeze([
+        WORKFLOW_STEP.CHOOSE_SCENARIO,
+        WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
+        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
+        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+      ]),
+      PROBLEM_SELECTION: Object.freeze([
+        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
+        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+      ]),
+      FIRST_PLAYER_SELECTION: Object.freeze([
+        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
+      ])
+    });
     var COMMAND_TYPES = Object.freeze({
       CREATE_ROOM: "CREATE_ROOM",
       UPDATE_ROOM_PROFILE: "UPDATE_ROOM_PROFILE",
@@ -503,6 +521,7 @@ var require_room_contracts = __commonJS({
       SESSION_STATUS,
       MODE,
       WORKFLOW_STEP,
+      WORKFLOW_GROUPS,
       COMMAND_TYPES,
       EVENT_TYPES,
       ERR,
@@ -878,8 +897,9 @@ var require_partner = __commonJS({
       session.updatedAt = now;
       return turn;
     }
-    function scoreRowsForTurn(aggregate, turnId) {
-      return Object.values(ensureFacts(aggregate).scores).filter((row) => row.turnId === turnId);
+    function scoreRowsForTurn(aggregate, turn) {
+      const eligibleMemberIds = new Set(turn.scoreProgress && turn.scoreProgress.requiredMemberIds || []);
+      return Object.values(ensureFacts(aggregate).scores).filter((row) => row.turnId === turn.turnId && eligibleMemberIds.has(row.memberId));
     }
     function archiveActiveTurn(aggregate, reason, statementResult, deps) {
       const facts = ensureFacts(aggregate);
@@ -887,7 +907,7 @@ var require_partner = __commonJS({
       const partner = partnerState(aggregate);
       const turn = partner.activeTurn;
       if (!turn) return null;
-      const scores = scoreRowsForTurn(aggregate, turn.turnId);
+      const scores = scoreRowsForTurn(aggregate, turn);
       const total = scores.reduce((sum, row) => sum + row.scoreHalfSteps / 2, 0);
       const summary = {
         sessionId: session.sessionId,
@@ -1132,7 +1152,6 @@ var require_partner = __commonJS({
           createdAt: nowOf(deps)
         };
         facts.messages.push(message);
-        if (facts.messages.length > 200) facts.messages.splice(0, facts.messages.length - 200);
         return domainOk(
           aggregate,
           [event(EVENT_TYPES.PARTNER_MESSAGE_POSTED, { messageId: message.messageId })],
@@ -2025,7 +2044,7 @@ var require_spy = __commonJS({
 var require_room_domain = __commonJS({
   "packages/room-domain/index.js"(exports2, module2) {
     "use strict";
-    var { COMMAND_TYPES } = require_room_contracts();
+    var { COMMAND_TYPES, WORKFLOW_GROUPS } = require_room_contracts();
     var model = require_model();
     var { reducePartnerCommand, startPartnerFlow, handlePartnerParticipantLeft } = require_partner();
     var { reduceHalliCommand, handleHalliParticipantLeft } = require_halli();
@@ -2272,13 +2291,9 @@ var require_room_domain = __commonJS({
     function setScenario(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
-      const check = assertSession(aggregate, command.context, { steps: [
-        WORKFLOW_STEP.CHOOSE_SCENARIO,
-        WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
-        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-      ] });
+      const check = assertSession(aggregate, command.context, {
+        steps: WORKFLOW_GROUPS.SCENARIO_CONFIG
+      });
       if (!check.ok) return check;
       if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
       const normalized = normalizeScenario(command.payload, check.session.mode);
@@ -2344,11 +2359,10 @@ var require_room_domain = __commonJS({
     function updateDesignProblem(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
-      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
-        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-      ] });
+      const check = assertSession(aggregate, command.context, {
+        mode: MODE.PARTNER,
+        steps: WORKFLOW_GROUPS.PROBLEM_SELECTION
+      });
       if (!check.ok) return check;
       const contributionId = String(command.payload.contributionId || "");
       const entry = Object.entries(ensureFacts(aggregate).contributions).find(([, row]) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
@@ -2370,11 +2384,10 @@ var require_room_domain = __commonJS({
     function selectDesignProblem(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
-      const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
-        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-      ] });
+      const check = assertSession(aggregate, command.context, {
+        mode: MODE.PARTNER,
+        steps: WORKFLOW_GROUPS.PROBLEM_SELECTION
+      });
       if (!check.ok) return check;
       const contributionId = String(command.payload.contributionId || "");
       const problem = Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
@@ -2391,7 +2404,7 @@ var require_room_domain = __commonJS({
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
       const check = assertSession(aggregate, command.context, {
-        steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]
+        steps: WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION
       });
       if (!check.ok) return check;
       const memberId = String(command.payload.memberId || "");
@@ -2601,7 +2614,14 @@ var require_room_domain = __commonJS({
 var require_room_projection = __commonJS({
   "packages/room-projection/index.js"(exports2, module2) {
     "use strict";
-    var { COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, LIFECYCLE } = require_room_contracts();
+    var {
+      COMMAND_TYPES,
+      MODE,
+      SESSION_STATUS,
+      WORKFLOW_STEP,
+      WORKFLOW_GROUPS,
+      LIFECYCLE
+    } = require_room_contracts();
     function clone(value) {
       return value == null ? value : JSON.parse(JSON.stringify(value));
     }
@@ -2761,10 +2781,34 @@ var require_room_projection = __commonJS({
           anonKey: item.anonKey,
           createdAt: item.createdAt
         }));
+        const publicArtifact = (artifact) => ({
+          artifactId: artifact.artifactId,
+          operationId: artifact.operationId,
+          turnId: artifact.turnId,
+          stage: artifact.stage,
+          kind: artifact.kind,
+          text: artifact.text,
+          fileRef: artifact.fileRef || null,
+          authorMemberId: artifact.authorMemberId,
+          entityVersion: artifact.entityVersion,
+          createdAt: artifact.createdAt,
+          updatedAt: artifact.updatedAt
+        });
         const allArtifacts = Object.values(facts.artifacts || {});
         view.turnSummaries = Object.values(facts.turns || {}).filter((item) => item.sessionId === session.sessionId).sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((item) => ({
-          ...clone(item),
-          artifacts: allArtifacts.filter((artifact) => artifact.sessionId === session.sessionId && artifact.turnId === item.turnId && !artifact.removed).sort((a, b) => a.createdAt - b.createdAt).map((artifact) => clone(artifact))
+          sessionId: item.sessionId,
+          turnId: item.turnId,
+          turnOrdinal: item.turnOrdinal,
+          roundNo: item.roundNo,
+          activeMemberId: item.activeMemberId,
+          reason: item.reason,
+          statementResult: item.statementResult,
+          avgScore: item.avgScore,
+          scoredCount: item.scoredCount,
+          totalStars: item.totalStars,
+          startedAt: item.startedAt,
+          completedAt: item.completedAt,
+          artifacts: allArtifacts.filter((artifact) => artifact.sessionId === session.sessionId && artifact.turnId === item.turnId && !artifact.removed).sort((a, b) => a.createdAt - b.createdAt).map(publicArtifact)
         }));
       } else if (session.mode === MODE.HALLI_GALLI) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
@@ -2828,23 +2872,20 @@ var require_room_projection = __commonJS({
       caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, "HOST_REQUIRED");
       caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, "HOST_REQUIRED");
       caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED");
-      const scenarioConfigSteps = [
-        WORKFLOW_STEP.CHOOSE_SCENARIO,
-        WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
-        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-      ];
-      caps[COMMAND_TYPES.SET_SCENARIO] = capability(isHost && scenarioConfigSteps.includes(step), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SET_SCENARIO] = capability(
+        isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
+        "INVALID_TRANSITION"
+      );
       caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, "INVALID_TRANSITION");
-      const problemSelectionSteps = [
-        WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-        WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-        WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-      ];
-      caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost && [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER].includes(step), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(
+        isHost && WORKFLOW_GROUPS.PROBLEM_SELECTION.includes(step),
+        "INVALID_TRANSITION"
+      );
+      caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(
+        isHost && WORKFLOW_GROUPS.PROBLEM_SELECTION.includes(step),
+        "INVALID_TRANSITION"
+      );
+      caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost && WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION.includes(step), "INVALID_TRANSITION");
       caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
       caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, "INVALID_TRANSITION");
@@ -3082,6 +3123,14 @@ var require_room_application = __commonJS({
     function hash(value) {
       return crypto.createHash("sha256").update(String(value)).digest("hex");
     }
+    function deriveCommandSeed(serverSecret, roomId, commandId, purpose) {
+      if (!isNonEmptyString(serverSecret)) {
+        const error = new Error("ROOM_PROTOCOL_SERVER_SECRET \u672A\u914D\u7F6E");
+        error.code = ERR.INTERNAL_ERROR;
+        throw error;
+      }
+      return crypto.createHmac("sha256", serverSecret).update(`${roomId}:${commandId}:${purpose || "domain"}`).digest("hex");
+    }
     function deterministicRandom(seed) {
       let counter = 0;
       return () => {
@@ -3285,6 +3334,47 @@ var require_room_application = __commonJS({
           serverTime: now()
         });
       }
+      async function readMessages(roomId, sessionId, actorContext, requestOptions) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+          return fail(ERR.INVALID_ARGUMENT, "roomId/sessionId \u4E0D\u5408\u6CD5");
+        }
+        if (typeof repo.readSessionAggregate !== "function" || typeof repo.listMessages !== "function") {
+          return fail(ERR.DEPENDENCY_UNAVAILABLE);
+        }
+        const aggregate = await repo.readSessionAggregate(roomId, sessionId);
+        const auth = authorizeSessionRead(aggregate, actorUserId);
+        if (!auth.ok) return auth;
+        const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || 100));
+        const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
+        const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
+        if (beforeSeq != null && (!Number.isInteger(beforeSeq) || beforeSeq < 1)) {
+          return fail(ERR.INVALID_ARGUMENT, "beforeSeq \u5FC5\u987B\u662F\u6B63\u6574\u6570");
+        }
+        const rows = await repo.listMessages(roomId, sessionId, { limit, beforeSeq });
+        const hasMore = rows.length > limit;
+        const selected = rows.slice(0, limit).map((item) => ({
+          messageId: item.messageId,
+          turnId: item.turnId,
+          turnOrdinal: item.turnOrdinal,
+          roundNo: item.roundNo,
+          phase: item.phase,
+          text: item.text,
+          anonKey: item.anonKey,
+          createdAt: item.createdAt,
+          commitSeq: item.commitSeq
+        }));
+        return okResult({
+          protocolVersion: PROTOCOL_VERSION,
+          roomId,
+          sessionId,
+          messages: selected,
+          hasMore,
+          nextBeforeSeq: hasMore && selected.length ? selected[selected.length - 1].commitSeq : null,
+          serverTime: now()
+        });
+      }
       async function sync(roomId, afterSeq, actorContext, requestOptions) {
         const actorUserId = actorContext && actorContext.userId;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
@@ -3354,6 +3444,9 @@ var require_room_application = __commonJS({
         const validated = validateCommandEnvelope(rawEnvelope);
         if (!validated.ok) return validated;
         const envelope = validated.envelope;
+        if (!isNonEmptyString(appOptions.serverSecret)) {
+          return fail(ERR.INTERNAL_ERROR, "ROOM_PROTOCOL_SERVER_SECRET \u672A\u914D\u7F6E");
+        }
         const commandNow = now();
         const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
         const roomIdCandidates = isCreate ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === "function" ? repo.generateRoomId(envelope.commandId, actorUserId, attempt) : 1e7 + Math.floor(Math.random() * 9e7))) : [];
@@ -3377,7 +3470,12 @@ var require_room_application = __commonJS({
             return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
           }
           const effectiveRoomId = resolvedRoomId || commandRoomId;
-          const seed = hash(`${appOptions.serverSecret || "room-v3"}:${effectiveRoomId}:${envelope.commandId}`);
+          const seed = deriveCommandSeed(
+            appOptions.serverSecret,
+            effectiveRoomId,
+            envelope.commandId,
+            "domain"
+          );
           const beforePublic = projectPublicView(current);
           const domain = reduceCommand({
             aggregate: current,
@@ -3462,6 +3560,7 @@ var require_room_application = __commonJS({
         readSessionSnapshot,
         readHistory,
         readLeaderboard,
+        readMessages,
         sync,
         heartbeat
       };
@@ -3586,6 +3685,12 @@ var require_room_application = __commonJS({
           const limit = Number(requestOptions && requestOptions.limit) || 20;
           return copy([...sessions.values()].filter((session) => sessionRooms.get(session.sessionId) === roomId && ["COMPLETED", "CANCELLED"].includes(session.status) && (!Number.isInteger(before) || session.ordinal < before)).sort((a, b) => b.ordinal - a.ordinal).slice(0, limit + 1));
         },
+        async listMessages(roomId, sessionId, requestOptions) {
+          const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
+          const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
+          const limit = Number(requestOptions && requestOptions.limit) || 100;
+          return copy((rooms.get(roomId) && rooms.get(roomId).facts.messages || []).filter((item) => item.sessionId === sessionId && (beforeSeq == null || item.commitSeq < beforeSeq)).sort((a, b) => b.commitSeq - a.commitSeq).slice(0, limit + 1));
+        },
         async readSyncState(roomId, afterSeq, limit) {
           const aggregate = rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
           const roomEvents = events.get(roomId) || [];
@@ -3612,6 +3717,7 @@ var require_room_application = __commonJS({
       createRoomApplication: createRoomApplication2,
       createInMemoryRoomRepository,
       hash,
+      deriveCommandSeed,
       deterministicRandom,
       deterministicIds,
       markCommittedFacts,
@@ -3688,8 +3794,8 @@ var require_room_cloudbase_adapter = __commonJS({
     async function loadFactRows(store, kind, roomId, sessionId) {
       if (!sessionId) return kind === "messages" ? [] : {};
       if (kind === "messages") {
-        const result = await store.collection(FACT_COLLECTION.messages).where({ roomId, sessionId }).orderBy("createdAt", "desc").orderBy("_id", "desc").limit(40).get();
-        return (result && result.data || []).map(cleanDoc).sort((a, b) => a.createdAt - b.createdAt);
+        const result = await store.collection(FACT_COLLECTION.messages).where({ roomId, sessionId }).orderBy("commitSeq", "desc").limit(40).get();
+        return (result && result.data || []).map(cleanDoc).sort((a, b) => a.commitSeq - b.commitSeq);
       }
       const rows = [];
       while (true) {
@@ -3850,6 +3956,15 @@ var require_room_cloudbase_adapter = __commonJS({
         const result = await db2.collection(COLLECTIONS2.sessions).where(condition).orderBy("ordinal", "desc").limit(size + 1).get();
         return (result && result.data || []).map(cleanDoc);
       }
+      async function listMessages(roomId, sessionId, options) {
+        const size = Math.min(100, Math.max(1, Number(options && options.limit) || 100));
+        const rawBeforeSeq = options && options.beforeSeq;
+        const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
+        const condition = { roomId, sessionId };
+        if (beforeSeq != null) condition.commitSeq = db2.command.lt(beforeSeq);
+        const result = await db2.collection(COLLECTIONS2.messages).where(condition).orderBy("commitSeq", "desc").limit(size + 1).get();
+        return (result && result.data || []).map(cleanDoc);
+      }
       async function readSyncState(roomId, afterSeq, limit) {
         return db2.runTransaction(async (transaction) => {
           const aggregate = await loadAggregate(transaction, roomId);
@@ -3888,6 +4003,7 @@ var require_room_cloudbase_adapter = __commonJS({
         readAggregate,
         readSessionAggregate,
         listSessions,
+        listMessages,
         readSyncState,
         findActiveRoom,
         upsertPresence,

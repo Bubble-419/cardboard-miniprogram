@@ -44,11 +44,19 @@ function currentPath() {
 function createNavigationCoordinator(options) {
   const open = options && options.open;
   let lastSeq = 0;
+  let lastRoomId = '';
   let active = false;
   let pending = null;
 
   async function reconcile(route, seq, context) {
     const nextSeq = Number(seq) || 0;
+    const nextRoomId = String(context && context.roomId || '');
+    if (nextRoomId !== lastRoomId) {
+      // Event seq 只在单个 Room 内单调；跨房后必须重置导航水位。
+      lastRoomId = nextRoomId;
+      lastSeq = 0;
+      pending = null;
+    }
     if (nextSeq < lastSeq) return { ok: false, skipped: true, reason: 'STALE_SEQ' };
     const descriptor = describeRoute(route, context && context.roomId);
     if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
@@ -84,7 +92,7 @@ function createNavigationCoordinator(options) {
     }
   }
 
-  return { reconcile, getLastSeq: () => lastSeq };
+  return { reconcile, getLastSeq: () => lastSeq, getLastRoomId: () => lastRoomId };
 }
 
 module.exports = { ROUTES, describeRoute, createNavigationCoordinator };

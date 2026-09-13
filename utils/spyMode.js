@@ -76,6 +76,43 @@ function makeSpyCommandId(action) {
   return `spy_${action}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** 从已经渲染的 Snapshot 捕获并发令牌，点击时不得改用后台刚同步到的新轮次。 */
+function captureSpyCommandContext(result) {
+  const session = result && result.view && result.view.session;
+  const spyGame = result && result.roomState && result.roomState.spyGame;
+  if (!session || !spyGame) return null;
+  return Object.freeze({
+    sessionId: session.sessionId || '',
+    gameId: spyGame.gameId || '',
+    speakerTurnId: spyGame.speakerTurnId || '',
+    voteSessionId: spyGame.voteSessionId || '',
+    roundNo: spyGame.roundNo
+  });
+}
+
+function spyCommandContextForAction(action, captured) {
+  const context = captured || {};
+  if (['startAssign', 'startGame', 'returnToLobby'].includes(action)) {
+    return { sessionId: context.sessionId || '' };
+  }
+  if (['advanceSpeak', 'finishSpeak', 'startVote'].includes(action)) {
+    return { sessionId: context.sessionId || '', gameId: context.gameId || '',
+      speakerTurnId: context.speakerTurnId || '' };
+  }
+  if (action === 'submitVote') {
+    return { sessionId: context.sessionId || '', gameId: context.gameId || '',
+      voteSessionId: context.voteSessionId || '' };
+  }
+  if (['nextRound', 'continueRound'].includes(action)) {
+    return { sessionId: context.sessionId || '', gameId: context.gameId || '',
+      roundNo: context.roundNo };
+  }
+  if (['restart', 'complete'].includes(action)) {
+    return { sessionId: context.sessionId || '', gameId: context.gameId || '' };
+  }
+  return {};
+}
+
 function spyResultFromSnapshot(result, snapshot) {
   const view = snapshot && snapshot.view;
   const session = view && view.session;
@@ -162,10 +199,11 @@ async function callSpyAction(action, data = {}) {
   }
 
   try {
-    const result = await dispatchRoomCommand(type, payload, null, {
-      roomId: String(roomId),
-      commandId: data.commandId || makeSpyCommandId(action)
-    });
+    const result = await dispatchRoomCommand(type, payload,
+      spyCommandContextForAction(action, data.context), {
+        roomId: String(roomId),
+        commandId: data.commandId || makeSpyCommandId(action)
+      });
     if (!result || result.ok !== true) return result || { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
     const session = getActiveRoomSession();
     const snapshot = session && session.getSnapshot
@@ -203,10 +241,10 @@ function startSpyCountdownTicker(page, getStartedAt, durationMs, dataKey = 'coun
 }
 
 /** 页面可见时才 setData，防止 hide/unload 后轮询写回崩溃 */
-function safePageSetData(page, data) {
+function safePageSetData(page, data, callback) {
   if (!page || page._pageAlive === false || !data) return false;
   try {
-    page.setData(data);
+    page.setData(data, callback);
     return true;
   } catch (e) {
     return false;
@@ -332,6 +370,8 @@ module.exports = {
   buildSpyPageUrl,
   filterPlayerMembers,
   parseIsHostOption,
+  captureSpyCommandContext,
+  spyCommandContextForAction,
   callSpyAction,
   fetchRoomDataOrExit,
   followSubScreenRoomPoll,

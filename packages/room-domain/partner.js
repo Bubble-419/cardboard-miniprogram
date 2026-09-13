@@ -46,8 +46,10 @@ function startPartnerTurn(aggregate, memberId, deps, countsForRound) {
   return turn;
 }
 
-function scoreRowsForTurn(aggregate, turnId) {
-  return Object.values(ensureFacts(aggregate).scores).filter((row) => row.turnId === turnId);
+function scoreRowsForTurn(aggregate, turn) {
+  const eligibleMemberIds = new Set((turn.scoreProgress && turn.scoreProgress.requiredMemberIds) || []);
+  return Object.values(ensureFacts(aggregate).scores)
+    .filter((row) => row.turnId === turn.turnId && eligibleMemberIds.has(row.memberId));
 }
 
 function archiveActiveTurn(aggregate, reason, statementResult, deps) {
@@ -56,7 +58,8 @@ function archiveActiveTurn(aggregate, reason, statementResult, deps) {
   const partner = partnerState(aggregate);
   const turn = partner.activeTurn;
   if (!turn) return null;
-  const scores = scoreRowsForTurn(aggregate, turn.turnId);
+  // 离房者旧评分保留审计，但不能进入当前 Turn 的结算与排行榜。
+  const scores = scoreRowsForTurn(aggregate, turn);
   const total = scores.reduce((sum, row) => sum + row.scoreHalfSteps / 2, 0);
   const summary = {
     sessionId: session.sessionId, turnId: turn.turnId, turnOrdinal: turn.ordinal, roundNo: turn.roundNo,
@@ -253,7 +256,6 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
       phase: check.session.workflow.step === WORKFLOW_STEP.PARTNER_STATEMENT ? 'discussion' : 'play',
       text, anonKey: `anon_${actor.memberId.slice(-6)}`, authorMemberId: actor.memberId, createdAt: nowOf(deps) };
     facts.messages.push(message);
-    if (facts.messages.length > 200) facts.messages.splice(0, facts.messages.length - 200);
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_MESSAGE_POSTED, { messageId: message.messageId })],
       { kind: 'ACCEPTED', messageId: message.messageId }, [{ kind: 'messages', id: message.messageId }]);
   }

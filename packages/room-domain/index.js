@@ -1,6 +1,6 @@
 'use strict';
 
-const { COMMAND_TYPES } = require('@cardboard/room-contracts');
+const { COMMAND_TYPES, WORKFLOW_GROUPS } = require('@cardboard/room-contracts');
 const model = require('./model');
 const { reducePartnerCommand, startPartnerFlow, handlePartnerParticipantLeft } = require('./partner');
 const { reduceHalliCommand, handleHalliParticipantLeft } = require('./halli');
@@ -186,11 +186,9 @@ function startSession(aggregate, command, actorUserId, deps) {
 
 function setScenario(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { steps: [
-    WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
-    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-  ] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, {
+    steps: WORKFLOW_GROUPS.SCENARIO_CONFIG
+  }); if (!check.ok) return check;
   if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
   const normalized = normalizeScenario(command.payload, check.session.mode); if (!normalized.ok) return normalized;
   const dirtyFacts = [];
@@ -237,10 +235,10 @@ function submitDesignProblem(aggregate, command, actorUserId, deps) {
 
 function updateDesignProblem(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
-    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-  ] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, {
+    mode: MODE.PARTNER,
+    steps: WORKFLOW_GROUPS.PROBLEM_SELECTION
+  }); if (!check.ok) return check;
   const contributionId = String(command.payload.contributionId || '');
   const entry = Object.entries(ensureFacts(aggregate).contributions).find(([, row]) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
   if (!entry) return fail(ERR.STALE_CONTEXT, '设计问题不存在');
@@ -254,10 +252,10 @@ function updateDesignProblem(aggregate, command, actorUserId, deps) {
 
 function selectDesignProblem(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
-  const check = assertSession(aggregate, command.context, { mode: MODE.PARTNER, steps: [
-    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER,
-    WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
-  ] }); if (!check.ok) return check;
+  const check = assertSession(aggregate, command.context, {
+    mode: MODE.PARTNER,
+    steps: WORKFLOW_GROUPS.PROBLEM_SELECTION
+  }); if (!check.ok) return check;
   const contributionId = String(command.payload.contributionId || '');
   const problem = Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === check.session.sessionId && row.contributionId === contributionId);
   if (!problem) return fail(ERR.STALE_CONTEXT, '设计问题不存在');
@@ -273,7 +271,7 @@ function selectDesignProblem(aggregate, command, actorUserId, deps) {
 function selectFirstPlayer(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
   const check = assertSession(aggregate, command.context, {
-    steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]
+    steps: WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION
   }); if (!check.ok) return check;
   const memberId = String(command.payload.memberId || '');
   if (!activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, '首位成员不可用');

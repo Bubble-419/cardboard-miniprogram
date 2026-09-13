@@ -1,6 +1,8 @@
 'use strict';
 
-const { COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, LIFECYCLE } = require('../room-contracts/index');
+const {
+  COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, WORKFLOW_GROUPS, LIFECYCLE
+} = require('../room-contracts/index');
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -163,15 +165,39 @@ function projectPublicView(aggregate) {
       .slice(-40).map((item) => ({ messageId: item.messageId, turnId: item.turnId,
         turnOrdinal: item.turnOrdinal, roundNo: item.roundNo, phase: item.phase,
         text: item.text, anonKey: item.anonKey, createdAt: item.createdAt }));
+    const publicArtifact = (artifact) => ({
+      artifactId: artifact.artifactId,
+      operationId: artifact.operationId,
+      turnId: artifact.turnId,
+      stage: artifact.stage,
+      kind: artifact.kind,
+      text: artifact.text,
+      fileRef: artifact.fileRef || null,
+      authorMemberId: artifact.authorMemberId,
+      entityVersion: artifact.entityVersion,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt
+    });
     const allArtifacts = Object.values(facts.artifacts || {});
     view.turnSummaries = Object.values(facts.turns || {}).filter((item) => item.sessionId === session.sessionId)
       .sort((a, b) => a.turnOrdinal - b.turnOrdinal).map((item) => ({
-        ...clone(item),
+        sessionId: item.sessionId,
+        turnId: item.turnId,
+        turnOrdinal: item.turnOrdinal,
+        roundNo: item.roundNo,
+        activeMemberId: item.activeMemberId,
+        reason: item.reason,
+        statementResult: item.statementResult,
+        avgScore: item.avgScore,
+        scoredCount: item.scoredCount,
+        totalStars: item.totalStars,
+        startedAt: item.startedAt,
+        completedAt: item.completedAt,
         artifacts: allArtifacts.filter((artifact) => (
           artifact.sessionId === session.sessionId
           && artifact.turnId === item.turnId
           && !artifact.removed
-        )).sort((a, b) => a.createdAt - b.createdAt).map((artifact) => clone(artifact))
+        )).sort((a, b) => a.createdAt - b.createdAt).map(publicArtifact)
       }));
   } else if (session.mode === MODE.HALLI_GALLI) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
@@ -241,16 +267,21 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, 'HOST_REQUIRED');
   caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, 'HOST_REQUIRED');
   caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED');
-  const scenarioConfigSteps = [WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS,
-    WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER];
-  caps[COMMAND_TYPES.SET_SCENARIO] = capability(isHost && scenarioConfigSteps.includes(step), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SET_SCENARIO] = capability(
+    isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
+    'INVALID_TRANSITION'
+  );
   caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, 'INVALID_TRANSITION');
-  const problemSelectionSteps = [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM,
-    WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER];
-  caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(isHost && problemSelectionSteps.includes(step), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.UPDATE_DESIGN_PROBLEM] = capability(
+    isHost && WORKFLOW_GROUPS.PROBLEM_SELECTION.includes(step),
+    'INVALID_TRANSITION'
+  );
+  caps[COMMAND_TYPES.SELECT_DESIGN_PROBLEM] = capability(
+    isHost && WORKFLOW_GROUPS.PROBLEM_SELECTION.includes(step),
+    'INVALID_TRANSITION'
+  );
   caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost
-    && [WORKFLOW_STEP.SELECT_FIRST_PLAYER, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER].includes(step), 'INVALID_TRANSITION');
+    && WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION.includes(step), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, 'INVALID_TRANSITION');

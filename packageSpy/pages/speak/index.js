@@ -1,6 +1,7 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
   buildSpyPageUrl,
@@ -150,11 +151,16 @@ Page(withPageInteractionLock({
         });
 
         const spyGame = result.roomState && result.roomState.spyGame;
+        const nextCommandContext = spyGame && spyGame.phase === 'speak'
+          ? captureSpyCommandContext(result)
+          : null;
         const members = result.members || [];
         const isHost = result.isHost === true;
         this.setData({
           avatarList: buildAvatarList(members),
           isHost
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
         if (!spyGame) return;
 
@@ -301,7 +307,10 @@ Page(withPageInteractionLock({
     if (!this.data.isHost || this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('startVote', { roomId: this.data.roomId });
+      const result = await callSpyAction('startVote', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         const hint = result.errCode === 'DEPRECATED'
           ? '请重新上传云函数 roomCommand 后再试'

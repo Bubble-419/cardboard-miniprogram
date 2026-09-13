@@ -61,3 +61,24 @@ test('room member can still exit while waiting for the host', () => {
     '成员退出与房主解散应使用相同样式'
   );
 });
+
+test('中途加入的旁观成员不能从大厅进入当前场次', () => {
+  const definition = loadPageDefinition();
+  const page = {
+    ...definition,
+    data: {
+      ...definition.data,
+      isHost: false,
+      isParticipant: false,
+      hasSelectedMode: true,
+      brainstormSessionEnded: false,
+      memberCount: 4
+    }
+  };
+
+  const footer = page._computeFooterActions();
+  assert.equal(footer.primaryBtnDisabled, true);
+  assert.equal(footer.primaryBtnAction, '');
+  assert.equal(footer.showWaitingHint, true);
+  assert.match(footer.waitingHintText, /下一场/);
+});

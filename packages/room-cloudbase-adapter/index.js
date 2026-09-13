@@ -50,8 +50,8 @@ async function loadFactRows(store, kind, roomId, sessionId) {
   if (kind === 'messages') {
     // 表达消息是有界视图，只读取最新 40 条；历史消息无需参与领域裁决。
     const result = await store.collection(FACT_COLLECTION.messages).where({ roomId, sessionId })
-      .orderBy('createdAt', 'desc').orderBy('_id', 'desc').limit(40).get();
-    return ((result && result.data) || []).map(cleanDoc).sort((a, b) => a.createdAt - b.createdAt);
+      .orderBy('commitSeq', 'desc').limit(40).get();
+    return ((result && result.data) || []).map(cleanDoc).sort((a, b) => a.commitSeq - b.commitSeq);
   }
   const rows = [];
   while (true) {
@@ -230,6 +230,17 @@ function createCloudBaseRoomRepository(deps) {
     return (result && result.data || []).map(cleanDoc);
   }
 
+  async function listMessages(roomId, sessionId, options) {
+    const size = Math.min(100, Math.max(1, Number(options && options.limit) || 100));
+    const rawBeforeSeq = options && options.beforeSeq;
+    const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);
+    const condition = { roomId, sessionId };
+    if (beforeSeq != null) condition.commitSeq = db.command.lt(beforeSeq);
+    const result = await db.collection(COLLECTIONS.messages).where(condition)
+      .orderBy('commitSeq', 'desc').limit(size + 1).get();
+    return (result && result.data || []).map(cleanDoc);
+  }
+
   async function readSyncState(roomId, afterSeq, limit) {
     return db.runTransaction(async (transaction) => {
       const aggregate = await loadAggregate(transaction, roomId);
@@ -270,7 +281,7 @@ function createCloudBaseRoomRepository(deps) {
     return (result && result.data || []).map(cleanDoc);
   }
 
-  return { generateRoomId, transactCommand, readAggregate, readSessionAggregate, listSessions,
+  return { generateRoomId, transactCommand, readAggregate, readSessionAggregate, listSessions, listMessages,
     readSyncState, findActiveRoom,
     upsertPresence, listPresence, listSignals };
 }
