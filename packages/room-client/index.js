@@ -25,7 +25,8 @@ function createCloudRoomGateway(options) {
     history: (roomId, query) => call('roomQuery', { action: 'history', roomId, ...(query || {}) }),
     session: (roomId, sessionId) => call('roomQuery', { action: 'session', roomId, sessionId }),
     leaderboard: (roomId, sessionId) => call('roomQuery', { action: 'leaderboard', roomId, sessionId }),
-    dispatch: (envelope) => call('roomCommand', envelope),
+    // 命令单独包装，避免 CloudBase 注入的 event 顶层元数据混入严格 V3 契约。
+    dispatch: (envelope) => call('roomCommand', { command: envelope }),
     presence: (roomId, deviceSessionId) => call('roomPresence', { roomId, deviceSessionId })
   };
 }
@@ -45,7 +46,15 @@ function isRecord(value) {
 }
 
 function validPublicPatch(value) {
-  return isRecord(value) && isRecord(value.set) && Array.isArray(value.remove);
+  if (!isRecord(value) || !Array.isArray(value.remove)) return false;
+  const validPath = (path) => typeof path === 'string' && path.length > 0 && path.length <= 512;
+  const validSet = Array.isArray(value.set)
+    ? value.set.every((item) => isRecord(item)
+      && Object.keys(item).every((key) => key === 'path' || key === 'value')
+      && Object.prototype.hasOwnProperty.call(item, 'value')
+      && validPath(item.path))
+    : isRecord(value.set) && Object.keys(value.set).every(validPath);
+  return validSet && value.remove.every(validPath);
 }
 
 function createRoomClient(options) {

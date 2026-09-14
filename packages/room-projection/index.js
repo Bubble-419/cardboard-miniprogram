@@ -384,18 +384,18 @@ function projectMemberView(aggregate, actorUserId) {
 }
 
 function createPublicPatch(before, after) {
-  const set = {};
+  const set = [];
   const remove = [];
   function walk(left, right, path) {
     if (JSON.stringify(left) === JSON.stringify(right)) return;
     const bothObjects = left && right && typeof left === 'object' && typeof right === 'object'
       && !Array.isArray(left) && !Array.isArray(right);
-    if (!bothObjects) { set[path || '$'] = clone(right); return; }
+    if (!bothObjects) { set.push({ path: path || '$', value: clone(right) }); return; }
     const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
     keys.forEach((key) => {
       const nextPath = path ? `${path}.${key}` : key;
       if (!Object.prototype.hasOwnProperty.call(right, key)) remove.push(nextPath);
-      else if (!Object.prototype.hasOwnProperty.call(left, key)) set[nextPath] = clone(right[key]);
+      else if (!Object.prototype.hasOwnProperty.call(left, key)) set.push({ path: nextPath, value: clone(right[key]) });
       else walk(left[key], right[key], nextPath);
     });
   }
@@ -427,8 +427,12 @@ function removePath(target, path) {
 
 function applyPublicPatch(view, patch) {
   let next = clone(view || {});
-  Object.keys((patch && patch.set) || {}).sort((a, b) => a.split('.').length - b.split('.').length)
-    .forEach((path) => { next = setPath(next, path, patch.set[path]); });
+  const rawSet = patch && patch.set;
+  const operations = Array.isArray(rawSet)
+    ? rawSet
+    : Object.keys(rawSet || {}).map((path) => ({ path, value: rawSet[path] }));
+  operations.slice().sort((a, b) => a.path.split('.').length - b.path.split('.').length)
+    .forEach((operation) => { next = setPath(next, operation.path, operation.value); });
   ((patch && patch.remove) || []).forEach((path) => removePath(next, path));
   return next;
 }

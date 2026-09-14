@@ -14,9 +14,18 @@ exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
 
-  const envelope = event && event.type
+  const rawEnvelope = event && event.type
     ? event
     : (event && event.command) || event || {};
+  // CloudBase 会在直接调用事件上附加平台元数据；它们不属于 V3 命令契约。
+  // 仅剥离明确的保留字段，其他未知客户端字段仍交由契约层严格拒绝。
+  const envelope = rawEnvelope && typeof rawEnvelope === 'object' && !Array.isArray(rawEnvelope)
+    ? { ...rawEnvelope }
+    : rawEnvelope;
+  if (envelope && typeof envelope === 'object') {
+    delete envelope.tcbContext;
+    delete envelope.userInfo;
+  }
 
   try {
     return await app.executeCommand(envelope, { userId });

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createRoomClient } = require('@cardboard/room-client');
+const { createRoomClient, createCloudRoomGateway } = require('@cardboard/room-client');
 const { applyEventGroup } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
 
@@ -23,6 +23,33 @@ function manualTimers() {
     }
   };
 }
+
+test('Cloud gateway keeps room commands isolated from injected event metadata', async () => {
+  let request = null;
+  const gateway = createCloudRoomGateway({
+    callFunction: async (input) => {
+      request = input;
+      return { result: { ok: true } };
+    }
+  });
+  const command = {
+    protocolVersion: 3,
+    commandId: 'create-room-1',
+    roomId: '',
+    knownSeq: 0,
+    type: 'CREATE_ROOM',
+    context: {},
+    payload: { nickName: '房主' },
+    clientSentAt: 1
+  };
+
+  await gateway.dispatch(command);
+
+  assert.deepEqual(request, {
+    name: 'roomCommand',
+    data: { command }
+  });
+});
 
 test('RoomClient 用 Snapshot 打开，并在命令响应中原子消费 Sync', async () => {
   const h = createHarness();

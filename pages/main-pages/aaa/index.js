@@ -38,7 +38,8 @@ const {
 } = require('../../../utils/pageInteractionLock');
 const {
   dispatchRoomCommand,
-  getRoomPageSnapshot
+  getRoomPageSnapshot,
+  getCurrentRoomPageSnapshot
 } = require('../../../modules/room-session/index');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
@@ -151,32 +152,44 @@ Page(withPageInteractionLock({
     const gen = (this._joinedStateGen || 0) + 1;
     this._joinedStateGen = gen;
 
-    const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
+    let roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
+    let result = null;
 
     if (!roomId) {
-      this._setNotJoinedState();
-      return;
+      try {
+        result = await getCurrentRoomPageSnapshot();
+      } catch (error) {
+        console.warn('discover current room fail', error);
+      }
+      if (gen !== this._joinedStateGen) return;
+      if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+      if (!result || result.ok !== true || !result.roomId) {
+        this._setNotJoinedState();
+        return;
+      }
+      roomId = result.roomId;
     }
 
     try {
-      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      result = result || await getRoomPageSnapshot(roomId, { refresh: true });
       if (gen !== this._joinedStateGen) return;
       if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
 
       if (result.ok !== true) {
         // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
         if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result.errCode)) {
-          handleRoomGoneFromResult(result, roomId, {
+          const handled = handleRoomGoneFromResult(result, roomId, {
             allowToastOnHome: true,
             title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
           });
-          this._setNotJoinedState();
+          if (!handled) this._clearJoinedRoom(roomId);
+          else this._setNotJoinedState();
           return;
         }
-        this._clearJoinedRoom(roomId);
-        this._setNotJoinedState();
+        // 临时数据库/网络故障不能被解释为离房，否则会与服务端 ActiveRoom 状态分叉。
+        this._setJoinedFallbackState(roomId);
         return;
       }
 
@@ -220,16 +233,7 @@ Page(withPageInteractionLock({
     } catch (err) {
       console.error('loadJoinedRoomState fail', err);
       if (roomId) {
-        this.setData({
-          isJoinedRoom: true,
-          role: 'member',
-          roleLabel: '成员',
-          roomId,
-          roomName: '脑暴工作坊',
-          roomDesc: DEFAULT_ROOM_DESC,
-          roomTimeText: '',
-          timeLabel: '加入时间'
-        });
+        this._setJoinedFallbackState(roomId);
       } else {
         this._setNotJoinedState();
       }
@@ -250,6 +254,26 @@ Page(withPageInteractionLock({
       // 保留微信授权头像昵称，不因离开房间回到默认态
       userNickName: (stored && stored.nickName) || this.data.userNickName || '微信用户',
       userAvatarUrl: (stored && stored.avatarUrl) || this.data.userAvatarUrl || DEFAULT_AVATAR
+    });
+  },
+
+  _setJoinedFallbackState(roomId) {
+    if (!roomId) {
+      this._setNotJoinedState();
+      return;
+    }
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    const hasKnownRole = this.data.role === 'host' || this.data.role === 'member';
+    this.setData({
+      isJoinedRoom: true,
+      role: hasKnownRole ? this.data.role : 'member',
+      roleLabel: hasKnownRole ? this.data.roleLabel : '成员',
+      roomId,
+      roomName: this.data.roomName || '脑暴工作坊',
+      roomDesc: this.data.roomDesc || DEFAULT_ROOM_DESC,
+      roomTimeText: this.data.roomTimeText || '',
+      timeLabel: this.data.timeLabel === '创建/加入时间' ? '加入时间' : this.data.timeLabel
     });
   },
 

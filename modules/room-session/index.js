@@ -128,6 +128,11 @@ async function getRoomPageSnapshot(roomId, options) {
   return snapshot;
 }
 
+async function getCurrentRoomPageSnapshot() {
+  const session = ensureRoomSession();
+  return session.open();
+}
+
 async function getRoomHistory(roomId, query) {
   const session = ensureRoomSession();
   return session.history(query || {}, roomId);
@@ -195,6 +200,6 @@ function unbindPageFromRoomSession(page) {
 }
 
 module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
-  getRoomPageSnapshot, getRoomHistory, getRoomSessionPageSnapshot,
+  getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, commandContext };

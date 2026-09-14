@@ -80,6 +80,15 @@ async function loadFactRows(store, kind, roomId, sessionId) {
   return out;
 }
 
+async function loadFacts(store, roomId, sessionId) {
+  const entries = [];
+  // CloudBase 的同一个 transaction 实例不能并行执行查询，否则会返回 TransactionBusy。
+  for (const kind of Object.keys(FACT_COLLECTION)) {
+    entries.push([kind, await loadFactRows(store, kind, roomId, sessionId)]);
+  }
+  return Object.fromEntries(entries);
+}
+
 async function loadAggregate(store, roomId) {
   const room = await safeGet(store, COLLECTIONS.rooms, roomId);
   if (!room) return null;
@@ -91,14 +100,13 @@ async function loadAggregate(store, roomId) {
   }
   if (currentSession) delete currentSession.roomId;
   const sessionId = currentSession && currentSession.sessionId;
-  const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) =>
-    [kind, await loadFactRows(store, kind, roomId, sessionId)]));
+  const facts = await loadFacts(store, roomId, sessionId);
   const firstEventResult = await store.collection(COLLECTIONS.events).where({ roomId })
     .orderBy('seq', 'asc').limit(1).get();
   const firstEvent = firstEventResult && firstEventResult.data && firstEventResult.data[0];
   // Event 使用 TTL 后，最小可用水位必须从实际日志计算，不能依赖可能滞后的 Room 字段。
   const minAvailableSeq = firstEvent ? Number(firstEvent.seq) : Number(room.eventSeq) + 1;
-  return { room, currentSession, facts: Object.fromEntries(entries), minAvailableSeq };
+  return { room, currentSession, facts, minAvailableSeq };
 }
 
 async function loadSessionAggregate(store, roomId, sessionId) {
@@ -107,9 +115,8 @@ async function loadSessionAggregate(store, roomId, sessionId) {
   const currentSession = await safeGet(store, COLLECTIONS.sessions, sessionId);
   if (!currentSession || currentSession.roomId !== roomId) return null;
   delete currentSession.roomId;
-  const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) =>
-    [kind, await loadFactRows(store, kind, roomId, sessionId)]));
-  return { room, currentSession, facts: Object.fromEntries(entries) };
+  const facts = await loadFacts(store, roomId, sessionId);
+  return { room, currentSession, facts };
 }
 
 function factRow(aggregate, kind, id) {

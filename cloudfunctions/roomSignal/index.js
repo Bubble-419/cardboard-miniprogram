@@ -2967,20 +2967,20 @@ var require_room_projection = __commonJS({
       return { ...publicView, actor, route: projectRoute(aggregate, actor) };
     }
     function createPublicPatch(before, after) {
-      const set = {};
+      const set = [];
       const remove = [];
       function walk(left, right, path) {
         if (JSON.stringify(left) === JSON.stringify(right)) return;
         const bothObjects = left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right);
         if (!bothObjects) {
-          set[path || "$"] = clone(right);
+          set.push({ path: path || "$", value: clone(right) });
           return;
         }
         const keys = /* @__PURE__ */ new Set([...Object.keys(left), ...Object.keys(right)]);
         keys.forEach((key) => {
           const nextPath = path ? `${path}.${key}` : key;
           if (!Object.prototype.hasOwnProperty.call(right, key)) remove.push(nextPath);
-          else if (!Object.prototype.hasOwnProperty.call(left, key)) set[nextPath] = clone(right[key]);
+          else if (!Object.prototype.hasOwnProperty.call(left, key)) set.push({ path: nextPath, value: clone(right[key]) });
           else walk(left[key], right[key], nextPath);
         });
       }
@@ -3009,8 +3009,10 @@ var require_room_projection = __commonJS({
     }
     function applyPublicPatch(view, patch) {
       let next = clone(view || {});
-      Object.keys(patch && patch.set || {}).sort((a, b) => a.split(".").length - b.split(".").length).forEach((path) => {
-        next = setPath(next, path, patch.set[path]);
+      const rawSet = patch && patch.set;
+      const operations = Array.isArray(rawSet) ? rawSet : Object.keys(rawSet || {}).map((path) => ({ path, value: rawSet[path] }));
+      operations.slice().sort((a, b) => a.path.split(".").length - b.path.split(".").length).forEach((operation) => {
+        next = setPath(next, operation.path, operation.value);
       });
       (patch && patch.remove || []).forEach((path) => removePath(next, path));
       return next;
@@ -3713,6 +3715,13 @@ var require_room_cloudbase_adapter = __commonJS({
       });
       return out;
     }
+    async function loadFacts(store, roomId, sessionId) {
+      const entries = [];
+      for (const kind of Object.keys(FACT_COLLECTION)) {
+        entries.push([kind, await loadFactRows(store, kind, roomId, sessionId)]);
+      }
+      return Object.fromEntries(entries);
+    }
     async function loadAggregate(store, roomId) {
       const room = await safeGet(store, COLLECTIONS2.rooms, roomId);
       if (!room) return null;
@@ -3722,11 +3731,11 @@ var require_room_cloudbase_adapter = __commonJS({
       }
       if (currentSession) delete currentSession.roomId;
       const sessionId = currentSession && currentSession.sessionId;
-      const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) => [kind, await loadFactRows(store, kind, roomId, sessionId)]));
+      const facts = await loadFacts(store, roomId, sessionId);
       const firstEventResult = await store.collection(COLLECTIONS2.events).where({ roomId }).orderBy("seq", "asc").limit(1).get();
       const firstEvent = firstEventResult && firstEventResult.data && firstEventResult.data[0];
       const minAvailableSeq = firstEvent ? Number(firstEvent.seq) : Number(room.eventSeq) + 1;
-      return { room, currentSession, facts: Object.fromEntries(entries), minAvailableSeq };
+      return { room, currentSession, facts, minAvailableSeq };
     }
     async function loadSessionAggregate(store, roomId, sessionId) {
       const room = await safeGet(store, COLLECTIONS2.rooms, roomId);
@@ -3734,8 +3743,8 @@ var require_room_cloudbase_adapter = __commonJS({
       const currentSession = await safeGet(store, COLLECTIONS2.sessions, sessionId);
       if (!currentSession || currentSession.roomId !== roomId) return null;
       delete currentSession.roomId;
-      const entries = await Promise.all(Object.keys(FACT_COLLECTION).map(async (kind) => [kind, await loadFactRows(store, kind, roomId, sessionId)]));
-      return { room, currentSession, facts: Object.fromEntries(entries) };
+      const facts = await loadFacts(store, roomId, sessionId);
+      return { room, currentSession, facts };
     }
     function factRow(aggregate, kind, id) {
       if (!aggregate || !aggregate.facts) return null;
