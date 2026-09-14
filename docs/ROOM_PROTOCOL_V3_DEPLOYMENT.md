@@ -4,6 +4,31 @@
 >
 > 不迁移旧数据。V3 客户端只连接 `roomV3*` 集合；切换后创建新房间验证。
 
+## 0. 开发者工具直接运行是否足够
+
+**不够。** 微信开发者工具的“编译/预览”只更新小程序客户端，不会自动执行以下操作：
+
+- 创建 `roomV3*` 云数据库集合；
+- 创建组合索引或修改集合权限；
+- 将本地 `cloudfunctions/*` 上传并部署到云端；
+- 为 `roomCommand` 配置 `ROOM_PROTOCOL_SERVER_SECRET`。
+
+```mermaid
+flowchart LR
+  LOCAL[本地代码] --> BUILD[pnpm build:cloud]
+  BUILD --> CLIENT[开发者工具编译客户端]
+  BUILD -->|仍需手动上传并部署| FUNCTIONS[目标环境云函数]
+  CONSOLE[云开发控制台] --> COLLECTIONS[集合 + 索引 + 权限]
+  CONSOLE --> SECRET[roomCommand 密钥]
+  CLIENT --> FUNCTIONS
+  FUNCTIONS --> COLLECTIONS
+```
+
+首次运行或切换环境时，必须先确认开发者工具选择的云环境与 `app.js` 中的
+`SHARED_ENV_CONFIG.resourceEnv` 一致，然后完成第 2～5 节。以后修改
+`packages/room-*` 或任一 `cloudfunctions/*/src` 后，也要重新构建并部署相关云函数。
+客户端与云函数版本不一致时，不属于受支持的运行方式。
+
 ## 1. 发布依赖图
 
 ```mermaid

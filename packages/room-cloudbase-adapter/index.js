@@ -143,6 +143,18 @@ function createCloudBaseRoomRepository(deps) {
         return conflict ? { conflict: true } : { replayed: true, receipt: existing };
       }
       const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+      let activeRoomId = active && active.roomId;
+      let danglingActive = false;
+      if (activeRoomId) {
+        const activeRoom = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
+        const activeMember = activeRoom && activeRoom.lifecycle === 'OPEN'
+          && (activeRoom.members || []).some((member) => member.userId === input.actorUserId);
+        if (!activeMember) {
+          // 只在命令事务内修复悬挂索引，查询接口继续保持只读。
+          activeRoomId = null;
+          danglingActive = true;
+        }
+      }
       let resolvedRoomId = input.roomId;
       if (input.type === 'CREATE_ROOM') {
         resolvedRoomId = null;
@@ -154,7 +166,7 @@ function createCloudBaseRoomRepository(deps) {
         }
       }
       const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
-      const decision = handler({ aggregate: current, activeRoomId: active && active.roomId, resolvedRoomId });
+      const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const receipt = {
         scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash,
@@ -165,6 +177,10 @@ function createCloudBaseRoomRepository(deps) {
       if (decision.accepted) {
         const beforeUsers = openUsers(current);
         const afterUsers = openUsers(decision.aggregate);
+        const actorWillHaveActiveIndex = afterUsers.some((member) => member.userId === input.actorUserId);
+        if (danglingActive && !actorWillHaveActiveIndex) {
+          await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
+        }
         await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
         if (decision.aggregate.currentSession) {
           const session = cleanDoc(decision.aggregate.currentSession);
@@ -203,6 +219,8 @@ function createCloudBaseRoomRepository(deps) {
         for (const member of afterUsers) {
           await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
         }
+      } else if (danglingActive) {
+        await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
       }
       await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
       return { replayed: false, receipt };

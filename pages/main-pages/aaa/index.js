@@ -151,31 +151,41 @@ Page(withPageInteractionLock({
     const gen = (this._joinedStateGen || 0) + 1;
     this._joinedStateGen = gen;
 
-    const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
+    const requestedRoomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
 
-    if (!roomId) {
-      this._setNotJoinedState();
-      return;
-    }
-
     try {
-      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      // 本地 roomId 只是缓存。首次启动或清缓存后仍要查询 current-room，
+      // 由服务端的唯一成员索引恢复账号正在参与的房间。
+      let result = await getRoomPageSnapshot(requestedRoomId, { refresh: true });
       if (gen !== this._joinedStateGen) return;
       if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+
+      if (requestedRoomId && result.ok !== true && result.errCode === 'ALREADY_IN_ROOM') {
+        // 本地缓存指向旧房间时，以服务端 current-room 重新定位到真实房间。
+        result = await getRoomPageSnapshot('', { refresh: true });
+        if (gen !== this._joinedStateGen) return;
+        if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+      }
 
       if (result.ok !== true) {
         // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
         if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result.errCode)) {
-          handleRoomGoneFromResult(result, roomId, {
+          handleRoomGoneFromResult(result, requestedRoomId, {
             allowToastOnHome: true,
             title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
           });
           this._setNotJoinedState();
           return;
         }
-        this._clearJoinedRoom(roomId);
+        if (requestedRoomId) this._clearJoinedRoom(requestedRoomId);
+        this._setNotJoinedState();
+        return;
+      }
+
+      const roomId = result.roomId || requestedRoomId;
+      if (!roomId) {
         this._setNotJoinedState();
         return;
       }
@@ -219,12 +229,12 @@ Page(withPageInteractionLock({
       });
     } catch (err) {
       console.error('loadJoinedRoomState fail', err);
-      if (roomId) {
+      if (requestedRoomId) {
         this.setData({
           isJoinedRoom: true,
           role: 'member',
           roleLabel: '成员',
-          roomId,
+          roomId: requestedRoomId,
           roomName: '脑暴工作坊',
           roomDesc: DEFAULT_ROOM_DESC,
           roomTimeText: '',
@@ -457,6 +467,14 @@ Page(withPageInteractionLock({
       const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {
+        if (result && result.errCode === 'ALREADY_IN_ROOM') {
+          // 服务端成员资格是事实源。本地缓存丢失或多端登录时，直接恢复原房间。
+          const current = await getRoomPageSnapshot('', { refresh: true });
+          if (current && current.ok === true && current.roomId) {
+            await this._goToRoomPage(current.roomId);
+            return;
+          }
+        }
         console.error('roomCreate error', result);
         wx.showToast({
           title: result.errMsg || '创建失败，请重试',

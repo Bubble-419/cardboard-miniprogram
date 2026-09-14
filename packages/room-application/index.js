@@ -472,9 +472,19 @@ function createInMemoryRoomRepository(options) {
       if (input.type === COMMAND_TYPES.CREATE_ROOM) {
         resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
       }
+      let activeRoomId = activeRooms.get(input.actorUserId) || null;
+      if (activeRoomId) {
+        const activeAggregate = rooms.get(activeRoomId);
+        const activeMember = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
+          && memberByUserId(activeAggregate.room, input.actorUserId);
+        if (!activeMember) {
+          // 命令事务可修复悬挂唯一索引，避免用户永久无法创建或加入房间。
+          activeRooms.delete(input.actorUserId);
+          activeRoomId = null;
+        }
+      }
       const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-      const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null,
-        resolvedRoomId });
+      const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
         outcome: copy(decision.outcome || null), error: copy(decision.error || null),
