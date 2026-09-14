@@ -28,7 +28,8 @@ function createCloudRoomGateway(options) {
       action: 'messages', roomId, sessionId, ...(query || {})
     }),
     leaderboard: (roomId, sessionId) => call('roomQuery', { action: 'leaderboard', roomId, sessionId }),
-    dispatch: (envelope) => call('roomCommand', envelope),
+    // Command 放在独立传输字段中，避免 CloudBase 注入的 tcbContext 污染严格协议对象。
+    dispatch: (envelope) => call('roomCommand', { command: envelope }),
     presence: (roomId, deviceSessionId) => call('roomPresence', { roomId, deviceSessionId })
   };
 }

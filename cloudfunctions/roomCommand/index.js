@@ -4036,10 +4036,25 @@ var require_room_cloudbase_adapter = __commonJS({
   }
 });
 
+// cloudfunctions/roomCommand/src/transport.js
+var require_transport = __commonJS({
+  "cloudfunctions/roomCommand/src/transport.js"(exports2, module2) {
+    "use strict";
+    function commandEnvelopeFromEvent2(event) {
+      if (!event || typeof event !== "object" || Array.isArray(event)) return event || {};
+      if (Object.prototype.hasOwnProperty.call(event, "command")) return event.command;
+      const { tcbContext: _platformContext, ...legacyEnvelope } = event;
+      return legacyEnvelope;
+    }
+    module2.exports = { commandEnvelopeFromEvent: commandEnvelopeFromEvent2 };
+  }
+});
+
 // cloudfunctions/roomCommand/src/entry.js
 var cloud = require("wx-server-sdk");
 var { createRoomApplication } = require_room_application();
 var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
+var { commandEnvelopeFromEvent } = require_transport();
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 var db = cloud.database();
 var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
@@ -4048,7 +4063,7 @@ var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
-  const envelope = event && event.type ? event : event && event.command || event || {};
+  const envelope = commandEnvelopeFromEvent(event);
   try {
     return await app.executeCommand(envelope, { userId });
   } catch (e) {

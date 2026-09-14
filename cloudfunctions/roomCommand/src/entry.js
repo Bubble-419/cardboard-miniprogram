@@ -3,6 +3,7 @@
 const cloud = require('wx-server-sdk');
 const { createRoomApplication } = require('@cardboard/room-application');
 const { createCloudBaseRoomRepository } = require('@cardboard/room-cloudbase-adapter');
+const { commandEnvelopeFromEvent } = require('./transport');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -16,9 +17,7 @@ exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
 
-  const envelope = event && event.type
-    ? event
-    : (event && event.command) || event || {};
+  const envelope = commandEnvelopeFromEvent(event);
 
   try {
     return await app.executeCommand(envelope, { userId });
