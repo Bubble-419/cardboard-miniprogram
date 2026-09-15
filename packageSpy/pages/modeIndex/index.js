@@ -1,6 +1,7 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
   filterPlayerMembers,
@@ -123,6 +124,9 @@ Page(withPageInteractionLock({
         const isHost = result.isHost === true;
         const canStart = isHost && playerCount >= MIN_PLAYERS;
         const spyGame = result.roomState && result.roomState.spyGame;
+        const nextCommandContext = spyGame && spyGame.phase === 'intro'
+          ? captureSpyCommandContext(result)
+          : null;
         let statusText = '等待更多玩家加入…';
         let waitFooterText = '等待更多玩家加入…';
         if (playerCount >= MIN_PLAYERS) {
@@ -141,6 +145,8 @@ Page(withPageInteractionLock({
           statusText,
           waitFooterText,
           showLibraryEntry: shouldShowLibrary(spyGame)
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
       } catch (e) {
         console.warn('spy modeIndex refresh', e);
@@ -221,7 +227,10 @@ Page(withPageInteractionLock({
     if (!this.data.canStart || this.data.starting) return;
     this.setData({ starting: true, showLibraryEntry: false });
     try {
-      const result = await callSpyAction('startAssign', { roomId: this.data.roomId });
+      const result = await callSpyAction('startAssign', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '开始失败', icon: 'none' });
         this.setData({ starting: false, showLibraryEntry: true });

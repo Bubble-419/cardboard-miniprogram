@@ -59,7 +59,7 @@ function isRoomDissolvedResult(result) {
 
 function isRemovedFromRoomResult(result) {
   if (!result) return false;
-  return result.errCode === 'NOT_IN_ROOM';
+  return result.errCode === 'NOT_IN_ROOM' || result.errCode === 'NOT_MEMBER';
 }
 
 function resolveToastTitle(result, options = {}) {

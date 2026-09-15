@@ -25,6 +25,17 @@ function hash(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
 }
 
+function deriveCommandSeed(serverSecret, roomId, commandId, purpose) {
+  if (!isNonEmptyString(serverSecret)) {
+    const error = new Error('ROOM_PROTOCOL_SERVER_SECRET 未配置');
+    error.code = ERR.INTERNAL_ERROR;
+    throw error;
+  }
+  return crypto.createHmac('sha256', serverSecret)
+    .update(`${roomId}:${commandId}:${purpose || 'domain'}`)
+    .digest('hex');
+}
+
 function deterministicRandom(seed) {
   let counter = 0;
   return () => {
@@ -239,6 +250,48 @@ function createRoomApplication(repo, options) {
       participants: clone(session.participants || []), serverTime: now() });
   }
 
+  async function readMessages(roomId, sessionId, actorContext, requestOptions) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+      return fail(ERR.INVALID_ARGUMENT, 'roomId/sessionId 不合法');
+    }
+    if (typeof repo.readSessionAggregate !== 'function' || typeof repo.listMessages !== 'function') {
+      return fail(ERR.DEPENDENCY_UNAVAILABLE);
+    }
+    const aggregate = await repo.readSessionAggregate(roomId, sessionId);
+    const auth = authorizeSessionRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
+    const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || 100));
+    const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
+    const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);
+    if (beforeSeq != null && (!Number.isInteger(beforeSeq) || beforeSeq < 1)) {
+      return fail(ERR.INVALID_ARGUMENT, 'beforeSeq 必须是正整数');
+    }
+    const rows = await repo.listMessages(roomId, sessionId, { limit, beforeSeq });
+    const hasMore = rows.length > limit;
+    const selected = rows.slice(0, limit).map((item) => ({
+      messageId: item.messageId,
+      turnId: item.turnId,
+      turnOrdinal: item.turnOrdinal,
+      roundNo: item.roundNo,
+      phase: item.phase,
+      text: item.text,
+      anonKey: item.anonKey,
+      createdAt: item.createdAt,
+      commitSeq: item.commitSeq
+    }));
+    return okResult({
+      protocolVersion: PROTOCOL_VERSION,
+      roomId,
+      sessionId,
+      messages: selected,
+      hasMore,
+      nextBeforeSeq: hasMore && selected.length ? selected[selected.length - 1].commitSeq : null,
+      serverTime: now()
+    });
+  }
+
   async function sync(roomId, afterSeq, actorContext, requestOptions) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
@@ -293,6 +346,9 @@ function createRoomApplication(repo, options) {
     const validated = validateCommandEnvelope(rawEnvelope);
     if (!validated.ok) return validated;
     const envelope = validated.envelope;
+    if (!isNonEmptyString(appOptions.serverSecret)) {
+      return fail(ERR.INTERNAL_ERROR, 'ROOM_PROTOCOL_SERVER_SECRET 未配置');
+    }
     const commandNow = now();
     const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
     const roomIdCandidates = isCreate
@@ -314,7 +370,12 @@ function createRoomApplication(repo, options) {
         return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
       }
       const effectiveRoomId = resolvedRoomId || commandRoomId;
-      const seed = hash(`${appOptions.serverSecret || 'room-v3'}:${effectiveRoomId}:${envelope.commandId}`);
+      const seed = deriveCommandSeed(
+        appOptions.serverSecret,
+        effectiveRoomId,
+        envelope.commandId,
+        'domain'
+      );
       const beforePublic = projectPublicView(current);
       const domain = reduceCommand({ aggregate: current, command: { ...envelope, roomId: effectiveRoomId }, actorUserId,
         deps: { now: commandNow, idFactory: deterministicIds(seed), random: deterministicRandom(seed),
@@ -372,7 +433,7 @@ function createRoomApplication(repo, options) {
   }
 
   return { executeCommand, readCurrentRoom, readSnapshot, readSessionSnapshot,
-    readHistory, readLeaderboard, sync, heartbeat };
+    readHistory, readLeaderboard, readMessages, sync, heartbeat };
 }
 
 function createInMemoryRoomRepository(options) {
@@ -480,6 +541,16 @@ function createInMemoryRoomRepository(options) {
         && (!Number.isInteger(before) || session.ordinal < before))
         .sort((a, b) => b.ordinal - a.ordinal).slice(0, limit + 1));
     },
+    async listMessages(roomId, sessionId, requestOptions) {
+      const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
+      const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);
+      const limit = Number(requestOptions && requestOptions.limit) || 100;
+      return copy((rooms.get(roomId) && rooms.get(roomId).facts.messages || [])
+        .filter((item) => item.sessionId === sessionId
+          && (beforeSeq == null || item.commitSeq < beforeSeq))
+        .sort((a, b) => b.commitSeq - a.commitSeq)
+        .slice(0, limit + 1));
+    },
     async readSyncState(roomId, afterSeq, limit) {
       const aggregate = rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
       const roomEvents = events.get(roomId) || [];
@@ -498,5 +569,5 @@ function createInMemoryRoomRepository(options) {
   };
 }
 
-module.exports = { createRoomApplication, createInMemoryRoomRepository, hash, deterministicRandom, deterministicIds,
-  markCommittedFacts, validEventGroup };
+module.exports = { createRoomApplication, createInMemoryRoomRepository, hash, deriveCommandSeed,
+  deterministicRandom, deterministicIds, markCommittedFacts, validEventGroup };

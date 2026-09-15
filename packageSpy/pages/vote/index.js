@@ -1,6 +1,7 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildSpyPageUrl,
   openUrl,
@@ -175,7 +176,15 @@ Page(withPageInteractionLock({
         const voteStatus = spyGame.voteStatus || {};
         const voted = voteStatus.votedPlayerIndexes || [];
         const serverHasVoted = playerIndexIncludes(voted, myIndex);
-        const hasVoted = this.data.hasVoted || serverHasVoted;
+        const nextCommandContext = spyGame.phase === 'vote'
+          ? captureSpyCommandContext(result)
+          : null;
+        const previousVoteSessionId = this._spyCommandContext
+          && this._spyCommandContext.voteSessionId;
+        const voteSessionChanged = !!(nextCommandContext
+          && previousVoteSessionId
+          && previousVoteSessionId !== nextCommandContext.voteSessionId);
+        const hasVoted = voteSessionChanged ? serverHasVoted : (this.data.hasVoted || serverHasVoted);
         const last = spyGame.lastResult || {};
         const tiedIndexes = Array.isArray(last.tiedIndexes) ? last.tiedIndexes : [];
         const tiedIndexSet = new Set(tiedIndexes.map((idx) => Number(idx)));
@@ -185,6 +194,7 @@ Page(withPageInteractionLock({
 
         this.setData({
           avatarList: buildAvatarList(members),
+          selectedIndex: voteSessionChanged ? null : this.data.selectedIndex,
           hasVoted,
           eliminated,
           tieBreak: spyGame.tieBreak === true,
@@ -198,6 +208,8 @@ Page(withPageInteractionLock({
           totalVoters: voteStatus.totalVoters != null
             ? voteStatus.totalVoters
             : players.filter((p) => p.alive !== false && p.leftRoom !== true).length
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
 
         this.ensureTicker(spyGame.voteStartedAt, spyGame.voteDeadlineMs || VOTE_ROUND_MS);
@@ -279,6 +291,7 @@ Page(withPageInteractionLock({
     try {
       const result = await callSpyAction('submitVote', {
         roomId: this.data.roomId,
+        context: this._spyCommandContext,
         abstain,
         targetPlayerIndex: abstain ? undefined : this.data.selectedIndex
       });

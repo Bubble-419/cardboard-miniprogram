@@ -7,6 +7,7 @@ const app = { globalData: { roomId: null } };
 const storage = new Map();
 
 global.getApp = () => app;
+global.getCurrentPages = () => [{ route: 'pages/main-pages/aaa/index' }];
 global.wx = {
   getStorageSync(key) { return storage.get(key); },
   setStorageSync(key, value) { storage.set(key, value); },

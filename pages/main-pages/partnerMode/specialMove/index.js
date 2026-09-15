@@ -805,6 +805,10 @@ Page(withPageInteractionLock({
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
       const roomState = result.roomState || {};
       const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
+      const sessionId = roomState.sessionId || '';
+      const turnId = result.view && result.view.session && result.view.session.activeTurn
+        ? result.view.session.activeTurn.turnId
+        : '';
 
       this.setData({
         members,
@@ -813,15 +817,14 @@ Page(withPageInteractionLock({
         currentPlayerIndex: player.currentPlayerIndex,
         initiatorPlayerIndex: player.currentPlayerIndex,
         currentRound,
-        sessionId: roomState.sessionId || '',
-        turnId: result.view && result.view.session && result.view.session.activeTurn
-          ? result.view.session.activeTurn.turnId
-          : '',
+        sessionId,
+        turnId,
         isHost: result.isHost === true,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
         problemExpanded: false,
         problemTextOverflow: false
       }, () => {
+        this._renderedTurnContext = Object.freeze({ sessionId, turnId });
         this._checkProblemTextOverflow();
         this._syncAvatarTimerFromRoom(roomState, currentRound, player.currentPlayerIndex);
         this._applyRoundSummaries(this._normalizeRoundSummaries(roomState, members));
@@ -1086,6 +1089,14 @@ Page(withPageInteractionLock({
     this.setData({ helpMethod: method });
   },
 
+  _turnContext() {
+    const rendered = this._renderedTurnContext;
+    return {
+      sessionId: rendered && rendered.sessionId || this.data.sessionId || '',
+      turnId: rendered && rendered.turnId || this.data.turnId || ''
+    };
+  },
+
   handleConfirm() {
     const { viewMode, selectedAction } = this.data;
 
@@ -1098,7 +1109,11 @@ Page(withPageInteractionLock({
 
     if (selectedAction === 'helpLuck') {
       return runPageInteraction(this, async () => {
-        const result = await dispatchRoomCommand('USE_PARTNER_SPECIAL', { kind: 'HELP_LUCK' });
+        const result = await dispatchRoomCommand(
+          'USE_PARTNER_SPECIAL',
+          { kind: 'HELP_LUCK' },
+          this._turnContext()
+        );
         if (!result || result.ok !== true) {
           wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
           return;
@@ -1140,7 +1155,11 @@ Page(withPageInteractionLock({
     this._activatingClosing = true;
 
     try {
-      const result = await dispatchRoomCommand('USE_PARTNER_SPECIAL', { kind: 'CLOSING' });
+      const result = await dispatchRoomCommand(
+        'USE_PARTNER_SPECIAL',
+        { kind: 'CLOSING' },
+        this._turnContext()
+      );
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
@@ -1172,7 +1191,11 @@ Page(withPageInteractionLock({
     this._activatingSilent = true;
 
     try {
-      const result = await dispatchRoomCommand('USE_PARTNER_SPECIAL', { kind: 'SILENT' });
+      const result = await dispatchRoomCommand(
+        'USE_PARTNER_SPECIAL',
+        { kind: 'SILENT' },
+        this._turnContext()
+      );
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
@@ -1191,7 +1214,11 @@ Page(withPageInteractionLock({
   async activateMasterMode() {
     const { roomId } = this.data;
     if (!roomId) return;
-    const result = await dispatchRoomCommand('USE_PARTNER_SPECIAL', { kind: 'MASTER' });
+    const result = await dispatchRoomCommand(
+      'USE_PARTNER_SPECIAL',
+      { kind: 'MASTER' },
+      this._turnContext()
+    );
     if (!result || result.ok !== true) {
       wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
       return;
@@ -1203,7 +1230,7 @@ Page(withPageInteractionLock({
   _clearSilentRoomState() {
     const roomId = this.data.roomId || '';
     if (!roomId) return Promise.resolve();
-    return dispatchRoomCommand('END_PARTNER_SILENT', {}).catch(() => {});
+    return dispatchRoomCommand('END_PARTNER_SILENT', {}, this._turnContext()).catch(() => {});
   },
 
   handleCancelAdopt() {
@@ -1258,7 +1285,7 @@ Page(withPageInteractionLock({
       if (this.data.currentRound == null) {
         await this.loadRoomData();
       }
-      await dispatchRoomCommand('END_PARTNER_SILENT', {});
+      await dispatchRoomCommand('END_PARTNER_SILENT', {}, this._turnContext());
       await this._returnToGamepage();
     } finally {
       this._endingSilent = false;

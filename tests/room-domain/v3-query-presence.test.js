@@ -58,6 +58,75 @@ test('Snapshot 是可独立恢复的成员视图且不暴露 userId', async () =
   assert.equal((await h.snapshot('stranger')).errCode, 'NOT_MEMBER');
 });
 
+test('中途加入者留在大厅旁观，参玩者的游戏页只投影冻结 Participant', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  await h.command('u4', 'JOIN_ROOM', { payload: { nickName: '中途加入者' } });
+
+  const hostSnapshot = await h.snapshot('host');
+  const observerSnapshot = await h.snapshot('u4');
+  const hostPage = projectPageSnapshot(hostSnapshot.view, {
+    seq: hostSnapshot.seq, stateVersion: hostSnapshot.stateVersion, ephemeral: {}
+  });
+  const observerPage = projectPageSnapshot(observerSnapshot.view, {
+    seq: observerSnapshot.seq, stateVersion: observerSnapshot.stateVersion, ephemeral: {}
+  });
+
+  assert.equal(hostPage.members.length, 3);
+  assert.equal(hostPage.members.some((member) => member.nickName === '中途加入者'), false);
+  assert.equal(observerPage.isParticipant, false);
+  assert.equal(observerSnapshot.view.route.name, 'addPlayer');
+  assert.equal(observerPage.members.length, 4, '旁观者在大厅仍应看到当前 Room Member');
+  assert.equal(observerSnapshot.view.actor.capabilities.SUBMIT_PARTNER_SCORE.allowed, false);
+});
+
+test('Partner 匿名消息保持有界实时 View，并可通过游标完整分页读取', async () => {
+  const h = createHarness();
+  let snapshot = await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: hostMemberId }
+  });
+  snapshot = await h.snapshot('host');
+  const turnId = snapshot.view.session.activeTurn.turnId;
+  for (let index = 1; index <= 45; index += 1) {
+    const posted = await h.command('u2', 'POST_PARTNER_MESSAGE', {
+      context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
+      payload: { text: `消息${String(index).padStart(2, '0')}` }
+    });
+    assert.equal(posted.ok, true);
+  }
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.recentMessages.length, 40);
+  assert.equal(snapshot.view.session.recentMessages[0].text, '消息06');
+
+  const first = await h.app.readMessages('12345678', sessionId, { userId: 'host' }, { limit: 20 });
+  const second = await h.app.readMessages('12345678', sessionId, { userId: 'host' }, {
+    limit: 20, beforeSeq: first.nextBeforeSeq
+  });
+  const third = await h.app.readMessages('12345678', sessionId, { userId: 'host' }, {
+    limit: 20, beforeSeq: second.nextBeforeSeq
+  });
+  const all = [...first.messages, ...second.messages, ...third.messages];
+  assert.deepEqual([first.hasMore, second.hasMore, third.hasMore], [true, true, false]);
+  assert.equal(all.length, 45);
+  assert.equal(new Set(all.map((message) => message.messageId)).size, 45);
+  assert.equal(JSON.stringify(all).includes('authorMemberId'), false);
+  assert.equal((await h.app.readMessages('12345678', sessionId, { userId: 'stranger' }, {})).errCode,
+    'NOT_MEMBER');
+});
+
 test('查询与 Presence 拒绝模糊标识，不把任意对象或路径交给仓储层', async () => {
   const h = createHarness();
   await h.seedMembers(2);

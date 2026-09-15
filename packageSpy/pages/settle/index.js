@@ -1,6 +1,7 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
   buildSpyPageUrl,
@@ -81,6 +82,9 @@ Page(withPageInteractionLock({
         });
 
         const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const nextCommandContext = spyGame.phase === 'settle'
+          ? captureSpyCommandContext(result)
+          : null;
         const winnerSide = spyGame.winnerSide || '';
         let revealPlayers = [];
         if (Array.isArray(spyGame.reveal) && spyGame.reveal.length) {
@@ -103,6 +107,8 @@ Page(withPageInteractionLock({
           civilianWord: spyGame.civilianWord || '',
           spyWord: spyGame.spyWord || '',
           revealPlayers
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
       } catch (e) {
         console.warn('spy settle refresh', e);
@@ -120,7 +126,10 @@ Page(withPageInteractionLock({
     if (this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('restart', { roomId: this.data.roomId });
+      const result = await callSpyAction('restart', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '失败', icon: 'none' });
         this.setData({ acting: false });
@@ -150,13 +159,19 @@ Page(withPageInteractionLock({
     if (this.data.acting || !this.data.isHost) return;
     this.setData({ acting: true });
     try {
-      const completed = await callSpyAction('complete', { roomId: this.data.roomId });
+      const completed = await callSpyAction('complete', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (!completed || completed.ok !== true) {
         wx.showToast({ title: completed && completed.errMsg || '结束失败', icon: 'none' });
         this.setData({ acting: false });
         return;
       }
-      const returned = await callSpyAction('returnToLobby', { roomId: this.data.roomId });
+      const returned = await callSpyAction('returnToLobby', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (!returned || returned.ok !== true) {
         wx.showToast({ title: returned && returned.errMsg || '返回房间失败', icon: 'none' });
         this.setData({ acting: false });

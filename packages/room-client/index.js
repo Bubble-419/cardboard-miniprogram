@@ -24,6 +24,9 @@ function createCloudRoomGateway(options) {
     sync: (roomId, afterSeq, limit) => call('roomQuery', { action: 'sync', roomId, afterSeq, limit }),
     history: (roomId, query) => call('roomQuery', { action: 'history', roomId, ...(query || {}) }),
     session: (roomId, sessionId) => call('roomQuery', { action: 'session', roomId, sessionId }),
+    messages: (roomId, sessionId, query) => call('roomQuery', {
+      action: 'messages', roomId, sessionId, ...(query || {})
+    }),
     leaderboard: (roomId, sessionId) => call('roomQuery', { action: 'leaderboard', roomId, sessionId }),
     // 命令单独包装，避免 CloudBase 注入的 event 顶层元数据混入严格 V3 契约。
     dispatch: (envelope) => call('roomCommand', { command: envelope }),
@@ -155,8 +158,10 @@ function createRoomClient(options) {
   }
 
   function disconnectFromError(connectionError) {
+    const disconnectedRoomId = roomId;
     resetConnection('DISCONNECTED');
-    error = { errCode: connectionError.code, errMsg: connectionError.message };
+    error = { errCode: connectionError.code, errMsg: connectionError.message,
+      roomId: disconnectedRoomId };
     publish();
   }
 
@@ -442,6 +447,11 @@ function createRoomClient(options) {
     } else if (result.ok && ['LEFT_ROOM', 'ROOM_DISSOLVED'].includes(outcome.kind)) {
       resetConnection('READY');
       publish();
+    } else if (roomId && result.ok !== true
+      && [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND].includes(result.errCode)) {
+      const terminalError = new Error(result.errMsg || '房间连接已经失效');
+      terminalError.code = result.errCode;
+      disconnectFromError(terminalError);
     } else if (result.sync && result.sync.ok === true) {
       await syncUntilCurrent(result.sync);
     }
@@ -469,6 +479,12 @@ function createRoomClient(options) {
       const queryRoomId = targetRoomId || roomId;
       return queryRoomId && typeof gateway.session === 'function'
         ? gateway.session(queryRoomId, sessionId)
+        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
+    },
+    messages(sessionId, query, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.messages === 'function'
+        ? gateway.messages(queryRoomId, sessionId, query || {})
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     leaderboard(sessionId, targetRoomId) {

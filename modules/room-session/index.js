@@ -49,7 +49,18 @@ function createFacade(client) {
     subscribe(listener, options) {
       return client.subscribe((view, state) => {
         if (!view && !(state && state.error)) return;
-        listener(projectPageSnapshot(view, state));
+        const snapshot = projectPageSnapshot(view, state);
+        listener(snapshot);
+        if (!view && state && state.error && typeof wx !== 'undefined') {
+          const terminalCodes = ['NOT_MEMBER', 'ROOM_DISSOLVED', 'ROOM_NOT_FOUND'];
+          if (terminalCodes.includes(state.error.errCode)) {
+            // 终态错误必须关闭当前 Room View，不能让页面停在已经失效的游戏画面。
+            const { handleRoomGoneFromResult } = require('../../utils/roomDissolved');
+            handleRoomGoneFromResult(snapshot, state.error.roomId || state.roomId || '', {
+              allowToastOnHome: true
+            });
+          }
+        }
       }, options);
     },
     async open() { await client.open(); return projectPageSnapshot(client.getView(), client.getState()); },
@@ -61,6 +72,7 @@ function createFacade(client) {
     getAppliedRevision: () => client.getState().seq,
     history: (query, roomId) => client.history(query, roomId),
     sessionSnapshot: (sessionId, roomId) => client.sessionSnapshot(sessionId, roomId),
+    messages: (sessionId, query, roomId) => client.messages(sessionId, query, roomId),
     leaderboard: (sessionId, roomId) => client.leaderboard(sessionId, roomId),
     pause: () => client.pause(),
     resume: () => client.resume(),
@@ -138,12 +150,37 @@ async function getRoomHistory(roomId, query) {
   return session.history(query || {}, roomId);
 }
 
+async function getRoomSessionMessages(roomId, sessionId, options) {
+  const session = ensureRoomSession();
+  const messages = [];
+  let beforeSeq = null;
+  const pageSize = Math.min(100, Math.max(1, Number(options && options.limit) || 100));
+  do {
+    const result = await session.messages(sessionId, { limit: pageSize, beforeSeq }, roomId);
+    if (!result || result.ok !== true) return result;
+    messages.push(...(result.messages || []));
+    if (!result.hasMore) break;
+    if (!Number.isInteger(result.nextBeforeSeq) || result.nextBeforeSeq === beforeSeq) {
+      return { ok: false, errCode: 'INTERNAL_ERROR', errMsg: '消息分页游标未推进' };
+    }
+    beforeSeq = result.nextBeforeSeq;
+  } while (true);
+  messages.sort((a, b) => a.commitSeq - b.commitSeq);
+  return { ok: true, roomId, sessionId, messages };
+}
+
 /** 将归档场次的 MemberView 投影为现有页面唯一消费的 PageSnapshot。 */
 async function getRoomSessionPageSnapshot(roomId, sessionId) {
   // 历史读取不绑定当前活跃房间；离房、被踢或已加入新房间后仍可读取自己参与过的归档场次。
   const session = ensureRoomSession();
   const result = await session.sessionSnapshot(sessionId, roomId);
   if (!result || result.ok !== true) return result;
+  if (result.view && result.view.session && result.view.session.mode === 'PARTNER') {
+    const history = await getRoomSessionMessages(roomId, sessionId);
+    if (!history || history.ok !== true) return history;
+    // 持续同步 View 保持有界；只有显式历史读取才补齐全部匿名表达。
+    result.view.session.recentMessages = history.messages;
+  }
   return projectPageSnapshot(result.view, {
     roomId: result.roomId,
     seq: result.seq || 0,
@@ -200,6 +237,6 @@ function unbindPageFromRoomSession(page) {
 }
 
 module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
-  getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionPageSnapshot,
+  getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, commandContext };

@@ -1,5 +1,13 @@
 'use strict';
 
+const { MODE, WORKFLOW_STEP } = require('../../packages/room-contracts/index');
+
+const PARTNER_CLOSING_STEPS = new Set([
+  WORKFLOW_STEP.PARTNER_CLOSING_VOTE,
+  WORKFLOW_STEP.PARTNER_CLOSING_RUNE,
+  WORKFLOW_STEP.PARTNER_CLOSING_REVIEW
+]);
+
 function modeId(mode) {
   return { PARTNER: 'partner', HALLI_GALLI: 'halliGalli', SPY: 'spy' }[mode] || null;
 }
@@ -26,8 +34,9 @@ function memberSeat(view, memberId) {
 function pageMembers(view, historical) {
   if (!view || !view.room) return [];
   const liveById = new Map((view.room.members || []).map((member) => [member.memberId, member]));
+  // 当前场次页面只能展示场次开始时冻结的 Participant；中途加入者在大厅仍看 Room Member。
   const useFrozenParticipants = !!(view.session && Array.isArray(view.session.participants)
-    && (historical || (view.session.status === 'COMPLETED' && view.actor && view.actor.isParticipant)));
+    && (historical || (view.actor && view.actor.isParticipant)));
   const source = useFrozenParticipants
     ? view.session.participants.map((participant) => ({
       memberId: participant.memberId,
@@ -210,13 +219,13 @@ function projectPageSnapshot(view, clientState) {
     selectedDesignProblem: session && session.setup.selectedProblem,
     memberCount: members.length
   };
-  if (session && session.mode === 'PARTNER') {
+  if (session && session.mode === MODE.PARTNER) {
     const turn = session.activeTurn;
     const closing = session.publicModeState.closing;
     const activeMember = turn && members.find((item) => item.memberId === turn.activeMemberId);
     const step = session.workflow.step;
-    roomState.partnerGamePhase = step === 'PARTNER_STATEMENT' ? 'discussion'
-      : (step.startsWith('PARTNER_CLOSING_') ? 'closing' : 'play');
+    roomState.partnerGamePhase = step === WORKFLOW_STEP.PARTNER_STATEMENT ? 'discussion'
+      : (PARTNER_CLOSING_STEPS.has(step) ? 'closing' : 'play');
     roomState.currentPlayerIndex = activeMember && activeMember.playerIndex;
     roomState.currentPlayerName = activeMember && activeMember.nickName;
     roomState.currentRound = turn ? turn.ordinal : session.publicModeState.turnOrdinal;
@@ -256,11 +265,11 @@ function projectPageSnapshot(view, clientState) {
     roomState.partnerClosingCreativePoints = { blocks: closingContent.playBlocks,
       texts: closingContent.playHistory, images: closingContent.playImages };
     roomState.partnerSpecialMoveUsed = turn && turn.specialUsed || null;
-  } else if (session && session.mode === 'HALLI_GALLI') {
+  } else if (session && session.mode === MODE.HALLI_GALLI) {
     roomState.currentPlayerIndex = memberSeat(view, session.publicModeState.firstMemberId);
     const first = members.find((item) => item.playerIndex === roomState.currentPlayerIndex);
     roomState.currentPlayerName = first && first.nickName || '';
-  } else if (session && session.mode === 'SPY') {
+  } else if (session && session.mode === MODE.SPY) {
     roomState.spyGame = spyPageState(view, session);
   }
   const result = {
@@ -270,6 +279,7 @@ function projectPageSnapshot(view, clientState) {
     revision: state.seq || 0,
     stateVersion: state.stateVersion || 0,
     isHost: view.actor.role === 'HOST',
+    isParticipant: !!view.actor.isParticipant,
     role: view.actor.role === 'HOST' ? 'GOD' : 'PLAYER',
     members,
     memberCount: members.length,

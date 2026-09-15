@@ -11,6 +11,7 @@ const { runPageInteraction, withPageInteractionLock } = require('../../../../uti
 Page(withPageInteractionLock({
   data: {
     roomId: '',
+    sessionId: '',
     hasVoted: false,
     isInitiator: false,
     isSubmitting: false,
@@ -45,13 +46,18 @@ Page(withPageInteractionLock({
     const actor = snapshot.view && snapshot.view.actor || {};
     const isInitiator = Number(state.closingVoteInitiatorIndex) === Number(actor.seatNo);
     const myVote = actor.voteStatus && actor.voteStatus.submitted ? actor.voteStatus.vote : '';
+    const sessionId = state.sessionId || '';
+    const closingVoteSessionId = state.closingVoteSessionId || '';
     this.setData({
-      closingVoteSessionId: state.closingVoteSessionId || '',
+      sessionId,
+      closingVoteSessionId,
       closingVoteSeq: snapshot.revision || 0,
       isInitiator,
       hasVoted: isInitiator || !!myVote,
       voteResult: isInitiator ? 'pass' : myVote,
       isSubmitting: false
+    }, () => {
+      this._renderedClosingContext = Object.freeze({ sessionId, closingVoteSessionId });
     });
   },
 
@@ -112,7 +118,11 @@ Page(withPageInteractionLock({
     if (!['pass', 'question'].includes(vote)) return;
     this.setData({ isSubmitting: true });
     try {
-      const result = await dispatchRoomCommand('SUBMIT_PARTNER_CLOSING_VOTE', { vote });
+      const context = this._renderedClosingContext || {};
+      const result = await dispatchRoomCommand('SUBMIT_PARTNER_CLOSING_VOTE', { vote }, {
+        sessionId: context.sessionId || this.data.sessionId || '',
+        closingVoteSessionId: context.closingVoteSessionId || this.data.closingVoteSessionId || ''
+      });
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '提交失败', icon: 'none' });
         return;

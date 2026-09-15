@@ -210,6 +210,13 @@ test('已评分成员离开后从进度集合移除，不会提前开始表态',
   assert.equal(early.errCode, 'INVALID_TRANSITION');
   await h.command('u4', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 6 } });
   assert.equal((await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } })).ok, true);
+  assert.equal((await h.command('host', 'ADVANCE_PARTNER_TURN', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  })).ok, true);
+  const archived = h.repo.rooms.get('12345678').facts.turns[turnId];
+  assert.equal(archived.scoredCount, 2, '离房成员的历史评分不能计入结算人数');
+  assert.equal(archived.totalStars, 6.5, '结算只统计仍属于 requiredMemberIds 的评分');
+  assert.equal(archived.avgScore, 3.25);
 });
 
 test('Partner 离房成员已经提交的 question 不再参与收尾裁决', async () => {

@@ -83,6 +83,7 @@ Page(withPageInteractionLock({
     memberSlots: [],
     isFromScan: false,
     isHost: false,
+    isParticipant: false,
     membershipConfirmed: false,
     memberCount: 0,
     maxMembers: MEMBER_SLOTS,
@@ -130,6 +131,9 @@ Page(withPageInteractionLock({
       ? patch.brainstormSessionEnded
       : this.data.brainstormSessionEnded;
     const memberCount = patch.memberCount != null ? patch.memberCount : this.data.memberCount;
+    const isParticipant = patch.isParticipant != null
+      ? patch.isParticipant
+      : this.data.isParticipant;
 
     let primaryBtnText = '选择模式';
     let primaryBtnDisabled = false;
@@ -140,9 +144,16 @@ Page(withPageInteractionLock({
     let exitTextAction = isHost ? 'dissolve' : 'leave';
 
     let showWaitingHint = false;
-    const waitingHintText = '等待房主选择模式';
+    let waitingHintText = '等待房主选择模式';
 
-    if (hasSelectedMode && !brainstormSessionEnded) {
+    if (hasSelectedMode && !brainstormSessionEnded && !isParticipant) {
+      // 场次开始后加入的成员只旁观本场，不能进入需要 Participant 权限的游戏页。
+      primaryBtnText = '';
+      primaryBtnAction = '';
+      primaryBtnDisabled = true;
+      showWaitingHint = true;
+      waitingHintText = '本场已开始，您将在下一场加入';
+    } else if (hasSelectedMode && !brainstormSessionEnded) {
       primaryBtnText = '继续游戏';
       primaryBtnAction = 'continue';
       primaryBtnDisabled = false;
@@ -314,13 +325,17 @@ Page(withPageInteractionLock({
         result.selectedModeId
       ),
       selectedModeDesc: result.selectedModeDesc || '',
-      workshopName: result.workshopName || this.data.workshopName
+      workshopName: result.workshopName || this.data.workshopName,
+      isParticipant: result.isParticipant === true
     };
     return {
       ...meta,
       ...this._computeFooterActions({
         ...meta,
-        isHost: result.isHost != null ? result.isHost === true : this.data.isHost
+        isHost: result.isHost != null ? result.isHost === true : this.data.isHost,
+        isParticipant: result.isParticipant != null
+          ? result.isParticipant === true
+          : this.data.isParticipant
       })
     };
   },

@@ -1,6 +1,7 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
   buildSpyPageUrl,
@@ -83,6 +84,9 @@ Page(withPageInteractionLock({
         });
 
         const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const nextCommandContext = spyGame.phase === 'result'
+          ? captureSpyCommandContext(result)
+          : null;
         const last = spyGame.lastResult || {};
         const eliminatedIndex = last.eliminatedIndex;
         const players = spyGame.players || [];
@@ -112,6 +116,8 @@ Page(withPageInteractionLock({
           tallyList,
           // 出局玩家仍需看到在场玩家列表，不做隐藏
           alivePlayers: players.filter((p) => p.alive !== false)
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
         this._maybeShowTieModal(tied);
       } catch (e) {
@@ -146,7 +152,10 @@ Page(withPageInteractionLock({
     if (this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('nextRound', { roomId: this.data.roomId });
+      const result = await callSpyAction('nextRound', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         this.setData({ acting: false });

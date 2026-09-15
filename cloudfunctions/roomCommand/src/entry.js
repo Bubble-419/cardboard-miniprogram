@@ -7,7 +7,9 @@ const { createCloudBaseRoomRepository } = require('@cardboard/room-cloudbase-ada
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
-const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
+  serverSecret: process.env.ROOM_PROTOCOL_SERVER_SECRET
+});
 
 /** V3 房间唯一业务写入口。调用者身份只取云函数上下文。 */
 exports.main = async (event) => {

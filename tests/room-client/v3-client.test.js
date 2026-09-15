@@ -51,6 +51,29 @@ test('Cloud gateway keeps room commands isolated from injected event metadata', 
   });
 });
 
+async function reduceFromSnapshot(h, userId, before, limit = 3) {
+  let reduced = before.view;
+  let afterSeq = before.seq;
+  while (true) {
+    const batch = await h.app.sync('12345678', afterSeq, { userId }, { limit });
+    assert.equal(batch.ok, true);
+    assert.equal(batch.snapshotRequired, false);
+    const groups = [];
+    batch.events.forEach((item) => {
+      const last = groups.at(-1);
+      if (!last || last[0].commandId !== item.commandId) groups.push([item]);
+      else last.push(item);
+    });
+    groups.forEach((group) => { reduced = applyEventGroup(reduced, group); });
+    afterSeq = batch.throughSeq;
+    if (!batch.hasMore) {
+      reduced = { ...reduced, ...batch.actorView };
+      break;
+    }
+  }
+  return reduced;
+}
+
 test('RoomClient 用 Snapshot 打开，并在命令响应中原子消费 Sync', async () => {
   const h = createHarness();
   await h.seedMembers(2);
@@ -93,6 +116,81 @@ test('Snapshot@N + Event Groups + Actor@M 等于 Snapshot@M', async () => {
   reduced = { ...reduced, ...batch.actorView };
   const latest = await h.snapshot('u2');
   assert.deepEqual(reduced, latest.view);
+});
+
+test('跨配置、Partner 换轮和中途加入后，分批 Event 仍与最新 Snapshot 等价', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  const beforeByUser = {
+    host: await h.snapshot('host'),
+    u2: await h.snapshot('u2'),
+    u3: await h.snapshot('u3')
+  };
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let current = await h.snapshot('host');
+  const sessionId = current.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: hostMemberId }
+  });
+  current = await h.snapshot('host');
+  const turnId = current.view.session.activeTurn.turnId;
+  await h.command('host', 'APPEND_ARTIFACT', {
+    context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
+    payload: { operationId: 'event-equivalence-card', text: '共享素材' }
+  });
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('u2', 'POST_PARTNER_MESSAGE', {
+    context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' }, payload: { text: '事件等价性' }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
+  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
+  await h.command('u4', 'JOIN_ROOM', { payload: { nickName: '旁观者' } });
+
+  for (const userId of ['host', 'u2', 'u3']) {
+    const reduced = await reduceFromSnapshot(h, userId, beforeByUser[userId]);
+    const latest = await h.snapshot(userId);
+    assert.deepEqual(reduced, latest.view, `${userId} 的 Event 还原结果必须等于 Snapshot`);
+    assert.equal(JSON.stringify(latest.view).includes('commitSeq'), false,
+      '存储提交水位不属于 MemberView 协议字段');
+  }
+});
+
+test('Spy 分牌后的公开 Event + 最终 ActorView 可完整恢复每个人的私密视图', async () => {
+  const h = createHarness({ wordPairPicker: () => ({
+    id: 'fixed', civilianWord: '白板', civilianBlurb: '民词', spyWord: '黑板', spyBlurb: '卧底词'
+  }) });
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'SPY' } });
+  const beforeByUser = {
+    host: await h.snapshot('host'),
+    u2: await h.snapshot('u2'),
+    u3: await h.snapshot('u3')
+  };
+  const sessionId = beforeByUser.host.view.session.sessionId;
+  await h.command('host', 'START_SPY_GAME', { context: { sessionId } });
+
+  const privateRoles = [];
+  for (const userId of ['host', 'u2', 'u3']) {
+    const reduced = await reduceFromSnapshot(h, userId, beforeByUser[userId], 2);
+    const latest = await h.snapshot(userId);
+    assert.deepEqual(reduced, latest.view);
+    privateRoles.push(reduced.actor.privateModeState.role);
+  }
+  assert.equal(privateRoles.filter((role) => role === 'spy').length, 1);
 });
 
 test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
@@ -330,4 +428,24 @@ test('手动 refresh 遇到终态成员错误时立即断开并发布错误状�
   assert.equal(client.getState().status, 'DISCONNECTED');
   assert.equal(client.getState().roomId, null);
   assert.equal(client.getState().error.errCode, 'NOT_MEMBER');
+  assert.equal(client.getState().error.roomId, '12345678');
+});
+
+test('写指令返回终态成员错误时不等待下一轮 poll，立即关闭旧 View', async () => {
+  const view = { room: { roomId: '12345678' }, session: null,
+    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
+    sync: async () => null,
+    dispatch: async () => ({ ok: false, errCode: 'NOT_MEMBER', errMsg: '已经被移出' })
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+  await client.open();
+  const result = await client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
+  assert.equal(result.errCode, 'NOT_MEMBER');
+  assert.equal(client.getView(), null);
+  assert.equal(client.getState().status, 'DISCONNECTED');
+  assert.equal(client.getState().error.roomId, '12345678');
 });

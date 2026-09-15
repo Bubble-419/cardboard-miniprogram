@@ -191,6 +191,7 @@ Page(withPageInteractionLock({
     specialMoveUsedThisTurn: false,
     currentRound: 1,
     sessionId: '',
+    turnId: '',
     roundSummaries: [],
     displayRoundSummaries: [],
     filteredPlayerIndex: null,
@@ -1912,6 +1913,13 @@ Page(withPageInteractionLock({
     const closingStep = roomState.partnerClosingStep || CLOSING_STEP_RUNE;
     const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
     const sessionId = roomState.sessionId || '';
+    const turnId = roomState.progress && roomState.progress.domainTurnId
+      || result.view && result.view.session && result.view.session.activeTurn
+        && result.view.session.activeTurn.turnId
+      || result.view && result.view.session && result.view.session.publicModeState
+        && result.view.session.publicModeState.closing
+        && result.view.session.publicModeState.closing.sourceTurnId
+      || '';
     const playerChanged = player.currentPlayerIndex !== this.data.currentPlayerIndex;
     const phaseChanged = roomPhase !== this.data.gamepagePhase;
     const roundChanged = currentRound !== this.data.currentRound;
@@ -2114,6 +2122,7 @@ Page(withPageInteractionLock({
       closingStep,
       currentRound,
       sessionId,
+      turnId,
       // 评分人数来自场次参与者快照，不能被中途进入房间的观察者放大。
       totalRequired: Math.max(0, Number(roomState.totalRequired) || 0),
       roundSummaries,
@@ -2436,6 +2445,12 @@ Page(withPageInteractionLock({
       if (isClosingPhase(roomPhase)) this._avatarTimerTurnKey = '';
     }
     const applyPatchCallback = () => {
+      // 只有 View 层完成本次 setData 后才替换点击令牌，避免旧按钮误操作新 Turn。
+      this._renderedPartnerContext = Object.freeze({
+        sessionId,
+        turnId,
+        workflowStep: isDiscussionPhase(roomPhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN'
+      });
       this._hydrateCloudRoundMedia(
         roundContent,
         patch.displayRoundSummaries,
@@ -2680,11 +2695,27 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || '';
     if (!roomId || !type) return { ok: false, errMsg: '缺少房间或命令' };
     try {
-      return await dispatchRoomCommand(type, payload || {}, null, { roomId });
+      const context = dispatchOpts && dispatchOpts.context
+        ? dispatchOpts.context
+        : this._partnerTurnContext();
+      return await dispatchRoomCommand(type, payload || {}, context, { roomId });
     } catch (e) {
       console.warn('partner command', type, e);
       return { ok: false, errMsg: (e && e.errMsg) || (e && e.message) || '命令失败' };
     }
+  },
+
+  _partnerTurnContext(includeWorkflowStep) {
+    const rendered = this._renderedPartnerContext;
+    const context = {
+      sessionId: rendered && rendered.sessionId || this.data.sessionId || '',
+      turnId: rendered && rendered.turnId || this.data.turnId || ''
+    };
+    if (includeWorkflowStep) {
+      context.workflowStep = rendered && rendered.workflowStep
+        || (isDiscussionPhase(this.data.gamepagePhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN');
+    }
+    return context;
   },
 
   _captureReviewMyPlayerIndex(members) {
@@ -4233,7 +4264,7 @@ Page(withPageInteractionLock({
     try {
       const result = await dispatchRoomCommand('SUBMIT_PARTNER_SCORE', {
         scoreHalfSteps: toHalfSteps(score)
-      });
+      }, this._partnerTurnContext());
       if (result.ok !== true) {
         this._pendingScore = null;
         this._scoreSubmitting = false;
@@ -4534,7 +4565,11 @@ Page(withPageInteractionLock({
     const phase = isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play';
     this.setData({ expressSending: true });
     try {
-      const result = await dispatchRoomCommand('POST_PARTNER_MESSAGE', { text });
+      const result = await dispatchRoomCommand(
+        'POST_PARTNER_MESSAGE',
+        { text },
+        this._partnerTurnContext(true)
+      );
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '发送失败', icon: 'none' });
         return;
@@ -5471,7 +5506,9 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '请等待房主操作', icon: 'none' });
       return;
     }
-    const result = await dispatchRoomCommand('ADVANCE_PARTNER_CLOSING', {});
+    const result = await dispatchRoomCommand('ADVANCE_PARTNER_CLOSING', {}, {
+      sessionId: this.data.sessionId || ''
+    });
     if (!result || result.ok !== true) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
@@ -5527,7 +5564,9 @@ Page(withPageInteractionLock({
       return;
     }
     const roomId = this.data.roomId;
-    const result = await dispatchRoomCommand('COMPLETE_PARTNER_SESSION', {});
+    const result = await dispatchRoomCommand('COMPLETE_PARTNER_SESSION', {}, {
+      sessionId: this.data.sessionId || ''
+    });
     if (!result || result.ok !== true) {
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
