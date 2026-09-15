@@ -113,3 +113,40 @@ test('CloudBase 命令事务清理指向不存在房间的当前房间索引', a
   assert.equal(activeRoomId, null);
   assert.equal(documents.has(activeKey), false);
 });
+
+test('CloudBase 当前房间查询只读取 active 与 room 文档', async () => {
+  const accessedCollections = [];
+  const documents = new Map([
+    [`${COLLECTIONS.active}:${docId('host')}`, {
+      roomId: '12345678', userId: 'host', memberId: 'member-host'
+    }],
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', lifecycle: 'OPEN',
+      members: [{ userId: 'host', memberId: 'member-host' }]
+    }]
+  ]);
+  const transaction = {
+    collection(name) {
+      accessedCollections.push(name);
+      return {
+        doc(id) {
+          return {
+            async get() {
+              const data = documents.get(`${name}:${id}`);
+              if (!data) throw Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+              return { data };
+            }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({
+    db: { runTransaction: (callback) => callback(transaction) }
+  });
+
+  assert.deepEqual(await repo.findActiveRoom('host'), {
+    roomId: '12345678', memberId: 'member-host'
+  });
+  assert.deepEqual(accessedCollections, [COLLECTIONS.active, COLLECTIONS.rooms]);
+});

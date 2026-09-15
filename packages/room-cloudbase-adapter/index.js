@@ -275,9 +275,11 @@ function createCloudBaseRoomRepository(deps) {
     return db.runTransaction(async (transaction) => {
       const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
       if (!active) return null;
-      const aggregate = await loadAggregate(transaction, active.roomId);
-      const member = aggregate && aggregate.room.lifecycle === 'OPEN'
-        && (aggregate.room.members || []).find((item) => item.userId === userId);
+      // current 查询只需验证“用户索引 -> 房间成员”这一条引用。
+      // 不加载完整聚合，避免无谓依赖场次、事实集合及其复合索引，也避免在事务内并发查询。
+      const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
+      const member = room && room.lifecycle === 'OPEN'
+        && (room.members || []).find((item) => item.userId === userId);
       return member ? { roomId: active.roomId, memberId: member.memberId }
         : { dangling: true, roomId: active.roomId };
     });

@@ -4000,8 +4000,8 @@ var require_room_cloudbase_adapter = __commonJS({
         return db2.runTransaction(async (transaction) => {
           const active = await safeGet2(transaction, COLLECTIONS2.active, docId2(userId));
           if (!active) return null;
-          const aggregate = await loadAggregate(transaction, active.roomId);
-          const member = aggregate && aggregate.room.lifecycle === "OPEN" && (aggregate.room.members || []).find((item) => item.userId === userId);
+          const room = await safeGet2(transaction, COLLECTIONS2.rooms, active.roomId);
+          const member = room && room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === userId);
           return member ? { roomId: active.roomId, memberId: member.memberId } : { dangling: true, roomId: active.roomId };
         });
       }
