@@ -10,6 +10,11 @@ const {
   getOptionalProfileForRoom,
   buildRoomJoinPayload
 } = require('../../../utils/wxUserAvatar');
+const {
+  isCloudFileId,
+  sanitizeImageSrc,
+  resolveCloudDisplayUrl
+} = require('../../../utils/cloudDisplayUrl');
 const { AVATAR_IMAGES } = require('../../../utils/avatars');
 const {
   handleRoomGoneFromResult,
@@ -231,6 +236,7 @@ Page(withPageInteractionLock({
         timeLabel: isHost ? '创建时间' : '加入时间',
         ...userPatch
       });
+      this._hydrateCloudAvatar(me && (me.avatarFileID || me.avatarUrl), ['userAvatarUrl']);
     } catch (err) {
       console.error('loadJoinedRoomState fail', err);
       if (roomId) {
@@ -254,8 +260,12 @@ Page(withPageInteractionLock({
       timeLabel: '创建/加入时间',
       // 保留微信授权头像昵称，不因离开房间回到默认态
       userNickName: (stored && stored.nickName) || this.data.userNickName || '微信用户',
-      userAvatarUrl: (stored && stored.avatarUrl) || this.data.userAvatarUrl || DEFAULT_AVATAR
+      userAvatarUrl: sanitizeImageSrc(
+        stored && (stored.avatarFileID || stored.avatarUrl),
+        this.data.userAvatarUrl || DEFAULT_AVATAR
+      ) || DEFAULT_AVATAR
     });
+    this._hydrateCloudAvatar(stored && (stored.avatarFileID || stored.avatarUrl), ['userAvatarUrl']);
   },
 
   _setJoinedFallbackState(roomId) {
@@ -285,7 +295,8 @@ Page(withPageInteractionLock({
         userAvatarUrl: DEFAULT_AVATAR
       };
     }
-    let avatarUrl = member.avatarUrl || '';
+    const raw = member.avatarFileID || member.avatarUrl || '';
+    let avatarUrl = sanitizeImageSrc(raw, '');
     if (!avatarUrl && member.avatarIndex != null) {
       avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
     }
@@ -295,13 +306,30 @@ Page(withPageInteractionLock({
     };
   },
 
+  _hydrateCloudAvatar(fileID, fields) {
+    if (!isCloudFileId(fileID)) return;
+    const keys = Array.isArray(fields) ? fields : [fields || 'userAvatarUrl'];
+    resolveCloudDisplayUrl(fileID).then((display) => {
+      if (!display) return;
+      const patch = {};
+      keys.forEach((field) => {
+        patch[field] = display;
+      });
+      this.setData(patch);
+    }).catch((e) => {
+      console.warn('hydrateCloudAvatar fail', e);
+    });
+  },
+
   _restoreUserProfile() {
     const stored = getStoredProfile();
     if (!stored) return;
+    const raw = stored.avatarFileID || stored.avatarUrl || '';
     this.setData({
-      userAvatarUrl: stored.avatarUrl || this.data.userAvatarUrl || DEFAULT_AVATAR,
+      userAvatarUrl: sanitizeImageSrc(raw, this.data.userAvatarUrl || DEFAULT_AVATAR) || DEFAULT_AVATAR,
       userNickName: stored.nickName || this.data.userNickName || '微信用户'
     });
+    this._hydrateCloudAvatar(raw, ['userAvatarUrl']);
   },
 
   _markHomeProfileAuthPrompted() {
@@ -326,11 +354,13 @@ Page(withPageInteractionLock({
     }
 
     beginUserAuthFlow();
+    const rawAvatar = stored && (stored.avatarFileID || stored.avatarUrl);
     this.setData({
       showProfileAuth: true,
       authDraftNick: (stored && stored.nickName) || '',
-      authDraftAvatar: (stored && stored.avatarUrl) || DEFAULT_AVATAR
+      authDraftAvatar: sanitizeImageSrc(rawAvatar, DEFAULT_AVATAR) || DEFAULT_AVATAR
     });
+    this._hydrateCloudAvatar(rawAvatar, ['authDraftAvatar']);
   },
 
   onProfileAuthAvatarTap() {
@@ -344,8 +374,8 @@ Page(withPageInteractionLock({
       const profile = applyChooseAvatarEvent(e && e.detail);
       if (!profile) return;
       this.setData({
-        authDraftAvatar: profile.avatarUrl,
-        userAvatarUrl: profile.avatarUrl,
+        authDraftAvatar: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
+        userAvatarUrl: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
         userNickName: profile.nickName || this.data.authDraftNick || this.data.userNickName || '微信用户',
         authDraftNick: profile.nickName || this.data.authDraftNick || ''
       });
@@ -377,8 +407,9 @@ Page(withPageInteractionLock({
     this.setData({
       showProfileAuth: false,
       userNickName: next.nickName || '微信用户',
-      userAvatarUrl: next.avatarUrl || DEFAULT_AVATAR
+      userAvatarUrl: sanitizeImageSrc(next.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR
     });
+    this._hydrateCloudAvatar(next.avatarUrl, ['userAvatarUrl']);
     forceEndUserAuthFlow();
   },
 
@@ -400,7 +431,7 @@ Page(withPageInteractionLock({
       const profile = applyChooseAvatarEvent(e.detail);
       if (!profile) return;
       this.setData({
-        userAvatarUrl: profile.avatarUrl,
+        userAvatarUrl: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
         userNickName: profile.nickName || this.data.userNickName || '微信用户'
       });
     } finally {

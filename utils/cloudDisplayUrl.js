@@ -1,6 +1,7 @@
 /**
  * 共享云环境下 <image> 不能直接吃 cloud://（尤其他人上传的文件）。
- * 展示优先 downloadFile 成本地路径（不依赖 downloadFile 合法域名），失败再 getTempFileURL。
+ * 展示优先 getTempFileURL；仍缺时再 downloadFile 成本地路径。
+ * 客户端都失败时走云函数（管理员权限，绕过「仅创建者可读」）。
  * 缓存并在过期/裂图时刷新。
  */
 
@@ -46,6 +47,15 @@ function isDisplayableImageUrl(url) {
   if (!url || typeof url !== 'string') return false;
   if (isCloudFileId(url)) return false;
   return isLocalTempPath(url) || isHttpsUrl(url) || isPackagedPath(url);
+}
+
+/** <image src> 可用地址；cloud:// 必须先 resolve，不能直接绑定 */
+function sanitizeImageSrc(url, fallback) {
+  if (isDisplayableImageUrl(url)) {
+    return isHttpsUrl(url) ? normalizeWxAvatarUrl(url) : url;
+  }
+  if (isDisplayableImageUrl(fallback)) return fallback;
+  return '';
 }
 
 function cacheValid(entry) {
@@ -95,31 +105,72 @@ async function downloadToLocal(fileID) {
   return (res && res.tempFilePath) || '';
 }
 
+function cacheHttps(fileID, tempFileURL) {
+  if (!fileID || !tempFileURL) return;
+  cache.set(fileID, {
+    displayUrl: tempFileURL,
+    savedAt: Date.now(),
+    via: 'https'
+  });
+}
+
+function applyTempFileList(requestedIds, fileList) {
+  (fileList || []).forEach((item, index) => {
+    const requestedId = requestedIds[index];
+    const responseId = item && item.fileID;
+    const okStatus = item && (item.status == null || Number(item.status) === 0);
+    const tempFileURL = item && item.tempFileURL;
+    if (okStatus && tempFileURL) {
+      if (requestedId) cacheHttps(requestedId, tempFileURL);
+      if (responseId && responseId !== requestedId) cacheHttps(responseId, tempFileURL);
+      return;
+    }
+    console.warn(
+      'getTempFileURL item fail',
+      requestedId || responseId,
+      item && (item.errMsg || item.status)
+    );
+  });
+}
+
+function toTempFileListArg(fileIds) {
+  return fileIds.map((fileID) => ({ fileID, maxAge: 7200 }));
+}
+
 async function fetchHttpsFallback(fileIds) {
-  const pending = (fileIds || []).filter(Boolean);
+  const pending = (fileIds || []).filter((id) => id && !cacheValid(cache.get(id)));
   if (!pending.length) return;
   await waitCloudReady();
   const cloud = getSharedCloud();
   if (!cloud || typeof cloud.getTempFileURL !== 'function') return;
   let fileList = [];
   try {
-    const res = await cloud.getTempFileURL({ fileList: pending });
+    const res = await cloud.getTempFileURL({ fileList: toTempFileListArg(pending) });
     fileList = (res && res.fileList) || [];
   } catch (e) {
     console.warn('getTempFileURL failed', e);
   }
-  fileList.forEach((item) => {
-    const id = item && item.fileID;
-    if (!id) return;
-    const okStatus = item.status == null || Number(item.status) === 0;
-    if (okStatus && item.tempFileURL) {
-      cache.set(id, {
-        displayUrl: item.tempFileURL,
-        savedAt: Date.now(),
-        via: 'https'
-      });
-    }
-  });
+  applyTempFileList(pending, fileList);
+}
+
+async function fetchHttpsViaCloudFunction(fileIds) {
+  const pending = (fileIds || []).filter((id) => id && !cacheValid(cache.get(id)));
+  if (!pending.length) return;
+  await waitCloudReady();
+  let fileList = [];
+  try {
+    const { callCloudFunction } = require('./cloudApi');
+    const res = await callCloudFunction('roomMedia', {
+      action: 'tempUrls',
+      fileList: pending
+    });
+    const result = res && (res.result || res);
+    fileList = (result && result.fileList) || [];
+  } catch (e) {
+    console.warn('cloudFunction tempUrls failed', e);
+    return;
+  }
+  applyTempFileList(pending, fileList);
 }
 
 async function fetchTempAndCache(fileIds, options = {}) {
@@ -128,34 +179,14 @@ async function fetchTempAndCache(fileIds, options = {}) {
   const pending = fileIds.filter((id) => force || !cacheValid(cache.get(id)));
   if (!pending.length) return;
 
-  const needHttps = [];
-  if (preferLocal) {
-    for (let i = 0; i < pending.length; i += 1) {
-      const id = pending[i];
-      try {
-        const local = await downloadToLocal(id);
-        if (local) {
-          cache.set(id, {
-            displayUrl: local,
-            savedAt: Date.now(),
-            via: 'local'
-          });
-        } else {
-          needHttps.push(id);
-        }
-      } catch (e) {
-        console.warn('downloadFile cloud image fail', id, e);
-        needHttps.push(id);
-      }
-    }
-    if (needHttps.length) await fetchHttpsFallback(needHttps);
-    return;
-  }
-
   await fetchHttpsFallback(pending);
-  const stillMissing = pending.filter((id) => !cacheValid(cache.get(id)));
-  for (let i = 0; i < stillMissing.length; i += 1) {
-    const id = stillMissing[i];
+
+  const localTargets = pending.filter((id) => {
+    if (preferLocal && force) return true;
+    return !cacheValid(cache.get(id));
+  });
+  for (let i = 0; i < localTargets.length; i += 1) {
+    const id = localTargets[i];
     try {
       const local = await downloadToLocal(id);
       if (local) {
@@ -166,9 +197,14 @@ async function fetchTempAndCache(fileIds, options = {}) {
         });
       }
     } catch (e) {
-      console.warn('downloadFile cloud image fail', id, e);
+      if (!cacheValid(cache.get(id))) {
+        console.warn('downloadFile cloud image fail', id, e);
+      }
     }
   }
+
+  const stillMissing = pending.filter((id) => !cacheValid(cache.get(id)));
+  if (stillMissing.length) await fetchHttpsViaCloudFunction(stillMissing);
 }
 
 /**
@@ -271,6 +307,7 @@ async function resolveRoundContentMedia(roundContent, options) {
 module.exports = {
   isCloudFileId,
   isDisplayableImageUrl,
+  sanitizeImageSrc,
   normalizeWxAvatarUrl,
   invalidateCloudDisplayUrl,
   resolveCloudDisplayUrl,

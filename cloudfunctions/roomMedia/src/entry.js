@@ -42,12 +42,30 @@ async function tempUrl(fileRef) {
   return response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || '';
 }
 
+async function tempUrls(fileList) {
+  const ids = (fileList || [])
+    .filter((id) => typeof id === 'string' && id.indexOf('cloud://') === 0)
+    .slice(0, 50);
+  if (!ids.length) return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 不合法' };
+  const response = await cloud.getTempFileURL({ fileList: ids });
+  return { ok: true, fileList: (response && response.fileList) || [] };
+}
+
 /** 二维码属于可再生媒体，不改变房间业务版本。 */
 exports.main = async (event) => {
+  const action = String(event && event.action || 'qrcode');
+  if (action === 'tempUrls') {
+    try {
+      return await tempUrls(event.fileList);
+    } catch (e) {
+      console.error('roomMedia tempUrls error', e);
+      return { ok: false, errCode: e.code || 'INTERNAL_ERROR', errMsg: e.message || 'tempUrls failed' };
+    }
+  }
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
   const roomId = String(event && event.roomId || '');
-  if (!roomId || String(event && event.action || 'qrcode') !== 'qrcode') {
+  if (!roomId || action !== 'qrcode') {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId/action 不合法' };
   }
   try {

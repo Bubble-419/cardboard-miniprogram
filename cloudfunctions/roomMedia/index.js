@@ -4101,11 +4101,26 @@ async function tempUrl(fileRef) {
   const response = await cloud.getTempFileURL({ fileList: [fileRef] });
   return response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || "";
 }
+async function tempUrls(fileList) {
+  const ids = (fileList || []).filter((id) => typeof id === "string" && id.indexOf("cloud://") === 0).slice(0, 50);
+  if (!ids.length) return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "fileList \u4E0D\u5408\u6CD5" };
+  const response = await cloud.getTempFileURL({ fileList: ids });
+  return { ok: true, fileList: response && response.fileList || [] };
+}
 exports.main = async (event) => {
+  const action = String(event && event.action || "qrcode");
+  if (action === "tempUrls") {
+    try {
+      return await tempUrls(event.fileList);
+    } catch (e) {
+      console.error("roomMedia tempUrls error", e);
+      return { ok: false, errCode: e.code || "INTERNAL_ERROR", errMsg: e.message || "tempUrls failed" };
+    }
+  }
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
   const roomId = String(event && event.roomId || "");
-  if (!roomId || String(event && event.action || "qrcode") !== "qrcode") {
+  if (!roomId || action !== "qrcode") {
     return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "roomId/action \u4E0D\u5408\u6CD5" };
   }
   try {
