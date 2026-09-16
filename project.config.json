@@ -31,88 +31,88 @@
   "packOptions": {
     "ignore": [
       {
-        "type": "folder",
-        "value": "prd"
+        "value": "prd",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "node_modules"
+        "value": "node_modules",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": ".pnpm-store"
+        "value": ".pnpm-store",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "tests"
+        "value": "tests",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "docs"
+        "value": "docs",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "scripts"
+        "value": "scripts",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "cloud-common"
+        "value": "cloud-common",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": ".vscode"
+        "value": ".vscode",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "packages/room-domain"
+        "value": "packages/room-domain",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "packages/room-application"
+        "value": "packages/room-application",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "packages/room-cloudbase-adapter"
+        "value": "packages/room-cloudbase-adapter",
+        "type": "folder"
       },
       {
-        "type": "suffix",
-        "value": ".md"
+        "value": ".md",
+        "type": "suffix"
       },
       {
-        "type": "suffix",
-        "value": ".docx"
+        "value": ".docx",
+        "type": "suffix"
       },
       {
-        "type": "glob",
-        "value": "**/.DS_Store"
+        "value": "**/.DS_Store",
+        "type": "glob"
       },
       {
-        "type": "glob",
-        "value": "assets/halliGalli/*.png"
+        "value": "assets/halliGalli/*.png",
+        "type": "glob"
       },
       {
-        "type": "file",
-        "value": "bg-card-demo.html"
+        "value": "bg-card-demo.html",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "pnpm-lock.yaml"
+        "value": "pnpm-lock.yaml",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "pnpm-workspace.yaml"
+        "value": "pnpm-workspace.yaml",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "package.json"
+        "value": "package.json",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": ".gitignore"
+        "value": ".gitignore",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "assets/icons/aaatest.png"
+        "value": "assets/icons/aaatest.png",
+        "type": "file"
       }
     ],
     "include": []
