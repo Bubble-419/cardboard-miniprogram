@@ -42,11 +42,39 @@ async function tempUrl(fileRef) {
   return response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || '';
 }
 
-async function tempUrls(fileList) {
-  const ids = (fileList || [])
-    .filter((id) => typeof id === 'string' && id.indexOf('cloud://') === 0)
-    .slice(0, 50);
-  if (!ids.length) return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 不合法' };
+function collectCloudFileRefs(value, refs = new Set()) {
+  if (typeof value === 'string') {
+    if (value.indexOf('cloud://') === 0) refs.add(value);
+    return refs;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectCloudFileRefs(item, refs));
+    return refs;
+  }
+  if (value && typeof value === 'object') {
+    Object.keys(value).forEach((key) => collectCloudFileRefs(value[key], refs));
+  }
+  return refs;
+}
+
+async function tempUrls(fileList, userId) {
+  if (!Array.isArray(fileList) || fileList.length < 1 || fileList.length > 50
+    || fileList.some((id) => typeof id !== 'string' || id.indexOf('cloud://') !== 0)) {
+    return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 不合法' };
+  }
+  const ids = Array.from(new Set(fileList));
+  const current = await app.readCurrentRoom({ userId });
+  if (!current.ok) return current;
+  if (!current.roomId) {
+    return { ok: false, errCode: 'NOT_MEMBER', errMsg: '当前没有可访问的房间' };
+  }
+  const snapshot = await app.readSnapshot(current.roomId, { userId });
+  if (!snapshot.ok) return snapshot;
+  // 只允许把当前用户 MemberView 已经可见的媒体引用转换为临时 URL，避免管理员云函数越权签名任意文件。
+  const allowedRefs = collectCloudFileRefs(snapshot.view);
+  if (ids.some((id) => !allowedRefs.has(id))) {
+    return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 包含不可访问的文件' };
+  }
   const response = await cloud.getTempFileURL({ fileList: ids });
   return { ok: true, fileList: (response && response.fileList) || [] };
 }
@@ -54,16 +82,17 @@ async function tempUrls(fileList) {
 /** 二维码属于可再生媒体，不改变房间业务版本。 */
 exports.main = async (event) => {
   const action = String(event && event.action || 'qrcode');
+  const wxContext = cloud.getWXContext();
+  const userId = wxContext.OPENID || '';
+  if (!userId) return { ok: false, errCode: 'UNAUTHENTICATED', errMsg: '未登录' };
   if (action === 'tempUrls') {
     try {
-      return await tempUrls(event.fileList);
+      return await tempUrls(event && event.fileList, userId);
     } catch (e) {
       console.error('roomMedia tempUrls error', e);
       return { ok: false, errCode: e.code || 'INTERNAL_ERROR', errMsg: e.message || 'tempUrls failed' };
     }
   }
-  const wxContext = cloud.getWXContext();
-  const userId = wxContext.OPENID || '';
   const roomId = String(event && event.roomId || '');
   if (!roomId || action !== 'qrcode') {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId/action 不合法' };

@@ -4101,24 +4101,52 @@ async function tempUrl(fileRef) {
   const response = await cloud.getTempFileURL({ fileList: [fileRef] });
   return response && response.fileList && response.fileList[0] && response.fileList[0].tempFileURL || "";
 }
-async function tempUrls(fileList) {
-  const ids = (fileList || []).filter((id) => typeof id === "string" && id.indexOf("cloud://") === 0).slice(0, 50);
-  if (!ids.length) return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "fileList \u4E0D\u5408\u6CD5" };
+function collectCloudFileRefs(value, refs = /* @__PURE__ */ new Set()) {
+  if (typeof value === "string") {
+    if (value.indexOf("cloud://") === 0) refs.add(value);
+    return refs;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectCloudFileRefs(item, refs));
+    return refs;
+  }
+  if (value && typeof value === "object") {
+    Object.keys(value).forEach((key) => collectCloudFileRefs(value[key], refs));
+  }
+  return refs;
+}
+async function tempUrls(fileList, userId) {
+  if (!Array.isArray(fileList) || fileList.length < 1 || fileList.length > 50 || fileList.some((id) => typeof id !== "string" || id.indexOf("cloud://") !== 0)) {
+    return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "fileList \u4E0D\u5408\u6CD5" };
+  }
+  const ids = Array.from(new Set(fileList));
+  const current = await app.readCurrentRoom({ userId });
+  if (!current.ok) return current;
+  if (!current.roomId) {
+    return { ok: false, errCode: "NOT_MEMBER", errMsg: "\u5F53\u524D\u6CA1\u6709\u53EF\u8BBF\u95EE\u7684\u623F\u95F4" };
+  }
+  const snapshot = await app.readSnapshot(current.roomId, { userId });
+  if (!snapshot.ok) return snapshot;
+  const allowedRefs = collectCloudFileRefs(snapshot.view);
+  if (ids.some((id) => !allowedRefs.has(id))) {
+    return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "fileList \u5305\u542B\u4E0D\u53EF\u8BBF\u95EE\u7684\u6587\u4EF6" };
+  }
   const response = await cloud.getTempFileURL({ fileList: ids });
   return { ok: true, fileList: response && response.fileList || [] };
 }
 exports.main = async (event) => {
   const action = String(event && event.action || "qrcode");
+  const wxContext = cloud.getWXContext();
+  const userId = wxContext.OPENID || "";
+  if (!userId) return { ok: false, errCode: "UNAUTHENTICATED", errMsg: "\u672A\u767B\u5F55" };
   if (action === "tempUrls") {
     try {
-      return await tempUrls(event.fileList);
+      return await tempUrls(event && event.fileList, userId);
     } catch (e) {
       console.error("roomMedia tempUrls error", e);
       return { ok: false, errCode: e.code || "INTERNAL_ERROR", errMsg: e.message || "tempUrls failed" };
     }
   }
-  const wxContext = cloud.getWXContext();
-  const userId = wxContext.OPENID || "";
   const roomId = String(event && event.roomId || "");
   if (!roomId || action !== "qrcode") {
     return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "roomId/action \u4E0D\u5408\u6CD5" };
