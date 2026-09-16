@@ -53,8 +53,6 @@ function pageMembers(view, historical) {
   return source.slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
     _id: member.memberId,
     memberId: member.memberId,
-    // 页面只拿到不可反查 openid 的 memberId。
-    userId: member.memberId,
     playerIndex: member.seatNo,
     role: member.memberId === view.room.hostMemberId ? 'GOD' : 'PLAYER',
     nickName: member.nickName,
@@ -170,6 +168,7 @@ function spyPageState(view, session) {
     speakTurnStartedAt: state.speakTurnStartedAt,
     voteSessionId: state.voteSessionId,
     voteStartedAt: state.voteStartedAt,
+    voteDeadlineAt: state.voteDeadlineAt,
     votedCount: state.votedCount,
     requiredVoteCount: state.requiredVoteCount,
     voteStatus: {
@@ -177,7 +176,9 @@ function spyPageState(view, session) {
       totalVoters: state.requiredVoteCount || 0,
       votedPlayerIndexes: view.actor && view.actor.voteStatus.submitted ? [actorSeat] : []
     },
-    voteDeadlineMs: 2 * 60 * 1000,
+    voteDeadlineMs: state.voteDeadlineAt && state.voteStartedAt
+      ? state.voteDeadlineAt - state.voteStartedAt
+      : null,
     tieBreak: state.tieBreak,
     tiedPlayerIndexes: (result.tiedMemberIds || []).map((memberId) => memberSeat(view, memberId)),
     eliminatedPlayerIndex: memberSeat(view, result.eliminatedMemberId),
@@ -249,8 +250,7 @@ function projectPageSnapshot(view, clientState) {
     roomState.scoredCount = turn && turn.scoredCount || 0;
     roomState.totalRequired = turn && turn.requiredScoreCount || 0;
     roomState.progress = { scoredCount: roomState.scoredCount, requiredScoreCount: roomState.totalRequired,
-      // 兼容现有页面的显示键；真实并发上下文始终使用 activeTurn.turnId。
-      turnId: turn && `turn_r${turn.ordinal}_s${activeMember && activeMember.playerIndex}`,
+      turnId: turn && turn.turnId,
       domainTurnId: turn && turn.turnId };
     roomState.myScoreHalfSteps = view.actor.scoreStatus.submitted ? view.actor.scoreStatus.scoreHalfSteps : null;
     roomState.myScore = roomState.myScoreHalfSteps == null ? null : roomState.myScoreHalfSteps / 2;

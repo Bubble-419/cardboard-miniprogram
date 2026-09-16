@@ -1,10 +1,9 @@
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
-const { openSubAwait } = require('../../../utils/subAwaitRoutes');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { dispatchRoomCommand, getRoomPageSnapshot } = require('../../../modules/room-session/index');
+const { dispatchRoomCommand, getRoomPageSnapshot, bindPageToRoomSession, unbindPageFromRoomSession, canRoomCommand, getActiveRoomSession } = require('../../../modules/room-session/index');
 const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
@@ -98,13 +97,14 @@ Page(withPageInteractionLock({
     });
 
     if (!isHost) {
-      this._redirectNonHostToAwait();
+      goRoomPage(roomId);
     }
   },
 
   onReady() {
     this._readyOnce = true;
     if (!this._pageAlive || !this.data.roomId || !this.data.isHost) return;
+    this._bindRoomRoute();
     // 先刷房间数据，封面再延后一帧挂载，降低首屏解码压力
     this._scheduleRoomRefresh({ silent: true });
     this._coverLoadTimer = setTimeout(() => {
@@ -133,6 +133,7 @@ Page(withPageInteractionLock({
 
   onUnload() {
     this._pageAlive = false;
+    unbindPageFromRoomSession(this);
     if (this._roomRefreshTimer) {
       clearTimeout(this._roomRefreshTimer);
       this._roomRefreshTimer = null;
@@ -141,6 +142,13 @@ Page(withPageInteractionLock({
       clearTimeout(this._coverLoadTimer);
       this._coverLoadTimer = null;
     }
+  },
+
+  _bindRoomRoute() {
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || '',
+      followNavigation: true
+    }).catch((e) => console.warn('brainstormMode bind room', e));
   },
 
   _scheduleRoomRefresh(opts = {}) {
@@ -186,7 +194,7 @@ Page(withPageInteractionLock({
       });
 
       if (!isHost) {
-        this._redirectNonHostToAwait();
+        goRoomPage(this.data.roomId);
         return;
       }
     } catch (err) {
@@ -197,12 +205,6 @@ Page(withPageInteractionLock({
     } finally {
       this._roomRefreshInFlight = false;
     }
-  },
-
-  _redirectNonHostToAwait() {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
-    openSubAwait(roomId, 'brainstormMode');
   },
 
   onTapMode(e) {
@@ -236,6 +238,11 @@ Page(withPageInteractionLock({
     this.setData({ isSelecting: true });
 
     try {
+      const view = getActiveRoomSession() && getActiveRoomSession().getView();
+      if (view && !canRoomCommand('START_WORKSHOP_SESSION')) {
+        wx.showToast({ title: '当前不能选择模式', icon: 'none' });
+        return;
+      }
       const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, {}, {
         roomId: this.data.roomId
       });
@@ -250,54 +257,6 @@ Page(withPageInteractionLock({
         title: mode.title,
         description: mode.description
       };
-      const targetUrl = `${mode.pagePath}?roomId=${encodeURIComponent(this.data.roomId)}&modeId=${encodeURIComponent(mode.id)}`;
-      const openModePage = () => new Promise((resolve) => {
-        // 谁是卧底：统一 redirectTo，避免与后续跟页叠栈导致不同步
-        if (mode.id === 'spy') {
-          wx.redirectTo({
-            url: targetUrl,
-            success: () => resolve({ ok: true }),
-            fail: (err) => {
-              console.error('redirectTo spy modeIndex fail:', err && err.errMsg, err);
-              wx.showToast({ title: '打开失败，请重试', icon: 'none' });
-              resolve({ ok: false, error: err });
-            }
-          });
-          return;
-        }
-        wx.navigateTo({
-          url: targetUrl,
-          success: () => resolve({ ok: true }),
-          fail: (err) => {
-            const msg = (err && err.errMsg) || '';
-            console.error('navigateTo modeIndex fail:', msg, err);
-            if (/timeout|busy/i.test(msg)) {
-              setTimeout(() => {
-                wx.reLaunch({
-                  url: targetUrl,
-                  success: () => resolve({ ok: true }),
-                  fail: (err2) => {
-                    console.error('reLaunch modeIndex fail:', err2 && err2.errMsg, err2);
-                    wx.showToast({ title: '打开失败，请重试', icon: 'none' });
-                    resolve({ ok: false, error: err2 });
-                  }
-                });
-              }, 320);
-              return;
-            }
-            wx.redirectTo({
-              url: targetUrl,
-              success: () => resolve({ ok: true }),
-              fail: (err2) => {
-                console.error('redirectTo modeIndex fail:', err2 && err2.errMsg, err2);
-                wx.showToast({ title: '打开失败，请重试', icon: 'none' });
-                resolve({ ok: false, error: err2 });
-              }
-            });
-          }
-        });
-      });
-      await openModePage();
     } catch (err) {
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });
     } finally {

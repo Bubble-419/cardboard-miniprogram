@@ -915,7 +915,7 @@ Page(withPageInteractionLock({
     if (!roomId) return;
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || '',
-      followNavigation: false,
+      followNavigation: true,
       onSnapshot(result) {
         try {
         const members = result.members || this.data.members || [];

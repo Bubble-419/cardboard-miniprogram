@@ -61,33 +61,11 @@ Page(withPageInteractionLock({
     });
   },
 
-  _navigateFromSnapshot(snapshot) {
-    const state = snapshot && snapshot.roomState || {};
-    const page = String(state.currentPage || '').toLowerCase();
-    if (page === 'closingstatement') return false;
-    this._stopStatePolling();
-    if (page === 'leaderboard') {
-      openUrl(buildLeaderboardUrl(this.data.roomId, { from: 'closingEnd' }), {
-        immediate: true, preferReLaunch: true
-      });
-      return true;
-    }
-    if (page === 'gamepage') {
-      openUrl(buildGamepageUrl(this.data.roomId, state.currentPlayerIndex || 1, 'partner', {
-        phase: state.partnerGamePhase === 'closing' ? 'closing' : undefined,
-        closingStep: state.partnerClosingStep || undefined
-      }), { immediate: true, preferReLaunch: true });
-      return true;
-    }
-    return false;
-  },
-
   async _refreshVoteStatus() {
     if (!this.data.roomId) return;
     try {
       const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: true });
       this._applyVoteStatus(snapshot);
-      this._navigateFromSnapshot(snapshot);
     } catch (e) {
       console.warn('closingStatement refresh', e);
     }
@@ -98,10 +76,9 @@ Page(withPageInteractionLock({
     if (!this.data.roomId) return;
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId,
-      followNavigation: false,
+      followNavigation: true,
       onSnapshot(snapshot) {
         this._applyVoteStatus(snapshot);
-        this._navigateFromSnapshot(snapshot);
       }
     }).catch((e) => console.warn('closingStatement roomSession', e));
   },
@@ -129,7 +106,6 @@ Page(withPageInteractionLock({
       }
       const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: false });
       this._applyVoteStatus(snapshot);
-      this._navigateFromSnapshot(snapshot);
     } catch (e) {
       console.warn('SUBMIT_PARTNER_CLOSING_VOTE', e);
       wx.showToast({ title: '提交失败', icon: 'none' });

@@ -8,14 +8,12 @@ const {
   buildSpyPageUrl,
   getDefaultSpyCount,
   MIN_PLAYERS,
-  openUrl,
   withSpyRefreshGuard,
   safePageSetData,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
@@ -109,11 +107,6 @@ Page(withPageInteractionLock({
           ? prefetchedResult
           : await fetchRoomDataOrExit(roomId);
         if (this._pageAlive === false || !result || result.ok !== true) return;
-
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spymodeindex',
-          allowHost: true
-        });
 
         if (this._pageAlive === false) return;
 
@@ -236,14 +229,7 @@ Page(withPageInteractionLock({
         this.setData({ starting: false, showLibraryEntry: true });
         return;
       }
-      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
       bumpSpyRoomSession();
-      if (!navigated && this._pageAlive) {
-        this.setData({ starting: false });
-      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '开始失败', icon: 'none' });
       if (this._pageAlive) this.setData({ starting: false, showLibraryEntry: true });

@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, WORKFLOW_GROUPS, LIFECYCLE
+  COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, WORKFLOW_GROUPS, LIFECYCLE, SPY_VOTE_DURATION_MS
 } = require('../room-contracts/index');
 
 function clone(value) {
@@ -225,6 +225,7 @@ function projectPublicView(aggregate) {
       votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
       requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
       voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
+      voteDeadlineAt: spy.voteStartedAt == null ? null : spy.voteStartedAt + SPY_VOTE_DURATION_MS,
       tieBreak: spy.tieBreak === true,
       lastResult: clone(spy.lastResult || null),
       winnerSide: spy.winnerSide || null,

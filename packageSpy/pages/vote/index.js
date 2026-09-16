@@ -5,7 +5,6 @@ const {
   goRoomPage,
   buildSpyPageUrl,
   openUrl,
-  VOTE_ROUND_MS,
   startSpyCountdownTicker,
   withSpyRefreshGuard,
   samePlayerIndex,
@@ -15,7 +14,6 @@ const {
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   buildTiedNames,
   isTieReturnPending,
@@ -112,7 +110,7 @@ Page(withPageInteractionLock({
 
   ensureTicker(startedAt, durationMs) {
     this._voteStartedAt = startedAt;
-    this._voteDuration = durationMs || VOTE_ROUND_MS;
+    this._voteDuration = Number(durationMs) > 0 ? Number(durationMs) : 0;
     if (this._tickTimer) return;
     this._tickTimer = startSpyCountdownTicker(
       this,
@@ -149,10 +147,6 @@ Page(withPageInteractionLock({
           return;
         }
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyvote',
-          allowHost: true
-        });
         const membersWithAvatar = assignAvatarImages(members);
         const memberByIndex = {};
         membersWithAvatar.forEach((m) => {
@@ -212,7 +206,12 @@ Page(withPageInteractionLock({
           if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
 
-        this.ensureTicker(spyGame.voteStartedAt, spyGame.voteDeadlineMs || VOTE_ROUND_MS);
+        const durationMs = spyGame.voteDeadlineAt && spyGame.voteStartedAt
+          ? spyGame.voteDeadlineAt - spyGame.voteStartedAt
+          : spyGame.voteDeadlineMs;
+        if (spyGame.voteStartedAt && Number(durationMs) > 0) {
+          this.ensureTicker(spyGame.voteStartedAt, durationMs);
+        }
       } catch (e) {
         console.warn('spy vote refresh', e);
       }
@@ -302,30 +301,6 @@ Page(withPageInteractionLock({
       if (!this._pageAlive) return;
       this.setData({ hasVoted: true });
       bumpSpyRoomSession();
-      if (result.settled) {
-        openUrl(buildSpyPageUrl('settle', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-        return;
-      }
-      if (result.tied) {
-        const spyGame = Object.assign(
-          { phase: 'speak', tieBreak: true },
-          result.spyGame || {}
-        );
-        if (!this._holdVoteForTieSpeak(spyGame)) {
-          this._goSpeakAfterTie();
-        }
-        return;
-      }
-      if (result.currentPage === 'spyresult' || (result.spyGame && result.spyGame.phase === 'result')) {
-        openUrl(buildSpyPageUrl('result', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-        return;
-      }
       wx.showToast({ title: abstain ? '已弃票，等待其他人' : '已提交，等待其他人', icon: 'success' });
       await this.refresh();
     } catch (e) {

@@ -161,7 +161,17 @@ function createCloudBaseRoomRepository(deps) {
         }
       }
       const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
-      const decision = handler({ aggregate: current, activeRoomId: active && active.roomId, resolvedRoomId });
+      const indexedRoomId = active && active.roomId || null;
+      let activeRoomId = indexedRoomId;
+      if (indexedRoomId) {
+        const activeAggregate = indexedRoomId === resolvedRoomId
+          ? current
+          : await loadAggregate(transaction, indexedRoomId);
+        const member = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
+          && (activeAggregate.room.members || []).find((item) => item.userId === input.actorUserId);
+        if (!member) activeRoomId = null;
+      }
+      const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const receipt = {
         scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash,
@@ -267,8 +277,11 @@ function createCloudBaseRoomRepository(deps) {
       const aggregate = await loadAggregate(transaction, active.roomId);
       const member = aggregate && aggregate.room.lifecycle === 'OPEN'
         && (aggregate.room.members || []).find((item) => item.userId === userId);
-      return member ? { roomId: active.roomId, memberId: member.memberId }
-        : { dangling: true, roomId: active.roomId };
+      if (!member) {
+        await transaction.collection(COLLECTIONS.active).doc(docId(userId)).remove();
+        return null;
+      }
+      return { roomId: active.roomId, memberId: member.memberId };
     });
   }
 

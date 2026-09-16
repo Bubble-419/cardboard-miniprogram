@@ -431,6 +431,30 @@ test('手动 refresh 遇到终态成员错误时立即断开并发布错误状�
   assert.equal(client.getState().error.roomId, '12345678');
 });
 
+test('CREATE_ROOM 不把当前连接的 roomId 发给服务端', async () => {
+  let sent = null;
+  const view = { room: { roomId: '12345678' }, session: null,
+    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
+      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } }),
+    dispatch: async (envelope) => {
+      sent = envelope;
+      return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'CREATE_ROOM 不接受客户端 roomId', retryable: false };
+    }
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+  await client.open();
+  assert.equal(client.getState().roomId, '12345678');
+  await client.dispatch({ type: 'CREATE_ROOM', roomId: '12345678', payload: { nickName: '房主' } });
+  assert.equal(sent.type, 'CREATE_ROOM');
+  assert.equal(sent.roomId, '');
+});
+
 test('写指令返回终态成员错误时不等待下一轮 poll，立即关闭旧 View', async () => {
   const view = { room: { roomId: '12345678' }, session: null,
     actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };

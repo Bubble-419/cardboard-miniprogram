@@ -5,6 +5,7 @@ const SCHEMA_VERSION = 3;
 const VIEW_SCHEMA_VERSION = 1;
 const EVENT_SCHEMA_VERSION = 1;
 const MAX_SEATS = 6;
+const SPY_VOTE_DURATION_MS = 2 * 60 * 1000;
 
 const LIFECYCLE = Object.freeze({ OPEN: 'OPEN', DISSOLVED: 'DISSOLVED' });
 const SESSION_STATUS = Object.freeze({
@@ -414,5 +415,6 @@ function stableStringify(value) {
 }
 
 module.exports = { PROTOCOL_VERSION, SCHEMA_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_SEATS,
+  SPY_VOTE_DURATION_MS,
   LIFECYCLE, SESSION_STATUS, MODE, WORKFLOW_STEP, WORKFLOW_GROUPS, COMMAND_TYPES, EVENT_TYPES, ERR, ERR_MSG, COMMAND_CONTEXT,
   COMMAND_PAYLOAD_KEYS, fail, okResult, isNonEmptyString, normalizeMode, validateCommandEnvelope, stableStringify };

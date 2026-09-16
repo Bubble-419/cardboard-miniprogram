@@ -43,6 +43,8 @@ test('Partner 页面模型把计时锚点换算到本机时钟域', () => {
   assert.equal(page.roomState.partnerTurnStartedAt, 5000);
   assert.equal(page.roomState.partnerRoundStartedAt, 6000);
   assert.equal(page.roomState.partnerSilentStartedAt, 7000);
+  assert.equal(page.members.every((member) => !Object.prototype.hasOwnProperty.call(member, 'userId')), true);
+  assert.equal(page.roomState.progress.turnId, 't1');
 });
 
 test('Snapshot 是可独立恢复的成员视图且不暴露 userId', async () => {

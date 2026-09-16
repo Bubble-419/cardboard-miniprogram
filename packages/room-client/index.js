@@ -426,7 +426,8 @@ function createRoomClient(options) {
   async function dispatchInternal(input) {
     const commandId = input.commandId || makeCommandId();
     const envelope = { protocolVersion: PROTOCOL_VERSION, commandId,
-      roomId: input.roomId || roomId || '', knownSeq: appliedSeq, type: input.type,
+      roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
+      knownSeq: appliedSeq, type: input.type,
       context: clone(input.context || {}), payload: clone(input.payload || {}), clientSentAt: Date.now() };
     let result;
     let attempts = 0;

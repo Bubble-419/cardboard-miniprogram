@@ -254,3 +254,57 @@ test('房间解散后参与者仍可鉴权读取已取消的归档场次', async
   assert.equal(archived.view.session.status, 'CANCELLED');
   assert.equal(archived.view.actor.capabilities.UPDATE_MEMBER_PROFILE.allowed, false);
 });
+
+test('房间文档丢失后会释放卡住的当前房间索引，允许再创建', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  h.repo.rooms.delete('12345678');
+
+  const current = await h.app.readCurrentRoom({ userId: 'u2' });
+  assert.equal(current.ok, true);
+  assert.equal(current.roomId, null);
+  assert.equal(h.repo.activeRooms.has('u2'), false);
+
+  const created = await h.command('u2', 'CREATE_ROOM', { payload: { nickName: '新房主' } });
+  assert.equal(created.ok, true);
+  assert.equal(created.outcome.kind, 'ROOM_CREATED');
+});
+
+test('房间已解散但索引残留时视为未加入，允许加入其他房间', async () => {
+  const h = createHarness({
+    generateRoomId: (_commandId, _userId, attempt) => (attempt === 0 ? '12345678' : '87654321')
+  });
+  await h.seedMembers(2);
+  await h.command('host', 'DISSOLVE_ROOM');
+  h.repo.activeRooms.set('u2', '12345678');
+
+  const current = await h.app.readCurrentRoom({ userId: 'u2' });
+  assert.equal(current.ok, true);
+  assert.equal(current.roomId, null);
+
+  const other = await h.command('u3', 'CREATE_ROOM', { payload: { nickName: '另一房主' } });
+  assert.equal(other.ok, true);
+  assert.equal(other.outcome.roomId, '87654321');
+
+  const joined = await h.command('u2', 'JOIN_ROOM', {
+    roomId: '87654321',
+    payload: { nickName: '从残留索引加入' }
+  });
+  assert.equal(joined.ok, true);
+  assert.equal(joined.outcome.kind, 'ROOM_JOINED');
+  assert.equal(joined.outcome.roomId, '87654321');
+});
+
+test('仍在开放房间时不能创建或加入另一个房间', async () => {
+  const h = createHarness({
+    generateRoomId: (_commandId, _userId, attempt) => (attempt === 0 ? '12345678' : '87654321')
+  });
+  await h.seedMembers(2);
+  assert.equal((await h.command('u2', 'CREATE_ROOM', { payload: { nickName: '抢房' } })).errCode, 'ALREADY_IN_ROOM');
+  const other = await h.command('u3', 'CREATE_ROOM', { payload: { nickName: '另一房主' } });
+  assert.equal(other.ok, true);
+  assert.equal((await h.command('u2', 'JOIN_ROOM', {
+    roomId: other.outcome.roomId,
+    payload: { nickName: '跨房加入' }
+  })).errCode, 'ALREADY_IN_ROOM');
+});

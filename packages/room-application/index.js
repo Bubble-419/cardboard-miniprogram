@@ -160,8 +160,7 @@ function createRoomApplication(repo, options) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     const found = await repo.findActiveRoom(actorUserId);
-    if (!found) return okResult({ roomId: null, membershipId: null });
-    if (found.dangling) return fail(ERR.INTERNAL_ERROR, '当前房间索引不一致', { recoverable: true });
+    if (!found || found.dangling) return okResult({ roomId: null, membershipId: null });
     return okResult({ roomId: found.roomId, membershipId: found.memberId });
   }
 
@@ -473,8 +472,17 @@ function createInMemoryRoomRepository(options) {
         resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
       }
       const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-      const decision = handler({ aggregate: current, activeRoomId: activeRooms.get(input.actorUserId) || null,
-        resolvedRoomId });
+      const indexedRoomId = activeRooms.get(input.actorUserId) || null;
+      let activeRoomId = indexedRoomId;
+      if (indexedRoomId) {
+        const activeAggregate = indexedRoomId === resolvedRoomId
+          ? current
+          : (rooms.has(indexedRoomId) ? copy(rooms.get(indexedRoomId)) : null);
+        const member = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
+          && memberByUserId(activeAggregate.room, input.actorUserId);
+        if (!member) activeRoomId = null;
+      }
+      const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
         outcome: copy(decision.outcome || null), error: copy(decision.error || null),
@@ -506,8 +514,11 @@ function createInMemoryRoomRepository(options) {
       const roomId = activeRooms.get(userId);
       if (!roomId) return null;
       const aggregate = rooms.get(roomId);
-      const member = aggregate && memberByUserId(aggregate.room, userId);
-      if (!aggregate || aggregate.room.lifecycle !== 'OPEN' || !member) return { dangling: true, roomId };
+      const member = aggregate && aggregate.room.lifecycle === 'OPEN' && memberByUserId(aggregate.room, userId);
+      if (!member) {
+        activeRooms.delete(userId);
+        return null;
+      }
       return { roomId, memberId: member.memberId };
     },
     async readAggregate(roomId) {

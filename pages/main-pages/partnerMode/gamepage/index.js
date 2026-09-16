@@ -16,7 +16,7 @@ const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
 const { buildSpecialMoveUrl, buildClosingStatementUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
-const { navigateByRoomState, safeOpenUrl, openPartnerPage } = require('../../../../utils/subAwaitRoutes');
+const { safeOpenUrl } = require('../../../../utils/pageNavigate');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,

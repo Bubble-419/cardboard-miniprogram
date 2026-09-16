@@ -365,10 +365,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
       }
-      return {
-        method: 'redirectTo',
-        url: `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-      };
+      return;
     } catch (e) {
       console.error('handleConfirm', e);
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });

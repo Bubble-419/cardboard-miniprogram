@@ -13,7 +13,7 @@ const STEPS_WITHOUT_PLATFORM = [
 
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
-const { dispatchRoomCommand } = require('../../../modules/room-session/index');
+const { dispatchRoomCommand, bindPageToRoomSession, unbindPageFromRoomSession } = require('../../../modules/room-session/index');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -63,6 +63,14 @@ Page({
 
     this.setData({ includePlatform, steps, currentStep, bg });
     this.updateCanConfirm();
+    bindPageToRoomSession(this, {
+      getRoomId: () => getApp().globalData.roomId || '',
+      followNavigation: true
+    }).catch((e) => console.warn('selectBG bind room', e));
+  },
+
+  onUnload() {
+    unbindPageFromRoomSession(this);
   },
 
   goBack() {
@@ -166,13 +174,7 @@ Page({
           };
         }
 
-        const url = roomId
-          ? `?roomId=${encodeURIComponent(roomId)}`
-          : '';
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/selectPlayer/index${url}`
-        };
+        return;
       } finally {
         this._confirmPending = false;
       }

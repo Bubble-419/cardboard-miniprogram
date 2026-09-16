@@ -4,14 +4,11 @@ const {
   captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  buildSpyPageUrl,
-  openUrl,
   withSpyRefreshGuard,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   getWordCardAssets,
   getLibraryGroupCount,
@@ -140,15 +137,6 @@ Page(withPageInteractionLock({
           ? prefetchedResult
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
-
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyspeak',
-          allowHost: true,
-          // 投票已开始：必须全员进投票页，覆盖大厅停留锁
-          force: !!(result.roomState
-            && result.roomState.spyGame
-            && result.roomState.spyGame.phase === 'vote')
-        });
 
         const spyGame = result.roomState && result.roomState.spyGame;
         const nextCommandContext = spyGame && spyGame.phase === 'speak'
@@ -318,23 +306,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: hint, icon: 'none', duration: 2500 });
         return;
       }
-      // 房主立即进投票页；成员由发言页轮询 follow 同步
-      try {
-        const { clearSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
-        const { clearPendingNavigation } = require('../../../utils/pageNavigate');
-        clearSpyLobbyStay();
-        clearSpyFollowLock();
-        clearPendingNavigation();
-      } catch (e) {
-        // ignore
-      }
-      this._pageAlive = false;
-      this.stopPolling();
       bumpSpyRoomSession();
-      openUrl(buildSpyPageUrl('vote', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
     } finally {

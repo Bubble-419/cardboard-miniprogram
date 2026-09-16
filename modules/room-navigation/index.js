@@ -21,7 +21,39 @@ const ROUTES = Object.freeze({
   spySettle: { path: '/packageSpy/pages/settle/index', mode: 'redirectTo', pageKey: 'spysettle' }
 });
 
-const MANAGED_PATHS = new Set(Object.values(ROUTES).map((item) => item.path.slice(1)));
+/** 叠层归属：仍停在所属 route 时不拆；route 一旦离开所属页就跟随。`*` 表示除回大厅外都保留。 */
+const OVERLAY_OWNERS = Object.freeze({
+  'pages/inspiration/index': '*',
+  'pages/main-pages/case/index': '*',
+  'pages/main-pages/partnerMode/imageCrop/index': '*',
+  'pages/main-pages/partnerMode/specialMove/index': ['partnerGame'],
+  'packageSpy/pages/cardLibrary/index': '*',
+  'pages/main-pages/brainstormMode/index': ['addPlayer'],
+  'pages/main-pages/selectBG/index': ['modeIndex'],
+  'pages/main-pages/partnerMode/confirmBG/index': ['modeIndex']
+});
+
+function currentPage() {
+  if (typeof getCurrentPages !== 'function') return null;
+  const pages = getCurrentPages();
+  return pages.length ? pages[pages.length - 1] : null;
+}
+
+function isReadOnlyConfirmOverlay(page) {
+  if (!page || page.route !== 'pages/main-pages/partnerMode/confirmBG/index') return false;
+  const data = page.data || {};
+  return !!(page._fromGameView || data.fromGameView
+    || ['game', 'select', 'submit'].includes(String(data.from || '')));
+}
+
+function isLocalOverlay(current, routeName) {
+  const page = currentPage();
+  if (isReadOnlyConfirmOverlay(page)) return routeName !== 'addPlayer';
+  const owners = OVERLAY_OWNERS[current];
+  if (!owners) return false;
+  if (owners === '*') return routeName !== 'addPlayer';
+  return owners.includes(routeName);
+}
 
 function queryString(params) {
   return Object.entries(params || {}).filter(([, value]) => value != null && value !== '')
@@ -62,8 +94,8 @@ function createNavigationCoordinator(options) {
     if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
     const current = currentPath();
     if (current === descriptor.path.slice(1)) { lastSeq = nextSeq; return { ok: true, skipped: true, reason: 'SAME_ROUTE' }; }
-    // 灵感、裁剪、规则卡库等本地叠层不应被普通同步关闭。
-    if (current && !MANAGED_PATHS.has(current) && route.name !== 'addPlayer') {
+    // 灵感/裁剪/选模式/填情境等叠层：仍属于当前 route 时不拆；route 变化后跟随。
+    if (current && isLocalOverlay(current, route.name)) {
       return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
     }
     if (context && typeof context.beforeNavigate === 'function'

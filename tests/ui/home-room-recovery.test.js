@@ -79,8 +79,7 @@ test('首页本地房间号丢失时从服务端 current 恢复房间', async ()
 test('首页快照遇到临时错误时保留本地房间状态', async () => {
   storage.set('joinedRoomId', '12345678');
   const page = loadHomePage({
-    async getCurrentRoomPageSnapshot() { throw new Error('不应发现当前房间'); },
-    async getRoomPageSnapshot() {
+    async getCurrentRoomPageSnapshot() {
       return { ok: false, errCode: -501001,
         errMsg: '[ResourceUnavailable.TransactionBusy] Transaction is busy' };
     },
@@ -98,9 +97,8 @@ test('首页快照遇到临时错误时保留本地房间状态', async () => {
 test('首页只在服务端明确返回已离房时清除本地房间', async () => {
   storage.set('joinedRoomId', '12345678');
   const page = loadHomePage({
-    async getCurrentRoomPageSnapshot() { throw new Error('不应发现当前房间'); },
-    async getRoomPageSnapshot() {
-      return { ok: false, errCode: 'NOT_MEMBER', errMsg: '您已不在该房间' };
+    async getCurrentRoomPageSnapshot() {
+      return { ok: true, roomId: null };
     },
     async dispatchRoomCommand() { return { ok: true }; }
   });
@@ -109,4 +107,21 @@ test('首页只在服务端明确返回已离房时清除本地房间', async ()
 
   assert.equal(storage.has('joinedRoomId'), false);
   assert.equal(page.data.isJoinedRoom, false);
+});
+
+test('首页以 current-room 为准，忽略过期的本地房间号', async () => {
+  storage.set('joinedRoomId', '11111111');
+  app.globalData.roomId = '11111111';
+  const page = loadHomePage({
+    async getCurrentRoomPageSnapshot() {
+      return roomSnapshot('22222222');
+    },
+    async dispatchRoomCommand() { return { ok: true }; }
+  });
+
+  await page.loadJoinedRoomState();
+
+  assert.equal(page.data.roomId, '22222222');
+  assert.equal(storage.get('joinedRoomId'), '22222222');
+  assert.equal(app.globalData.roomId, '22222222');
 });

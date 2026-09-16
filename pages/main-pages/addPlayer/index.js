@@ -1,6 +1,4 @@
-const { navigateByRoomState, safeOpenUrl } = require('../../../utils/subAwaitRoutes');
 const {
-  followSubScreenRoomPoll,
   shouldSubScreenLeaveRoom
 } = require('../../../utils/subScreenRoomPoll');
 const {
@@ -11,22 +9,22 @@ const {
 const {
   exitRoomGone,
   handleRoomGoneFromResult,
-  cancelDeferredExit
+  cancelDeferredExit,
+  isRoomDissolvedResult
 } = require('../../../utils/roomDissolved');
 const { beginScanJoin, endScanJoin } = require('../../../utils/scanJoinGate');
 const {
   beginUserAuthFlow,
   endUserAuthFlow
 } = require('../../../utils/userAuthSession');
-const { isValidPartnerBG, partnerPageNeedsBG } = require('../../../utils/partnerScenarios');
-const { buildGamepageUrl, buildSpyPageUrl, buildClosingStatementUrl } = require('../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   disposeRoomSession,
   getActiveRoomSession,
   dispatchRoomCommand,
-  getRoomPageSnapshot
+  getRoomPageSnapshot,
+  followRoomRoute
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
@@ -371,44 +369,9 @@ Page(withPageInteractionLock({
   },
 
   _followRoomPageFromResult(result, roomId) {
-    const page = (result && result.roomState && result.roomState.currentPage || 'addPlayer').toLowerCase();
-    // 主动停留大厅时：只处理被踢/解散，不跟随游戏页
-    if (this._stayOnLobby || isSpyLobbyStayActive(roomId)) {
-      this._stayOnLobby = true;
-      if (shouldSubScreenLeaveRoom(result)) {
-        clearSpyLobbyStay();
-        followSubScreenRoomPoll(result, roomId);
-        return;
-      }
-      // 房主正在确认游戏模式：非房主仍统一进空状态等待页
-      if (page === 'brainstormmode') {
-        followSubScreenRoomPoll(result, roomId);
-      }
-      return;
+    if (shouldSubScreenLeaveRoom(result)) {
+      this._handleMembershipLost(isRoomDissolvedResult(result) ? 'dissolved' : 'left');
     }
-    if (!result || result.ok !== true || !result.roomState) {
-      followSubScreenRoomPoll(result, roomId);
-      return;
-    }
-    if (result.roomState.brainstormSessionEnded === true) {
-      const stalePages = ['closingstatement', 'gamepage'];
-      if (stalePages.includes(page)) return;
-    }
-    // 房主在脑暴模式页：优先进等待空状态，避免被卧底跟随抢走
-    if (page === 'brainstormmode') {
-      followSubScreenRoomPoll(result, roomId);
-      return;
-    }
-    // 谁是卧底：走专用跟随，避免 reLaunch 白屏 / 进错共用页
-    const modeId = result.selectedModeId
-      || (result.roomState && result.roomState.selectedModeId)
-      || '';
-    if (modeId === 'spy' || page.indexOf('spy') === 0) {
-      const { followSpyRoomState } = require('../../../utils/spyFollow');
-      followSpyRoomState(result, roomId);
-      return;
-    }
-    followSubScreenRoomPoll(result, roomId);
   },
 
   _startMemberPolling() {
@@ -416,9 +379,13 @@ Page(withPageInteractionLock({
     this._stopMemberPolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId,
-      intervalMs: this.data.isHost ? 4000 : 2500,
-      // join 成功后不要回放 join 前的 NOT_IN_ROOM 脏快照
       emitCurrent: this.data.membershipConfirmed === true,
+      followNavigation: true,
+      beforeNavigate() {
+        if (this._joinInFlight || this._navigatingToBrainstorm) return true;
+        if (this._stayOnLobby || isSpyLobbyStayActive(this.data.roomId)) return true;
+        return false;
+      },
       onSnapshot(snapshot) {
         if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
         const roomId = this.data.roomId || getApp().globalData.roomId;
@@ -426,9 +393,7 @@ Page(withPageInteractionLock({
         const raw = snapshot.raw || snapshot;
         this.loadRoomData(roomId, { silent: true, cachedResult: raw }).then((result) => {
           if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
-          if (!this.data.isHost && result) {
-            this._followRoomPageFromResult(result, roomId);
-          }
+          if (result) this._followRoomPageFromResult(result, roomId);
         });
       }
     }).catch((e) => console.warn('addPlayer roomSession', e));
@@ -558,7 +523,7 @@ Page(withPageInteractionLock({
   /** 将成员列表扩展为固定 6 槽位，空位填 null，保证拖拽后“空位”正确挤到玩家原位置 */
   _getMemberId(m) {
     if (!m) return null;
-    return m.openid || m.userId || (m.playerIndex != null ? String(m.playerIndex) : null);
+    return m.memberId || m.openid || m.userId || (m.playerIndex != null ? String(m.playerIndex) : null);
   },
 
   _expandMembersToSlots(members) {
@@ -572,7 +537,7 @@ Page(withPageInteractionLock({
     const seen = new Set();
     return (members || []).filter((m) => {
       if (!m) return true;
-      const id = m.userId || m.openid || (m.playerIndex != null ? `p${m.playerIndex}` : null);
+      const id = this._getMemberId(m);
       const key = id != null ? id : `i${seen.size}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -989,10 +954,10 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '仅房主可踢出成员', icon: 'none' });
       return;
     }
-    if (!roomId || !member || !member.userId || member.isMe === true) return;
+    if (!roomId || !member || !(member.memberId || member.openid) || member.isMe === true) return;
 
     try {
-      const result = await dispatchRoomCommand('KICK_MEMBER', { memberId: member.memberId || member.userId });
+      const result = await dispatchRoomCommand('KICK_MEMBER', { memberId: member.memberId || member.openid });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '踢出失败', icon: 'none' });
         return;
@@ -1441,11 +1406,11 @@ Page(withPageInteractionLock({
     if (this.data.isHost !== true) return;
     const roomId = this.data.roomId || '';
     const packed = (orderedMembers || []).filter(Boolean);
-    const userIdOrder = packed
-      .map((m) => m.memberId || m.userId || m.openid)
+    const memberIdOrder = packed
+      .map((m) => m.memberId || m.openid)
       .filter((id) => !!id);
-    if (!roomId || userIdOrder.length < 2) return;
-    if (userIdOrder.length !== packed.length) {
+    if (!roomId || memberIdOrder.length < 2) return;
+    if (memberIdOrder.length !== packed.length) {
       wx.showToast({ title: '顺序同步失败', icon: 'none' });
       this.loadRoomData(roomId, { silent: true });
       return;
@@ -1453,7 +1418,7 @@ Page(withPageInteractionLock({
 
     this._reorderInFlight = true;
     try {
-      const result = await this._dispatchRoomCommand('REORDER_SEATS', { orderedMemberIds: userIdOrder });
+      const result = await this._dispatchRoomCommand('REORDER_SEATS', { orderedMemberIds: memberIdOrder });
       if (!result || result.ok !== true) {
         wx.showToast({
           title: (result && result.errMsg) || '顺序同步失败',
@@ -1683,152 +1648,15 @@ Page(withPageInteractionLock({
         return;
       }
 
-      const refreshed = await getRoomPageSnapshot(roomId, { refresh: true });
-      if (!refreshed || refreshed.ok !== true || !refreshed.roomState) {
-        wx.showToast({ title: refreshed && refreshed.errMsg || '恢复新场次失败', icon: 'none' });
-        return;
-      }
-      const target = this._resolveContinueBrainstormTarget(
-        roomId,
-        refreshed.selectedModeId || modeId,
-        refreshed.roomState,
-        refreshed.selectedBG
-      );
-      const opened = safeOpenUrl(target.path, { immediate: true });
-      if (!opened) {
-        wx.redirectTo({
-          url: target.path,
-          fail: () => {
-            wx.reLaunch({ url: target.path });
-          }
-        });
-      }
+      this._stayOnLobby = false;
+      clearSpyLobbyStay();
+      const snapshot = (getActiveRoomSession() && getActiveRoomSession().getSnapshot())
+        || await getRoomPageSnapshot(roomId, { refresh: true });
+      await followRoomRoute(snapshot, roomId);
     } catch (e) {
       console.warn('handleAnotherRound', e);
       wx.showToast({ title: '操作失败', icon: 'none' });
     }
-  },
-
-  /** 根据已选模式与房间进度，解析「继续脑暴」跳转目标 */
-  _resolveContinueBrainstormTarget(roomId, selectedModeId, roomState, selectedBG) {
-    const roomIdEnc = encodeURIComponent(roomId);
-    const modeId = selectedModeId || 'halliGalli';
-    const state = roomState || {};
-    let page = (state.currentPage || 'addPlayer').toLowerCase();
-    const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-    const bg = selectedBG || (getApp().globalData && getApp().globalData.selectedBG);
-
-    const modeIndexRoute = {
-      path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
-      nextPage: 'auth'
-    };
-
-    const spyModeIndexRoute = {
-      path: buildSpyPageUrl('intro', roomId),
-      nextPage: 'spymodeindex'
-    };
-
-    if (modeId === 'spy') {
-      const spyResumeRoutes = {
-        spymodeindex: spyModeIndexRoute,
-        spyspeak: { path: buildSpyPageUrl('speak', roomId), nextPage: 'spyspeak' },
-        spyvote: { path: buildSpyPageUrl('vote', roomId), nextPage: 'spyvote' },
-        spyresult: { path: buildSpyPageUrl('result', roomId), nextPage: 'spyresult' },
-        spysettle: { path: buildSpyPageUrl('settle', roomId), nextPage: 'spysettle' }
-      };
-      if (page !== 'addplayer' && spyResumeRoutes[page]) {
-        return spyResumeRoutes[page];
-      }
-      return spyModeIndexRoute;
-    }
-
-    if (
-      modeId === 'partner'
-      && partnerPageNeedsBG(page)
-      && !isValidPartnerBG(bg, { requirePlatform: page === 'confirmbg' })
-    ) {
-      return modeIndexRoute;
-    }
-
-    const resumeRoutes = {
-      auth: {
-        path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
-        nextPage: 'auth'
-      },
-      submitproblem: {
-        path: `/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`,
-        nextPage: 'submitProblem'
-      },
-      selectproblem: {
-        path: `/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`,
-        nextPage: 'selectProblem'
-      },
-      selectbg: {
-        path: `/pages/main-pages/selectBG/index?mode=${modeId === 'partner' ? 'partner' : 'halliGalli'}&roomId=${roomIdEnc}`,
-        nextPage: 'selectBG'
-      },
-      confirmbg: {
-        path: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
-        nextPage: 'confirmBG'
-      },
-      selectplayer: {
-        path: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}`,
-        nextPage: 'selectPlayer'
-      },
-      confirmfirstplayer: {
-        path: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}`,
-        nextPage: 'confirmFirstPlayer'
-      },
-      gamepage: {
-        path: buildGamepageUrl(roomId, idx, modeId, {
-          phase: state.partnerGamePhase === 'discussion'
-            ? 'discussion'
-            : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
-          closingStep: state.partnerClosingStep || undefined
-        }),
-        nextPage: 'gamepage'
-      },
-      closingstatement: {
-        path: buildClosingStatementUrl(roomId, {
-          closingVoteSessionId: state.closingVoteSessionId || '',
-          _t: Date.now()
-        }),
-        nextPage: 'closingStatement'
-      },
-      specialmove: {
-        path: buildGamepageUrl(roomId, idx, modeId, {
-          phase: state.partnerGamePhase === 'discussion'
-            ? 'discussion'
-            : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
-          closingStep: state.partnerClosingStep || undefined
-        }),
-        nextPage: 'gamepage'
-      },
-      creativeinput: {
-        path: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
-        nextPage: 'creativeInput'
-      },
-      creativesummary: {
-        path: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
-        nextPage: 'creativeSummary'
-      }
-    };
-
-    if (page !== 'addplayer' && resumeRoutes[page]) {
-      return resumeRoutes[page];
-    }
-
-    if (modeId === 'halliGalli') {
-      return {
-        path: `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`,
-        nextPage: 'gamepage'
-      };
-    }
-
-    return {
-      path: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
-      nextPage: 'auth'
-    };
   },
 
   handleContinueBrainstorm() {
@@ -1887,42 +1715,11 @@ Page(withPageInteractionLock({
     }
 
     getApp().globalData.gameMode = selectedModeId;
-
-    if (!this.data.isHost) {
-      // 用户主动继续：解除大厅停留锁，允许回到当前游戏页
-      this._stayOnLobby = false;
-      clearSpyLobbyStay();
-      const page = (roomState && roomState.currentPage) || 'addPlayer';
-      const modeId = selectedModeId || '';
-      if (modeId === 'spy' || String(page).toLowerCase().indexOf('spy') === 0) {
-        const { followSpyRoomState } = require('../../../utils/spyFollow');
-        followSpyRoomState(
-          {
-            ok: true,
-            isHost: false,
-            selectedModeId: modeId,
-            roomState: roomState || { currentPage: page }
-          },
-          roomId,
-          { force: true }
-        );
-        return;
-      }
-      navigateByRoomState(page, roomState, roomId);
-      return;
-    }
-
-    const target = this._resolveContinueBrainstormTarget(
-      roomId,
-      selectedModeId,
-      roomState,
-      selectedBG
-    );
-
-    const resumeInGame = ['gamepage', 'closingStatement'].includes(target.nextPage);
-    safeOpenUrl(target.path, resumeInGame
-      ? { immediate: true, preferReLaunch: true }
-      : { immediate: true });
+    this._stayOnLobby = false;
+    clearSpyLobbyStay();
+    const snapshot = (getActiveRoomSession() && getActiveRoomSession().getSnapshot())
+      || await getRoomPageSnapshot(roomId, { refresh: true });
+    await followRoomRoute(snapshot, roomId);
   },
 
   /** 左上角出口：回到小程序首页（保留房间，可从历史工作坊再进） */

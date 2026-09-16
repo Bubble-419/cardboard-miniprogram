@@ -6,7 +6,11 @@ const { createRoomApplication, createInMemoryRoomRepository } = require('@cardbo
 function createHarness(options) {
   let commandSeq = 0;
   let time = 1000;
-  const repo = createInMemoryRoomRepository({ generateRoomId: () => (options && options.roomId) || '12345678' });
+  const repo = createInMemoryRoomRepository({
+    generateRoomId: typeof (options && options.generateRoomId) === 'function'
+      ? options.generateRoomId
+      : () => (options && options.roomId) || '12345678'
+  });
   const app = createRoomApplication(repo, {
     now: () => ++time,
     serverSecret: 'test-secret',

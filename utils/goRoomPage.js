@@ -29,18 +29,18 @@ async function endPartnerSessionAndGoRoom(roomId, options) {
   if (!id) {
     return goRoomPage('');
   }
-  const isHost = !!(options && options.isHost);
-  if (isHost) {
-    try {
-      const { getActiveRoomSession, dispatchRoomCommand } = require('../modules/room-session/index');
-      const view = getActiveRoomSession() && getActiveRoomSession().getView();
-      const session = view && view.session;
-      if (session && session.status === 'COMPLETED') {
-        await dispatchRoomCommand('RETURN_TO_LOBBY', {}, { sessionId: session.sessionId });
-      }
-    } catch (e) {
-      console.warn('endPartnerSessionAndGoRoom', e);
+  try {
+    const { getActiveRoomSession, dispatchRoomCommand, canRoomCommand } = require('../modules/room-session/index');
+    const view = getActiveRoomSession() && getActiveRoomSession().getView();
+    const shouldReturn = view
+      ? canRoomCommand('RETURN_TO_LOBBY')
+      : !!(options && options.isHost);
+    const session = view && view.session;
+    if (shouldReturn && session && session.status === 'COMPLETED') {
+      await dispatchRoomCommand('RETURN_TO_LOBBY', {}, { sessionId: session.sessionId });
     }
+  } catch (e) {
+    console.warn('endPartnerSessionAndGoRoom', e);
   }
   return goRoomPage(id);
 }

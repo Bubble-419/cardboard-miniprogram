@@ -176,7 +176,7 @@ Page(withPageInteractionLock({
     bindPageToRoomSession(this, {
       getRoomId: () => roomId,
       // 房主可能从后续配置页返回重新选题；该页确认后会主动跳转，无需状态路由立即推走。
-      followNavigation: false,
+      followNavigation: true,
       onSnapshot: (result) => {
         if (!this._pageAlive || this._pageVisible === false) return;
         this._applyRoomSnapshot(result).catch((e) => console.warn('selectProblem snapshot', e));

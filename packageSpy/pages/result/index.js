@@ -4,15 +4,12 @@ const {
   captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  buildSpyPageUrl,
-  openUrl,
   roleLabel,
   withSpyRefreshGuard,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -77,11 +74,6 @@ Page(withPageInteractionLock({
           ? prefetchedResult
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
-
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyresult',
-          allowHost: true
-        });
 
         const spyGame = (result.roomState && result.roomState.spyGame) || {};
         const nextCommandContext = spyGame.phase === 'result'
@@ -161,14 +153,7 @@ Page(withPageInteractionLock({
         this.setData({ acting: false });
         return;
       }
-      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
       bumpSpyRoomSession();
-      if (!navigated && this._pageAlive) {
-        this.setData({ acting: false });
-      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
       this.setData({ acting: false });

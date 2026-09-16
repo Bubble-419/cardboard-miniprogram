@@ -5,8 +5,6 @@
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
@@ -149,18 +147,17 @@ Page({
       if (result && result.ok === true) {
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
-        if (isHost) {
-          this._loadScenarios();
-        } else {
-          this._startStatePolling();
-        }
+        if (isHost) this._loadScenarios();
+        this._startStatePolling();
       } else {
         this.setData({ isHost: true });
         this._loadScenarios();
+        this._startStatePolling();
       }
     } catch (e) {
       this.setData({ isHost: true });
       this._loadScenarios();
+      this._startStatePolling();
     }
   },
 
@@ -271,10 +268,7 @@ Page({
             wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
             return;
           }
-          return {
-            method: 'redirectTo',
-            url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-          };
+          return;
         }
 
         if (!scenario.bg) {
@@ -305,10 +299,7 @@ Page({
           wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
           return;
         }
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-        };
+        return;
       } finally {
         this._navPending = false;
       }

@@ -1,7 +1,8 @@
-// ========== 共享云环境配置 ==========
-// 若当前小程序是「调用方」（使用其他小程序的云环境），设为 true 并填写 resourceAppid
+// ========== 云环境配置 ==========
+// 当前工程 AppID 就是资源方 wx6c484b4cfa055d73，必须用自有环境。
+// 只有调试「调用方」小程序（使用别人的云）时才把 USE_SHARED_ENV 设为 true。
 // 参考：https://developers.weixin.qq.com/minigame/dev/wxcloud/guide/resource-sharing/
-const USE_SHARED_ENV = true;
+const USE_SHARED_ENV = false;
 const SHARED_ENV_CONFIG = {
   resourceAppid: 'wx6c484b4cfa055d73',  // 资源方小程序 AppID
   resourceEnv: 'cardboard-miniprogram-6a13aab073',

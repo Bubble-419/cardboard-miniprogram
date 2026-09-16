@@ -1,13 +1,11 @@
 'use strict';
 
-const { COMMAND_TYPES } = require('@cardboard/room-contracts');
+const { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require('@cardboard/room-contracts');
 const { SPY_WORD_PAIRS } = require('./spyWordPairs');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
   activeParticipantsBySeat, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
-
-const SPY_VOTE_DURATION_MS = 2 * 60 * 1000;
 
 function randomOf(deps) { return deps && typeof deps.random === 'function' ? deps.random : Math.random; }
 function shuffle(items, random) {

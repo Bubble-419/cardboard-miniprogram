@@ -38,7 +38,6 @@ const {
 } = require('../../../utils/pageInteractionLock');
 const {
   dispatchRoomCommand,
-  getRoomPageSnapshot,
   getCurrentRoomPageSnapshot
 } = require('../../../modules/room-session/index');
 
@@ -151,47 +150,48 @@ Page(withPageInteractionLock({
     if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
     const gen = (this._joinedStateGen || 0) + 1;
     this._joinedStateGen = gen;
-
-    let roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
+    const storedRoomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
-    let result = null;
 
-    if (!roomId) {
-      try {
-        result = await getCurrentRoomPageSnapshot();
-      } catch (error) {
-        console.warn('discover current room fail', error);
-      }
-      if (gen !== this._joinedStateGen) return;
-      if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
-      if (!result || result.ok !== true || !result.roomId) {
-        this._setNotJoinedState();
-        return;
-      }
-      roomId = result.roomId;
+    let result = null;
+    try {
+      result = await getCurrentRoomPageSnapshot();
+    } catch (error) {
+      console.warn('discover current room fail', error);
+    }
+    if (gen !== this._joinedStateGen) return;
+    if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+
+    if (result && result.ok === true && !result.roomId) {
+      if (storedRoomId) this._clearJoinedRoom(storedRoomId);
+      else this._setNotJoinedState();
+      return;
     }
 
-    try {
-      result = result || await getRoomPageSnapshot(roomId, { refresh: true });
-      if (gen !== this._joinedStateGen) return;
-      if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
-
-      if (result.ok !== true) {
-        // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
-        if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result.errCode)) {
-          const handled = handleRoomGoneFromResult(result, roomId, {
-            allowToastOnHome: true,
-            title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
-          });
-          if (!handled) this._clearJoinedRoom(roomId);
-          else this._setNotJoinedState();
-          return;
-        }
-        // 临时数据库/网络故障不能被解释为离房，否则会与服务端 ActiveRoom 状态分叉。
-        this._setJoinedFallbackState(roomId);
+    if (!result || result.ok !== true) {
+      if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result && result.errCode)) {
+        const goneId = (result && result.roomId) || storedRoomId;
+        const handled = handleRoomGoneFromResult(result, goneId, {
+          allowToastOnHome: true,
+          title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
+        });
+        if (!handled) this._clearJoinedRoom(goneId);
+        else this._setNotJoinedState();
         return;
       }
+      if (storedRoomId) {
+        this._setJoinedFallbackState(storedRoomId);
+        return;
+      }
+      this._setNotJoinedState();
+      return;
+    }
+
+    const roomId = result.roomId;
+    try {
+      if (gen !== this._joinedStateGen) return;
+      if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
 
       const isMember = (result.members || []).some(m => m.isMe);
       if (!isMember) {
@@ -472,12 +472,11 @@ Page(withPageInteractionLock({
     if (this.data.loading) return;
 
     this.setData({ loading: true });
-    const clientCreateId = `client-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const profile = await getOptionalProfileForRoom();
 
     try {
       const payload = buildRoomJoinPayload(profile);
-      const result = await dispatchRoomCommand('CREATE_ROOM', payload, {}, { commandId: clientCreateId });
+      const result = await dispatchRoomCommand('CREATE_ROOM', payload);
       const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {

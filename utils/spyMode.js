@@ -3,9 +3,6 @@
  */
 const {
   SPY_PAGE,
-  SPEAK_ROUND_MS,
-  SPEAK_TURN_MS,
-  VOTE_ROUND_MS,
   formatCountdown,
   computeMsLeft,
   getDefaultSpyCount,
@@ -13,7 +10,6 @@ const {
   roleLabel,
   winnerLabel
 } = require('./spyGameState');
-const { followSubScreenRoomPoll } = require('./subScreenRoomPoll');
 const { openUrl } = require('./pageNavigate');
 const { goRoomPage } = require('./goRoomPage');
 const { buildAvatarList, buildAvatarListAsync } = require('./avatars');
@@ -70,10 +66,6 @@ function parseIsHostOption(options) {
   if (!options) return false;
   const raw = options.isHost;
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
-}
-
-function makeSpyCommandId(action) {
-  return `spy_${action}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** 从已经渲染的 Snapshot 捕获并发令牌，点击时不得改用后台刚同步到的新轮次。 */
@@ -201,8 +193,7 @@ async function callSpyAction(action, data = {}) {
   try {
     const result = await dispatchRoomCommand(type, payload,
       spyCommandContextForAction(action, data.context), {
-        roomId: String(roomId),
-        commandId: data.commandId || makeSpyCommandId(action)
+        roomId: String(roomId)
       });
     if (!result || result.ok !== true) return result || { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
     const session = getActiveRoomSession();
@@ -304,7 +295,7 @@ function startSpyRoomPoll(page, options) {
       return page.data && page.data.roomId;
     },
     emitCurrent: false,
-    followNavigation: false,
+    followNavigation: true,
     onSnapshot(snapshot) {
       if (page._pageAlive === false) return;
       if (!snapshot) return;
@@ -358,9 +349,6 @@ function bumpSpyRoomSession() {
 
 module.exports = {
   SPY_PAGE,
-  SPEAK_ROUND_MS,
-  SPEAK_TURN_MS,
-  VOTE_ROUND_MS,
   MIN_PLAYERS,
   formatCountdown,
   computeMsLeft,
@@ -374,7 +362,6 @@ module.exports = {
   spyCommandContextForAction,
   callSpyAction,
   fetchRoomDataOrExit,
-  followSubScreenRoomPoll,
   openUrl,
   goRoomPage,
   buildAvatarList,

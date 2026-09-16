@@ -1,4 +1,3 @@
-const { openSubAwait } = require('../../../utils/subAwaitRoutes');
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
@@ -71,8 +70,7 @@ Page({
       const isHost = result.isHost === true;
       if (!isHost) {
         this.setData({ isHost: false, isWaiting: true });
-        // 非房主进入抽首位页时，统一进副屏等待
-        openSubAwait(roomId, 'player');
+        this._startStatePolling();
         return;
       }
 

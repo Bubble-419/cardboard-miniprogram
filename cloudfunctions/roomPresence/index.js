@@ -14,6 +14,7 @@ var require_room_contracts = __commonJS({
     var VIEW_SCHEMA_VERSION = 1;
     var EVENT_SCHEMA_VERSION = 1;
     var MAX_SEATS = 6;
+    var SPY_VOTE_DURATION_MS = 2 * 60 * 1e3;
     var LIFECYCLE = Object.freeze({ OPEN: "OPEN", DISSOLVED: "DISSOLVED" });
     var SESSION_STATUS = Object.freeze({
       CONFIGURING: "CONFIGURING",
@@ -517,6 +518,7 @@ var require_room_contracts = __commonJS({
       VIEW_SCHEMA_VERSION,
       EVENT_SCHEMA_VERSION,
       MAX_SEATS,
+      SPY_VOTE_DURATION_MS,
       LIFECYCLE,
       SESSION_STATUS,
       MODE,
@@ -1597,7 +1599,7 @@ var require_spyWordPairs = __commonJS({
 var require_spy = __commonJS({
   "packages/room-domain/spy.js"(exports2, module2) {
     "use strict";
-    var { COMMAND_TYPES } = require_room_contracts();
+    var { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require_room_contracts();
     var { SPY_WORD_PAIRS } = require_spyWordPairs();
     var {
       clone,
@@ -1618,7 +1620,6 @@ var require_spy = __commonJS({
       EVENT_TYPES,
       ERR
     } = require_model();
-    var SPY_VOTE_DURATION_MS = 2 * 60 * 1e3;
     function randomOf(deps) {
       return deps && typeof deps.random === "function" ? deps.random : Math.random;
     }
@@ -2620,7 +2621,8 @@ var require_room_projection = __commonJS({
       SESSION_STATUS,
       WORKFLOW_STEP,
       WORKFLOW_GROUPS,
-      LIFECYCLE
+      LIFECYCLE,
+      SPY_VOTE_DURATION_MS
     } = require_room_contracts();
     function clone(value) {
       return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -2834,6 +2836,7 @@ var require_room_projection = __commonJS({
           votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
           requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
           voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
+          voteDeadlineAt: spy.voteStartedAt == null ? null : spy.voteStartedAt + SPY_VOTE_DURATION_MS,
           tieBreak: spy.tieBreak === true,
           lastResult: clone(spy.lastResult || null),
           winnerSide: spy.winnerSide || null,
@@ -3241,8 +3244,7 @@ var require_room_application = __commonJS({
         const actorUserId = actorContext && actorContext.userId;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         const found = await repo.findActiveRoom(actorUserId);
-        if (!found) return okResult({ roomId: null, membershipId: null });
-        if (found.dangling) return fail(ERR.INTERNAL_ERROR, "\u5F53\u524D\u623F\u95F4\u7D22\u5F15\u4E0D\u4E00\u81F4", { recoverable: true });
+        if (!found || found.dangling) return okResult({ roomId: null, membershipId: null });
         return okResult({ roomId: found.roomId, membershipId: found.memberId });
       }
       async function readSnapshot(roomId, actorContext) {
@@ -3612,11 +3614,14 @@ var require_room_application = __commonJS({
             resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
           }
           const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-          const decision = handler({
-            aggregate: current,
-            activeRoomId: activeRooms.get(input.actorUserId) || null,
-            resolvedRoomId
-          });
+          const indexedRoomId = activeRooms.get(input.actorUserId) || null;
+          let activeRoomId = indexedRoomId;
+          if (indexedRoomId) {
+            const activeAggregate = indexedRoomId === resolvedRoomId ? current : rooms.has(indexedRoomId) ? copy(rooms.get(indexedRoomId)) : null;
+            const member = activeAggregate && activeAggregate.room.lifecycle === "OPEN" && memberByUserId(activeAggregate.room, input.actorUserId);
+            if (!member) activeRoomId = null;
+          }
+          const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
           const receipt = {
             scopeKey: input.scopeKey,
             commandId: input.commandId,
@@ -3657,8 +3662,11 @@ var require_room_application = __commonJS({
           const roomId = activeRooms.get(userId);
           if (!roomId) return null;
           const aggregate = rooms.get(roomId);
-          const member = aggregate && memberByUserId(aggregate.room, userId);
-          if (!aggregate || aggregate.room.lifecycle !== "OPEN" || !member) return { dangling: true, roomId };
+          const member = aggregate && aggregate.room.lifecycle === "OPEN" && memberByUserId(aggregate.room, userId);
+          if (!member) {
+            activeRooms.delete(userId);
+            return null;
+          }
           return { roomId, memberId: member.memberId };
         },
         async readAggregate(roomId) {
@@ -3892,7 +3900,14 @@ var require_room_cloudbase_adapter = __commonJS({
             }
           }
           const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
-          const decision = handler({ aggregate: current, activeRoomId: active && active.roomId, resolvedRoomId });
+          const indexedRoomId = active && active.roomId || null;
+          let activeRoomId = indexedRoomId;
+          if (indexedRoomId) {
+            const activeAggregate = indexedRoomId === resolvedRoomId ? current : await loadAggregate(transaction, indexedRoomId);
+            const member = activeAggregate && activeAggregate.room.lifecycle === "OPEN" && (activeAggregate.room.members || []).find((item) => item.userId === input.actorUserId);
+            if (!member) activeRoomId = null;
+          }
+          const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
           const receipt = {
             scopeKey: input.scopeKey,
             commandId: input.commandId,
@@ -3990,7 +4005,11 @@ var require_room_cloudbase_adapter = __commonJS({
           if (!active) return null;
           const aggregate = await loadAggregate(transaction, active.roomId);
           const member = aggregate && aggregate.room.lifecycle === "OPEN" && (aggregate.room.members || []).find((item) => item.userId === userId);
-          return member ? { roomId: active.roomId, memberId: member.memberId } : { dangling: true, roomId: active.roomId };
+          if (!member) {
+            await transaction.collection(COLLECTIONS.active).doc(docId(userId)).remove();
+            return null;
+          }
+          return { roomId: active.roomId, memberId: member.memberId };
         });
       }
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {

@@ -39,8 +39,20 @@ function commandContext(type, explicit) {
 
 function normalizeCommand(input) {
   const type = input.type;
-  return { type, roomId: input.roomId, commandId: input.commandId,
+  return { type, roomId: input.roomId,
     context: commandContext(type, input.context), payload: { ...(input.payload || {}) } };
+}
+
+function capabilityDenied(cap) {
+  const reason = cap && cap.reason;
+  const messages = {
+    HOST_REQUIRED: '仅房主可操作',
+    HOST_CANNOT_LEAVE: '房主不能离开房间',
+    NOT_MEMBER: '您已不在该房间',
+    INVALID_TRANSITION: '当前不能执行该操作',
+    SELF_SCORE: '不能给自己打分'
+  };
+  return { ok: false, errCode: reason || 'FORBIDDEN', errMsg: messages[reason] || '当前不能执行该操作' };
 }
 
 function createFacade(client) {
@@ -111,8 +123,17 @@ async function openRoomSession(roomId) {
 
 async function dispatchRoomCommand(type, payload, context, options) {
   const session = ensureRoomSession();
-  const result = await session.dispatch({ type, roomId: options && options.roomId,
-    commandId: options && options.commandId, context, payload });
+  if (type !== 'CREATE_ROOM' && type !== 'JOIN_ROOM') {
+    const view = session.getView && session.getView();
+    const cap = view && view.actor && view.actor.capabilities && view.actor.capabilities[type];
+    if (cap && cap.allowed !== true) return capabilityDenied(cap);
+  }
+  const result = await session.dispatch({
+    type,
+    roomId: type === 'CREATE_ROOM' ? undefined : (options && options.roomId),
+    context,
+    payload
+  });
   if (result && result.ok && result.outcome && result.outcome.roomId) {
     getApp().globalData.roomId = result.outcome.roomId;
   }
@@ -236,7 +257,26 @@ function unbindPageFromRoomSession(page) {
   page._boundRoomSession = null;
 }
 
+function followRoomRoute(snapshot, roomId, extra) {
+  const view = snapshot && snapshot.view;
+  if (!view || !view.route) {
+    return Promise.resolve({ ok: false, skipped: true, reason: 'NO_ROUTE' });
+  }
+  return navigation.reconcile(view.route, snapshot.revision, {
+    roomId: roomId || snapshot.roomId || '',
+    pageSnapshot: snapshot,
+    ...(extra || {})
+  });
+}
+
+function canRoomCommand(type) {
+  const session = getActiveRoomSession();
+  const view = session && session.getView();
+  const cap = view && view.actor && view.actor.capabilities && view.actor.capabilities[type];
+  return !!(cap && cap.allowed === true);
+}
+
 module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
-  bindPageToRoomSession, unbindPageFromRoomSession, commandContext };
+  bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, canRoomCommand, commandContext };
