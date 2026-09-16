@@ -3622,14 +3622,16 @@ var require_room_application = __commonJS({
           if (input.type === COMMAND_TYPES.CREATE_ROOM) {
             resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
           }
-          const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-          const indexedRoomId = activeRooms.get(input.actorUserId) || null;
-          let activeRoomId = indexedRoomId;
-          if (indexedRoomId) {
-            const activeAggregate = indexedRoomId === resolvedRoomId ? current : rooms.has(indexedRoomId) ? copy(rooms.get(indexedRoomId)) : null;
-            const member = activeAggregate && activeAggregate.room.lifecycle === "OPEN" && memberByUserId(activeAggregate.room, input.actorUserId);
-            if (!member) activeRoomId = null;
+          let activeRoomId = activeRooms.get(input.actorUserId) || null;
+          if (activeRoomId) {
+            const activeAggregate = rooms.get(activeRoomId);
+            const activeMember = activeAggregate && activeAggregate.room.lifecycle === "OPEN" && memberByUserId(activeAggregate.room, input.actorUserId);
+            if (!activeMember) {
+              activeRooms.delete(input.actorUserId);
+              activeRoomId = null;
+            }
           }
+          const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
           const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
           const receipt = {
             scopeKey: input.scopeKey,
@@ -3898,6 +3900,16 @@ var require_room_cloudbase_adapter = __commonJS({
             return conflict ? { conflict: true } : { replayed: true, receipt: existing };
           }
           const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+          let activeRoomId = active && active.roomId;
+          let danglingActive = false;
+          if (activeRoomId) {
+            const activeRoom = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
+            const activeMember = activeRoom && activeRoom.lifecycle === "OPEN" && (activeRoom.members || []).some((member) => member.userId === input.actorUserId);
+            if (!activeMember) {
+              activeRoomId = null;
+              danglingActive = true;
+            }
+          }
           let resolvedRoomId = input.roomId;
           if (input.type === "CREATE_ROOM") {
             resolvedRoomId = null;
@@ -3909,13 +3921,6 @@ var require_room_cloudbase_adapter = __commonJS({
             }
           }
           const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
-          const indexedRoomId = active && active.roomId || null;
-          let activeRoomId = indexedRoomId;
-          if (indexedRoomId) {
-            const activeAggregate = indexedRoomId === resolvedRoomId ? current : await loadAggregate(transaction, indexedRoomId);
-            const member = activeAggregate && activeAggregate.room.lifecycle === "OPEN" && (activeAggregate.room.members || []).find((item) => item.userId === input.actorUserId);
-            if (!member) activeRoomId = null;
-          }
           const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
           const receipt = {
             scopeKey: input.scopeKey,
@@ -3933,6 +3938,10 @@ var require_room_cloudbase_adapter = __commonJS({
           if (decision.accepted) {
             const beforeUsers = openUsers(current);
             const afterUsers = openUsers(decision.aggregate);
+            const actorWillHaveActiveIndex = afterUsers.some((member) => member.userId === input.actorUserId);
+            if (danglingActive && !actorWillHaveActiveIndex) {
+              await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
+            }
             await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
             if (decision.aggregate.currentSession) {
               const session = cleanDoc(decision.aggregate.currentSession);
@@ -3967,6 +3976,8 @@ var require_room_cloudbase_adapter = __commonJS({
             for (const member of afterUsers) {
               await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
             }
+          } else if (danglingActive) {
+            await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
           }
           await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
           return { replayed: false, receipt };
@@ -4012,13 +4023,9 @@ var require_room_cloudbase_adapter = __commonJS({
         return db2.runTransaction(async (transaction) => {
           const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
           if (!active) return null;
-          const aggregate = await loadAggregate(transaction, active.roomId);
-          const member = aggregate && aggregate.room.lifecycle === "OPEN" && (aggregate.room.members || []).find((item) => item.userId === userId);
-          if (!member) {
-            await transaction.collection(COLLECTIONS.active).doc(docId(userId)).remove();
-            return null;
-          }
-          return { roomId: active.roomId, memberId: member.memberId };
+          const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
+          const member = room && room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === userId);
+          return member ? { roomId: active.roomId, memberId: member.memberId } : { dangling: true, roomId: active.roomId };
         });
       }
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
@@ -4052,10 +4059,25 @@ var require_room_cloudbase_adapter = __commonJS({
   }
 });
 
+// cloudfunctions/roomCommand/src/transport.js
+var require_transport = __commonJS({
+  "cloudfunctions/roomCommand/src/transport.js"(exports2, module2) {
+    "use strict";
+    function commandEnvelopeFromEvent2(event) {
+      if (!event || typeof event !== "object" || Array.isArray(event)) return event || {};
+      if (Object.prototype.hasOwnProperty.call(event, "command")) return event.command;
+      const { tcbContext: _platformContext, userInfo: _userInfo, ...legacyEnvelope } = event;
+      return legacyEnvelope;
+    }
+    module2.exports = { commandEnvelopeFromEvent: commandEnvelopeFromEvent2 };
+  }
+});
+
 // cloudfunctions/roomCommand/src/entry.js
 var cloud = require("wx-server-sdk");
 var { createRoomApplication } = require_room_application();
 var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
+var { commandEnvelopeFromEvent } = require_transport();
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 var db = cloud.database();
 var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
@@ -4064,12 +4086,7 @@ var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
-  const rawEnvelope = event && event.type ? event : event && event.command || event || {};
-  const envelope = rawEnvelope && typeof rawEnvelope === "object" && !Array.isArray(rawEnvelope) ? { ...rawEnvelope } : rawEnvelope;
-  if (envelope && typeof envelope === "object") {
-    delete envelope.tcbContext;
-    delete envelope.userInfo;
-  }
+  const envelope = commandEnvelopeFromEvent(event);
   try {
     return await app.executeCommand(envelope, { userId });
   } catch (e) {

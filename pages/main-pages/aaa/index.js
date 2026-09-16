@@ -38,7 +38,8 @@ const {
 } = require('../../../utils/pageInteractionLock');
 const {
   dispatchRoomCommand,
-  getCurrentRoomPageSnapshot
+  getCurrentRoomPageSnapshot,
+  getRoomPageSnapshot
 } = require('../../../modules/room-session/index');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
@@ -480,6 +481,14 @@ Page(withPageInteractionLock({
       const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {
+        if (result && result.errCode === 'ALREADY_IN_ROOM') {
+          // 服务端成员资格是事实源。本地缓存丢失或多端登录时，直接恢复原房间。
+          const current = await getRoomPageSnapshot('', { refresh: true });
+          if (current && current.ok === true && current.roomId) {
+            await this._goToRoomPage(current.roomId);
+            return;
+          }
+        }
         console.error('roomCreate error', result);
         wx.showToast({
           title: result.errMsg || '创建失败，请重试',

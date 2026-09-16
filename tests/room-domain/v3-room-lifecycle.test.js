@@ -91,6 +91,26 @@ test('创建房间在同一事务内跳过已占用的确定性房间号', async
   assert.equal(repo.rooms.size, 2);
 });
 
+test('创建房间会在事务内忽略并修复悬挂的当前房间索引', async () => {
+  const repo = createInMemoryRoomRepository({ generateRoomId: () => '12345678' });
+  repo.activeRooms.set('host', '87654321');
+  const app = createRoomApplication(repo, { now: () => 1000, serverSecret: 'test-secret' });
+
+  const created = await app.executeCommand({
+    protocolVersion: PROTOCOL_VERSION,
+    commandId: 'create-after-dangling-active-room',
+    roomId: '',
+    knownSeq: 0,
+    type: 'CREATE_ROOM',
+    context: {},
+    payload: { nickName: '房主' }
+  }, { userId: 'host' });
+
+  assert.equal(created.ok, true);
+  assert.equal(created.outcome.roomId, '12345678');
+  assert.equal(repo.activeRooms.get('host'), '12345678');
+});
+
 test('中途加入只成为 Room Member，不进入冻结的 Session Participant', async () => {
   const h = createHarness();
   let snapshot = await h.seedMembers(2);

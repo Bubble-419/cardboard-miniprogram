@@ -471,17 +471,18 @@ function createInMemoryRoomRepository(options) {
       if (input.type === COMMAND_TYPES.CREATE_ROOM) {
         resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
       }
-      const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-      const indexedRoomId = activeRooms.get(input.actorUserId) || null;
-      let activeRoomId = indexedRoomId;
-      if (indexedRoomId) {
-        const activeAggregate = indexedRoomId === resolvedRoomId
-          ? current
-          : (rooms.has(indexedRoomId) ? copy(rooms.get(indexedRoomId)) : null);
-        const member = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
+      let activeRoomId = activeRooms.get(input.actorUserId) || null;
+      if (activeRoomId) {
+        const activeAggregate = rooms.get(activeRoomId);
+        const activeMember = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
           && memberByUserId(activeAggregate.room, input.actorUserId);
-        if (!member) activeRoomId = null;
+        if (!activeMember) {
+          // 命令事务可修复悬挂唯一索引，避免用户永久无法创建或加入房间。
+          activeRooms.delete(input.actorUserId);
+          activeRoomId = null;
+        }
       }
+      const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
       const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,

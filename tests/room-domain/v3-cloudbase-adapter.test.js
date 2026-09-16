@@ -2,7 +2,12 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { safeGet, createCloudBaseRoomRepository } = require('@cardboard/room-cloudbase-adapter');
+const {
+  COLLECTIONS,
+  safeGet,
+  docId,
+  createCloudBaseRoomRepository
+} = require('@cardboard/room-cloudbase-adapter');
 
 function storeRejecting(error) {
   return {
@@ -119,4 +124,87 @@ test('CloudBase 消息分页使用 commitSeq 游标且查询失败原样上抛',
 
   failure = Object.assign(new Error('database unavailable'), { code: 'NETWORK_ERROR' });
   await assert.rejects(() => repo.listMessages('12345678', 's1', { limit: 20 }), /database unavailable/);
+});
+
+test('CloudBase 命令事务清理指向不存在房间的当前房间索引', async () => {
+  const documents = new Map();
+  const activeKey = `${COLLECTIONS.active}:${docId('host')}`;
+  documents.set(activeKey, { roomId: '87654321', userId: 'host' });
+  const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+  const transaction = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) throw missing();
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { documents.set(key, data); },
+            async remove() { documents.delete(key); }
+          };
+        }
+      };
+    }
+  };
+  const db = {
+    runTransaction: (callback) => callback(transaction)
+  };
+  const repo = createCloudBaseRoomRepository({ db });
+  let activeRoomId = 'not-called';
+
+  await repo.transactCommand({
+    scopeKey: 'actor:host',
+    commandId: 'create-after-dangling-active-room',
+    actorUserId: 'host',
+    roomId: '12345678',
+    roomIdCandidates: ['12345678'],
+    type: 'CREATE_ROOM',
+    requestHash: 'hash',
+    createdAt: 1000
+  }, (context) => {
+    activeRoomId = context.activeRoomId;
+    return { accepted: false, error: { ok: false, errCode: 'TEST_REJECTION' } };
+  });
+
+  assert.equal(activeRoomId, null);
+  assert.equal(documents.has(activeKey), false);
+});
+
+test('CloudBase 当前房间查询只读取 active 与 room 文档', async () => {
+  const accessedCollections = [];
+  const documents = new Map([
+    [`${COLLECTIONS.active}:${docId('host')}`, {
+      roomId: '12345678', userId: 'host', memberId: 'member-host'
+    }],
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', lifecycle: 'OPEN',
+      members: [{ userId: 'host', memberId: 'member-host' }]
+    }]
+  ]);
+  const transaction = {
+    collection(name) {
+      accessedCollections.push(name);
+      return {
+        doc(id) {
+          return {
+            async get() {
+              const data = documents.get(`${name}:${id}`);
+              if (!data) throw Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+              return { data };
+            }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({
+    db: { runTransaction: (callback) => callback(transaction) }
+  });
+
+  assert.deepEqual(await repo.findActiveRoom('host'), {
+    roomId: '12345678', memberId: 'member-host'
+  });
+  assert.deepEqual(accessedCollections, [COLLECTIONS.active, COLLECTIONS.rooms]);
 });

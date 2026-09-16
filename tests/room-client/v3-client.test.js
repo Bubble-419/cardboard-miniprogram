@@ -51,6 +51,32 @@ test('Cloud gateway keeps room commands isolated from injected event metadata', 
   });
 });
 
+test('CloudBase 注入 tcbContext 时仍只校验 command 内的协议字段', async () => {
+  const h = createHarness();
+  const gateway = createCloudRoomGateway({
+    callFunction: async ({ data }) => {
+      // 模拟共享云环境在事件根节点注入运行时上下文。
+      const event = { ...data, tcbContext: { env: 'test' } };
+      const envelope = event && event.type
+        ? event
+        : (event && event.command) || event || {};
+      return { result: await h.app.executeCommand(envelope, { userId: 'host' }) };
+    }
+  });
+
+  const result = await gateway.dispatch({
+    protocolVersion: 3,
+    commandId: 'create-with-runtime-context',
+    roomId: '',
+    knownSeq: 0,
+    type: 'CREATE_ROOM',
+    context: {},
+    payload: { nickName: '房主' }
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+});
+
 async function reduceFromSnapshot(h, userId, before, limit = 3) {
   let reduced = before.view;
   let afterSeq = before.seq;

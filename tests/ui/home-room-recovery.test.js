@@ -26,15 +26,15 @@ function roomSnapshot(roomId) {
   };
 }
 
-function loadHomePage(roomSession) {
-  const pagePath = require.resolve('../../pages/main-pages/aaa/index');
+function loadHomePage(roomSessionExports) {
   const roomSessionPath = require.resolve('../../modules/room-session/index');
+  const pagePath = require.resolve('../../pages/main-pages/aaa/index');
   const previousRoomSession = require.cache[roomSessionPath];
   require.cache[roomSessionPath] = {
     id: roomSessionPath,
     filename: roomSessionPath,
     loaded: true,
-    exports: roomSession
+    exports: roomSessionExports
   };
   let definition = null;
   global.Page = (pageDefinition) => { definition = pageDefinition; };
@@ -44,7 +44,7 @@ function loadHomePage(roomSession) {
   else delete require.cache[roomSessionPath];
   return {
     ...definition,
-    data: { ...definition.data },
+    data: { ...definition.data, loading: false },
     setData(patch) { Object.assign(this.data, patch); }
   };
 }
@@ -124,4 +124,45 @@ test('首页以 current-room 为准，忽略过期的本地房间号', async () 
   assert.equal(page.data.roomId, '22222222');
   assert.equal(storage.get('joinedRoomId'), '22222222');
   assert.equal(app.globalData.roomId, '22222222');
+});
+
+test('创建命令返回 ALREADY_IN_ROOM 时恢复服务端当前房间，而不是让账号卡死', async () => {
+  const toasts = [];
+  let redirectedUrl = '';
+  global.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    showToast: (options) => toasts.push(options.title),
+    redirectTo(options) {
+      redirectedUrl = options.url;
+      if (options.success) options.success({});
+    },
+    reLaunch(options) {
+      redirectedUrl = options.url;
+      if (options.success) options.success({});
+    }
+  };
+
+  const page = loadHomePage({
+    dispatchRoomCommand: async () => ({
+      ok: false,
+      errCode: 'ALREADY_IN_ROOM',
+      errMsg: '已经加入其他房间'
+    }),
+    getCurrentRoomPageSnapshot: async () => roomSnapshot('87654321'),
+    getRoomPageSnapshot: async () => ({
+      ok: true,
+      roomId: '87654321',
+      members: [{ memberId: 'member-1', isMe: true }],
+      isHost: true
+    })
+  });
+
+  await page._handleCreateRoom();
+
+  assert.equal(redirectedUrl, '/pages/main-pages/addPlayer/index?roomId=87654321');
+  assert.equal(storage.get('joinedRoomId'), '87654321');
+  assert.equal(app.globalData.roomId, '87654321');
+  assert.equal(toasts.includes('已经加入其他房间'), false);
 });
