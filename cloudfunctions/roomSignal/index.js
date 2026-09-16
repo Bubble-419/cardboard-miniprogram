@@ -366,9 +366,6 @@ var require_room_contracts = __commonJS({
       if (requiredString && (!isNonEmptyString(payload[requiredString]) || payload[requiredString].length > 128)) {
         return fail(ERR.INVALID_ARGUMENT, `payload.${requiredString} \u5FC5\u987B\u662F 1\uFF5E128 \u5B57\u7B26`);
       }
-      if (requiredString === "operationId" && !/^[A-Za-z0-9_-]+$/.test(payload.operationId)) {
-        return fail(ERR.INVALID_ARGUMENT, "payload.operationId \u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\u548C\u8FDE\u5B57\u7B26");
-      }
       if (type === COMMAND_TYPES.REORDER_SEATS) {
         if (!Array.isArray(payload.orderedMemberIds) || !payload.orderedMemberIds.length || payload.orderedMemberIds.length > MAX_SEATS || payload.orderedMemberIds.some((id) => !isNonEmptyString(id) || id.length > 128) || new Set(payload.orderedMemberIds).size !== payload.orderedMemberIds.length) {
           return fail(ERR.INVALID_ARGUMENT, "orderedMemberIds \u5FC5\u987B\u662F\u975E\u7A7A\u6210\u5458 ID \u6570\u7EC4");
@@ -861,6 +858,9 @@ var require_partner = __commonJS({
     function partnerState(aggregate) {
       return aggregate.currentSession && aggregate.currentSession.modeState.partner;
     }
+    function artifactFactKey(sessionId, operationId) {
+      return `${sessionId}:OP:${encodeURIComponent(String(operationId)).replace(/\./g, "%2E")}`;
+    }
     function orderedParticipantIds(aggregate, firstMemberId) {
       const ids = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
       const index = ids.indexOf(firstMemberId);
@@ -993,7 +993,7 @@ var require_partner = __commonJS({
       if (!text && !command.payload.fileRef) return fail(ERR.INVALID_ARGUMENT, "\u7D20\u6750\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
       const fileRef = command.payload.fileRef || null;
       const kind = command.payload.kind || (fileRef ? "IMAGE" : "TEXT");
-      const key = `${command.context.sessionId}:${operationId}`;
+      const key = artifactFactKey(command.context.sessionId, operationId);
       const existing = facts.artifacts[key];
       if (existing) {
         const sameOperation = existing.turnId === command.context.turnId && existing.stage === stage && existing.kind === kind && existing.text === text && existing.fileRef === fileRef;
@@ -1039,7 +1039,7 @@ var require_partner = __commonJS({
       if (!sessionCheck.ok) return sessionCheck;
       const facts = ensureFacts(aggregate);
       const operationId = String(command.payload.operationId || "").trim();
-      const key = `${command.context.sessionId}:${operationId}`;
+      const key = artifactFactKey(command.context.sessionId, operationId);
       const artifact = facts.artifacts[key];
       if (!artifact || artifact.turnId !== command.context.turnId) return fail(ERR.STALE_CONTEXT, "\u7D20\u6750\u4E0D\u5B58\u5728\u6216\u5DF2\u6362\u8F6E");
       if (Number(command.context.entityVersion) !== artifact.entityVersion) return fail(ERR.STALE_CONTEXT, "\u7D20\u6750\u5DF2\u7ECF\u66F4\u65B0");

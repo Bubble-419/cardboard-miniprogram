@@ -63,18 +63,20 @@ test('Partner 完整评分、内容、表态、换轮并按整轮递增', async 
 test('Partner Artifact 的 operationId 只可重放同一业务操作', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const fields = { context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
-    payload: { operationId: 'stable-op', text: '原内容' } };
+    payload: { operationId: 'stable.op-中文', text: '原内容' } };
   const first = await h.command('host', 'APPEND_ARTIFACT', fields);
   const replay = await h.command('host', 'APPEND_ARTIFACT', fields);
   const conflict = await h.command('host', 'APPEND_ARTIFACT', {
     context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
-    payload: { operationId: 'stable-op', text: '其他内容' }
+    payload: { operationId: 'stable.op-中文', text: '其他内容' }
   });
   assert.equal(first.ok, true);
   assert.equal(replay.ok, true);
   assert.equal(replay.outcome.artifactId, first.outcome.artifactId);
   assert.equal(conflict.errCode, 'COMMAND_ID_CONFLICT');
   assert.equal((await h.snapshot('host')).view.session.activeArtifacts.length, 1);
+  assert.equal(Object.keys(h.repo.rooms.get('12345678').facts.artifacts)
+    .every((key) => !key.includes('.')), true, 'Session Facts 的 Map key 必须可被 CloudBase 安全存储');
 });
 
 test('Partner 讨论阶段只有房主可以新增共享素材', async () => {

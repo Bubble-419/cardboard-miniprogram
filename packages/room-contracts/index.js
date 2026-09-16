@@ -260,9 +260,6 @@ function validatePayload(type, payload) {
   if (requiredString && (!isNonEmptyString(payload[requiredString]) || payload[requiredString].length > 128)) {
     return fail(ERR.INVALID_ARGUMENT, `payload.${requiredString} 必须是 1～128 字符`);
   }
-  if (requiredString === 'operationId' && !/^[A-Za-z0-9_-]+$/.test(payload.operationId)) {
-    return fail(ERR.INVALID_ARGUMENT, 'payload.operationId 只能包含字母、数字、下划线和连字符');
-  }
   if (type === COMMAND_TYPES.REORDER_SEATS) {
     if (!Array.isArray(payload.orderedMemberIds) || !payload.orderedMemberIds.length
       || payload.orderedMemberIds.length > MAX_SEATS

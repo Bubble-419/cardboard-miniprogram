@@ -11,6 +11,11 @@ function partnerState(aggregate) {
   return aggregate.currentSession && aggregate.currentSession.modeState.partner;
 }
 
+// operationId 来自客户端 UI block key；编码后再作为文档内 Map key，避免点号被 CloudBase 当成字段路径。
+function artifactFactKey(sessionId, operationId) {
+  return `${sessionId}:OP:${encodeURIComponent(String(operationId)).replace(/\./g, '%2E')}`;
+}
+
 function orderedParticipantIds(aggregate, firstMemberId) {
   const ids = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
   const index = ids.indexOf(firstMemberId);
@@ -131,7 +136,7 @@ function appendArtifact(aggregate, command, actor, deps) {
   if (!text && !command.payload.fileRef) return fail(ERR.INVALID_ARGUMENT, '素材内容不能为空');
   const fileRef = command.payload.fileRef || null;
   const kind = command.payload.kind || (fileRef ? 'IMAGE' : 'TEXT');
-  const key = `${command.context.sessionId}:${operationId}`;
+  const key = artifactFactKey(command.context.sessionId, operationId);
   const existing = facts.artifacts[key];
   if (existing) {
     const sameOperation = existing.turnId === command.context.turnId && existing.stage === stage
@@ -159,7 +164,7 @@ function updateArtifact(aggregate, command, actor, remove, deps) {
   if (!sessionCheck.ok) return sessionCheck;
   const facts = ensureFacts(aggregate);
   const operationId = String(command.payload.operationId || '').trim();
-  const key = `${command.context.sessionId}:${operationId}`;
+  const key = artifactFactKey(command.context.sessionId, operationId);
   const artifact = facts.artifacts[key];
   if (!artifact || artifact.turnId !== command.context.turnId) return fail(ERR.STALE_CONTEXT, '素材不存在或已换轮');
   if (Number(command.context.entityVersion) !== artifact.entityVersion) return fail(ERR.STALE_CONTEXT, '素材已经更新');
