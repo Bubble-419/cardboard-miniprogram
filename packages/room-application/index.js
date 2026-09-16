@@ -248,7 +248,8 @@ function createRoomApplication(repo, options) {
     const aggregate = await repo.readSessionAggregate(roomId, sessionId);
     const auth = authorizeSessionRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
-    await touchActivity(roomId, auth.member.memberId, actorContext);
+    const liveMember = memberByUserId(aggregate.room, actorUserId);
+    await touchActivity(roomId, liveMember && liveMember.memberId, actorContext);
     return okResult({
       protocolVersion: PROTOCOL_VERSION,
       roomId,
@@ -317,7 +318,8 @@ function createRoomApplication(repo, options) {
     const aggregate = await repo.readSessionAggregate(roomId, sessionId);
     const auth = authorizeSessionRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
-    await touchActivity(roomId, auth.member.memberId, actorContext);
+    const liveMember = memberByUserId(aggregate.room, actorUserId);
+    await touchActivity(roomId, liveMember && liveMember.memberId, actorContext);
     const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || 100));
     const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
     const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);

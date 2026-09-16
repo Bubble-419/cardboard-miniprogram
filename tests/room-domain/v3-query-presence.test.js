@@ -234,7 +234,9 @@ test('完成场次可从历史分页发现，并在返回大厅后由 View 完�
   assert.equal((await h.snapshot('host')).view.session, null);
   await h.command('u2', 'LEAVE_ROOM');
   const archived = await h.app.readSessionSnapshot('12345678', sessionId, { userId: 'host' });
-  const departedView = await h.app.readSessionSnapshot('12345678', sessionId, { userId: 'u2' });
+  const departedView = await h.app.readSessionSnapshot('12345678', sessionId, {
+    userId: 'u2', deviceSessionId: 'departed-device', touchPresence: true
+  });
   const current = await h.snapshot('host');
   const pageSnapshot = projectPageSnapshot(archived.view, {
     seq: archived.seq,
@@ -248,6 +250,8 @@ test('完成场次可从历史分页发现，并在返回大厅后由 View 完�
   assert.equal(departedView.ok, true);
   assert.equal(departedView.view.actor.memberId,
     departedView.view.session.participants.find((item) => item.nickName === '玩家2').memberId);
+  assert.equal([...h.repo.presence.values()].some((item) =>
+    item.memberId === departedView.view.actor.memberId), false, '历史回看不能把已离房参与者标记在线');
   assert.equal(JSON.stringify(departedView.view).includes('"userId"'), false);
   assert.deepEqual(archived.view.session.publicModeState.ideas.map((item) => item.text), ['A', 'B']);
   assert.equal(archived.view.room.members.length, 1);
