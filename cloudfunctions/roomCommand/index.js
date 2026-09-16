@@ -4085,7 +4085,7 @@ var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
 });
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
+  const userId = wxContext.OPENID || "";
   const envelope = commandEnvelopeFromEvent(event);
   try {
     return await app.executeCommand(envelope, { userId });

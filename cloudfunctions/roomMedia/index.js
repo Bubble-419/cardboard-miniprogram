@@ -4118,7 +4118,7 @@ exports.main = async (event) => {
     }
   }
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
+  const userId = wxContext.OPENID || "";
   const roomId = String(event && event.roomId || "");
   if (!roomId || action !== "qrcode") {
     return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "roomId/action \u4E0D\u5408\u6CD5" };

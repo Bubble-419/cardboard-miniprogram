@@ -55,7 +55,7 @@ test('CloudBase 注入 tcbContext 时仍只校验 command 内的协议字段', a
   const h = createHarness();
   const gateway = createCloudRoomGateway({
     callFunction: async ({ data }) => {
-      // 模拟共享云环境在事件根节点注入运行时上下文。
+      // 模拟云平台在事件根节点注入运行时上下文。
       const event = { ...data, tcbContext: { env: 'test' } };
       const envelope = event && event.type
         ? event

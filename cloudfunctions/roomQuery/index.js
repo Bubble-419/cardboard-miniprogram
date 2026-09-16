@@ -4068,7 +4068,7 @@ var db = cloud.database();
 var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
+  const userId = wxContext.OPENID || "";
   const roomId = event && event.roomId;
   const action = event && event.action || "current";
   try {

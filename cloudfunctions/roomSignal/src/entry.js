@@ -11,7 +11,7 @@ const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 /** 可丢失的秒级信号：只写独立集合，不推进 eventSeq/stateVersion。 */
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
+  const userId = wxContext.OPENID || '';
   const roomId = String(event && event.roomId || '');
   const signalType = String(event && event.signalType || '');
   const sessionId = String(event && event.sessionId || '');

@@ -4104,7 +4104,7 @@ exports.main = async (event) => {
     return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "\u97F3\u9891\u4E0D\u5C5E\u4E8E\u5F53\u524D\u623F\u95F4" };
   }
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || "";
+  const userId = wxContext.OPENID || "";
   try {
     const snapshot = await app.readSnapshot(roomId, { userId });
     if (!snapshot.ok) return snapshot;

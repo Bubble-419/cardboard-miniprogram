@@ -301,7 +301,7 @@ end
 @enduml
 ```
 
-服务端 actor 始终取 `FROM_OPENID || OPENID`，不信任 payload 中的用户身份。
+服务端 actor 始终取自有云环境上下文中的 `OPENID`，不信任 payload 中的用户身份。
 
 ### CAS 豁免
 

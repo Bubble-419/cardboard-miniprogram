@@ -1,6 +1,4 @@
-/**
- * 等待共享云环境就绪后再调用云函数，避免页面首屏时 cloudReady 未完成导致 Failed to fetch
- */
+/** 等待 App 级云能力初始化完成后再调用云函数。 */
 async function waitCloudReady() {
   const app = getApp();
   const ready = app && app.globalData && app.globalData.cloudReady;

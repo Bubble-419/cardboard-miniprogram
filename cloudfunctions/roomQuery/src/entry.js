@@ -12,7 +12,7 @@ const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 /** V3 房间只读入口：current / snapshot / sync / history / session / messages / leaderboard。 */
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
+  const userId = wxContext.OPENID || '';
   const roomId = event && event.roomId;
   const action = (event && event.action) || 'current';
 

@@ -158,7 +158,7 @@ flowchart TD
 11. 同一 Closing Vote Session 中同一 voter 只有一票。
 12. 消息、素材和贡献只追加或按自身确定性 ID 更新，不整包覆盖其他人的事实。
 13. 查询不修改业务事实；修复任务、命令和查询是三类独立操作。
-14. 用户身份只能来自服务端 `FROM_OPENID || OPENID`，客户端 userId 不可信。
+14. 用户身份只能来自服务端自有环境的 `OPENID`，客户端 userId 不可信。
 15. 房间号用于定位，不用于授权。
 
 ## 5. 目标架构
@@ -643,15 +643,11 @@ rooms 不再保存聊天数组、回合历史数组、全部投票、全部评�
 -> 执行事务
 ```
 
-### 10.4 共享云环境
+### 10.4 自有云环境
 
-删除对 `wx.cloud.callFunction` 和 `wx.cloud.database` 的全局 monkey patch。建立 `CloudRuntime Adapter`：
-
-```js
-createCloudRuntime({ useSharedEnv, resourceAppid, resourceEnv })
-```
-
-页面和领域模块不得直接访问 `wx.cloud`。生产 Adapter 处理共享环境 ready、`FROM_OPENID`、超时和 trace；测试 Adapter 使用内存实现。
+客户端只初始化当前 AppID 所属云环境，不再创建跨应用 Cloud 实例，也不修改
+`wx.cloud.callFunction` 和 `wx.cloud.database`。页面和领域模块不得直接访问
+`wx.cloud`；生产 Adapter 处理初始化、超时和 trace，测试 Adapter 使用内存实现。
 
 ### 10.5 依赖与构建
 

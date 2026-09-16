@@ -52,7 +52,7 @@ exports.main = async (event) => {
   }
 
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
+  const userId = wxContext.OPENID || '';
   try {
     const snapshot = await app.readSnapshot(roomId, { userId });
     if (!snapshot.ok) return snapshot;

@@ -1281,7 +1281,6 @@ Sync 读取期间并发提交新 Command
 | `roomUpdateWorkshopName`、`updateRoomMemberProfile` | `UPDATE_ROOM_PROFILE`、`UPDATE_MEMBER_PROFILE` |
 | `getAddPlayerData`、现 `roomQuery`、各页面状态轮询 | `current-room + snapshot + sync` |
 | 现 `roomCommand` | 保留函数名但替换为 V3 薄入口；不复用 V2 envelope/reducer |
-| `cloudbase_auth` | 保留为可信身份基础设施；actor 仍只从服务端上下文取得 |
 | `roomStartWorkshop`、`roomSetBrainstormMode`、`roomClearBrainstormMode` | Session 的 START / CANCEL / RETURN / REPLAY Command |
 | `updateRoomState` | 删除；拆为状态机中的具体 Command，禁止通用 Patch |
 | 客户端直写 `designProblems`、`submit/get/updateDesignProblem` | Contribution Command + Member View |

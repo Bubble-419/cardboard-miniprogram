@@ -15,7 +15,7 @@ const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), 
 /** V3 房间唯一业务写入口。调用者身份只取云函数上下文。 */
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
+  const userId = wxContext.OPENID || '';
 
   const envelope = commandEnvelopeFromEvent(event);
 

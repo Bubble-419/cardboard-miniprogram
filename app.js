@@ -1,50 +1,5 @@
-// ========== 共享云环境配置 ==========
-// 当前项目 AppID 就是云环境资源方，必须使用自身环境初始化。
-// 只有另一个小程序跨应用访问此环境时，才应在调用方项目中设为 true。
-// 参考：https://developers.weixin.qq.com/minigame/dev/wxcloud/guide/resource-sharing/
-const USE_SHARED_ENV = false;
-const SHARED_ENV_CONFIG = {
-  resourceAppid: 'wx6c484b4cfa055d73',  // 资源方小程序 AppID
-  resourceEnv: 'cardboard-miniprogram-6a13aab073',
-  traceUser: true,
-};
-
-function patchWxCloudForSharedEnv(app) {
-  const origGetTempFileURL = wx.cloud.getTempFileURL ? wx.cloud.getTempFileURL.bind(wx.cloud) : null;
-
-  wx.cloud.callFunction = function(opts) {
-    const ready = app.globalData.cloudReady;
-    if (!ready) {
-      return Promise.reject(new Error('cloud not ready'));
-    }
-    return ready.then(() => {
-      const cloud = app.globalData.cloud;
-      if (!cloud || typeof cloud.callFunction !== 'function') {
-        return Promise.reject(new Error('cloud not initialized'));
-      }
-      return cloud.callFunction(opts);
-    });
-  };
-  if (origGetTempFileURL) {
-    wx.cloud.getTempFileURL = function(opts) {
-      return app.globalData.cloudReady.then(() => app.globalData.cloud.getTempFileURL(opts));
-    };
-  }
-  wx.cloud.downloadFile = function(opts) {
-    return app.globalData.cloudReady.then(() => {
-      const cloud = app.globalData.cloud;
-      if (!cloud || typeof cloud.downloadFile !== 'function') {
-        return Promise.reject(new Error('cloud downloadFile unavailable'));
-      }
-      return cloud.downloadFile(opts);
-    });
-  };
-  if (app.globalData.cloud.uploadFile) {
-    wx.cloud.uploadFile = function(opts) {
-      return app.globalData.cloudReady.then(() => app.globalData.cloud.uploadFile(opts));
-    };
-  }
-}
+// 当前小程序 AppID 与云环境资源方一致，直接初始化自有环境。
+const CLOUD_ENV_ID = 'cardboard-miniprogram-6a13aab073';
 
 App({
   onLaunch(options) {
@@ -60,28 +15,12 @@ App({
       return;
     }
 
-    if (USE_SHARED_ENV && SHARED_ENV_CONFIG.resourceAppid) {
-      // 使用共享环境：必须用 new wx.cloud.Cloud 并 await init
-      const c1 = new wx.cloud.Cloud({
-        resourceAppid: SHARED_ENV_CONFIG.resourceAppid,
-        resourceEnv: SHARED_ENV_CONFIG.resourceEnv,
-        traceUser: SHARED_ENV_CONFIG.traceUser,
-      });
-      this.globalData.cloud = c1;
-      this.globalData.cloudReady = c1.init().catch((err) => {
-        console.error('共享云环境初始化失败', err);
-        throw err;
-      });
-      patchWxCloudForSharedEnv(this);
-    } else {
-      // 使用自有环境
-      wx.cloud.init({
-        env: SHARED_ENV_CONFIG.resourceEnv,
-        traceUser: SHARED_ENV_CONFIG.traceUser,
-      });
-      this.globalData.cloudReady = Promise.resolve();
-      this.globalData.cloud = wx.cloud;
-    }
+    wx.cloud.init({
+      env: CLOUD_ENV_ID,
+      traceUser: true,
+    });
+    this.globalData.cloudReady = Promise.resolve();
+    this.globalData.cloud = wx.cloud;
   },
 
   onShow(options) {

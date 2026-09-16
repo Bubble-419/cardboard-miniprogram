@@ -1,8 +1,6 @@
 /**
- * 共享云环境下 <image> 不能直接吃 cloud://（尤其他人上传的文件）。
- * 展示优先 getTempFileURL；仍缺时再 downloadFile 成本地路径。
- * 客户端都失败时走云函数（管理员权限，绕过「仅创建者可读」）。
- * 缓存并在过期/裂图时刷新。
+ * cloud:// 图片先换取临时 HTTPS 地址，仍不可用时下载成本地路径。
+ * 客户端两种方式都失败时通过 roomMedia 获取临时地址，并缓存最终结果。
  */
 
 const HTTPS_TTL_MS = 40 * 60 * 1000;
@@ -68,7 +66,7 @@ function invalidateCloudDisplayUrl(fileID) {
   if (fileID && isCloudFileId(fileID)) cache.delete(fileID);
 }
 
-function getSharedCloud() {
+function getCloudRuntime() {
   try {
     const app = getApp();
     if (app && app.globalData && app.globalData.cloud) return app.globalData.cloud;
@@ -99,7 +97,7 @@ function collectCloudIds(urls) {
 
 async function downloadToLocal(fileID) {
   await waitCloudReady();
-  const cloud = getSharedCloud();
+  const cloud = getCloudRuntime();
   if (!cloud || typeof cloud.downloadFile !== 'function') return '';
   const res = await cloud.downloadFile({ fileID });
   return (res && res.tempFilePath) || '';
@@ -141,7 +139,7 @@ async function fetchHttpsFallback(fileIds) {
   const pending = (fileIds || []).filter((id) => id && !cacheValid(cache.get(id)));
   if (!pending.length) return;
   await waitCloudReady();
-  const cloud = getSharedCloud();
+  const cloud = getCloudRuntime();
   if (!cloud || typeof cloud.getTempFileURL !== 'function') return;
   let fileList = [];
   try {

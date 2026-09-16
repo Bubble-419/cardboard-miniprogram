@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 首次运行或切换环境时，必须先确认开发者工具选择的云环境与 `app.js` 中的
-`SHARED_ENV_CONFIG.resourceEnv` 一致，然后完成第 2～5 节。以后修改
+`CLOUD_ENV_ID` 一致，然后完成第 2～5 节。以后修改
 `packages/room-*` 或任一 `cloudfunctions/*/src` 后，也要重新构建并部署相关云函数。
 客户端与云函数版本不一致时，不属于受支持的运行方式。
 
@@ -143,7 +143,6 @@ speechToText
 saveInspiration
 getInspiration
 listInspirations
-cloudbase_auth
 ```
 
 不要重新部署已删除的 legacy 房间云函数。`roomCommand/roomQuery/.../index.js` 是构建产物，修改 `packages/*` 或 `src/entry.js` 后必须重新执行 `pnpm build:cloud`。
