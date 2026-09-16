@@ -165,7 +165,6 @@ Page({
     this._stopStatePolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      intervalMs: 2000,
       followNavigation: true,
       onSnapshot(snapshot) {
         if (snapshot && snapshot.ok && snapshot.raw) {

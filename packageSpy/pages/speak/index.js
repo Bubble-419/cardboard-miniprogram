@@ -119,7 +119,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 800,
       onPollResult: (result) => this.refresh(result)
     });
   },

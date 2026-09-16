@@ -1,7 +1,9 @@
 'use strict';
 
 const { COMMAND_CONTEXT } = require('../../packages/room-contracts/index');
-const { createRoomClient, createCloudRoomGateway } = require('../../packages/room-client/index');
+const {
+  ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway
+} = require('../../packages/room-client/index');
 const { createNavigationCoordinator } = require('../room-navigation/index');
 const { projectPageSnapshot } = require('./page-model');
 
@@ -111,7 +113,7 @@ function ensureRoomSession() {
   app.globalData = app.globalData || {};
   if (app.globalData.roomSession) return app.globalData.roomSession;
   const gateway = createCloudRoomGateway({ callFunction: (request) => wx.cloud.callFunction(request) });
-  const facade = createFacade(createRoomClient({ gateway, intervalMs: 1000 }));
+  const facade = createFacade(createRoomClient({ gateway, intervalMs: ROOM_POLL_INTERVAL_MS }));
   app.globalData.roomSession = facade;
   return facade;
 }

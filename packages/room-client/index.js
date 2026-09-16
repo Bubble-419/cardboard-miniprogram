@@ -5,6 +5,9 @@ const {
 } = require('../room-contracts/index');
 const { clone, applyEventGroup } = require('../room-projection/index');
 
+// RoomClient 的统一轮询下限；页面不能再通过局部配置发起更高频的请求。
+const ROOM_POLL_INTERVAL_MS = 2000;
+
 function defaultCommandId() {
   return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 }
@@ -63,7 +66,10 @@ function validPublicPatch(value) {
 function createRoomClient(options) {
   const gateway = options && options.gateway;
   if (!gateway) throw new Error('RoomGateway required');
-  const intervalMs = Number(options.intervalMs) > 0 ? Number(options.intervalMs) : 1200;
+  const requestedIntervalMs = Number(options.intervalMs);
+  const intervalMs = requestedIntervalMs > 0
+    ? Math.max(ROOM_POLL_INTERVAL_MS, requestedIntervalMs)
+    : ROOM_POLL_INTERVAL_MS;
   const presenceIntervalMs = Number(options.presenceIntervalMs) > 0 ? Number(options.presenceIntervalMs) : 10000;
   const syncLimit = Math.min(100, Math.max(1, Number(options.syncLimit) || 100));
   const setTimeoutFn = options.setTimeoutFn || setTimeout;
@@ -502,4 +508,6 @@ function createRoomClient(options) {
   };
 }
 
-module.exports = { createRoomClient, createCloudRoomGateway, groupEvents, defaultCommandId };
+module.exports = {
+  ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway, groupEvents, defaultCommandId
+};

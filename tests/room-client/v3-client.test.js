@@ -2,7 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createRoomClient, createCloudRoomGateway } = require('@cardboard/room-client');
+const {
+  ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway
+} = require('@cardboard/room-client');
 const { applyEventGroup } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
 
@@ -23,6 +25,46 @@ function manualTimers() {
     }
   };
 }
+
+function recordingTimers() {
+  let task = null;
+  const delays = [];
+  return {
+    delays,
+    setTimeoutFn(callback, delay) {
+      task = callback;
+      delays.push(delay);
+      return delays.length;
+    },
+    clearTimeoutFn() { task = null; },
+    async run() {
+      const current = task;
+      task = null;
+      if (current) await current();
+    }
+  };
+}
+
+test('RoomClient 统一使用 2 秒最小轮询间隔', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const gateway = {
+    currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+    snapshot: (roomId) => h.app.readSnapshot(roomId, { userId: 'host' }),
+    sync: (roomId, seq, limit) => h.app.sync(roomId, seq, { userId: 'host' }, { limit }),
+    dispatch: async () => null,
+    presence: async () => ({ ok: true })
+  };
+  const timers = recordingTimers();
+  const client = createRoomClient({ gateway, ...timers, intervalMs: 800 });
+
+  await client.open();
+  assert.equal(timers.delays.at(-1), 0, '首次 Snapshot 后应立即追平事件');
+  await timers.run();
+  assert.equal(ROOM_POLL_INTERVAL_MS, 2000);
+  assert.equal(timers.delays.at(-1), ROOM_POLL_INTERVAL_MS);
+  client.close();
+});
 
 test('Cloud gateway keeps room commands isolated from injected event metadata', async () => {
   let request = null;

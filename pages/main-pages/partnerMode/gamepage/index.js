@@ -2668,7 +2668,6 @@ Page(withPageInteractionLock({
     // emitCurrent:false —— 首屏由 loadRoomData 负责；禁止订阅瞬间同步 setData
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || '',
-      intervalMs: 800,
       full: true,
       emitCurrent: false,
       followNavigation: !this.data.isHistoryReview,
