@@ -4,6 +4,107 @@
 >
 > 数据边界：只读写 `roomV3*` 新集合，不迁移、不双读、不双写旧房间数据。
 
+## 0. V3 协议原则
+
+### 0.1 权威状态、指令与投影
+
+```mermaid
+flowchart LR
+  INTENT[Command<br/>成员意图]
+  TX[事务内裁决]
+  STATE[权威 Room Aggregate]
+  RECEIPT[Command Receipt]
+  GROUP[有序 Event Group]
+  SNAPSHOT[Snapshot Projector]
+  PATCH[Public Patch + Actor Patch]
+  VIEW[完整 Member View]
+
+  INTENT --> TX
+  TX --> STATE
+  TX --> RECEIPT
+  TX --> GROUP
+  STATE --> SNAPSHOT --> VIEW
+  GROUP --> PATCH --> VIEW
+```
+
+V3 遵循以下不可拆分的原则：
+
+1. **服务端权威**：Room、当前 Session 和 Facts 是唯一业务事实源。客户端只提交意图，不提交最终状态、身份或权限结论。
+2. **Command 原子化**：每个已接受 Command 在同一事务内提交 State、一个 Event Group 和 Command Receipt；失败不得留下部分结果。
+3. **精确上下文**：并发冲突通过 `sessionId`、`turnId`、`workflowStep`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
+4. **事件只负责同步**：Event 是有保留期的有序同步日志，不是从创世事件重建服务端状态的完整事件溯源。Event 不可用时直接恢复 Snapshot。
+5. **View 是成员投影**：页面只消费由服务端为当前成员投影的完整 `Member View`，不得读取 Aggregate、Raw Event 或其他成员的 Actor 投影。
+6. **Snapshot 与 Event 等价**：同一个 `Member View` 必须既能由 Snapshot 完整替换，也能由前一 View 顺序应用 Event Patch 得到；页面不能根据来源执行不同业务逻辑。
+7. **隐私在投影前收口**：公共补丁可以共享，Actor 补丁在 Command 提交时按成员扇出；查询只返回调用成员自己的补丁。Spy 秘密不得进入公共 View 或公共 Event。
+8. **不可信就重置**：事件缺口、版本不兼容、状态版本不连续、矛盾水位或无进展批次都必须丢弃 staging View 并读取 Snapshot，禁止客户端猜测修补。
+9. **业务与瞬时状态分离**：Presence、Signal 和本地输入状态不改变 `stateVersion/eventSeq`，也不能决定成员资格或业务流程。
+10. **单一客户端连接**：房间页面共享一个 `RoomClient`、一个请求队列和一个最短 2 秒轮询器；页面不得再创建业务轮询或第二份房间状态。
+
+### 0.2 View 必须同时支持 Snapshot 与 Event
+
+```mermaid
+flowchart TB
+  AGG[Aggregate @ N]
+  SP[projectMemberView]
+  FULL[Snapshot<br/>view + seq + stateVersion]
+  OLD[Member View @ N-1]
+  PUB[apply publicPatch]
+  ACT[apply 当前成员 actorPatch]
+  NEXT[Member View @ N]
+  PAGE[Page Model / Route / UI]
+
+  AGG --> SP --> FULL --> NEXT
+  OLD --> PUB --> ACT --> NEXT
+  NEXT --> PAGE
+```
+
+两条更新路径共享同一个 View Schema：
+
+| 路径 | 输入 | 客户端动作 | 使用时机 |
+|---|---|---|---|
+| Snapshot | `view + seq + stateVersion + ephemeral` | 校验完整结构后整体替换稳定 View | 首次打开、前后台恢复、缺口或异常恢复 |
+| Event | `publicPatch + actorPatch + seq + stateVersion` | 在 staging View 依次应用公共补丁和本人补丁，追平后一次发布 | 正常轮询、Command Response 携带 SyncBatch |
+
+必须始终满足：
+
+```text
+SnapshotView(M)
+  == reduceProjectedEvents(SnapshotView(N), EventGroups[N+1...M])
+
+Event.seq == previousSeq + 1
+Event.stateVersion == previousStateVersion + 1
+!hasMore => throughSeq == roomCurrentSeq
+```
+
+`projectMemberView(Aggregate)` 生成 Snapshot。Event Group 则由 Command 提交前后的同一投影结果做差生成：
+
+```mermaid
+sequenceDiagram
+  participant A as Application
+  participant P as Projector
+  participant E as Event Group
+  participant C as RoomClient
+
+  A->>P: projectPublicView(before / after)
+  P-->>A: publicPatch
+  A->>P: projectActorEnvelope(before / after, each member)
+  P-->>A: actorProjections[]
+  A->>E: 保存 rawEvents + publicPatch + actorProjections
+  E-->>C: publicEvents(type only) + publicPatch + 本人 actorPatch
+  C->>C: publicPatch → actorPatch → 完整性检查
+  C->>C: 追平后发布 Member View
+```
+
+新增或修改任何 View 字段时，必须同时验证：
+
+- Snapshot projector 可以独立产生该字段；
+- public/actor patch 把该字段放在正确的隐私层；
+- Event reducer 可以从旧 View 得到与新 Snapshot 完全相同的结果；
+- 缺口恢复不会把旧 staging View 与新 Snapshot 混用；
+- 页面只依赖最终 `Member View`，不感知本次更新来自 Snapshot 还是 Event。
+
+对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。
+
 ## 1. 最终运行拓扑
 
 ```mermaid
@@ -179,7 +280,7 @@ sequenceDiagram
   C->>Q: snapshot(roomId)
   Q->>DB: 同一事务读取 Room + 当前 Session 文档
   DB-->>Q: Aggregate@N
-  Q-->>C: Snapshot(view, seq=N, actor, route, ephemeral)
+  Q-->>C: Snapshot(view, seq=N, stateVersion, ephemeral)
 
   loop 单一短轮询计时器
     C->>Q: sync(afterSeq=N)

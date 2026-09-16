@@ -1,473 +1,440 @@
-# 房间模型与状态现状
+# 房间协议 V3 模型与状态
 
-> 历史基线：本文记录 V3 重构前的混合模型，仅用于核对被替换的数据与状态。
->
-> 当前模型以 [协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md) 为准；术语采用 [领域上下文](./refactor/CONTEXT.md)。
+> 本文描述当前权威模型、物理存储、成员 View 和状态不变量。字段定义以代码为准：[`room-contracts`](../packages/room-contracts/index.js)、[`room-domain/model.js`](../packages/room-domain/model.js)、[`room-projection`](../packages/room-projection/index.js)。
 
-## 1. 概念模型
+## 1. 模型分层
+
+```mermaid
+flowchart TB
+  subgraph Authority[权威业务模型]
+    ROOM[Room]
+    SESSION[Current RoomSession]
+    FACTS[Session Facts]
+  end
+
+  subgraph Sync[同步模型]
+    EVENT[Event Group]
+    RECEIPT[Command Receipt]
+  end
+
+  subgraph Projection[成员读模型]
+    PUBLIC[Public View]
+    ACTOR[Actor View]
+    ROUTE[Route]
+    VIEW[Member View]
+  end
+
+  subgraph Ephemeral[瞬时模型]
+    PRESENCE[Presence]
+    SIGNAL[Signal]
+    LOCAL[Local UI State]
+  end
+
+  ROOM --> PUBLIC
+  SESSION --> PUBLIC
+  FACTS --> PUBLIC
+  ROOM --> ACTOR
+  SESSION --> ACTOR
+  FACTS --> ACTOR
+  PUBLIC --> VIEW
+  ACTOR --> VIEW
+  ROUTE --> VIEW
+  ROOM --> EVENT
+  SESSION --> EVENT
+  FACTS --> EVENT
+  PRESENCE -.不进入业务水位.-> VIEW
+  SIGNAL -.不进入业务水位.-> VIEW
+  LOCAL -.只在客户端.-> VIEW
+```
+
+核心区分：
+
+- `Room Aggregate = Room + Current RoomSession + Current Session Facts`，只在 Command 或 Snapshot 需要时装载。
+- `Member View` 是对 Aggregate 的成员级投影，不是可写回的状态。
+- Event Group 是相邻投影之间的增量，不是权威事实。
+- Presence、Signal 和本地 UI 状态都不能改变业务流程。
+
+## 2. Room
+
+```text
+Room
+├── roomId
+├── protocolVersion / schemaVersion
+├── lifecycle: OPEN | DISSOLVED
+├── stateVersion
+├── eventSeq
+├── hostMemberId
+├── workshopName
+├── members[]
+│   ├── memberId / userId
+│   ├── seatNo
+│   ├── role: HOST | PLAYER
+│   └── profile
+├── currentSessionId
+├── sessionOrdinal
+└── createdAt / updatedAt
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN: CREATE_ROOM
+  OPEN --> OPEN: JOIN / PROFILE / REORDER / KICK / LEAVE
+  OPEN --> OPEN: Session 开始、完成、回大厅或重玩
+  OPEN --> DISSOLVED: DISSOLVE_ROOM
+  DISSOLVED --> [*]
+```
+
+Room 只保存长期成员关系和同步水位，不承载不断增长的场次内容。`currentSessionId` 为 `null` 表示当前在大厅且没有活跃场次。
+
+### Room 不变量
+
+```text
+roomId 是 8 位数字
+1 <= members.length <= 6（OPEN 房间）
+每个 memberId、userId、seatNo 在 Room 内唯一
+seatNo ∈ [1, 6]
+hostMemberId 必须指向 role=HOST 的当前成员
+stateVersion 与 eventSeq 只在接受业务 Command 时递增
+currentSessionId == null 或指向同 roomId 的 RoomSession
+```
+
+## 3. RoomSession 与 Facts
 
 ```mermaid
 erDiagram
-  ROOM ||--|{ MEMBER : contains
-  ROOM ||--o{ WORKSHOP_SESSION : runs
-  WORKSHOP_SESSION ||--o{ TURN : contains
-  WORKSHOP_SESSION ||--o{ DESIGN_PROBLEM : collects
-  WORKSHOP_SESSION ||--o{ CREATIVE_IDEA : collects
-  TURN ||--o{ SCORE : receives
-  TURN ||--o{ CONTRIBUTION : records
-  TURN ||--o{ ARTIFACT : attaches
-  WORKSHOP_SESSION ||--o{ MESSAGE : carries
-  WORKSHOP_SESSION ||--o{ VOTE : carries
-  MEMBER ||--|| SEAT : occupies
-  MEMBER ||--o{ PRESENCE : reports
-  MEMBER ||--o{ SECRET_CARD : owns
-
-  ROOM {
-    string roomId
-    string lifecycle
-    int revision
-    string selectedModeId
-  }
-  MEMBER {
-    string userId
-    int seatNo
-    string role
-  }
-  WORKSHOP_SESSION {
-    int brainstormSessionSeq
-    string mode
-    string workflowStep
-  }
-  TURN {
-    string turnId
-    int roundNo
-    int activeSeatNo
-  }
+  ROOM ||--o{ ROOM_SESSION : owns
+  ROOM_SESSION ||--|{ PARTICIPANT : freezes
+  ROOM_SESSION ||--o{ TURN : records
+  ROOM_SESSION ||--o{ SCORE : records
+  ROOM_SESSION ||--o{ VOTE : records
+  ROOM_SESSION ||--o{ CONTRIBUTION : records
+  ROOM_SESSION ||--o{ ARTIFACT : records
+  ROOM_SESSION ||--o{ MESSAGE : records
+  ROOM_SESSION ||--o{ SECRET : protects
 ```
 
-概念上的 `Workshop Session`、`Turn`、`Contribution` 并未全部拆成独立文档；大量数据仍嵌在 `rooms`。
+```text
+RoomSession
+├── sessionId / roomId / ordinal
+├── status: CONFIGURING | RUNNING | COMPLETED | CANCELLED
+├── mode: PARTNER | HALLI_GALLI | SPY
+├── participants[]
+│   ├── memberId / userId
+│   ├── seatNoAtStart
+│   ├── status: ACTIVE | LEFT
+│   └── 冻结展示资料
+├── setup
+├── workflow
+│   ├── step
+│   ├── roundNo
+│   ├── activeMemberId
+│   ├── turnId
+│   └── phaseStartedAt
+├── progress
+├── modeState
+├── result
+├── startedAt / completedAt / updatedAt
+└── facts
+    ├── turns{}
+    ├── scores{}
+    ├── votes{}
+    ├── contributions{}
+    ├── artifacts{}
+    ├── messages[]
+    └── secrets{}
+```
 
-## 2. 物理存储模型
+一个 `roomV3Sessions` 文档保存一个 Session 及其全部权威 Facts。运行时 Adapter 把内嵌 `facts` 拆为领域 Aggregate 的一部分，提交时再原子写回同一文档。
 
 ```mermaid
-flowchart TB
-  R[(rooms<br/>混合聚合 + 导航 + 模式内容)]
-  M[(roomMembers<br/>成员/席位读模型)]
-  S[(roomScores<br/>Partner 评分)]
-  D[(designProblems<br/>设计问题 + Halli 创意)]
-  DL[(roomDesignProblems<br/>未接入分叉)]
-  I[(inspirations<br/>灵感)]
-  C[(roomCommands<br/>命令结果/幂等)]
-  P[(roomPresence<br/>V2 心跳)]
-  MSG[(roomMessages<br/>V2 消息事实)]
-  V[(roomVotes<br/>V2 表态事实)]
-  A[(roomArtifacts<br/>V2 素材事实)]
-  SEC[(roomSecrets<br/>Spy 密牌)]
-
-  R --- M
-  R --- S
-  R --- D
-  R -.未接入主流程.--- DL
-  R --- I
-  R --- C
-  R --- P
-  R --- MSG
-  R --- V
-  R --- A
-  R --- SEC
+stateDiagram-v2
+  [*] --> CONFIGURING: START_WORKSHOP_SESSION
+  CONFIGURING --> RUNNING: 完成配置
+  CONFIGURING --> CANCELLED: 取消或人数不足
+  RUNNING --> COMPLETED: 模式完成
+  RUNNING --> CANCELLED: 取消或人数不足
+  COMPLETED --> [*]
+  CANCELLED --> [*]
 ```
 
-| 集合 | 键/归属 | 当前写入者 | 当前主要读取者 | 权威性 |
-|---|---|---|---|---|
-| `rooms` | `_id`，业务查询用 `roomId` | legacy 云函数 + V2 仓储 | `getAddPlayerData`、V2 仓储 | 多状态混合主记录 |
-| `roomMembers` | `roomId + userId` | legacy 成员函数 + V2 双写 | 几乎所有房间查询 | 当前成员/席位事实来源 |
-| `roomScores` | legacy：`roomId+round+seat+userId`；V2：确定性 docId | `submitGameScore`、V2 `SUBMIT_SCORE` | 评分进度、排行榜、V2 snapshot | 现行评分事实来源；两套行格式兼容 |
-| `designProblems` | `roomId+playerIndex+entryType` | 客户端直写、创意云函数 | 问题/创意查询 | 现行问题与 Halli 创意来源 |
-| `roomDesignProblems` | `roomId+userId` | `submitDesignProblem` | 仅该旧云函数内部 | **分叉，主流程不读** |
-| `inspirations` | `id` 或 room/session 字段 | `saveInspiration` | 灵感空间 | 独立素材库 |
-| `roomCommands` | `commandId` | V2 application | V2 application | 幂等结果缓存，不是事件日志 |
-| `roomPresence` | `roomId+userId+deviceSessionId` | `roomPresence` | 仓储有 `listPresence`，当前组合快照未用 | 已实现但未接入页面读链 |
-| `roomMessages` | 自动 ID | V2 `POST_MESSAGE` | V2 snapshot 尚未加载 | V2 事实表，页面仍读 `rooms.partnerExpressMessages` |
-| `roomVotes` | `voteSessionId+voterUserId` | V2 `SUBMIT_CLOSING_VOTE` | V2 snapshot 尚未加载 | V2 事实表，页面仍用 legacy vote state |
-| `roomArtifacts` | 自动 ID / `operationId` | V2 `APPEND_ARTIFACT` | V2 snapshot 尚未加载 | V2 事实表，页面未接入 |
-| `roomSecrets` | `roomId+userId` | Spy V2 | `SPY_GET_MY_CARD` | Spy 密牌权威；可从兼容字段回退 |
+### Session 不变量
 
-## 3. 房间不是单一状态值
+```text
+一个 Room 同时最多一个 current Session
+ordinal 在同一 Room 内单调递增
+participants 在 Session 创建时冻结；中途加入者不会补入
+成员离开只把 Participant 标为 LEFT，不删除历史事实
+COMPLETED / CANCELLED Session 归档后不再修改
+Facts 只能属于同一 sessionId
+requiredMemberIds 只包含当前有效 Participant
+submittedMemberIds 必须是 requiredMemberIds 的子集
+```
 
-### 当前状态向量
+## 4. 三种模式的状态轴
 
 ```mermaid
 flowchart LR
-  R[Room State]
-  R --> L[生命周期轴<br/>status + lifecycle]
-  R --> W[工作坊轴<br/>selectedModeId + session seq]
-  R --> N[导航轴<br/>currentPage + progressPage]
-  R --> F[工作流轴<br/>workflow]
-  R --> T[Turn 轴<br/>round + active seat + timers]
-  R --> P[模式轴<br/>Partner phase / Spy phase]
-  R --> C[并发进度轴<br/>scores / votes]
-  R --> O[成员在线轴<br/>membership + presence]
+  SESSION[RoomSession]
+  WF[workflow.step]
+  MODE[modeState]
+  PROGRESS[progress]
+  FACTS[facts]
+  RESULT[result]
+
+  SESSION --> WF
+  SESSION --> MODE
+  SESSION --> PROGRESS
+  SESSION --> FACTS
+  SESSION --> RESULT
 ```
 
-可将一个实际房间状态写成：
+`workflow.step` 是页面跟随和 Command 合法性的主业务轴；`modeState` 保存该模式当前规则数据；`progress` 只保存当前 barrier 的 required/submitted 集合；长期记录进入 Facts。
+
+### Partner
 
 ```text
-RoomState =
-  Lifecycle
-  × WorkshopSession
-  × Navigation
-  × Workflow
-  × Turn
-  × ModeState
-  × Progress
-  × Membership/Presence
+modeState.partner
+├── roundNo / turnOrdinal
+├── activeTurn
+│   ├── turnId / activeMemberId / phase
+│   ├── scoreProgress
+│   ├── specialUsed / masterMode
+│   └── silentStartedAt / silentDeadlineAt
+└── closing
+    ├── closingVoteSessionId / sourceTurnId / initiatorMemberId
+    ├── requiredMemberIds / submittedMemberIds
+    └── stage
 ```
 
-这些维度由不同函数更新，当前没有统一事务保证它们同时前进。
+完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。排行榜从归档 Turn 汇总，不由客户端提交。
 
-## 4. 生命周期轴
+### Halli Galli
 
-### 两套生命周期字段
+```text
+setup.proposedFirstMemberId
+progress.contributionProgress
+facts.contributions[HALLI_IDEA]
+result.ideaCount
+```
+
+创意在收集阶段只公开提交进度；进入 `HALLI_SUMMARY` 后才公开内容。
+
+### Spy
+
+```text
+modeState.spy
+├── gameId / roundNo
+├── players[]
+├── speakOrder / currentSpeakerIndex / speakerTurnId
+├── voteProgress / voteStartedAt
+├── tieBreak / lastResult
+└── winnerSide / reveal
+
+facts.secrets[gameId:memberId]
+facts.votes[voteSessionId:memberId]
+```
+
+密牌只存在权威 Facts 和对应成员的 Actor View。`reveal` 只有在最终结算后才进入公共模式状态。
+
+## 5. Event Group
+
+一个已接受 Command 对应一个 `roomV3Events` 文档，即一个不可拆分的 Event Group：
+
+```text
+EventGroup
+├── eventSchemaVersion
+├── roomId
+├── seq
+├── stateVersion
+├── commandId
+├── sessionId
+├── rawEvents[]
+├── publicEvents[]       # 只含 type
+├── publicPatch
+├── actorProjections[]
+│   ├── recipientMemberId
+│   └── actorPatch
+└── occurredAt
+```
 
 ```mermaid
-stateDiagram-v2
-  state Legacy {
-    [*] --> CREATED: roomCreate
-    CREATED --> STARTED: roomStartWorkshop
-    STARTED --> DISSOLVED: roomDissolve
-    CREATED --> DISSOLVED: roomDissolve
-  }
+flowchart LR
+  RAW[rawEvents<br/>服务端审计语义]
+  PUB[publicEvents<br/>type only]
+  PP[publicPatch<br/>共享]
+  AP[actorProjections<br/>按成员扇出]
+  QUERY[roomQuery sync]
+  MEMBER[调用成员]
 
-  state V2 {
-    [*] --> LOBBY: CREATE_ROOM
-    LOBBY --> ACTIVE: START_STATEMENT
-    ACTIVE --> DISSOLVED: DISSOLVE_ROOM
-    LOBBY --> DISSOLVED: DISSOLVE_ROOM
-  }
+  RAW -.禁止返回.-> QUERY
+  PUB --> QUERY
+  PP --> QUERY
+  AP -->|只选择 recipientMemberId| QUERY
+  QUERY --> MEMBER
 ```
 
-| 字段 | 值 | 写入覆盖 | 备注 |
-|---|---|---|---|
-| `status` | `CREATED / STARTED / DISSOLVED` | legacy 与 V2 部分命令 | 页面主创建流程使用此轴 |
-| `lifecycle` | `LOBBY / ACTIVE / DISSOLVED` | V2 | legacy 房间缺省由适配器映射为 `LOBBY`，即使 `status=STARTED` |
+### Event 不变量
 
-### 可出现的组合
+```text
+EventGroup.seq == 前一 EventGroup.seq + 1
+EventGroup.stateVersion == 前一 stateVersion + 1
+同一 Command 只提交一个 Event Group
+publicEvents 只暴露已知 type，不带领域 payload
+publicPatch 不得包含 Actor/Route 或秘密
+actorPatch 只作用于当前成员的 actor/route envelope
+应用 publicPatch 再应用本人 actorPatch，结果等于同水位 Snapshot
+```
 
-| `status` | `lifecycle` | 形成路径 | 判读 |
-|---|---|---|---|
-| `CREATED` | 缺失 | 页面 `roomCreate` 后 | 常见 legacy 新房 |
-| `STARTED` | 缺失 | `roomStartWorkshop` | legacy 已开工作坊 |
-| `STARTED` | `ACTIVE` | Partner `START_STATEMENT` 经 V2 | 两轴暂时对齐为活跃 |
-| `DISSOLVED` | 缺失 | 页面 `roomDissolve` | `getAddPlayerData` 判为解散 |
-| `DISSOLVED` | `DISSOLVED` | V2 `DISSOLVE_ROOM` | V2 完整终态 |
+## 6. Member View
 
-`roomSetBrainstormMode`、`roomClearBrainstormMode`、Halli/Spy 开始局内流程都不会系统性推进 `lifecycle`。
-
-## 5. 工作坊与模式轴
+```text
+MemberView
+├── room
+│   ├── roomId / lifecycle / workshopName / hostMemberId
+│   └── members[]               # 不包含 userId
+├── session
+│   ├── sessionId / ordinal / status / mode / participants[]
+│   ├── setup / workflow / progress
+│   ├── publicModeState / activeTurn
+│   ├── activeArtifacts / recentMessages / turnSummaries
+│   └── result
+├── actor
+│   ├── memberId / role / seatNo / isParticipant
+│   ├── contributionStatus / scoreStatus / voteStatus
+│   ├── privateModeState
+│   └── capabilities
+└── route
+    ├── name
+    └── params
+```
 
 ```mermaid
-stateDiagram-v2
-  [*] --> NoMode
-  NoMode --> ModeSelected: roomSetBrainstormMode<br/>brainstormSessionSeq+1
-  ModeSelected --> InProgress: currentPage 离开配置阶段
-  InProgress --> EndedKeepMode: brainstormSessionEnded=true
-  EndedKeepMode --> InProgress: 再来一轮<br/>sessionSeq+1
-  ModeSelected --> NoMode: roomClearBrainstormMode
-  InProgress --> NoMode: roomClearBrainstormMode
-  InProgress --> NoMode: 局内人数 <= 1
+flowchart TB
+  PUBLIC[Public View<br/>所有获权成员相同]
+  ACTOR[Actor View<br/>本人状态与权限]
+  ROUTE[Route<br/>Workflow + Actor 派生]
+  VIEW[Member View]
+  SNAP[Snapshot 完整替换]
+  EVENT[Event publicPatch + actorPatch]
+  PAGE[页面]
+
+  PUBLIC --> VIEW
+  ACTOR --> VIEW
+  ROUTE --> VIEW
+  SNAP --> VIEW
+  EVENT --> VIEW
+  VIEW --> PAGE
 ```
 
-| 字段 | 意义 | 默认/重置 |
+View 的两种更新路径属于同一个 Interface：Snapshot 直接提供完整 View；Event 只提供从旧 View 到新 View 的安全增量。页面永远只看到发布后的完整 View。
+
+`capabilities` 是服务端投影的 UI 操作提示，不代替 Command 时的服务端授权。`route` 是展示投影，不是业务事实，客户端不能把页面名写回服务器。
+
+## 7. 物理集合
+
+```mermaid
+erDiagram
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_SESSIONS : contains
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_EVENTS : sequences
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_MESSAGES : indexes
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_PRESENCE : observes
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_SIGNALS : carries
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_MEDIA : owns
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_ACTIVE_BY_USER : references
+  ROOM_V3_ROOMS ||--o{ ROOM_V3_ACTIONS : receipts
+```
+
+| 集合 | 权威内容 | 读取特征 |
 |---|---|---|
-| `selectedModeId` | `partner / halliGalli / spy / null` | 清模式或仅剩 1 人时清空 |
-| `brainstormSessionSeq` | 一次模式场次的兼容序号 | 选模式、再来一轮、清模式时增加 |
-| `brainstormSessionEnded` | 已回大厅但可保留模式的结束标记 | 清模式时 `false`；兼容结束路径或人数不足时 `true` |
-| `creativeSessionSeq` | Halli 创意提交批次 | 每次进入 `creativeInput` 增加 |
-| `selectedBG` | 情境：`scene/user/function/platform?` | 清模式时删除；Halli 无 `platform` |
-| `selectedDesignProblem` | `{id,text}` | Partner 选题后写；重置题目时删除 |
-| `editingProblemId` | 房主正在编辑的问题 | 仅选择问题页的 UI 同步状态 |
+| `roomV3Rooms` | Room、成员、当前 Session 引用、业务水位 | 高频 Sync 读取 |
+| `roomV3Sessions` | 单个 Session + 全部 Facts | Snapshot、Command、历史回看 |
+| `roomV3ActiveByUser` | 用户当前开放房间的唯一索引 | `current` 与 Command 前置检查 |
+| `roomV3Actions` | Command Receipt 和请求哈希 | 幂等重放与冲突判断 |
+| `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
+| `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
+| `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
+| `roomV3Signals` | 当前 Turn 的可丢失瞬时信号 | ephemeral 投影 |
+| `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
-## 6. 导航轴
+```mermaid
+flowchart LR
+  SYNC[sync] --> R[roomV3Rooms]
+  SYNC --> E[roomV3Events]
+  SNAPSHOT[snapshot] --> R
+  SNAPSHOT --> S[roomV3Sessions]
+  COMMAND[command transaction] --> R
+  COMMAND --> S
+  COMMAND --> E
+  COMMAND --> A[roomV3Actions]
+```
 
-### 页状态到业务语义
+高频 Sync 不重建 Actor View，也不读取 Session；Actor 变化已经在 Event 产生时扇出为 actor patch。
 
-| `currentPage` | 业务语义 | 模式 | 可达性 |
-|---|---|---|---|
-| `addplayer` | 房间大厅 | 通用 | 现行 |
-| `brainstormmode` | 选择模式 | 通用 | 现行 |
-| `auth` | 公共 `modeIndex` 入口别名 | Partner/Halli | 现行兼容键 |
-| `selectbg` | 填写自定义情境 | Partner/Halli | 现行 |
-| `confirmbg` | 确认 Partner 情境 | Partner | 现行 |
-| `submitproblem` | 全员提交设计问题 | Partner | 现行 |
-| `selectproblem` | 房主选择问题 | Partner | 现行 |
-| `selectmode` | 旧选择目标页 | Halli | 主流程不可达 |
-| `selectplayer` | 触摸/随机选人 | Partner/Halli | 现行 |
-| `confirmfirstplayer` | 房主明确首位玩家 | Partner | 现行 |
-| `gamepage` | 游戏主页面 | Partner/Halli | 现行；需结合 mode/phase 判读 |
-| `statement` | 旧表态页面 | Partner | 兼容；立即跳回 gamepage discussion |
-| `discussion` | 旧讨论页面 | Partner | 当前主流程未写入 |
-| `closingstatement` | 收尾投票 | Partner | 现行 |
-| `closingend` | 收尾过渡页 | Partner | 兼容；立即跳排行榜 |
-| `leaderboard` | 排行榜 | Partner | 现行 |
-| `creativeinput` | 每人填写印象创意 | Halli | 现行 |
-| `creativesummary` | 创意汇总 | Halli | 现行 |
-| `playsuccess / playfail` | 旧结果页 | Halli | 主流程不可达 |
-| `spymodeindex` | Spy 说明/开局 | Spy | 现行 |
-| `spyassign` | Spy 分牌页 | Spy | 兼容，正常开局跳过 |
-| `spyspeak` | 发言 | Spy | 现行 |
-| `spyvote` | 投票 | Spy | 现行 |
-| `spyresult` | 单轮结果 | Spy | 现行 |
-| `spynextround` | 旧下一轮准备 | Spy | 兼容，正常流程跳过 |
-| `spysettle` | 最终结算 | Spy | 现行 |
+## 8. 业务状态与瞬时状态
 
-### 读时重写规则
+| 数据 | 改变 `stateVersion/eventSeq` | 进入稳定 View | 来源 |
+|---|:---:|:---:|---|
+| Room / Session / Facts | 是 | 是 | Command 事务 |
+| Public / Actor / Route Patch | 跟随 Command | 是 | Event Group |
+| Presence | 否 | 否，进入 `ephemeral` | 任意房间请求顺带续租 |
+| Signal | 否 | 否，进入 `ephemeral` | `roomSignal` |
+| 服务端时钟偏差 | 否 | 否，RoomClient 元数据 | 响应 `serverTime` |
+| 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地 |
 
-`rooms.currentPage` 不一定等于客户端收到的 `roomState.currentPage`：
+Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。设备离线不会删除 Member；离房、被踢或房间解散后，旧租约即使尚未清理，也必须被成员投影过滤。
+
+## 9. 原子提交与幂等
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant T as Transaction
+  participant A as roomV3Actions
+  participant S as Room + Session
+  participant E as roomV3Events
+
+  C->>T: commandId + request
+  T->>A: 查 scopeKey:commandId
+  alt 同一请求已提交
+    A-->>C: 原 Receipt
+  else commandId 被不同请求复用
+    A-->>C: COMMAND_ID_CONFLICT
+  else 新请求
+    T->>T: 读取最新 Aggregate 并执行 Reducer
+    T->>S: 写权威状态
+    T->>E: 写一个 Event Group
+    T->>A: 写 Receipt
+    T-->>C: 原子提交结果
+  end
+```
+
+`knownSeq` 不参与业务写入的 compare-and-set。客户端重复发送同一 Command 必须复用相同 `commandId`；服务端用请求哈希判断这是安全重放还是冲突。
+
+## 10. 恢复不变量
 
 ```mermaid
 flowchart TD
-  A[读取 rooms.currentPage<br/>缺省 addPlayer]
-  B{已选模式?}
-  C{brainstormSessionEnded=false?}
-  D{currentPage 为 addPlayer/缺失?}
-  E{progressPage 存在且<br/>非 closingEnd/brainstormMode?}
-  F[返回 brainstormProgressPage]
-  G[返回 currentPage]
+  INPUT[Sync Batch]
+  VERSION{版本匹配?}
+  SEQ{seq 连续?}
+  STATE{stateVersion 连续?}
+  WATERMARK{throughSeq/roomCurrentSeq/hasMore 一致?}
+  APPLY[应用到 staging View]
+  MORE{hasMore?}
+  PUBLISH[一次发布完整 View]
+  RESET[丢弃 staging，读取 Snapshot]
 
-  A --> B
-  B -->|否| G
-  B -->|是| C
-  C -->|否| G
-  C -->|是| D
-  D -->|否| G
-  D -->|是| E
-  E -->|是| F
-  E -->|否| G
+  INPUT --> VERSION
+  VERSION -->|否| RESET
+  VERSION -->|是| SEQ
+  SEQ -->|否| RESET
+  SEQ -->|是| STATE
+  STATE -->|否| RESET
+  STATE -->|是| WATERMARK
+  WATERMARK -->|否| RESET
+  WATERMARK -->|是| APPLY --> MORE
+  MORE -->|是| INPUT
+  MORE -->|否| PUBLISH
 ```
 
-因此 `currentPage=addPlayer` 并不总表示业务已回大厅。
-
-## 7. `workflow` 与 Turn 轴
-
-### V2 工作流形状
-
-```text
-workflow = {
-  mode,          // PARTNER | SPY
-  step,          // TURN_ACTIVE | DISCUSSION | SPY_*
-  roundNo,
-  turnId,
-  activeSeatNo,
-  deadlineAt?,
-  voteSessionId?,
-  legacyPage?
-}
-```
-
-```mermaid
-stateDiagram-v2
-  [*] --> Null: legacy 配置流程
-  Null --> TURN_ACTIVE: 选择 currentPlayerIndex 时兼容补写
-  TURN_ACTIVE --> DISCUSSION: START_STATEMENT
-  DISCUSSION --> TURN_ACTIVE: ADVANCE_TURN
-
-  Null --> SPY_SPEAK: SPY_START_ASSIGN
-  SPY_SPEAK --> SPY_VOTE: 发言完成
-  SPY_VOTE --> SPY_RESULT: 淘汰但未结束
-  SPY_VOTE --> SPY_SPEAK: 平票
-  SPY_VOTE --> SPY_SETTLE: 分出胜负
-  SPY_RESULT --> SPY_SPEAK: NEXT_ROUND
-```
-
-| 字段 | 当前语义 | 偏差点 |
-|---|---|---|
-| `currentPlayerIndex` | legacy 当前行动席位 | `ADVANCE_TURN` 明确优先它，而不是可能滞后的 `workflow.activeSeatNo` |
-| `currentRound` | Partner 页面轮次 | 每次换人都增加，实为 Turn 序号 |
-| `workflow.roundNo` | V2 Turn 序号 | 可能与 legacy 写路径不同步 |
-| `turnId` | Partner 评分隔离键 | `turn_r{round}_s{seat}` |
-| `partnerRoundStartedAt` | 卡片/回合计时锚点 | 卡片循环可刷新 |
-| `partnerTurnStartedAt` | 当前行动者首次计时锚点 | 换人/显式同步才刷新 |
-| `deadlineAt` | Spy 当前发言截止时间 | Partner 当前未统一使用 |
-
-## 8. Partner 子模型
-
-```mermaid
-classDiagram
-  class PartnerState {
-    string partnerGamePhase
-    string partnerClosingStep
-    boolean partnerMasterMode
-    boolean partnerSilentMode
-    timestamp partnerSilentStartedAt
-    number partnerSilentSoundLevel
-    integer currentPlayerIndex
-    integer currentRound
-  }
-  class PartnerContent {
-    playHistory[]
-    discussionNotes[]
-    playImages[]
-    discussionImages[]
-    playBlocks[]
-    discussionBlocks[]
-    voiceLines[]
-    turnRecords[]
-    aiSummary
-  }
-  class ClosingVoteState {
-    sessionId
-    seq
-    brainstormSessionSeq
-    initiatorPlayerIndex
-    map votes
-  }
-  class Progress {
-    turnId
-    scoredCount
-    requiredScoreCount
-    votedCount
-    requiredVoteCount
-  }
-  PartnerState *-- PartnerContent
-  PartnerState *-- ClosingVoteState
-  PartnerState *-- Progress
-```
-
-| 房间字段 | 类型 | 写入点 | 读出条件 |
-|---|---|---|---|
-| `partnerGamePhase` | enum | START/ADVANCE、特殊行动、legacy 更新 | 总是投影，缺省 `play` |
-| `partnerCurrentRoundContent` | object | gamepage legacy 同步、语音、finalize | 仅 `getAddPlayerData(full=true)` |
-| `partnerRoundSummaries` | array | ADVANCE/legacy 归档 | `full=true`；排行榜另读 |
-| `partnerExpressMessages` | 最多 40 条 | `postPartnerExpress` 原子 push | `full=true` |
-| `partnerClosingCreativePoints` | blocks/texts/images | 房主 closing review | `full=true` |
-| `closingVoteState/closingVotes` | object | `updateRoomState` 开 session；`submitClosingVote` 事务写 | 只有 `currentPage=closingstatement` 才投影票 |
-| `closingQuestionPlayers` | seat[] | 收尾结算 | 总是投影 |
-| `progress` | object | legacy 评分、V2 评分/换 Turn | 组合快照会以有效 `roomScores` 重新计算评分部分 |
-
-## 9. Spy 子模型
-
-```mermaid
-classDiagram
-  class SpyGamePublic {
-    phase
-    spyCount
-    round
-    players[]
-    speakOrder[]
-    currentSpeakIndex
-    speakRoundStartedAt
-    speakTurnStartedAt
-    voteStartedAt
-    voteStatus public
-    lastResult
-    winnerSide
-    tieBreak
-  }
-  class SpyGamePrivate {
-    civilianWord
-    spyWord
-    voteStatus.tally
-    voteStatus.ballots
-  }
-  class SecretCard {
-    userId
-    playerIndex
-    role
-    word
-    blurb
-  }
-  SpyGamePublic *-- SpyGamePrivate
-  SpyGamePrivate --> SecretCard
-```
-
-| 范围 | 公开前 | `settle` |
-|---|---|---|
-| 玩家/存活/发言顺序/计时 | 公开 | 公开 |
-| 已投人数 | 公开 | 公开 |
-| 票型、逐人票、实时票数 | 不公开 | `lastResult.tallies` 可见 |
-| 词语与身份 | 本人经 `SPY_GET_MY_CARD` 获取 | 全员揭晓 |
-
-### 胜负不变量
-
-```mermaid
-flowchart LR
-  A[统计存活角色]
-  A --> B{spy == 0?}
-  B -->|是| C[civilian 胜]
-  B -->|否| D{spy >= civilian?}
-  D -->|是| E[spy 胜]
-  D -->|否| F[继续]
-```
-
-## 10. 成员、席位与 Presence
-
-```mermaid
-flowchart LR
-  RM[(roomMembers.playerIndex)] -->|适配器加载时补齐| SM[rooms.seatMap]
-  SM -->|V2 persistRoom 全量同步| RM
-  RM -->|legacy join/leave/kick 直接写| RM
-  PR[(roomPresence)] -.当前组合快照未读取.-> Online[online 投影]
-  RM -->|lastSeenAt, 90s| Online
-  Host[房主] -->|强制 true| Online
-```
-
-| 不变量 | V2 领域要求 | 现行兼容现实 |
-|---|---|---|
-| 一人一席 | `seatMap` 一一映射 | legacy 以 `roomMembers` 为准，适配器加载时补 `seatMap` |
-| 席位范围 | `1..6` | legacy 与 V2 都限制 6 人 |
-| 房主身份 | 跟 `hostUserId`，不跟 seat 1 | legacy 角色值为 `GOD`，大量逻辑看 `creatorId` |
-| 在线状态 | 独立 Presence，不改变 revision | `getAddPlayerData` 仍按 `roomMembers.lastSeenAt`；房主恒在线 |
-| V2 查询纯读 | 不写 `lastSeenAt` | 页面没有调用 `roomPresence`；V2 `persistRoom` 反而会在任一命令落库时刷新**所有成员**的 `lastSeenAt` |
-| 成员角色投影 | 房主身份跟 `hostUserId` | V2 members snapshot 又把 seat 1 投影成 HOST；房主换序后可能出现两个 HOST 标签，能力判断仍看身份 |
-
-## 11. 版本与域版本
-
-```mermaid
-flowchart TB
-  GR[revision<br/>全房间水位]
-  DR[domainRevisions]
-  DR --> M[members]
-  DR --> S[session]
-  DR --> SC[scores]
-  DR --> C[contributions]
-  DR --> A[artifacts]
-  DR --> MSG[messages]
-  DR --> V[votes]
-```
-
-| 版本字段 | 设计含义 | 当前覆盖 |
-|---|---|---|
-| `schemaVersion=2` | V2 存储结构 | V2 创建才保证；legacy 页面创建为缺失/1 |
-| `protocolVersion=2` | V2 协议 | 命令信封固定为 2；被操作的房间文档仍可能为 1 |
-| `revision` | 全局顺序/CAS | V2 每个非只读命令增加；legacy 只有少数 phase/结算写增加 |
-| `domainRevisions` | 按域增量 Snapshot | V2 命令维护；legacy 业务写基本不维护 |
-
-域版本不等于域数据可读性：CloudBase 适配器的 `loadDomainData` 当前只加载 `scores`；`messages/votes/artifacts/contributions` 请求会返回空默认值。
-
-## 12. 重置矩阵
-
-| 动作 | 保留 | 清空/重建 | 序号变化 |
-|---|---|---|---|
-| 选择模式 | 房间/成员；代码未显式删除旧 BG/问题 | Partner 内容、消息、收尾票、Spy 局 | `brainstormSessionSeq+1` |
-| 清除模式 | 房间/成员 | mode、BG、问题、Partner/Spy 局、进度 | `brainstormSessionSeq+1` |
-| Partner 再来一轮 | mode、BG、selected problem、成员 | 评分、内容、消息、收尾票；首席位开始 | `brainstormSessionSeq+1`，`currentRound=1` |
-| Halli 进入创意 | mode、BG、成员 | 不自动删旧创意，靠 `creativeSessionSeq` 隔离 | `creativeSessionSeq+1` |
-| Spy 重新开始 | mode、成员 | spyGame、assignments、secrets、workflow | `revision+1` |
-| 局内剩余 ≤1 人 | 房间/剩余成员 | mode、BG、Partner/Spy 局，回大厅 | `brainstormSessionEnded=true` |
-| 解散 | Room 墓碑 | 成员全部删除 | V2 才保证 `revision+1` |
-
-## 13. 当前不变量覆盖表
-
-| 期望事实 | 单一写入口 | 单一权威源 | 原子转换 | 可用版本检测 | 现状 |
-|---|:---:|:---:|:---:|:---:|---|
-| 成员/席位 | ✗ | △ | △ | △ | legacy 与 V2 双入口，加载时可重建 |
-| 生命周期 | ✗ | ✗ | ✗ | △ | `status` 与 `lifecycle` 并存 |
-| 页面/工作流 | ✗ | ✗ | ✗ | △ | `currentPage`、`progressPage`、`workflow` 可分离 |
-| Partner 评分 | ✗ | △ | △ | △ | 页面走 legacy，V2 命令也存在 |
-| Partner Turn 推进 | △ | △ | ✗ | ✓ | V2 优先、legacy fallback，另有 finalize 写 |
-| Partner 收尾票 | ✗ | ✗ | legacy ✓ | △ | 页面用 legacy；V2 独立票模型未接入 |
-| Spy 状态 | ✓ | △ | ✗ | ✓ | 全走 V2，但无数据库 CAS 事务 |
-| Spy 密牌 | ✓ | ✓ | ✗ | ✓ | `roomSecrets` 权威，`spyAssignments` 兼容双写 |
-| Presence | △ | ✗ | ✓ | 不适用 | V2 心跳与 legacy 在线投影未贯通 |
-
-`△` 表示局部满足或依赖兼容重建；细节见 [同步协议与短轮询](./ROOM_SYNC_PROTOCOL.md)。
+多批追赶期间只更新 staging View；只有追到 `roomCurrentSeq` 才发布，页面不会看到半个 Command 或未追平的中间 View。
