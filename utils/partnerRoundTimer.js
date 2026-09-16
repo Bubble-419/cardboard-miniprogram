@@ -32,6 +32,19 @@ function isRoundTimerActive(startedAt) {
   return elapsedSec >= 0;
 }
 
+/**
+ * 共享服务端锚点下的当前 5 分钟循环起点。
+ * 到期后不改服务端时间戳，各端用同一锚点取模，避免多端漂移。
+ */
+function getRoundCycleStartedAt(startedAt, durationSec = ROUND_DURATION_SEC, now = Date.now()) {
+  const ts = Number(startedAt);
+  const durationMs = (Number(durationSec) || ROUND_DURATION_SEC) * 1000;
+  if (!Number.isFinite(ts) || ts <= 0 || durationMs <= 0) return 0;
+  const elapsed = Number(now) - ts;
+  if (elapsed < 0) return 0;
+  return ts + Math.floor(elapsed / durationMs) * durationMs;
+}
+
 function getRoundTimerState(startedAt, durationSec = ROUND_DURATION_SEC) {
   const elapsedSecExact = getRoundElapsedSec(startedAt);
   const elapsedSec = Math.floor(elapsedSecExact);
@@ -140,6 +153,7 @@ module.exports = {
   getBorderSegmentProgress,
   getRoundElapsedSec,
   isRoundTimerActive,
+  getRoundCycleStartedAt,
   getRoundTimerState,
   buildPaginationIndexes,
   buildPaginationDots,

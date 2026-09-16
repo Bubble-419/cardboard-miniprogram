@@ -1,6 +1,7 @@
 const {
   ROUND_DURATION_SEC,
   getRoundRectSegmentProgresses,
+  getRoundCycleStartedAt,
   isRoundTimerActive
 } = require('../../utils/partnerRoundTimer');
 
@@ -291,13 +292,9 @@ Component({
       const timerOn = this.properties.timerActive === true && (startedAt > 0 || this.properties.loop === true);
 
       if (this.data.displayMode === 'expiring') {
-        // 新周期已激活则打断到期动画并进入 timer
-        if (this.properties.timerActive === true && startedAt > 0) {
-          this._clearExpireTimer();
-          this._expiringTriggered = false;
-        } else {
-          return;
-        }
+        // 到期抖动必须播完；新服务端锚点由 observer 打断。循环取模后的下一轮起点
+        // 不能在这里当成“新周期已激活”，否则 2s 动画会被立刻掐掉并再次到期。
+        return;
       }
 
       if (timerOn) {
@@ -459,12 +456,12 @@ Component({
     _resolveStartedAt() {
       const durationSec = this.properties.durationSec || ROUND_DURATION_SEC;
       const serverTs = Number(this.properties.startedAt);
-      if (Number.isFinite(serverTs) && serverTs > 0 && isRoundTimerActive(serverTs, durationSec)) {
-        return serverTs;
+      if (Number.isFinite(serverTs) && serverTs > 0 && isRoundTimerActive(serverTs)) {
+        return getRoundCycleStartedAt(serverTs, durationSec);
       }
       const local = Number(this._localCycleStartedAt);
-      if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local, durationSec)) {
-        return local;
+      if (Number.isFinite(local) && local > 0 && isRoundTimerActive(local)) {
+        return getRoundCycleStartedAt(local, durationSec);
       }
       return 0;
     },

@@ -12,6 +12,10 @@ function currentView() {
   return session && session.getView();
 }
 
+function missingContextToken(value) {
+  return value == null || value === '';
+}
+
 function commandContext(type, explicit) {
   const context = { ...(explicit || {}) };
   const view = currentView();
@@ -19,21 +23,28 @@ function commandContext(type, explicit) {
   const partner = session && session.publicModeState;
   const spy = session && session.mode === 'SPY' ? session.publicModeState : null;
   const tokens = COMMAND_CONTEXT[type] || [];
-  if (tokens.includes('sessionId') && context.sessionId == null && session) context.sessionId = session.sessionId;
-  if (tokens.includes('turnId') && context.turnId == null && session) {
+  if (tokens.includes('sessionId') && missingContextToken(context.sessionId) && session) {
+    context.sessionId = session.sessionId;
+  }
+  if (tokens.includes('turnId') && missingContextToken(context.turnId) && session) {
     if (session.activeTurn) context.turnId = session.activeTurn.turnId;
     else if (partner && partner.closing) context.turnId = partner.closing.sourceTurnId;
   }
-  if (tokens.includes('workflowStep') && context.workflowStep == null && session) {
+  if (tokens.includes('workflowStep') && missingContextToken(context.workflowStep) && session) {
     context.workflowStep = session.workflow.step;
   }
-  if (tokens.includes('closingVoteSessionId') && context.closingVoteSessionId == null && partner && partner.closing) {
+  if (tokens.includes('closingVoteSessionId') && missingContextToken(context.closingVoteSessionId)
+    && partner && partner.closing) {
     context.closingVoteSessionId = partner.closing.closingVoteSessionId;
   }
-  if (tokens.includes('gameId') && context.gameId == null && spy) context.gameId = spy.gameId;
-  if (tokens.includes('speakerTurnId') && context.speakerTurnId == null && spy) context.speakerTurnId = spy.speakerTurnId;
-  if (tokens.includes('voteSessionId') && context.voteSessionId == null && spy) context.voteSessionId = spy.voteSessionId;
-  if (tokens.includes('roundNo') && context.roundNo == null && spy) context.roundNo = spy.roundNo;
+  if (tokens.includes('gameId') && missingContextToken(context.gameId) && spy) context.gameId = spy.gameId;
+  if (tokens.includes('speakerTurnId') && missingContextToken(context.speakerTurnId) && spy) {
+    context.speakerTurnId = spy.speakerTurnId;
+  }
+  if (tokens.includes('voteSessionId') && missingContextToken(context.voteSessionId) && spy) {
+    context.voteSessionId = spy.voteSessionId;
+  }
+  if (tokens.includes('roundNo') && missingContextToken(context.roundNo) && spy) context.roundNo = spy.roundNo;
   return context;
 }
 
