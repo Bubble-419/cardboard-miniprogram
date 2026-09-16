@@ -48,9 +48,15 @@ test('Spy 分牌仅进入本人 Actor View，公开状态和结算前事件不�
   assert.equal(cards.filter((item) => item.role === 'spy').length, 1);
   assert.equal(cards.filter((item) => item.role === 'civilian').length, 2);
   assert.equal(new Set(cards.map((item) => item.gameId)).size, 1);
-  const preSettleEvents = h.repo.events.get('12345678');
-  assert.equal(JSON.stringify(preSettleEvents).includes('苹果'), false);
-  assert.equal(JSON.stringify(preSettleEvents).includes('"梨"'), false);
+  const preSettleEvents = (await h.app.sync('12345678', 0, { userId: 'host' })).events;
+  const publicProjection = preSettleEvents.map((item) => ({
+    publicEvents: item.publicEvents,
+    publicPatch: item.publicPatch
+  }));
+  assert.equal(JSON.stringify(publicProjection).includes('苹果'), false);
+  assert.equal(JSON.stringify(publicProjection).includes('"梨"'), false);
+  assert.equal(preSettleEvents.some((item) => Object.prototype.hasOwnProperty.call(item, 'rawEvents')), false);
+  assert.equal(preSettleEvents.some((item) => Object.prototype.hasOwnProperty.call(item, 'actorProjections')), false);
   assert.equal(gameId.length > 0 && sessionId.length > 0, true);
 });
 

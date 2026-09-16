@@ -10,7 +10,7 @@ const legacyFunctions = [
   'clearRoomScores', 'finalizePartnerTurnRecord', 'getAddPlayerData', 'getDesignProblems',
   'getGameScoreStatus', 'getLeaderboard', 'postPartnerExpress', 'regenerateRoomQrcode',
   'roomClearBrainstormMode', 'roomCreate', 'roomDissolve', 'roomJoin', 'roomKickMember',
-  'roomLeave', 'roomSetBrainstormMode', 'roomStartWorkshop', 'roomUpdateWorkshopName',
+  'roomLeave', 'roomPresence', 'roomSetBrainstormMode', 'roomStartWorkshop', 'roomUpdateWorkshopName',
   'spyGameAction', 'submitClosingVote', 'submitCreativeIdea', 'submitDesignProblem',
   'submitGameScore', 'updateDesignProblem', 'updateRoomMemberProfile', 'updateRoomState'
 ];

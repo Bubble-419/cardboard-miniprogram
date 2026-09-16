@@ -2,25 +2,14 @@
 
 const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
+const { emptyFacts } = require('@cardboard/room-domain');
 
 // V3 使用独立物理集合，不读取或双写旧协议数据。
 const COLLECTIONS = Object.freeze({
   rooms: 'roomV3Rooms', sessions: 'roomV3Sessions', active: 'roomV3ActiveByUser',
-  actions: 'roomV3Actions', events: 'roomV3Events', turns: 'roomV3Turns',
-  scores: 'roomV3Scores', votes: 'roomV3Votes', contributions: 'roomV3Contributions',
-  artifacts: 'roomV3Artifacts', messages: 'roomV3Messages', secrets: 'roomV3Secrets',
+  actions: 'roomV3Actions', events: 'roomV3Events', messages: 'roomV3Messages',
   presence: 'roomV3Presence', signals: 'roomV3Signals', media: 'roomV3Media'
 });
-
-const FACT_COLLECTION = Object.freeze({
-  turns: COLLECTIONS.turns, scores: COLLECTIONS.scores, votes: COLLECTIONS.votes,
-  contributions: COLLECTIONS.contributions, artifacts: COLLECTIONS.artifacts,
-  messages: COLLECTIONS.messages, secrets: COLLECTIONS.secrets
-});
-
-const FACT_LIMITS = Object.freeze({ turns: 1200, scores: 6000, votes: 6000,
-  contributions: 500, artifacts: 20000, secrets: 12 });
-const QUERY_PAGE_SIZE = 100;
 
 function digest(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 function docId(value) { return digest(value).slice(0, 48); }
@@ -45,50 +34,6 @@ async function safeGet(store, collection, id) {
   }
 }
 
-async function loadFactRows(store, kind, roomId, sessionId) {
-  if (!sessionId) return kind === 'messages' ? [] : {};
-  if (kind === 'messages') {
-    // 表达消息是有界视图，只读取最新 40 条；历史消息无需参与领域裁决。
-    const result = await store.collection(FACT_COLLECTION.messages).where({ roomId, sessionId })
-      .orderBy('commitSeq', 'desc').limit(40).get();
-    return ((result && result.data) || []).map(cleanDoc).sort((a, b) => a.commitSeq - b.commitSeq);
-  }
-  const rows = [];
-  while (true) {
-    // 多读一条才能区分“恰好达到上限”和“已经超过上限”。
-    const take = Math.min(QUERY_PAGE_SIZE, FACT_LIMITS[kind] + 1 - rows.length);
-    const result = await store.collection(FACT_COLLECTION[kind]).where({ roomId, sessionId })
-      .orderBy('_factKey', 'asc')
-      .skip(rows.length).limit(take).get();
-    const page = (result && result.data) || [];
-    rows.push(...page);
-    // 宁可明确失败并要求运维归档，也不能用截断数据生成一个貌似合法的 Snapshot。
-    if (rows.length > FACT_LIMITS[kind]) {
-      throw Object.assign(new Error(`${kind} 超过单场次安全上限`), { code: 'LIMIT_EXCEEDED' });
-    }
-    if (page.length < take) break;
-  }
-  const out = {};
-  rows.forEach((raw) => {
-    const row = cleanDoc(raw);
-    if (row && row._factKey) {
-      const key = row._factKey;
-      delete row._factKey;
-      out[key] = row;
-    }
-  });
-  return out;
-}
-
-async function loadFacts(store, roomId, sessionId) {
-  const entries = [];
-  // CloudBase 的同一个 transaction 实例不能并行执行查询，否则会返回 TransactionBusy。
-  for (const kind of Object.keys(FACT_COLLECTION)) {
-    entries.push([kind, await loadFactRows(store, kind, roomId, sessionId)]);
-  }
-  return Object.fromEntries(entries);
-}
-
 async function loadAggregate(store, roomId) {
   const room = await safeGet(store, COLLECTIONS.rooms, roomId);
   if (!room) return null;
@@ -98,15 +43,12 @@ async function loadAggregate(store, roomId) {
   if (room.currentSessionId && (!currentSession || currentSession.roomId !== roomId)) {
     throw Object.assign(new Error('Room.currentSessionId 指向无效场次'), { code: 'INTERNAL_ERROR' });
   }
-  if (currentSession) delete currentSession.roomId;
-  const sessionId = currentSession && currentSession.sessionId;
-  const facts = await loadFacts(store, roomId, sessionId);
-  const firstEventResult = await store.collection(COLLECTIONS.events).where({ roomId })
-    .orderBy('seq', 'asc').limit(1).get();
-  const firstEvent = firstEventResult && firstEventResult.data && firstEventResult.data[0];
-  // Event 使用 TTL 后，最小可用水位必须从实际日志计算，不能依赖可能滞后的 Room 字段。
-  const minAvailableSeq = firstEvent ? Number(firstEvent.seq) : Number(room.eventSeq) + 1;
-  return { room, currentSession, facts, minAvailableSeq };
+  const facts = currentSession && currentSession.facts ? cleanDoc(currentSession.facts) : emptyFacts();
+  if (currentSession) {
+    delete currentSession.roomId;
+    delete currentSession.facts;
+  }
+  return { room, currentSession, facts };
 }
 
 async function loadSessionAggregate(store, roomId, sessionId) {
@@ -114,15 +56,10 @@ async function loadSessionAggregate(store, roomId, sessionId) {
   if (!room) return null;
   const currentSession = await safeGet(store, COLLECTIONS.sessions, sessionId);
   if (!currentSession || currentSession.roomId !== roomId) return null;
+  const facts = currentSession.facts ? cleanDoc(currentSession.facts) : emptyFacts();
   delete currentSession.roomId;
-  const facts = await loadFacts(store, roomId, sessionId);
+  delete currentSession.facts;
   return { room, currentSession, facts };
-}
-
-function factRow(aggregate, kind, id) {
-  if (!aggregate || !aggregate.facts) return null;
-  if (kind === 'messages') return (aggregate.facts.messages || []).find((item) => item.messageId === id) || null;
-  return aggregate.facts[kind] && aggregate.facts[kind][id];
 }
 
 function openUsers(aggregate) {
@@ -151,11 +88,12 @@ function createCloudBaseRoomRepository(deps) {
       }
       const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
       let activeRoomId = active && active.roomId;
+      let activeRoomDocument = null;
       let danglingActive = false;
       if (activeRoomId) {
-        const activeRoom = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
-        const activeMember = activeRoom && activeRoom.lifecycle === 'OPEN'
-          && (activeRoom.members || []).some((member) => member.userId === input.actorUserId);
+        activeRoomDocument = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
+        const activeMember = activeRoomDocument && activeRoomDocument.lifecycle === 'OPEN'
+          && (activeRoomDocument.members || []).some((member) => member.userId === input.actorUserId);
         if (!activeMember) {
           // 只在命令事务内修复悬挂索引，查询接口继续保持只读。
           activeRoomId = null;
@@ -174,11 +112,19 @@ function createCloudBaseRoomRepository(deps) {
       }
       const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
       const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
+      const activityAggregate = [decision.accepted && decision.aggregate, current,
+        activeRoomDocument && { room: activeRoomDocument }].find((candidate) => candidate && candidate.room
+          && (candidate.room.members || []).some((member) => member.userId === input.actorUserId)) || null;
+      const activityMember = activityAggregate && activityAggregate.room
+        && (activityAggregate.room.members || []).find((member) => member.userId === input.actorUserId);
       const receipt = {
         scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
         roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash,
         accepted: decision.accepted === true, outcome: cleanDoc(decision.outcome),
-        error: cleanDoc(decision.error), committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq,
+        error: cleanDoc(decision.error),
+        committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq || null,
+        activityRoomId: activityAggregate && activityAggregate.room && activityAggregate.room.roomId || null,
+        memberId: activityMember && activityMember.memberId || null,
         createdAt: input.createdAt
       };
       if (decision.accepted) {
@@ -192,25 +138,29 @@ function createCloudBaseRoomRepository(deps) {
         if (decision.aggregate.currentSession) {
           const session = cleanDoc(decision.aggregate.currentSession);
           await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId)
-            .set({ data: { ...session, roomId: resolvedRoomId } });
+            .set({ data: { ...session, roomId: resolvedRoomId,
+              facts: cleanDoc(decision.aggregate.facts || emptyFacts()) } });
         }
         if (decision.archivedSession) {
           const archived = cleanDoc(decision.archivedSession);
           await transaction.collection(COLLECTIONS.sessions).doc(archived.sessionId)
-            .set({ data: { ...archived, roomId: resolvedRoomId } });
+            .set({ data: { ...archived, roomId: resolvedRoomId,
+              facts: cleanDoc(decision.archivedFacts || emptyFacts()) } });
         }
+        // RoomSession 聚合保存全部事实；消息另建只读索引，支持按 commitSeq 分页。
         for (const dirty of decision.dirtyFacts || []) {
+          if (dirty.kind !== 'messages') continue;
           const factDocumentId = docId(`${resolvedRoomId}:${dirty.kind}:${dirty.id}`);
           if (dirty.remove) {
-            await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(factDocumentId).remove();
+            await transaction.collection(COLLECTIONS.messages).doc(factDocumentId).remove();
             continue;
           }
-          const row = factRow(decision.aggregate, dirty.kind, dirty.id);
+          const row = (decision.aggregate.facts && decision.aggregate.facts.messages || [])
+            .find((item) => item.messageId === dirty.id);
           if (!row) continue;
           const sessionId = row.sessionId || (decision.aggregate.currentSession && decision.aggregate.currentSession.sessionId);
           const data = { ...cleanDoc(row), roomId: resolvedRoomId, sessionId };
-          if (dirty.kind !== 'messages') data._factKey = dirty.id;
-          await transaction.collection(FACT_COLLECTION[dirty.kind]).doc(factDocumentId)
+          await transaction.collection(COLLECTIONS.messages).doc(factDocumentId)
             .set({ data });
         }
         for (const item of decision.events || []) {
@@ -235,7 +185,15 @@ function createCloudBaseRoomRepository(deps) {
   }
 
   async function readAggregate(roomId) {
-    return db.runTransaction((transaction) => loadAggregate(transaction, roomId));
+    return db.runTransaction(async (transaction) => {
+      const aggregate = await loadAggregate(transaction, roomId);
+      if (!aggregate) return null;
+      const first = await transaction.collection(COLLECTIONS.events).where({ roomId })
+        .orderBy('seq', 'asc').limit(1).get();
+      const firstEvent = first && first.data && first.data[0];
+      aggregate.minAvailableSeq = firstEvent ? firstEvent.seq : aggregate.room.eventSeq + 1;
+      return aggregate;
+    });
   }
 
   async function readSessionAggregate(roomId, sessionId) {
@@ -268,13 +226,14 @@ function createCloudBaseRoomRepository(deps) {
 
   async function readSyncState(roomId, afterSeq, limit) {
     return db.runTransaction(async (transaction) => {
-      const aggregate = await loadAggregate(transaction, roomId);
-      if (!aggregate) return { aggregate: null, events: [] };
-      const ceiling = aggregate.room.eventSeq;
+      // 高频增量查询只读取轻量 Room 和统一事件流，不加载 RoomSession 聚合。
+      const room = await safeGet(transaction, COLLECTIONS.rooms, roomId);
+      if (!room) return { room: null, events: [] };
+      const ceiling = room.eventSeq;
       const _ = db.command;
       const result = await transaction.collection(COLLECTIONS.events)
         .where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy('seq', 'asc').limit(limit).get();
-      return { aggregate, events: (result && result.data || []).map(cleanDoc) };
+      return { room, events: (result && result.data || []).map(cleanDoc) };
     });
   }
 
@@ -299,7 +258,8 @@ function createCloudBaseRoomRepository(deps) {
   }
 
   async function listPresence(roomId) {
-    const result = await db.collection(COLLECTIONS.presence).where({ roomId }).limit(50).get();
+    const result = await db.collection(COLLECTIONS.presence).where({ roomId })
+      .orderBy('lastSeenAt', 'desc').limit(50).get();
     return (result && result.data || []).map(cleanDoc);
   }
 

@@ -95,6 +95,7 @@ function createFacade(client) {
     getState: () => client.getState(),
     getSnapshot: () => projectPageSnapshot(client.getView(), client.getState()),
     getAppliedRevision: () => client.getState().seq,
+    getRequestContext: () => client.getRequestContext(),
     history: (query, roomId) => client.history(query, roomId),
     sessionSnapshot: (sessionId, roomId) => client.sessionSnapshot(sessionId, roomId),
     messages: (sessionId, query, roomId) => client.messages(sessionId, query, roomId),
@@ -121,6 +122,10 @@ function ensureRoomSession() {
 function getActiveRoomSession() {
   const app = getApp();
   return app.globalData && app.globalData.roomSession || null;
+}
+
+function getRoomRequestContext() {
+  return ensureRoomSession().getRequestContext();
 }
 
 async function openRoomSession(roomId) {
@@ -289,7 +294,7 @@ function canRoomCommand(type) {
   return !!(cap && cap.allowed === true);
 }
 
-module.exports = { getActiveRoomSession, ensureRoomSession, openRoomSession, dispatchRoomCommand,
+module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSession, openRoomSession, dispatchRoomCommand,
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, canRoomCommand, commandContext };

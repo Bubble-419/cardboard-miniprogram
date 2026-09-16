@@ -1,6 +1,8 @@
 const SEGMENT_DURATION_MS = 59000;
 
-const { dispatchRoomCommand, getActiveRoomSession } = require('../modules/room-session/index');
+const {
+  dispatchRoomCommand, getActiveRoomSession, getRoomRequestContext
+} = require('../modules/room-session/index');
 
 function getCloudInstance() {
   const app = getApp();
@@ -126,7 +128,8 @@ function createPartnerRoundSpeech(hooks = {}) {
         sessionId: context.sessionId,
         turnId: context.turnId,
         fileID,
-        phase: context.phase
+        phase: context.phase,
+        clientContext: getRoomRequestContext()
       }
     });
     const result = (callRes && callRes.result) || {};

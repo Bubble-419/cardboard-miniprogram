@@ -17,12 +17,15 @@ exports.main = async (event) => {
   const sessionId = String(event && event.sessionId || '');
   const turnId = String(event && event.turnId || '');
   const rawValue = event && event.value;
+  const clientContext = event && event.clientContext || {};
   if (!roomId || !sessionId || !turnId || signalType !== 'PARTNER_SILENT_SOUND'
     || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };
   }
   try {
-    const snapshot = await app.readSnapshot(roomId, { userId });
+    const snapshot = await app.readSnapshot(roomId, { userId,
+      deviceSessionId: clientContext.deviceSessionId,
+      touchPresence: clientContext.touchPresence === true });
     if (!snapshot.ok) return snapshot;
     const session = snapshot.view && snapshot.view.session;
     const actor = snapshot.view && snapshot.view.actor;

@@ -62,7 +62,6 @@ test('自有环境配置不再保留共享环境分支且调试基础库一致',
   const cloudEntries = [
     'cloudfunctions/roomCommand/src/entry.js',
     'cloudfunctions/roomQuery/src/entry.js',
-    'cloudfunctions/roomPresence/src/entry.js',
     'cloudfunctions/roomSignal/src/entry.js',
     'cloudfunctions/roomMedia/src/entry.js',
     'cloudfunctions/speechToText/src/entry.js',

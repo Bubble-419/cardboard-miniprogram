@@ -16,11 +16,14 @@ const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), 
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
   const userId = wxContext.OPENID || '';
+  const clientContext = event && event.clientContext || {};
 
   const envelope = commandEnvelopeFromEvent(event);
 
   try {
-    return await app.executeCommand(envelope, { userId });
+    return await app.executeCommand(envelope, { userId,
+      deviceSessionId: clientContext.deviceSessionId,
+      touchPresence: clientContext.touchPresence === true });
   } catch (e) {
     console.error('roomCommand error', e);
     const errCode = e.errCode || e.code || 'INTERNAL_ERROR';

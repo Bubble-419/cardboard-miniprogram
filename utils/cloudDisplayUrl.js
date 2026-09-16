@@ -158,9 +158,11 @@ async function fetchHttpsViaCloudFunction(fileIds) {
   let fileList = [];
   try {
     const { callCloudFunction } = require('./cloudApi');
+    const { getRoomRequestContext } = require('../modules/room-session/index');
     const res = await callCloudFunction('roomMedia', {
       action: 'tempUrls',
-      fileList: pending
+      fileList: pending,
+      clientContext: getRoomRequestContext()
     });
     const result = res && (res.result || res);
     fileList = (result && result.fileList) || [];

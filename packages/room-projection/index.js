@@ -424,6 +424,27 @@ function projectMemberView(aggregate, actorUserId) {
   return { ...publicView, actor, route: projectRoute(aggregate, actor) };
 }
 
+function projectActorEnvelope(aggregate, actorUserId) {
+  if (!aggregate || !aggregate.room) return null;
+  const actor = projectActorView(aggregate, actorUserId);
+  return actor ? { actor, route: projectRoute(aggregate, actor) } : null;
+}
+
+/**
+ * ActorView 在命令提交时按成员扇出。存储层只保留 memberId，不把 userId 带入事件。
+ */
+function projectActorPatches(beforeAggregate, afterAggregate) {
+  if (!afterAggregate || !afterAggregate.room) return [];
+  return (afterAggregate.room.members || []).map((member) => {
+    const before = projectActorEnvelope(beforeAggregate, member.userId);
+    const after = projectActorEnvelope(afterAggregate, member.userId);
+    const patch = createPublicPatch(before, after);
+    return patch.set.length || patch.remove.length
+      ? { recipientMemberId: member.memberId, actorPatch: patch }
+      : null;
+  }).filter(Boolean);
+}
+
 function createPublicPatch(before, after) {
   const set = [];
   const remove = [];
@@ -468,32 +489,28 @@ function removePath(target, path) {
 
 function applyPublicPatch(view, patch) {
   let next = clone(view || {});
-  const rawSet = patch && patch.set;
-  const operations = Array.isArray(rawSet)
-    ? rawSet
-    : Object.keys(rawSet || {}).map((path) => ({ path, value: rawSet[path] }));
+  const operations = patch && Array.isArray(patch.set) ? patch.set : [];
   operations.slice().sort((a, b) => a.path.split('.').length - b.path.split('.').length)
     .forEach((operation) => { next = setPath(next, operation.path, operation.value); });
   ((patch && patch.remove) || []).forEach((path) => removePath(next, path));
   return next;
 }
 
-function applyEventGroup(view, events) {
-  if (!Array.isArray(events) || !events.length) return clone(view);
-  const count = events[0].commandEventCount;
-  if (events.length !== count || events.some((event, index) => event.commandEventIndex !== index + 1 || event.commandEventCount !== count)) {
-    const error = new Error('incomplete event group');
-    error.code = 'SNAPSHOT_REQUIRED';
-    throw error;
-  }
+/** 客户端只应用服务端投影好的公共补丁和本人 Actor 补丁。 */
+function applyProjectedEvent(view, event) {
   let publicPart = clone(view || {});
   delete publicPart.actor;
   delete publicPart.route;
-  events.forEach((event) => {
-    if (event.payload && event.payload.publicPatch) publicPart = applyPublicPatch(publicPart, event.payload.publicPatch);
-  });
-  return { ...publicPart, actor: view && view.actor, route: view && view.route };
+  publicPart = applyPublicPatch(publicPart, event && event.publicPatch);
+
+  let actorPart = {
+    actor: clone(view && view.actor),
+    route: clone(view && view.route)
+  };
+  if (event && event.actorPatch) actorPart = applyPublicPatch(actorPart, event.actorPatch);
+  return { ...publicPart, ...actorPart };
 }
 
 module.exports = { clone, projectPublicView, projectActorView, projectMemberView, projectCapabilities, projectRoute,
-  createPublicPatch, applyPublicPatch, applyEventGroup };
+  projectActorEnvelope, projectActorPatches,
+  createPublicPatch, applyPublicPatch, applyProjectedEvent };

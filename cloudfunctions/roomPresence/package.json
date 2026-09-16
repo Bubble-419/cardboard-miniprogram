@@ -1,9 +1,0 @@
-{
-  "name": "roomPresence",
-  "version": "1.0.0",
-  "description": "V3 房间在线心跳（不改变业务状态）",
-  "main": "index.js",
-  "dependencies": {
-    "wx-server-sdk": "2.6.3"
-  }
-}

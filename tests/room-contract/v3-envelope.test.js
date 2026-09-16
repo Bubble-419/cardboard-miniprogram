@@ -76,6 +76,10 @@ test('指令、context 与 payload 都拒绝未知或模糊结构', () => {
     context: { sessionId: 's', turnId: 't', workflowStep: 'PARTNER_TURN' },
     payload: { operationId: 'op', text: { value: '伪素材' } }
   })).ok, false);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.APPEND_ARTIFACT, {
+    context: { sessionId: 's', turnId: 't', workflowStep: 'PARTNER_TURN' },
+    payload: { operationId: 'unsafe.field', text: '会成为非法文档字段' }
+  })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SUBMIT_PARTNER_SCORE, {
     context: { sessionId: 's', turnId: 't', revision: 3 },
     payload: { scoreHalfSteps: 7 }

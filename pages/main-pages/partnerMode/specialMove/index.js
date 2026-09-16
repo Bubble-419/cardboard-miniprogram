@@ -5,7 +5,8 @@ const {
   unbindPageFromRoomSession,
   dispatchRoomCommand,
   getRoomPageSnapshot,
-  getActiveRoomSession
+  getActiveRoomSession,
+  getRoomRequestContext
 } = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
@@ -897,7 +898,8 @@ Page(withPageInteractionLock({
     wx.cloud.callFunction({
       name: 'roomSignal',
       data: { roomId, sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND',
-        value: Math.min(1, Math.max(0, Number(level) || 0)) }
+        value: Math.min(1, Math.max(0, Number(level) || 0)),
+        clientContext: getRoomRequestContext() }
     }).catch(() => {});
   },
 

@@ -14,10 +14,6 @@ const TARGETS = {
     entry: path.join(ROOT, 'cloudfunctions/roomQuery/src/entry.js'),
     outfile: path.join(ROOT, 'cloudfunctions/roomQuery/index.js')
   },
-  roomPresence: {
-    entry: path.join(ROOT, 'cloudfunctions/roomPresence/src/entry.js'),
-    outfile: path.join(ROOT, 'cloudfunctions/roomPresence/index.js')
-  },
   roomSignal: {
     entry: path.join(ROOT, 'cloudfunctions/roomSignal/src/entry.js'),
     outfile: path.join(ROOT, 'cloudfunctions/roomSignal/index.js')

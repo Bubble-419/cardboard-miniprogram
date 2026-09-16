@@ -11,6 +11,10 @@
 > 架构决策：[ADR-0001](./adr/0001-room-snapshot-event-protocol.md)。
 >
 > 最终实现：[协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md)。
+>
+> 注意：本文保留了重构过程中的阶段性设计。最终实现已经进一步收敛为：Facts 内嵌
+> `roomV3Sessions`、每个 Command 一个 `roomV3Events` 文档、ActorPatch 按成员扇出后查询投影、
+> Presence 由任意房间协议顺带续租且不再存在 `roomPresence` 云函数。冲突处以实现说明和部署清单为准。
 
 ## 0. 最终决策
 
@@ -38,9 +42,11 @@ flowchart LR
 | 排序 | 客户端只依据房间级 `eventSeq`，不依据 HTTP 返回顺序 |
 | 冲突 | 不使用全局 `expectedRevision`；使用精确领域上下文令牌 |
 | 事件定位 | Event 是短期同步日志，不是永久事件溯源；过期后重新 Snapshot |
+| 事件投影 | 公共事件/补丁共享；ActorPatch 在提交时按 Member 扇出，查询只返回本人补丁 |
+| 物理聚合 | Room 独立轻量文档；每个 RoomSession 与其 Facts 保存在同一文档 |
 | 页面 | `Workflow Step + Actor View` 投影路由；页面名不是业务状态 |
 | 私密数据 | Spy 密牌不进入公共 State/Event；按调用成员投影 |
-| Presence | 独立瞬时数据，不改变 `stateVersion/eventSeq` |
+| Presence | 任意已鉴权房间协议可顺带续租；独立瞬时数据，不改变 `stateVersion/eventSeq` |
 | 旧系统 | 新集合/新环境一次性切换；旧房间不可继续进入 |
 
 ## 1. 非协商不变量
@@ -65,7 +71,7 @@ I16  中途加入 Room 的 Member 不自动成为当前 Session Participant。
 I17  所有倒计时由服务端时间锚点推导，不按秒写 State/Event。
 I18  失败或不确定时丢弃 View 并重新 Snapshot，不猜测修复。
 I19  Partner roundNo 只在所有有效 Participant 都完成一轮 Turn 后递增。
-I20  同一 Command 的 Event 组不得被拆批或被客户端部分发布。
+I20  同一 Command 只提交一个 Event Group 文档，不得被客户端部分发布。
 ```
 
 ## 2. 目标架构与模块接缝

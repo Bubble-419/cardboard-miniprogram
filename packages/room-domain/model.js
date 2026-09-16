@@ -31,6 +31,9 @@ function normalizeHalfStarScore(raw, halfSteps) {
   const steps = Math.round(score * 2);
   return steps >= 0 && steps <= 10 ? steps / 2 : null;
 }
+function emptyFacts() {
+  return { turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {} };
+}
 function ensureFacts(aggregate) {
   aggregate.facts = aggregate.facts || {};
   ['turns', 'scores', 'votes', 'contributions', 'artifacts', 'secrets'].forEach((key) => {
@@ -101,7 +104,7 @@ function createRoomAggregate(roomId, actorUserId, payload, deps) {
     updatedAt: now
   };
   room.members.push(createMember(room, actorUserId, payload, memberId, 1, now, 'HOST'));
-  return { room, currentSession: null, facts: { turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {} } };
+  return { room, currentSession: null, facts: emptyFacts() };
 }
 function assertRoom(aggregate) {
   if (!aggregate || !aggregate.room) return fail(ERR.ROOM_NOT_FOUND);
@@ -199,7 +202,7 @@ function markParticipantLeft(aggregate, memberId) {
 }
 
 module.exports = {
-  clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, ensureFacts, sortedMembers,
+  clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, emptyFacts, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
   activeParticipantIds, activeParticipantsBySeat, progressComplete,
   nextSeat, nextColor, createMember, createRoomAggregate,

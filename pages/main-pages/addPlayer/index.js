@@ -22,6 +22,7 @@ const {
   unbindPageFromRoomSession,
   disposeRoomSession,
   getActiveRoomSession,
+  getRoomRequestContext,
   dispatchRoomCommand,
   getRoomPageSnapshot,
   followRoomRoute
@@ -811,7 +812,8 @@ Page(withPageInteractionLock({
     try {
       const regenRes = await wx.cloud.callFunction({
         name: 'roomMedia',
-        data: { action: 'qrcode', roomId, force: force === true }
+        data: { action: 'qrcode', roomId, force: force === true,
+          clientContext: getRoomRequestContext() }
       });
       const regenResult = (regenRes && regenRes.result) || {};
       if (regenResult.ok === true && regenResult.qrcodeFileID) {

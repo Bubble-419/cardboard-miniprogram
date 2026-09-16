@@ -3,10 +3,11 @@
 const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR
 } = require('../room-contracts/index');
-const { clone, applyEventGroup } = require('../room-projection/index');
+const { clone, applyProjectedEvent } = require('../room-projection/index');
 
 // RoomClient 的统一轮询下限；页面不能再通过局部配置发起更高频的请求。
 const ROOM_POLL_INTERVAL_MS = 2000;
+const PRESENCE_TOUCH_INTERVAL_MS = 5000;
 
 function defaultCommandId() {
   return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
@@ -21,30 +22,28 @@ function createCloudRoomGateway(options) {
   const callFunction = options && options.callFunction;
   if (typeof callFunction !== 'function') throw new Error('callFunction required');
   const call = async (name, data) => unwrapCloudResult(await callFunction({ name, data }));
+  const withContext = (data, clientContext) => clientContext ? { ...data, clientContext } : data;
   return {
-    currentRoom: () => call('roomQuery', { action: 'current' }),
-    snapshot: (roomId) => call('roomQuery', { action: 'snapshot', roomId }),
-    sync: (roomId, afterSeq, limit) => call('roomQuery', { action: 'sync', roomId, afterSeq, limit }),
-    history: (roomId, query) => call('roomQuery', { action: 'history', roomId, ...(query || {}) }),
-    session: (roomId, sessionId) => call('roomQuery', { action: 'session', roomId, sessionId }),
-    messages: (roomId, sessionId, query) => call('roomQuery', {
+    currentRoom: (clientContext) => call('roomQuery', withContext({ action: 'current' }, clientContext)),
+    snapshot: (roomId, clientContext) => call('roomQuery', withContext({ action: 'snapshot', roomId }, clientContext)),
+    sync: (roomId, afterSeq, limit, clientContext) => call('roomQuery', withContext({
+      action: 'sync', roomId, afterSeq, limit
+    }, clientContext)),
+    history: (roomId, query, clientContext) => call('roomQuery', withContext({
+      action: 'history', roomId, ...(query || {})
+    }, clientContext)),
+    session: (roomId, sessionId, clientContext) => call('roomQuery', withContext({
+      action: 'session', roomId, sessionId
+    }, clientContext)),
+    messages: (roomId, sessionId, query, clientContext) => call('roomQuery', withContext({
       action: 'messages', roomId, sessionId, ...(query || {})
-    }),
-    leaderboard: (roomId, sessionId) => call('roomQuery', { action: 'leaderboard', roomId, sessionId }),
+    }, clientContext)),
+    leaderboard: (roomId, sessionId, clientContext) => call('roomQuery', withContext({
+      action: 'leaderboard', roomId, sessionId
+    }, clientContext)),
     // Command 放在独立传输字段中，避免 CloudBase 注入的 tcbContext 污染严格协议对象。
-    dispatch: (envelope) => call('roomCommand', { command: envelope }),
-    presence: (roomId, deviceSessionId) => call('roomPresence', { roomId, deviceSessionId })
+    dispatch: (envelope, clientContext) => call('roomCommand', withContext({ command: envelope }, clientContext))
   };
-}
-
-function groupEvents(events) {
-  const groups = [];
-  (events || []).forEach((item) => {
-    const last = groups[groups.length - 1];
-    if (!last || last[0].commandId !== item.commandId) groups.push([item]);
-    else last.push(item);
-  });
-  return groups;
 }
 
 function isRecord(value) {
@@ -52,14 +51,15 @@ function isRecord(value) {
 }
 
 function validPublicPatch(value) {
-  if (!isRecord(value) || !Array.isArray(value.remove)) return false;
-  const validPath = (path) => typeof path === 'string' && path.length > 0 && path.length <= 512;
-  const validSet = Array.isArray(value.set)
-    ? value.set.every((item) => isRecord(item)
-      && Object.keys(item).every((key) => key === 'path' || key === 'value')
-      && Object.prototype.hasOwnProperty.call(item, 'value')
-      && validPath(item.path))
-    : isRecord(value.set) && Object.keys(value.set).every(validPath);
+  if (!isRecord(value) || !Array.isArray(value.remove) || value.remove.length > 512
+    || !Array.isArray(value.set) || value.set.length > 512) return false;
+  const validPath = (path) => typeof path === 'string' && path.length > 0 && path.length <= 512
+    && (path === '$' || path.split('.').every((part) => part
+      && !['__proto__', 'prototype', 'constructor'].includes(part)));
+  const validSet = Array.isArray(value.set) && value.set.every((item) => isRecord(item)
+    && Object.keys(item).every((key) => key === 'path' || key === 'value')
+    && Object.prototype.hasOwnProperty.call(item, 'value')
+    && validPath(item.path));
   return validSet && value.remove.every(validPath);
 }
 
@@ -70,7 +70,6 @@ function createRoomClient(options) {
   const intervalMs = requestedIntervalMs > 0
     ? Math.max(ROOM_POLL_INTERVAL_MS, requestedIntervalMs)
     : ROOM_POLL_INTERVAL_MS;
-  const presenceIntervalMs = Number(options.presenceIntervalMs) > 0 ? Number(options.presenceIntervalMs) : 10000;
   const syncLimit = Math.min(100, Math.max(1, Number(options.syncLimit) || 100));
   const setTimeoutFn = options.setTimeoutFn || setTimeout;
   const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
@@ -90,7 +89,7 @@ function createRoomClient(options) {
   let timer = null;
   let disposed = false;
   let paused = false;
-  let lastPresenceAt = 0;
+  let lastPresenceTouchAt = 0;
   let consecutiveSyncFailures = 0;
   let serverClockOffsetMs = 0;
   let listenerSeq = 0;
@@ -126,6 +125,13 @@ function createRoomClient(options) {
     timer = null;
   }
 
+  function getRequestContext() {
+    const requestedAt = Date.now();
+    const touchPresence = requestedAt - lastPresenceTouchAt >= PRESENCE_TOUCH_INTERVAL_MS;
+    if (touchPresence) lastPresenceTouchAt = requestedAt;
+    return { deviceSessionId, touchPresence };
+  }
+
   function schedule(delay) {
     cancelTimer();
     if (disposed || paused || (!roomId && status !== 'DEGRADED')) return;
@@ -154,6 +160,7 @@ function createRoomClient(options) {
     stagingStateVersion = 0;
     consecutiveSyncFailures = 0;
     serverClockOffsetMs = 0;
+    lastPresenceTouchAt = 0;
     status = nextStatus || 'IDLE';
     error = null;
   }
@@ -184,7 +191,7 @@ function createRoomClient(options) {
 
   async function replaceFromSnapshot(targetRoomId) {
     const requestedAt = Date.now();
-    const snapshot = await gateway.snapshot(targetRoomId);
+    const snapshot = await gateway.snapshot(targetRoomId, getRequestContext());
     if (!validateSnapshot(snapshot, targetRoomId)) {
       const invalid = new Error((snapshot && snapshot.errMsg) || '无效的房间快照');
       invalid.code = (snapshot && snapshot.errCode) || ERR.SNAPSHOT_REQUIRED;
@@ -232,7 +239,13 @@ function createRoomClient(options) {
     }
     const knownTypes = new Set(Object.values(EVENT_TYPES));
     if (events.some((item) => item.eventSchemaVersion !== EVENT_SCHEMA_VERSION
-      || item.roomId !== roomId || !knownTypes.has(item.type))) {
+      || item.roomId !== roomId
+      || typeof item.commandId !== 'string' || !item.commandId
+      || !Array.isArray(item.publicEvents) || item.publicEvents.length === 0 || item.publicEvents.length > 32
+      || item.publicEvents.some((publicEvent) => !isRecord(publicEvent)
+        || Object.keys(publicEvent).length !== 1 || !knownTypes.has(publicEvent.type))
+      || !validPublicPatch(item.publicPatch)
+      || (item.actorPatch != null && !validPublicPatch(item.actorPatch)))) {
       throw Object.assign(new Error('事件版本或类型不兼容'), { code: ERR.SNAPSHOT_REQUIRED });
     }
     if (events.length && events[0].seq !== baseSeq + 1) throw Object.assign(new Error('事件不连续'), { code: ERR.SNAPSHOT_REQUIRED });
@@ -241,23 +254,12 @@ function createRoomClient(options) {
     }
     let candidate = clone(stagingView || view);
     let candidateStateVersion = baseStateVersion;
-    groupEvents(events).forEach((group) => {
-      const commandId = group[0] && group[0].commandId;
-      if (!commandId || group.some((item) => item.commandId !== commandId)) {
-        throw Object.assign(new Error('事件组不合法'), { code: ERR.SNAPSHOT_REQUIRED });
+    events.forEach((event) => {
+      if (!Number.isInteger(event.stateVersion) || event.stateVersion !== candidateStateVersion + 1) {
+        throw Object.assign(new Error('事件状态版本不连续'), { code: ERR.SNAPSHOT_REQUIRED });
       }
-      const groupStateVersion = group[0].stateVersion;
-      const lastIndex = group.length - 1;
-      if (!Number.isInteger(groupStateVersion)
-        || groupStateVersion !== candidateStateVersion + 1
-        || group.some((item) => item.stateVersion !== groupStateVersion)
-        || group.some((item, index) => index !== lastIndex && item.payload && item.payload.publicPatch)
-        || !validPublicPatch(group[lastIndex] && group[lastIndex].payload
-          && group[lastIndex].payload.publicPatch)) {
-        throw Object.assign(new Error('事件组缺少可信公开补丁'), { code: ERR.SNAPSHOT_REQUIRED });
-      }
-      candidate = applyEventGroup(candidate, group);
-      candidateStateVersion = groupStateVersion;
+      candidate = applyProjectedEvent(candidate, event);
+      candidateStateVersion = event.stateVersion;
     });
     const throughSeq = Number(batch.throughSeq);
     if (throughSeq !== (events.length ? events[events.length - 1].seq : baseSeq)) {
@@ -274,13 +276,11 @@ function createRoomClient(options) {
       stagingStateVersion = candidateStateVersion;
       return { hasMore: true };
     }
-    if (!batch.actorView || !batch.actorView.actor || !batch.actorView.route) {
-      throw Object.assign(new Error('最终同步批缺少成员私有投影'), { code: ERR.SNAPSHOT_REQUIRED });
-    }
-    if (!candidate || !candidate.room || candidate.room.roomId !== roomId) {
+    if (!candidate || !candidate.room || candidate.room.roomId !== roomId
+      || !candidate.actor || !candidate.route) {
       throw Object.assign(new Error('事件投影房间不可信'), { code: ERR.SNAPSHOT_REQUIRED });
     }
-    view = { ...candidate, actor: clone(batch.actorView.actor), route: clone(batch.actorView.route) };
+    view = candidate;
     appliedSeq = throughSeq;
     appliedStateVersion = candidateStateVersion;
     ephemeral = clone(batch.ephemeral || {});
@@ -295,19 +295,14 @@ function createRoomClient(options) {
     return { hasMore: false };
   }
 
-  async function maybePresence() {
-    if (typeof gateway.presence !== 'function' || Date.now() - lastPresenceAt < presenceIntervalMs) return;
-    lastPresenceAt = Date.now();
-    gateway.presence(roomId, deviceSessionId).catch(() => undefined);
-  }
-
   async function syncUntilCurrent(initialBatch) {
     if (disposed || paused || !roomId) return view;
     cancelTimer();
     status = stagingView ? 'CATCHING_UP' : 'SYNCING';
     try {
       let requestedAt = Date.now();
-      let batch = initialBatch || await gateway.sync(roomId, stagingView ? stagingSeq : appliedSeq, syncLimit);
+      let batch = initialBatch || await gateway.sync(roomId, stagingView ? stagingSeq : appliedSeq,
+        syncLimit, getRequestContext());
       while (true) {
         const consumed = consumeBatch(batch, initialBatch ? undefined : requestedAt);
         if (consumed.snapshotRequired) {
@@ -316,9 +311,8 @@ function createRoomClient(options) {
         }
         if (!consumed.hasMore) break;
         requestedAt = Date.now();
-        batch = await gateway.sync(roomId, stagingSeq, syncLimit);
+        batch = await gateway.sync(roomId, stagingSeq, syncLimit, getRequestContext());
       }
-      await maybePresence();
       return view;
     } catch (syncError) {
       if (isTerminalRoomError(syncError)) {
@@ -359,7 +353,7 @@ function createRoomClient(options) {
     error = null;
     let current;
     try {
-      current = await gateway.currentRoom();
+      current = await gateway.currentRoom(getRequestContext());
     } catch (openError) {
       status = 'DEGRADED';
       consecutiveSyncFailures += 1;
@@ -438,7 +432,7 @@ function createRoomClient(options) {
     let result;
     let attempts = 0;
     do {
-      try { result = await gateway.dispatch(envelope); } catch (dispatchError) {
+      try { result = await gateway.dispatch(envelope, getRequestContext()); } catch (dispatchError) {
         attempts += 1;
         if (attempts >= 2) throw dispatchError;
         continue;
@@ -479,29 +473,30 @@ function createRoomClient(options) {
     history(query, targetRoomId) {
       const queryRoomId = targetRoomId || roomId;
       return queryRoomId && typeof gateway.history === 'function'
-        ? gateway.history(queryRoomId, query || {})
+        ? gateway.history(queryRoomId, query || {}, getRequestContext())
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     sessionSnapshot(sessionId, targetRoomId) {
       const queryRoomId = targetRoomId || roomId;
       return queryRoomId && typeof gateway.session === 'function'
-        ? gateway.session(queryRoomId, sessionId)
+        ? gateway.session(queryRoomId, sessionId, getRequestContext())
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     messages(sessionId, query, targetRoomId) {
       const queryRoomId = targetRoomId || roomId;
       return queryRoomId && typeof gateway.messages === 'function'
-        ? gateway.messages(queryRoomId, sessionId, query || {})
+        ? gateway.messages(queryRoomId, sessionId, query || {}, getRequestContext())
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     leaderboard(sessionId, targetRoomId) {
       const queryRoomId = targetRoomId || roomId;
       return queryRoomId && typeof gateway.leaderboard === 'function'
-        ? gateway.leaderboard(queryRoomId, sessionId)
+        ? gateway.leaderboard(queryRoomId, sessionId, getRequestContext())
         : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
     getView() { return clone(view); },
     getState: state,
+    getRequestContext,
     pause() { paused = true; cancelTimer(); },
     resume() { return enqueue(resumeInternal); },
     close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }
@@ -509,5 +504,5 @@ function createRoomClient(options) {
 }
 
 module.exports = {
-  ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway, groupEvents, defaultCommandId
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway, defaultCommandId
 };

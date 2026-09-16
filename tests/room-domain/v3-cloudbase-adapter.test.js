@@ -208,3 +208,82 @@ test('CloudBase 当前房间查询只读取 active 与 room 文档', async () =>
   });
   assert.deepEqual(accessedCollections, [COLLECTIONS.active, COLLECTIONS.rooms]);
 });
+
+test('CloudBase 高频 Sync 只读取轻量 Room 与统一事件流', async () => {
+  const accessedCollections = [];
+  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 3,
+    currentSessionId: 'session-1', members: [{ userId: 'host', memberId: 'member-host' }] };
+  const transaction = {
+    collection(name) {
+      accessedCollections.push(name);
+      if (name === COLLECTIONS.sessions) throw new Error('Sync 不应读取 RoomSession');
+      const query = {
+        doc() { return { async get() { return { data: room }; } }; },
+        where() { return query; },
+        orderBy() { return query; },
+        limit() { return query; },
+        async get() { return { data: [{ roomId: '12345678', seq: 3 }] }; }
+      };
+      return query;
+    }
+  };
+  const range = { and: () => ({}) };
+  const repo = createCloudBaseRoomRepository({
+    db: {
+      command: { gt: () => range, lte: () => ({}) },
+      runTransaction: (callback) => callback(transaction)
+    }
+  });
+
+  const result = await repo.readSyncState('12345678', 2, 100);
+  assert.equal(result.room.currentSessionId, 'session-1');
+  assert.deepEqual(result.events.map((event) => event.seq), [3]);
+  assert.deepEqual(accessedCollections, [COLLECTIONS.rooms, COLLECTIONS.events]);
+});
+
+test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', async () => {
+  const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
+      members: [{ userId: 'host', memberId: 'member-host' }]
+    }],
+    [`${COLLECTIONS.sessions}:session-1`, {
+      roomId: '12345678', sessionId: 'session-1', status: 'RUNNING', facts: {
+        turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {}
+      }
+    }]
+  ]);
+  const transaction = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) throw missing();
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { documents.set(key, data); },
+            async remove() { documents.delete(key); }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({ db: { runTransaction: (callback) => callback(transaction) } });
+  await repo.transactCommand({
+    scopeKey: '12345678', commandId: 'command-2', actorUserId: 'host', roomId: '12345678',
+    type: 'UPDATE_ROOM_PROFILE', requestHash: 'hash', createdAt: 2
+  }, ({ aggregate }) => {
+    aggregate.room.eventSeq = 2;
+    aggregate.facts.scores.score1 = { scoreId: 'score1', scoreHalfSteps: 7 };
+    return { accepted: true, aggregate, dirtyFacts: [], events: [{ roomId: '12345678', seq: 2 }],
+      outcome: { kind: 'ACCEPTED', committedThroughSeq: 2 } };
+  });
+
+  const stored = documents.get(`${COLLECTIONS.sessions}:session-1`);
+  assert.equal(stored.roomId, '12345678');
+  assert.equal(stored.facts.scores.score1.scoreHalfSteps, 7);
+  assert.equal(documents.has(`${COLLECTIONS.events}:12345678_000000000002`), true);
+});

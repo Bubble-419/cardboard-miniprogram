@@ -129,39 +129,46 @@ test('Partner 匿名消息保持有界实时 View，并可通过游标完整分�
     'NOT_MEMBER');
 });
 
-test('查询与 Presence 拒绝模糊标识，不把任意对象或路径交给仓储层', async () => {
+test('查询拒绝模糊标识，非法 Presence 上下文被安全忽略', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   assert.equal((await h.app.readSnapshot('../rooms', { userId: 'host' })).errCode, 'INVALID_ARGUMENT');
   assert.equal((await h.app.readSessionSnapshot('12345678', {}, { userId: 'host' })).errCode, 'INVALID_ARGUMENT');
-  assert.equal((await h.app.heartbeat('12345678', { userId: 'host' }, {
-    deviceSessionId: { ambiguous: true }
-  })).errCode, 'INVALID_ARGUMENT');
+  const result = await h.app.readSnapshot('12345678', { userId: 'host', touchPresence: true,
+    deviceSessionId: { ambiguous: true } });
+  assert.equal(result.ok, true);
+  assert.equal(h.repo.presence.size, 0);
 });
 
-test('Presence 不改变业务水位，只进入 ephemeral', async () => {
+test('任意房间协议可续租 Presence，且不改变业务水位', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   const before = await h.snapshot('host');
-  const beat = await h.app.heartbeat('12345678', { userId: 'u2' }, { deviceSessionId: 'd1' });
+  const memberId = (await h.snapshot('u2')).view.actor.memberId;
+  const beat = await h.app.sync('12345678', before.seq, {
+    userId: 'u2', deviceSessionId: 'd1', touchPresence: true
+  });
   assert.equal(beat.ok, true);
   const after = await h.snapshot('host');
   assert.equal(after.seq, before.seq);
   assert.equal(after.stateVersion, before.stateVersion);
-  assert.equal(after.ephemeral.presenceByMemberId[beat.presence.memberId].online, true);
+  assert.equal(after.ephemeral.presenceByMemberId[memberId].online, true);
 
   await h.command('u2', 'LEAVE_ROOM');
   const afterLeave = await h.snapshot('host');
-  assert.equal(afterLeave.ephemeral.presenceByMemberId[beat.presence.memberId], undefined);
+  assert.equal(afterLeave.ephemeral.presenceByMemberId[memberId], undefined);
 });
 
-test('Sync 返回连续完整事件组；过期与越界水位要求 Snapshot', async () => {
+test('Sync 返回连续投影事件且不泄漏内部事件；过期与越界水位要求 Snapshot', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   const batch = await h.app.sync('12345678', 0, { userId: 'host' });
   assert.deepEqual(batch.events.map((item) => item.seq), [1, 2]);
   assert.equal(batch.throughSeq, 2);
-  assert.ok(batch.actorView.actor);
+  assert.equal(batch.events.every((item) => Array.isArray(item.publicEvents)), true);
+  assert.equal(batch.events.some((item) => item.actorPatch), true);
+  assert.equal(batch.events.some((item) => Object.prototype.hasOwnProperty.call(item, 'rawEvents')), false);
+  assert.equal(batch.events.some((item) => Object.prototype.hasOwnProperty.call(item, 'actorProjections')), false);
   h.repo.events.set('12345678', h.repo.events.get('12345678').slice(1));
   assert.equal((await h.app.sync('12345678', 0, { userId: 'host' })).snapshotRequired, true);
   assert.equal((await h.app.sync('12345678', 999, { userId: 'host' })).snapshotRequired, true);

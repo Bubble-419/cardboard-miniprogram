@@ -15,23 +15,27 @@ exports.main = async (event) => {
   const userId = wxContext.OPENID || '';
   const roomId = event && event.roomId;
   const action = (event && event.action) || 'current';
+  const clientContext = event && event.clientContext || {};
+  const actorContext = { userId,
+    deviceSessionId: clientContext.deviceSessionId,
+    touchPresence: clientContext.touchPresence === true };
 
   try {
-    if (action === 'current') return await app.readCurrentRoom({ userId });
-    if (action === 'snapshot') return await app.readSnapshot(roomId, { userId });
-    if (action === 'sync') return await app.sync(roomId, event && event.afterSeq, { userId }, {
+    if (action === 'current') return await app.readCurrentRoom(actorContext);
+    if (action === 'snapshot') return await app.readSnapshot(roomId, actorContext);
+    if (action === 'sync') return await app.sync(roomId, event && event.afterSeq, actorContext, {
       limit: event && event.limit
     });
-    if (action === 'history') return await app.readHistory(roomId, { userId }, {
+    if (action === 'history') return await app.readHistory(roomId, actorContext, {
       limit: event && event.limit,
       beforeOrdinal: event && event.beforeOrdinal
     });
-    if (action === 'session') return await app.readSessionSnapshot(roomId, event && event.sessionId, { userId });
-    if (action === 'messages') return await app.readMessages(roomId, event && event.sessionId, { userId }, {
+    if (action === 'session') return await app.readSessionSnapshot(roomId, event && event.sessionId, actorContext);
+    if (action === 'messages') return await app.readMessages(roomId, event && event.sessionId, actorContext, {
       limit: event && event.limit,
       beforeSeq: event && event.beforeSeq
     });
-    if (action === 'leaderboard') return await app.readLeaderboard(roomId, event && event.sessionId, { userId });
+    if (action === 'leaderboard') return await app.readLeaderboard(roomId, event && event.sessionId, actorContext);
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: `未知查询 action: ${action}` };
   } catch (e) {
     console.error('roomQuery error', e);

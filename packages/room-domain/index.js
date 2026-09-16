@@ -7,7 +7,7 @@ const { reduceHalliCommand, handleHalliParticipantLeft } = require('./halli');
 const { reduceSpyCommand, handleSpyParticipantLeft } = require('./spy');
 
 const {
-  clone, event, domainOk, fail, idOf, nowOf, normalizeHalfStarScore, ensureFacts, sortedMembers,
+  clone, event, domainOk, fail, idOf, nowOf, normalizeHalfStarScore, emptyFacts, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, activeParticipantIds, activeParticipantsBySeat, nextSeat,
   progressComplete,
   createMember, createRoomAggregate, assertRoom, assertMember, assertHost, assertParticipant, assertSession,
@@ -115,7 +115,9 @@ function cancelCurrentSession(aggregate, reason, deps, events) {
   if (!session) return;
   session.status = SESSION_STATUS.CANCELLED; session.completedAt = nowOf(deps); session.result = { cancelledReason: reason };
   aggregate.archivedSession = clone(session);
+  aggregate.archivedFacts = clone(ensureFacts(aggregate));
   aggregate.currentSession = null; aggregate.room.currentSessionId = null;
+  aggregate.facts = emptyFacts();
   events.push(event(EVENT_TYPES.WORKSHOP_SESSION_CANCELLED, { sessionId: session.sessionId, reason }));
 }
 
@@ -164,11 +166,13 @@ function dissolveRoom(aggregate, actorUserId, deps) {
     aggregate.currentSession.completedAt = nowOf(deps);
     aggregate.currentSession.result = { cancelledReason: 'ROOM_DISSOLVED' };
     aggregate.archivedSession = clone(aggregate.currentSession);
+    aggregate.archivedFacts = clone(ensureFacts(aggregate));
   }
   aggregate.room.lifecycle = LIFECYCLE.DISSOLVED;
   aggregate.room.currentSessionId = null;
   aggregate.dissolvedMemberUserIds = aggregate.room.members.map((member) => member.userId);
   aggregate.currentSession = null;
+  aggregate.facts = emptyFacts();
   return domainOk(aggregate, [event(EVENT_TYPES.ROOM_DISSOLVED, { roomId: aggregate.room.roomId })],
     { kind: 'ROOM_DISSOLVED', roomId: aggregate.room.roomId });
 }
@@ -179,6 +183,7 @@ function startSession(aggregate, command, actorUserId, deps) {
   const mode = normalizeMode(command.payload.mode);
   if (!mode) return fail(ERR.INVALID_ARGUMENT, '未知模式');
   if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} 人数不足`);
+  aggregate.facts = emptyFacts();
   const session = newSession(aggregate, mode, null, deps);
   return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_STARTED, { sessionId: session.sessionId, mode })],
     { kind: 'SESSION_STARTED', sessionId: session.sessionId });
@@ -307,7 +312,9 @@ function returnToLobby(aggregate, command, actorUserId) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
   const check = assertSession(aggregate, command.context); if (!check.ok) return check;
   if (check.session.status !== SESSION_STATUS.COMPLETED) return fail(ERR.INVALID_TRANSITION, '场次尚未完成');
-  aggregate.archivedSession = clone(check.session); aggregate.currentSession = null; aggregate.room.currentSessionId = null;
+  aggregate.archivedSession = clone(check.session);
+  aggregate.archivedFacts = clone(ensureFacts(aggregate));
+  aggregate.currentSession = null; aggregate.room.currentSessionId = null; aggregate.facts = emptyFacts();
   return domainOk(aggregate, [event(EVENT_TYPES.ROOM_RETURNED_TO_LOBBY, { sessionId: check.session.sessionId })], { kind: 'LOBBY' });
 }
 
@@ -326,6 +333,8 @@ function replaySession(aggregate, command, actorUserId, deps) {
   const setup = { scenarioSource: old.setup.scenarioSource, scenario: old.setup.scenario,
     selectedProblemId: old.setup.selectedProblemId, proposedFirstMemberId: old.setup.proposedFirstMemberId };
   aggregate.archivedSession = old;
+  aggregate.archivedFacts = clone(ensureFacts(aggregate));
+  aggregate.facts = emptyFacts();
   const session = newSession(aggregate, old.mode, setup, deps);
   const dirtyFacts = [];
   if (session.mode === MODE.PARTNER && oldSelectedProblem) {
@@ -415,7 +424,7 @@ function authorizeSessionRead(aggregate, actorUserId) {
 }
 
 module.exports = {
-  reduceCommand, authorizeRoomRead, authorizeSessionRead, createRoomAggregate, normalizeHalfStarScore,
+  reduceCommand, authorizeRoomRead, authorizeSessionRead, createRoomAggregate, emptyFacts, normalizeHalfStarScore,
   memberByUserId, memberById, sortedMembers, minimumPlayers,
   ...require('./spy')
 };

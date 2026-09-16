@@ -24,7 +24,6 @@ flowchart LR
   subgraph CloudFunctions[云函数]
     CMD[roomCommand]
     QUERY[roomQuery]
-    PRES[roomPresence]
     SIG[roomSignal]
     MEDIA[roomMedia]
     STT[speechToText]
@@ -34,7 +33,6 @@ flowchart LR
     REPO[CloudBase Repository]
     CMD --> APP
     QUERY --> APP
-    PRES --> APP
     SIG --> APP
     MEDIA --> APP
     STT --> APP
@@ -45,7 +43,6 @@ flowchart LR
 
   GW --> CMD
   GW --> QUERY
-  GW --> PRES
   PAGE -.瞬时声音/二维码.-> SIG
   PAGE -.二维码.-> MEDIA
   PAGE -.当前 Turn 语音.-> STT
@@ -98,6 +95,21 @@ view
 └── route { name, params }
 ```
 
+物理存储保持三个清晰边界：
+
+```mermaid
+flowchart LR
+  R[(roomV3Rooms<br/>成员/Host/水位/currentSessionId)]
+  S[(roomV3Sessions/sessionId<br/>Session + 当前场次全部 Facts)]
+  E[(roomV3Events/roomId_seq<br/>Raw + PublicPatch + ActorProjections)]
+  R -->|currentSessionId| S
+  R -->|eventSeq| E
+  E -->|查询时白名单投影| OUT[PublicEvents + PublicPatch<br/>+ 当前成员 ActorPatch]
+```
+
+高频 `sync` 只读取 `roomV3Rooms + roomV3Events`；Snapshot 和 Command 才读取当前
+`roomV3Sessions`。`roomV3Messages` 只是历史分页索引，权威消息仍属于 Session Facts。
+
 ## 3. Command 原子提交
 
 ```mermaid
@@ -118,12 +130,12 @@ sequenceDiagram
   T->>T: 查 Receipt / ActiveRoom / Aggregate
   T->>D: 最新 Aggregate + Command
   D-->>T: Next Aggregate + Domain Events + Dirty Facts
-  T->>P: Before/After Public View
-  P-->>T: publicPatch
-  T->>T: State + Facts + Event Group + Receipt
+  T->>P: Before/After Public View + Actor View
+  P-->>T: publicPatch + 每成员 actorPatch
+  T->>T: Room + Session/Facts + Event Group + Receipt
   T-->>A: 原子提交结果
   A-->>C: Outcome + SyncBatch
-  C->>C: 原子应用 Event Group + Actor View
+  C->>C: 顺序应用 publicPatch + 本人 actorPatch
   C-->>U: 发布新 View
 ```
 
@@ -149,8 +161,8 @@ flowchart TD
   CTX -- 否 --> REJECT
   CTX -- 是 --> REDUCE[纯 Reducer]
   REDUCE --> COMMIT[原子提交]
-  COMMIT --> STATE[State/Facts]
-  COMMIT --> EVENTS[连续 Event Group]
+  COMMIT --> STATE[Room + 单文档 Session/Facts]
+  COMMIT --> EVENTS[单 Command Event Group]
   COMMIT --> NEWRECEIPT[Receipt]
 ```
 
@@ -165,16 +177,16 @@ sequenceDiagram
   C->>Q: current
   Q-->>C: roomId / null
   C->>Q: snapshot(roomId)
-  Q->>DB: 同一事务读取 Aggregate + Facts
+  Q->>DB: 同一事务读取 Room + 当前 Session 文档
   DB-->>Q: Aggregate@N
   Q-->>C: Snapshot(view, seq=N, actor, route, ephemeral)
 
   loop 单一短轮询计时器
     C->>Q: sync(afterSeq=N)
-    Q-->>C: Event Groups(N+1...M) + roomCurrentSeq
+    Q-->>C: 投影事件(N+1...M) + roomCurrentSeq
     alt 连续、完整且已追平
       C->>C: staging 应用后一次发布
-      Q-->>C: ActorView@M + ephemeral
+      Q-->>C: 最后一批 + ephemeral
     else hasMore
       C->>Q: sync(afterSeq=throughSeq)
     else 缺口/过期/未知版本/矛盾水位
@@ -207,9 +219,10 @@ stateDiagram-v2
 ```text
 Snapshot.seq == Aggregate.room.eventSeq
 Event.seq == 前一 seq + 1
-每个完整 Event Group.stateVersion == 前一状态版本 + 1
-同一 commandId 的 Event Group 不拆分、不部分发布
-!hasMore => throughSeq == roomCurrentSeq 且必须携带 ActorView@M
+每个 Event 文档对应一个 commandId，stateVersion == 前一状态版本 + 1
+Event.publicPatch 只修改公开 View；Event.actorPatch 只修改当前成员 Actor/Route
+服务端存储 rawEvents + publicPatch + 全成员 actorProjections，查询只返回公共部分和本人补丁
+!hasMore => throughSeq == roomCurrentSeq
 任一条件不可信 => 丢弃 staging，重新 Snapshot
 ```
 
@@ -308,11 +321,11 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-  SEC[(roomV3Secrets)] -->|memberId == actor| PRIVATE[actor.privateModeState]
+  SEC[(roomV3Sessions.facts.secrets)] -->|memberId == actor| PRIVATE[actor.privateModeState]
   SEC -->|中途仅淘汰者 role| ELIM[Round Result]
   SEC -.结算前禁止其他身份与词语.-> PUBLIC[Public View]
   SEC -.结算前禁止其他身份与词语.-> EVENT[Public Event]
-  VOTE[(roomV3Votes)] --> COUNT[公开票数进度]
+  VOTE[(roomV3Sessions.facts.votes)] --> COUNT[公开票数进度]
   VOTE -.结算前不公开个人票.-> PUBLIC
   SETTLED[SPY_SETTLED] --> REVEAL[公开全员身份与词语]
 ```
@@ -357,12 +370,16 @@ flowchart TD
 
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
-| Presence 心跳 | `roomPresence` + `roomV3Presence` | 否 |
+| Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
 | Partner 静默声贝 | `roomSignal` + `roomV3Signals`，绑定 session/turn/deadline | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
 | 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |
 | History / Session / Leaderboard | `roomQuery` | 否 |
+
+RoomClient 的最小轮询间隔为 **2 秒**。所有房间调用复用同一个 `deviceSessionId`；距离上次续租
+达到 **5 秒**时携带 `touchPresence=true`，服务端以自身时间写租约。在线投影窗口为 **15 秒**，
+写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。
 
 ```mermaid
 sequenceDiagram
@@ -389,7 +406,7 @@ sequenceDiagram
 | 客户端恢复与单轮询 | `packages/room-client` |
 | 小程序会话与页面模型 | `modules/room-session` |
 | 导航协调 | `modules/room-navigation` |
-| 云函数入口 | `cloudfunctions/roomCommand`、`roomQuery`、`roomPresence`、`roomSignal`、`roomMedia` |
+| 云函数入口 | `cloudfunctions/roomCommand`、`roomQuery`、`roomSignal`、`roomMedia`、`speechToText` |
 
 ## 13. 自动化门禁
 

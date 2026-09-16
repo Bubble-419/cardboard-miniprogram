@@ -57,18 +57,18 @@ function collectCloudFileRefs(value, refs = new Set()) {
   return refs;
 }
 
-async function tempUrls(fileList, userId) {
+async function tempUrls(fileList, actorContext) {
   if (!Array.isArray(fileList) || fileList.length < 1 || fileList.length > 50
     || fileList.some((id) => typeof id !== 'string' || id.indexOf('cloud://') !== 0)) {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 不合法' };
   }
   const ids = Array.from(new Set(fileList));
-  const current = await app.readCurrentRoom({ userId });
+  const current = await app.readCurrentRoom(actorContext);
   if (!current.ok) return current;
   if (!current.roomId) {
     return { ok: false, errCode: 'NOT_MEMBER', errMsg: '当前没有可访问的房间' };
   }
-  const snapshot = await app.readSnapshot(current.roomId, { userId });
+  const snapshot = await app.readSnapshot(current.roomId, { ...actorContext, touchPresence: false });
   if (!snapshot.ok) return snapshot;
   // 只允许把当前用户 MemberView 已经可见的媒体引用转换为临时 URL，避免管理员云函数越权签名任意文件。
   const allowedRefs = collectCloudFileRefs(snapshot.view);
@@ -84,10 +84,14 @@ exports.main = async (event) => {
   const action = String(event && event.action || 'qrcode');
   const wxContext = cloud.getWXContext();
   const userId = wxContext.OPENID || '';
+  const clientContext = event && event.clientContext || {};
+  const actorContext = { userId,
+    deviceSessionId: clientContext.deviceSessionId,
+    touchPresence: clientContext.touchPresence === true };
   if (!userId) return { ok: false, errCode: 'UNAUTHENTICATED', errMsg: '未登录' };
   if (action === 'tempUrls') {
     try {
-      return await tempUrls(event && event.fileList, userId);
+      return await tempUrls(event && event.fileList, actorContext);
     } catch (e) {
       console.error('roomMedia tempUrls error', e);
       return { ok: false, errCode: e.code || 'INTERNAL_ERROR', errMsg: e.message || 'tempUrls failed' };
@@ -98,7 +102,7 @@ exports.main = async (event) => {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId/action 不合法' };
   }
   try {
-    const snapshot = await app.readSnapshot(roomId, { userId });
+    const snapshot = await app.readSnapshot(roomId, actorContext);
     if (!snapshot.ok) return snapshot;
     const mediaId = docId(`${roomId}:QRCODE`);
     const media = await safeGet(db, COLLECTIONS.media, mediaId);

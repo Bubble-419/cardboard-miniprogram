@@ -3,9 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway
 } = require('@cardboard/room-client');
-const { applyEventGroup } = require('@cardboard/room-projection');
+const { applyProjectedEvent } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
 
 function inertTimers() {
@@ -53,7 +53,6 @@ test('RoomClient 统一使用 2 秒最小轮询间隔', async () => {
     snapshot: (roomId) => h.app.readSnapshot(roomId, { userId: 'host' }),
     sync: (roomId, seq, limit) => h.app.sync(roomId, seq, { userId: 'host' }, { limit }),
     dispatch: async () => null,
-    presence: async () => ({ ok: true })
   };
   const timers = recordingTimers();
   const client = createRoomClient({ gateway, ...timers, intervalMs: 800 });
@@ -93,6 +92,25 @@ test('Cloud gateway keeps room commands isolated from injected event metadata', 
   });
 });
 
+test('RoomClient 在任意协议中复用设备身份并按间隔请求 Presence 续租', async () => {
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: null }),
+      snapshot: async () => null,
+      sync: async () => null,
+      dispatch: async () => null
+    },
+    ...inertTimers(),
+    deviceSessionId: 'device-test'
+  });
+  const first = client.getRequestContext();
+  const second = client.getRequestContext();
+  assert.equal(PRESENCE_TOUCH_INTERVAL_MS, 5000);
+  assert.deepEqual(first, { deviceSessionId: 'device-test', touchPresence: true });
+  assert.deepEqual(second, { deviceSessionId: 'device-test', touchPresence: false });
+  client.close();
+});
+
 test('CloudBase 注入 tcbContext 时仍只校验 command 内的协议字段', async () => {
   const h = createHarness();
   const gateway = createCloudRoomGateway({
@@ -126,16 +144,9 @@ async function reduceFromSnapshot(h, userId, before, limit = 3) {
     const batch = await h.app.sync('12345678', afterSeq, { userId }, { limit });
     assert.equal(batch.ok, true);
     assert.equal(batch.snapshotRequired, false);
-    const groups = [];
-    batch.events.forEach((item) => {
-      const last = groups.at(-1);
-      if (!last || last[0].commandId !== item.commandId) groups.push([item]);
-      else last.push(item);
-    });
-    groups.forEach((group) => { reduced = applyEventGroup(reduced, group); });
+    batch.events.forEach((event) => { reduced = applyProjectedEvent(reduced, event); });
     afterSeq = batch.throughSeq;
     if (!batch.hasMore) {
-      reduced = { ...reduced, ...batch.actorView };
       break;
     }
   }
@@ -150,7 +161,6 @@ test('RoomClient 用 Snapshot 打开，并在命令响应中原子消费 Sync', 
     snapshot: (roomId) => h.app.readSnapshot(roomId, { userId: 'host' }),
     sync: (roomId, seq, limit) => h.app.sync(roomId, seq, { userId: 'host' }, { limit }),
     dispatch: (envelope) => h.app.executeCommand(envelope, { userId: 'host' }),
-    presence: () => Promise.resolve({ ok: true })
   };
   const client = createRoomClient({ gateway, ...inertTimers(), commandIdFactory: () => 'rename-command' });
   const published = [];
@@ -167,7 +177,7 @@ test('RoomClient 用 Snapshot 打开，并在命令响应中原子消费 Sync', 
   client.close();
 });
 
-test('Snapshot@N + Event Groups + Actor@M 等于 Snapshot@M', async () => {
+test('Snapshot@N + 公共/Actor 投影事件等于 Snapshot@M', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   const before = await h.snapshot('u2');
@@ -175,13 +185,7 @@ test('Snapshot@N + Event Groups + Actor@M 等于 Snapshot@M', async () => {
   await h.command('u2', 'UPDATE_MEMBER_PROFILE', { payload: { nickName: '成员二' }, knownSeq: before.seq });
   const batch = await h.app.sync('12345678', before.seq, { userId: 'u2' });
   let reduced = before.view;
-  const groups = [];
-  batch.events.forEach((item) => {
-    const last = groups.at(-1);
-    if (!last || last[0].commandId !== item.commandId) groups.push([item]); else last.push(item);
-  });
-  groups.forEach((group) => { reduced = applyEventGroup(reduced, group); });
-  reduced = { ...reduced, ...batch.actorView };
+  batch.events.forEach((event) => { reduced = applyProjectedEvent(reduced, event); });
   const latest = await h.snapshot('u2');
   assert.deepEqual(reduced, latest.view);
 });
@@ -237,7 +241,7 @@ test('跨配置、Partner 换轮和中途加入后，分批 Event 仍与最新 S
   }
 });
 
-test('Spy 分牌后的公开 Event + 最终 ActorView 可完整恢复每个人的私密视图', async () => {
+test('Spy 分牌后的公共 Event + 本人 ActorPatch 可完整恢复每个人的私密视图', async () => {
   const h = createHarness({ wordPairPicker: () => ({
     id: 'fixed', civilianWord: '白板', civilianBlurb: '民词', spyWord: '黑板', spyBlurb: '卧底词'
   }) });
@@ -270,15 +274,15 @@ test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, roomId: '12345678',
       seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {}, minAvailableSeq: 1 }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 1, roomId: '12345678', type: 'ROOM_PROFILE_UPDATED', seq: 2,
-        commandId: 'x', commandEventIndex: 1, commandEventCount: 1,
-        payload: { publicPatch: { set: {}, remove: [] } } }], actorView: { actor: view.actor, route: view.route }
+      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 2, stateVersion: 2,
+        commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+        publicPatch: { set: [], remove: [] }, actorPatch: null }]
     } }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
-      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } })
+      snapshotRequired: false, events: [] })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
   await client.open();
@@ -314,13 +318,13 @@ test('同步完成水位矛盾时强制 Snapshot，不发布不完整 View', asy
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
-      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } }),
+      snapshotRequired: false, events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
-      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route }
+      snapshotRequired: false, events: []
     } })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
@@ -341,9 +345,9 @@ test('hasMore 却没有事件时强制 Snapshot，避免空批无限追赶', asy
       return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
         roomId: '12345678', seq: 0, stateVersion: snapshotCalls, view, ephemeral: {} };
     },
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 1, hasMore: true,
-      snapshotRequired: false, events: [], actorView: null }),
+      snapshotRequired: false, events: [] }),
     dispatch: async () => null
   };
   const timers = manualTimers();
@@ -362,17 +366,16 @@ test('连续事件缺少最终 publicPatch 时也强制 Snapshot', async () => {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
-      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } }),
+      snapshotRequired: false, events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
       snapshotRequired: false,
-      events: [{ eventSchemaVersion: 1, roomId: '12345678', type: 'ROOM_PROFILE_UPDATED',
-        seq: 1, stateVersion: 1, commandId: 'x', commandEventIndex: 1, commandEventCount: 1,
-        payload: {} }],
-      actorView: { actor: view.actor, route: view.route }
+      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 1, stateVersion: 1,
+        commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+        actorPatch: null }]
     } })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
@@ -393,13 +396,12 @@ test('事件组 stateVersion 不连续时强制 Snapshot', async () => {
       return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
         roomId: '12345678', seq: 0, stateVersion: 4, view, ephemeral: {} };
     },
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
       snapshotRequired: false,
-      events: [{ eventSchemaVersion: 1, roomId: '12345678', type: 'ROOM_PROFILE_UPDATED',
-        seq: 1, stateVersion: 7, commandId: 'broken-version', commandEventIndex: 1,
-        commandEventCount: 1, payload: { publicPatch: { set: {}, remove: [] } } }],
-      actorView: { actor: view.actor, route: view.route }
+      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 1, stateVersion: 7,
+        commandId: 'broken-version', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+        publicPatch: { set: [], remove: [] }, actorPatch: null }]
     }),
     dispatch: async () => null
   };
@@ -507,9 +509,9 @@ test('CREATE_ROOM 不把当前连接的 roomId 发给服务端', async () => {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 1,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
-      snapshotRequired: false, events: [], actorView: { actor: view.actor, route: view.route } }),
+      snapshotRequired: false, events: [] }),
     dispatch: async (envelope) => {
       sent = envelope;
       return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'CREATE_ROOM 不接受客户端 roomId', retryable: false };

@@ -39,14 +39,13 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
       ok: true,
       protocolVersion: 3,
       viewSchemaVersion: 1,
-      eventSchemaVersion: 1,
+      eventSchemaVersion: 2,
       afterSeq: snapshotCalls,
       throughSeq: snapshotCalls,
       roomCurrentSeq: snapshotCalls,
       hasMore: false,
       snapshotRequired: false,
-      events: [],
-      actorView: { actor: view.actor, route: view.route }
+      events: []
     })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });

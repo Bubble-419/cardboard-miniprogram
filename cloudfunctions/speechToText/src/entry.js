@@ -53,8 +53,11 @@ exports.main = async (event) => {
 
   const wxContext = cloud.getWXContext();
   const userId = wxContext.OPENID || '';
+  const clientContext = event && event.clientContext || {};
   try {
-    const snapshot = await app.readSnapshot(roomId, { userId });
+    const snapshot = await app.readSnapshot(roomId, { userId,
+      deviceSessionId: clientContext.deviceSessionId,
+      touchPresence: clientContext.touchPresence === true });
     if (!snapshot.ok) return snapshot;
     const view = snapshot.view;
     const session = view && view.session;

@@ -48,18 +48,12 @@ flowchart LR
 | 集合 | 主键/用途 | 生命周期 |
 |---|---|---|
 | `roomV3Rooms` | `_id=roomId`；Room 控制文档 | 保留 |
-| `roomV3Sessions` | `_id=sessionId`；当前/历史场次 | 保留 |
+| `roomV3Sessions` | `_id=sessionId`；一个文档保存 Session + 该场次全部 Facts | 保留 |
 | `roomV3ActiveByUser` | `_id=hash(userId)`；当前房间唯一索引 | 离开/解散删除 |
 | `roomV3Actions` | `_id=hash(scopeKey:commandId)`；Receipt | 建议 30 天归档/清理 |
-| `roomV3Events` | `_id=roomId_seq`；短期同步日志 | 建议保留 7 天 |
-| `roomV3Turns` | Turn 历史事实 | 保留 |
-| `roomV3Scores` | Partner 评分事实 | 保留 |
-| `roomV3Votes` | Partner/Spy 投票事实 | 保留 |
-| `roomV3Contributions` | 设计问题/Halli 创意 | 保留 |
-| `roomV3Artifacts` | 文本/图片/语音素材 | 保留 |
+| `roomV3Events` | `_id=roomId_seq`；每个 Command 一个事件组，含 raw/public/Actor 扇出投影 | 建议保留 7 天 |
 | `roomV3Messages` | Partner 匿名表达 | 按产品周期清理 |
-| `roomV3Secrets` | Spy 私密牌 | 场次历史需要时保留；严格禁客户端读 |
-| `roomV3Presence` | 设备心跳 | 建议按 `lastSeenAt` 清理 |
+| `roomV3Presence` | 任意房间协议顺带续租的设备在线租约 | 建议按 `lastSeenAt` 清理 |
 | `roomV3Signals` | 可丢失瞬时信号 | 按 `expiresAt` 清理 |
 | `roomV3Media` | 房间二维码等可再生引用 | 可再生 |
 
@@ -71,23 +65,17 @@ flowchart LR
 flowchart TB
   SYNC[sync] --> EIDX[roomV3Events<br/>roomId ASC + seq ASC]
   HISTORY[history] --> SIDX[roomV3Sessions<br/>roomId ASC + status ASC + ordinal DESC]
-  SNAPSHOT[snapshot/session] --> FIDX[事实集合<br/>roomId ASC + sessionId ASC + _factKey ASC]
+  SNAPSHOT[snapshot/session] --> SDOC[roomV3Sessions<br/>按 _id 单文档读取]
   MSG[message history] --> MIDX[roomV3Messages<br/>roomId ASC + sessionId ASC + commitSeq DESC]
-  EPHEMERAL[presence/signal] --> PIDX[roomId ASC]
+  EPHEMERAL[presence/signal] --> PIDX[Presence: roomId ASC + lastSeenAt DESC<br/>Signal: roomId ASC]
 ```
 
 | 集合 | 索引字段 | 必需 |
 |---|---|:---:|
 | `roomV3Events` | `roomId ASC, seq ASC` | 是 |
 | `roomV3Sessions` | `roomId ASC, status ASC, ordinal DESC` | 是 |
-| `roomV3Turns` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Scores` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Votes` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Contributions` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Artifacts` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
-| `roomV3Secrets` | `roomId ASC, sessionId ASC, _factKey ASC` | 是 |
-| `roomV3Presence` | `roomId ASC` | 是 |
+| `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 | `roomV3Signals` | `roomId ASC` | 是 |
 
 其余读取使用确定性 `_id`，不需要额外业务索引。
@@ -107,7 +95,7 @@ flowchart LR
 
 - 所有 `roomV3*` 集合关闭客户端直接读写。
 - 仅云函数运行身份可访问集合。
-- `roomV3Secrets`、`roomV3Votes`、`roomV3Actions` 不开放客户端读权限。
+- `roomV3Sessions`、`roomV3Events`、`roomV3Actions` 均不开放客户端读权限；其中包含私密事实或成员投影。
 - 日志不得输出 openid、Spy 词语/身份、投票明细、消息或素材正文。
 - `roomMedia` 生成二维码前通过 Member Snapshot 鉴权；强制刷新仅 Host。
 - `roomSignal` 只接受当前行动者、当前 session/turn 且 Silent 未过期的信号。
@@ -124,8 +112,7 @@ pnpm build:cloud
 
 ```mermaid
 flowchart LR
-  Q[roomQuery] --> P[roomPresence]
-  P --> S[roomSignal]
+  Q[roomQuery] --> S[roomSignal]
   S --> M[roomMedia]
   M --> C[roomCommand]
   C --> X[speechToText / Inspiration 函数]
@@ -135,7 +122,6 @@ flowchart LR
 
 ```text
 roomQuery
-roomPresence
 roomSignal
 roomMedia
 roomCommand
@@ -199,9 +185,11 @@ flowchart TD
 ```text
 roomV3Rooms.eventSeq == 当前最大 Event.seq
 roomV3Rooms.currentSessionId == null 或对应 roomV3Sessions._id
+roomV3Sessions.facts 只属于该 Session，当前场次切换时旧文档保持不可变
 每个 OPEN Member 恰有一个 roomV3ActiveByUser
 每个 accepted Receipt 的 committedThroughSeq 可在 Room/Event 中验证
 同一 roomId 下 Event.seq 无重复、无倒序
+每个 Event 文档只对应一个 Command；publicPatch + 本人 actorPatch 可从前一 View 还原下一 View
 同一 Session 只有冻结 Participants；中途加入者不在其中
 Spy SETTLED 前 Public View/Event 不含 role/word/blurb
 ```
@@ -214,7 +202,7 @@ Spy SETTLED 前 Public View/Event 不含 role/word/blurb
 | `SNAPSHOT_REQUIRED` | 比例突增时检查 Event TTL、缺口或客户端版本 |
 | `COMMAND_ID_CONFLICT` | 检查客户端 commandId 生成与复用 |
 | 事务冲突/重试 | 按房间与命令类型观察热点 |
-| Snapshot 大小/事实安全上限 | 接近 Adapter 上限时归档或拆分场次 |
+| RoomSession 文档大小 | 接近 CloudBase 单文档上限时限制单场次内容量或结束场次；不要静默截断权威事实 |
 | Presence stale | 检查云函数延迟和前后台生命周期 |
 
 ## 9. 切换与回退
