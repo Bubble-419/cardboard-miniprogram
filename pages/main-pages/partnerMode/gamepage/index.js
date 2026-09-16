@@ -89,6 +89,10 @@ const {
   earnedStarStaggerDelays
 } = require('../../../../utils/halfStarScore');
 const {
+  resolvePartnerScoreProgress,
+  shouldApplyRoomSnapshot
+} = require('../../../../utils/partnerScoreProgress');
+const {
   buildReviewSnapshot,
   saveReviewSnapshot,
   getReviewSnapshot,
@@ -311,6 +315,7 @@ Page(withPageInteractionLock({
     this._starPanelCollapseTimer = null;
     this._scoreFingerprint = '';
     this._pendingRoomContext = null;
+    this._appliedRoomRevision = 0;
     this._roomDataReady = false;
     this._cloudAvatarResolving = false;
     // 仅用于“服务端缺字段时的临时兜底”；新页面实例必须从空开始，避免带入旧会话纪要
@@ -1857,6 +1862,27 @@ Page(withPageInteractionLock({
   },
 
   _applyRoomContext(result, options = {}) {
+    const incomingRevision = Number(
+      result.revision
+      || (result.roomState && result.roomState.revision)
+      || 0
+    );
+    if (!shouldApplyRoomSnapshot(this._appliedRoomRevision, incomingRevision)
+      && !options.force && !options.resetTurnUi) {
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase
+      };
+    }
+
     // 滑动/打分交互中勿整页 setData 改写 controlled swiper，否则会顶飞手势并左右晃动
     if ((this._cardSwipeBusy || this._scoreUiBusy) && !options.force && !options.resetTurnUi) {
       this._pendingRoomContext = { result, options };
@@ -1873,6 +1899,7 @@ Page(withPageInteractionLock({
         roomPhase: this.data.gamepagePhase
       };
     }
+    if (incomingRevision) this._appliedRoomRevision = incomingRevision;
 
     const members = preserveMemberAvatars(
       assignAvatarImages(result.members || this.data.members || []),
@@ -2208,7 +2235,7 @@ Page(withPageInteractionLock({
       patch.selectedScoreText = '';
       patch.canStartStatement = false;
       patch.scoredCount = 0;
-      patch.scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
+      patch.scoreTurnKey = turnId || `turn_r${currentRound}_s${player.currentPlayerIndex}`;
       this._starRatingPinnedOpen = false;
       this._starRatingDismissed = false;
       this._scoreSubmitting = false;
@@ -2254,33 +2281,19 @@ Page(withPageInteractionLock({
       }
     }
 
-    // 打分进度只信任 V3 View 的服务端权威计数。
-    // 换人/换轮先清零，避免进页瞬间沿用上一回合满分。
-    const scoreTurnKey = `turn_r${currentRound}_s${player.currentPlayerIndex}`;
+    // 打分进度只信任当前 View 的服务端权威计数（业务 turnId，不是旧的 turn_r座位 假键）。
+    // 换人/换轮先清零，再写入本快照计数，避免进页瞬间沿用上一回合满分。
+    const scoreProgress = resolvePartnerScoreProgress(roomState);
+    const scoreTurnKey = scoreProgress.turnId || `turn_r${currentRound}_s${player.currentPlayerIndex}`;
     const turnScoreReset = !!(playerChanged || roundChanged || sessionChanged || options.resetTurnUi);
     if (turnScoreReset) {
       patch.scoredCount = 0;
       patch.canStartStatement = false;
       patch.scoreTurnKey = scoreTurnKey;
     }
-    if (roomState.scoredCount != null || roomState.totalRequired != null
-      || (roomState.progress && roomState.progress.scoredCount != null)) {
-      const progress = roomState.progress || null;
-      const progressTurnId = progress && progress.turnId ? String(progress.turnId) : '';
-      // 必须与当前 View 映射出的 turnId 精确匹配。
-      const progressFresh = progressTurnId === scoreTurnKey;
-      let nextScored = 0;
-      let nextRequired = 0;
-      if (progressFresh) {
-        nextScored = roomState.scoredCount != null
-          ? Number(roomState.scoredCount) || 0
-          : (progress && progress.scoredCount != null ? Number(progress.scoredCount) || 0 : 0);
-        const fromProgress = progress && progress.requiredScoreCount != null
-          ? Number(progress.requiredScoreCount) || 0
-          : 0;
-        const fromRoom = roomState.totalRequired != null ? Number(roomState.totalRequired) || 0 : 0;
-        nextRequired = Math.max(fromProgress, fromRoom);
-      }
+    if (scoreProgress.accepted) {
+      const nextScored = scoreProgress.scoredCount;
+      const nextRequired = scoreProgress.requiredScoreCount;
       patch.scoredCount = nextScored;
       patch.totalRequired = nextRequired;
       patch.scoreTurnKey = scoreTurnKey;
@@ -4281,10 +4294,16 @@ Page(withPageInteractionLock({
       }
       const snapshot = (this._boundRoomSession || getActiveRoomSession()).getSnapshot();
       const state = snapshot.roomState || {};
-      const scoredCount = Number(state.scoredCount) || 0;
-      const totalRequired = Math.max(0, Number(state.totalRequired) || 0);
+      const scoreProgress = resolvePartnerScoreProgress(state);
+      const scoredCount = scoreProgress.scoredCount;
+      const totalRequired = Math.max(0, scoreProgress.requiredScoreCount);
       this._starRatingPinnedOpen = false;
       this._scoreSubmitting = false;
+      this._pendingRoomContext = null;
+      const appliedRevision = Number(snapshot.revision || (state && state.revision) || 0);
+      if (appliedRevision) {
+        this._appliedRoomRevision = Math.max(this._appliedRoomRevision || 0, appliedRevision);
+      }
       const savedScore = (() => {
         const fromServer = state.myScore != null
           ? normalizeHalfStarScore(state.myScore, state.myScoreHalfSteps)
@@ -4306,7 +4325,8 @@ Page(withPageInteractionLock({
           && !isDiscussionPhase(this.data.gamepagePhase)
           && totalRequired > 0
           && scoredCount >= totalRequired,
-        scoreTurnKey: `turn_r${this.data.currentRound != null ? this.data.currentRound : 1}_s${currentPlayerIndex}`
+        scoreTurnKey: scoreProgress.turnId
+          || `turn_r${this.data.currentRound != null ? this.data.currentRound : 1}_s${currentPlayerIndex}`
       };
       this._scoreFingerprint = [
         scorePatch.scoredCount,

@@ -371,7 +371,16 @@ function projectRoute(aggregate, actorView) {
   if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
     return { name: 'creativeSummary', params: {} };
   }
-  return { name: routes[step] || 'addPlayer', params: { phase: step } };
+  const name = routes[step] || 'addPlayer';
+  const params = { phase: step };
+  if (name === 'partnerGame') {
+    const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
+    const participant = turn && findParticipant(session, turn.activeMemberId);
+    if (participant && participant.seatNoAtStart != null) {
+      params.currentPlayerIndex = participant.seatNoAtStart;
+    }
+  }
+  return { name, params };
 }
 
 function projectActorView(aggregate, actorUserId) {

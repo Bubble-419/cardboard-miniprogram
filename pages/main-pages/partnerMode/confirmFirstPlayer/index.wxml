@@ -15,19 +15,19 @@
   </view>
 
   <!-- 成员等待 -->
-  <view class="wait-wrap" wx:if="{{!isHost || isWaiting}}">
+  <view class="wait-wrap" wx:if="{{hostReady && (!isHost || isWaiting)}}">
     <text class="wait-title">确认首位出牌玩家</text>
     <text class="wait-desc">等待房主确认首位出牌玩家</text>
   </view>
   <page-footer
-    wx:if="{{!isHost || isWaiting}}"
+    wx:if="{{hostReady && (!isHost || isWaiting)}}"
     extClass="footer"
     showPrimary="{{false}}"
     bind:prev="handleGoBack"
   ></page-footer>
 
   <!-- 房主确认 -->
-  <block wx:else>
+  <block wx:elif="{{hostReady}}">
     <view class="instruction-section">
       <text class="instruction-title">选择首位出牌玩家</text>
       <text class="instruction-subtitle" wx:if="{{selectedPlayerName}}">已选：{{selectedPlayerName}}</text>

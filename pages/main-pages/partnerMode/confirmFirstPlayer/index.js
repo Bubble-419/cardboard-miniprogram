@@ -4,7 +4,6 @@ const {
   dedupeMembersById,
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
-const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
@@ -25,7 +24,8 @@ Page(withPageInteractionLock({
     members: [],
     selectedPlayerIndex: null,
     selectedPlayerName: '',
-    isHost: true,
+    hostReady: false,
+    isHost: false,
     isWaiting: false,
     canConfirm: false,
     workshopName: '',
@@ -45,14 +45,10 @@ Page(withPageInteractionLock({
       isWaiting: !!isWaiting,
       selectedPlayerIndex: null,
       selectedPlayerName: '',
-      canConfirm: false
+      canConfirm: false,
+      hostReady: false,
+      isHost: false
     });
-
-    if (isWaiting) {
-      this.setData({ isHost: false });
-      this._startStatePolling();
-      return;
-    }
 
     this._fetchHostStatus();
   },
@@ -72,7 +68,7 @@ Page(withPageInteractionLock({
   async _fetchHostStatus() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
-      this.setData({ isHost: true });
+      this.setData({ isHost: false, hostReady: true });
       this.loadRoomData();
       return;
     }
@@ -80,7 +76,7 @@ Page(withPageInteractionLock({
       const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         const isHost = result.isHost === true;
-        this.setData({ isHost, roomId });
+        this.setData({ isHost, hostReady: true, roomId });
         await this.loadRoomData(result);
         this._startStatePolling();
       } else {
@@ -113,20 +109,17 @@ Page(withPageInteractionLock({
       const workshopName = result.workshopName || '';
       const proposedMemberId = result.view && result.view.session
         && result.view.session.setup.proposedFirstMemberId;
-      const proposed = proposedMemberId
-        ? deduped.find((item) => item.memberId === proposedMemberId)
-        : null;
       this._proposedMemberId = proposedMemberId || null;
 
-      this.setData({
+      const patch = {
         members,
         memberSlots,
         memberCount,
         workshopName,
-        selectedPlayerIndex: proposed ? proposed.playerIndex : this.data.selectedPlayerIndex,
-        selectedPlayerName: proposed ? (proposed.nickName || `玩家${proposed.playerIndex}`) : this.data.selectedPlayerName,
-        canConfirm: !!proposed || this.data.canConfirm
-      });
+        hostReady: true,
+        isHost: result.isHost === true
+      };
+      this.setData(patch);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
@@ -134,22 +127,9 @@ Page(withPageInteractionLock({
 
   _startStatePolling() {
     this._stopStatePolling();
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
       followNavigation: true,
-      beforeNavigate(pollResult, page) {
-        if (page === 'gamepage') {
-          const idx = pollResult.roomState.currentPlayerIndex != null
-            ? pollResult.roomState.currentPlayerIndex
-            : 1;
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, idx, 'partner')
-          });
-          return true;
-        }
-        return false;
-      },
       onSnapshot(snapshot) {
         this.loadRoomData(snapshot);
       }
@@ -162,7 +142,6 @@ Page(withPageInteractionLock({
 
   onSlotTap(e) {
     if (!this.data.isHost) return;
-    if (this._proposedMemberId) return;
     const index = e.currentTarget.dataset.index;
     const slot = this.data.memberSlots[index];
     if (!slot || !slot.member) return;
@@ -186,7 +165,7 @@ Page(withPageInteractionLock({
     if (!this.data.isHost || !this.data.canConfirm) return;
     if (this._confirmPending) return;
 
-    const { roomId, selectedPlayerIndex, selectedPlayerName } = this.data;
+    const { selectedPlayerIndex } = this.data;
     if (selectedPlayerIndex == null) {
       wx.showToast({ title: '请选择首位出牌玩家', icon: 'none' });
       return;
@@ -200,7 +179,7 @@ Page(withPageInteractionLock({
           wx.showToast({ title: '所选成员已经离开', icon: 'none' });
           return;
         }
-        if (!this._proposedMemberId) {
+        if (selected.memberId !== this._proposedMemberId) {
           const selectedResult = await dispatchRoomCommand('SELECT_FIRST_PLAYER', {
             memberId: selected.memberId
           });
@@ -215,15 +194,9 @@ Page(withPageInteractionLock({
         });
         if (!result || result.ok !== true) {
           wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
-          return;
         }
-        return {
-          method: 'redirectTo',
-          url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
-        };
       } catch (e) {
         wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
-        return;
       } finally {
         this._confirmPending = false;
       }
