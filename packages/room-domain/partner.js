@@ -27,7 +27,14 @@ function orderedParticipantIds(aggregate, firstMemberId) {
 function startPartnerFlow(aggregate, firstMemberId, deps) {
   const session = aggregate.currentSession;
   const order = orderedParticipantIds(aggregate, firstMemberId);
-  session.modeState.partner = { roundNo: 1, turnOrdinal: 0, roundRemainingMemberIds: order, activeTurn: null, closing: null };
+  session.modeState.partner = {
+    roundNo: 1,
+    turnOrdinal: 0,
+    firstMemberId: order[0] || firstMemberId || null,
+    roundRemainingMemberIds: order.slice(),
+    activeTurn: null,
+    closing: null
+  };
   session.status = SESSION_STATUS.RUNNING;
   return startPartnerTurn(aggregate, order[0], deps, true);
 }
@@ -36,6 +43,8 @@ function startPartnerTurn(aggregate, memberId, deps, countsForRound) {
   const session = aggregate.currentSession;
   const partner = partnerState(aggregate);
   const now = nowOf(deps);
+  // 当前行动者立刻离开本轮剩余队列，避免归档漏删时下一次仍从同一人开始。
+  partner.roundRemainingMemberIds = (partner.roundRemainingMemberIds || []).filter((id) => id !== memberId);
   partner.turnOrdinal += 1;
   const requiredMemberIds = activeParticipantIds(session).filter((id) => id !== memberId);
   const turn = {
@@ -91,7 +100,11 @@ function beginNextPartnerTurn(aggregate, deps) {
   partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => valid.has(id));
   if (!partner.roundRemainingMemberIds.length) {
     partner.roundNo += 1;
-    partner.roundRemainingMemberIds = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
+    const firstMemberId = valid.has(partner.firstMemberId)
+      ? partner.firstMemberId
+      : (activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId);
+    partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
+    partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
   }
   const nextMemberId = partner.roundRemainingMemberIds[0];
   return nextMemberId ? startPartnerTurn(aggregate, nextMemberId, deps, true) : null;
@@ -325,8 +338,9 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
 
   if (type === COMMAND_TYPES.END_PARTNER_SILENT) {
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]); if (!check.ok) return check;
-    const host = aggregate.room.hostMemberId === actor.memberId;
-    if (!host && check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION);
+    if (check.turn.activeMemberId !== actor.memberId) {
+      return fail(ERR.INVALID_TRANSITION, '仅当前特殊行动玩家可以结束静默');
+    }
     if (!check.turn.silentDeadlineAt) return fail(ERR.INVALID_TRANSITION, '静默行动未开启');
     check.turn.silentDeadlineAt = null; check.turn.silentStartedAt = null;
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_SILENT_ENDED, { turnId: check.turn.turnId })]);
@@ -402,6 +416,11 @@ function handlePartnerParticipantLeft(aggregate, memberId, deps) {
     return { events, dirtyFacts };
   }
   partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => id !== memberId);
+  if (partner.firstMemberId === memberId) {
+    partner.firstMemberId = partner.roundRemainingMemberIds[0]
+      || (activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId)
+      || null;
+  }
   if (partner.activeTurn) {
     partner.activeTurn.scoreProgress.requiredMemberIds = partner.activeTurn.scoreProgress.requiredMemberIds.filter((id) => id !== memberId);
     partner.activeTurn.scoreProgress.submittedMemberIds = partner.activeTurn.scoreProgress.submittedMemberIds.filter((id) => id !== memberId);

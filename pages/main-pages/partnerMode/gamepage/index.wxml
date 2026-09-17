@@ -10,6 +10,15 @@
         style="height: {{topBarHeight}}px;"
       >
         <view
+          wx:if="{{isHistoryReview}}"
+          class="room-entry"
+          style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
+          bindtap="handleGoBack"
+        >
+          <image class="room-entry-icon" src="/assets/partnerMode/icon-special-back.svg" mode="aspectFit" />
+        </view>
+        <view
+          wx:else
           class="room-entry"
           style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
           bindtap="handleGoRoom"
@@ -303,7 +312,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
-        disable-touch="{{scoreSwipeLocked || innerScrollLocked || starRatingGesturing || starRatingChipSwiping || chipTouchActive || (!starRatingCollapsed && !isCurrentPlayer && !isHistoryReview)}}"
+        disable-touch="{{!isHistoryReview && (scoreSwipeLocked || innerScrollLocked || starRatingGesturing || starRatingChipSwiping || chipTouchActive || (!starRatingCollapsed && !isCurrentPlayer))}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"

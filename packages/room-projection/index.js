@@ -17,6 +17,13 @@ function clientModeId(mode) {
   }[mode] || '';
 }
 
+function subAwaitScene(step) {
+  if (step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) return 'selectProblem';
+  if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) return 'player';
+  if (step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER) return 'confirmFirstPlayer';
+  return 'bg';
+}
+
 function activeParticipants(session) {
   return ((session && session.participants) || []).filter((item) => item.status === 'ACTIVE');
 }
@@ -296,6 +303,11 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost
     && WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION.includes(step), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.RESET_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.RESET_DESIGN_PROBLEM] = capability(
+    isHost && session && session.mode === MODE.PARTNER && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+    'INVALID_TRANSITION'
+  );
   caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, 'INVALID_TRANSITION');
   const replayMinimum = session && session.mode === MODE.SPY ? 3 : 2;
@@ -330,7 +342,7 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN
-    && !!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');
+    && !!turn && isActorTurn && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');
   const canClosingVote = isParticipant && !!partner && !!partner.closing
     && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE
     && partner.closing.initiatorMemberId !== actor.memberId
@@ -402,6 +414,9 @@ function projectRoute(aggregate, actorView) {
   // 明确携带 modeId，否则页面默认值会把 Halli 会话误当成 Partner 会话。
   if (name === 'modeIndex') {
     params.modeId = clientModeId(session.mode);
+  }
+  if (name === 'subAwait') {
+    params.scene = subAwaitScene(step);
   }
   if (name === 'partnerGame') {
     const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;

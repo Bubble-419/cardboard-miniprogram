@@ -24,6 +24,7 @@ const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
 const { buildDisplaySummaries } = require('../../../../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
+const { createInspirationKeyboardLift } = require('../../../../utils/inspirationKeyboardLift');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
@@ -109,6 +110,8 @@ Page(withPageInteractionLock({
     silentStartedAt: 0,
     silentTimerActive: false,
     isHost: false,
+    isCurrentPlayer: false,
+    canEndSilent: false,
     /** 声贝等级 0~1，房主本地采样或从房间轮询读取 */
     soundLevel: 0,
     inspirationDraftText: '',
@@ -175,8 +178,18 @@ Page(withPageInteractionLock({
       return;
     }
 
+    const joinSilent = opts.silent === '1' || opts.silent === true || opts.silent === 'true';
+    this._joinSilent = joinSilent;
+
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId, initiatorPlayerIndex, currentPlayerIndex: initiatorPlayerIndex });
+    this.setData({
+      roomId,
+      initiatorPlayerIndex,
+      currentPlayerIndex: initiatorPlayerIndex,
+      viewMode: joinSilent ? 'silent' : 'wheel',
+      isCurrentPlayer: !joinSilent,
+      canEndSilent: !joinSilent
+    });
     this._applyTopBarSafeInset();
     this.loadRoomData();
   },
@@ -207,8 +220,12 @@ Page(withPageInteractionLock({
     this._stopSoundLevelSampling();
   },
 
-  /** 仅在确认「本人不是当前出牌人」时退出；isMe 未对上时不要踢，避免进页闪退 */
-  _shouldLeaveForTurnChange(members, player) {
+  /** 静默期间全员停留；仅确认「本人不是当前出牌人且未进入静默」时退出 */
+  _shouldLeaveForTurnChange(members, player, roomState) {
+    if (this.data.viewMode === 'silent' || this.data.silentTimerActive || this._joinSilent) {
+      return false;
+    }
+    if (roomState && roomState.partnerSilentMode === true) return false;
     const me = (members || []).find((m) => m && m.isMe);
     if (!me || !player) return false;
     return player.isCurrentPlayer !== true;
@@ -294,8 +311,9 @@ Page(withPageInteractionLock({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 发起人采样麦克风分贝并广播；其他人从房间轮询读取
+    // 仅房主采麦并广播；其他人只收瞬时信号
     this._startSoundLevelSampling();
+    if (!this._canEndSilent()) return;
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
     const elapsedMs = Math.max(0, Date.now() - startedAt);
     const remainMs = Math.max(0, SILENT_DURATION_SEC * 1000 - elapsedMs) + 4000;
@@ -324,6 +342,10 @@ Page(withPageInteractionLock({
   },
 
   handleSilentTimerExpire() {
+    if (!this._canEndSilent()) {
+      this._stopSilentTimerUi();
+      return;
+    }
     this.handleEndSilent();
   },
 
@@ -341,15 +363,11 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在打开灵感空间…' });
   },
 
-  _isDevtools() {
-    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
-    try {
-      const sys = wx.getSystemInfoSync();
-      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
-    } catch (e) {
-      this._isDevtoolsCached = false;
+  _inspirationLiftHelper() {
+    if (!this._inspirationKeyboardLift) {
+      this._inspirationKeyboardLift = createInspirationKeyboardLift();
     }
-    return this._isDevtoolsCached;
+    return this._inspirationKeyboardLift;
   },
 
   _measureInspirationFooterClearance() {
@@ -367,24 +385,23 @@ Page(withPageInteractionLock({
   },
 
   _buildInspirationLiftStyle(keyboardHeight) {
-    const kh = Math.max(0, Number(keyboardHeight) || 0);
-    if (kh <= 0) return '';
-    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
-    const dy = Math.max(0, kh - footer);
-    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+    return this._inspirationLiftHelper().buildBarStyle(keyboardHeight, {
+      background: '#fafafa'
+    });
   },
 
   _setInspirationKeyboardHeight(height) {
-    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const next = Math.max(0, Number(height) || 0);
+    const liftPx = this._inspirationLiftHelper().resolveLiftPx(next);
     const style = this._buildInspirationLiftStyle(next);
     if (
-      next === this.data.inspirationKeyboardHeight
+      liftPx === this.data.inspirationKeyboardHeight
       && style === this.data.inspirationLiftStyle
     ) {
       return;
     }
     this.setData({
-      inspirationKeyboardHeight: next,
+      inspirationKeyboardHeight: liftPx,
       inspirationLiftStyle: style
     });
   },
@@ -395,6 +412,7 @@ Page(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
+    this._inspirationLiftHelper().captureBase();
     // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
     if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
     this._inspirationFocusUiTimer = setTimeout(() => {
@@ -799,7 +817,7 @@ Page(withPageInteractionLock({
         this.data.initiatorPlayerIndex
       );
       // 非当前出牌玩家不得停留；本人身份尚未对上时先留在本页
-      if (this._shouldLeaveForTurnChange(members, player)) {
+      if (this._shouldLeaveForTurnChange(members, player, result.roomState)) {
         wx.showToast({ title: '请等待您的轮次', icon: 'none' });
         this._returnToGamepage(false);
         return;
@@ -822,6 +840,8 @@ Page(withPageInteractionLock({
         sessionId,
         turnId,
         isHost: result.isHost === true,
+        isCurrentPlayer: !!player.isCurrentPlayer,
+        canEndSilent: !!player.isCurrentPlayer,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
         problemExpanded: false,
         problemTextOverflow: false
@@ -830,17 +850,45 @@ Page(withPageInteractionLock({
         this._checkProblemTextOverflow();
         this._syncAvatarTimerFromRoom(roomState, currentRound, player.currentPlayerIndex);
         this._applyRoundSummaries(this._normalizeRoundSummaries(roomState, members));
+        if (roomState.partnerSilentMode === true || this._joinSilent) {
+          const startedAt = roomState.partnerSilentStartedAt || Date.now();
+          if (this.data.viewMode !== 'silent') {
+            this.setData({ viewMode: 'silent' }, () => this._jumpToActionCard());
+          }
+          if (!this.data.silentTimerActive) this.startSilentTimer(startedAt);
+          else this._startSoundLevelSampling();
+        }
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
     }
   },
 
-  /** 当前行动者采样分贝；通过瞬时 signal 分享，不进入业务 Event。 */
-  _startSoundLevelSampling() {
-    this._stopSoundLevelSampling();
+  _ensureRecordAuth() {
+    return new Promise((resolve) => {
+      wx.getSetting({
+        success: (res) => {
+          if (res.authSetting && res.authSetting['scope.record'] === true) {
+            resolve(true);
+            return;
+          }
+          wx.authorize({
+            scope: 'scope.record',
+            success: () => resolve(true),
+            fail: () => resolve(false)
+          });
+        },
+        fail: () => resolve(false)
+      });
+    });
+  },
 
-    wx.authorize({ scope: 'scope.record' }).catch(() => {});
+  /** 仅房主采麦；声纹通过瞬时 signal 广播，不进入业务 Event。 */
+  async _startSoundLevelSampling() {
+    this._stopSoundLevelSampling();
+    if (!this.data.isHost) return;
+    const allowed = await this._ensureRecordAuth();
+    if (!allowed || !this.data.silentTimerActive) return;
 
     const manager = wx.getRecorderManager();
     this._recorderManager = manager;
@@ -928,7 +976,7 @@ Page(withPageInteractionLock({
           this.data.currentPlayerIndex
         );
         // 轮次已切走：退出特殊行动页
-        if (result.ok === true && members.length && this._shouldLeaveForTurnChange(members, player)) {
+        if (result.ok === true && members.length && this._shouldLeaveForTurnChange(members, player, result.roomState)) {
           this._stopStatePolling();
           wx.showToast({ title: '请等待您的轮次', icon: 'none' });
           this._returnToGamepage(false);
@@ -1052,7 +1100,12 @@ Page(withPageInteractionLock({
       return;
     }
     if (viewMode === 'silent') {
-      // 返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
+      if (!this._canEndSilent()) {
+        return runPageInteraction(this, () => this._returnToGamepage(false), {
+          loadingText: '正在返回游戏…'
+        });
+      }
+      // 行动者返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
       this._stopSilentTimerUi();
       return runPageInteraction(this, async () => {
         await this._clearSilentRoomState();
@@ -1090,6 +1143,10 @@ Page(withPageInteractionLock({
       sessionId: rendered && rendered.sessionId || this.data.sessionId || '',
       turnId: rendered && rendered.turnId || this.data.turnId || ''
     };
+  },
+
+  _canEndSilent() {
+    return this.data.isCurrentPlayer === true;
   },
 
   handleConfirm() {
@@ -1209,6 +1266,7 @@ Page(withPageInteractionLock({
   },
 
   _clearSilentRoomState() {
+    if (!this._canEndSilent()) return Promise.resolve();
     const roomId = this.data.roomId || '';
     if (!roomId) return Promise.resolve();
     return dispatchRoomCommand('END_PARTNER_SILENT', {}, this._turnContext()).catch(() => {});
@@ -1259,6 +1317,11 @@ Page(withPageInteractionLock({
 
   async _endSilent() {
     if (this._endingSilent) return;
+    if (!this._canEndSilent()) {
+      this._stopSilentTimerUi();
+      await this._returnToGamepage(false);
+      return;
+    }
     this._endingSilent = true;
     this._stopSilentTimerUi();
     try {

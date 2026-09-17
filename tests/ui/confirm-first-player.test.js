@@ -98,6 +98,54 @@ test('确认首位页允许房主重新点选，即使服务端已有 proposedFi
   assert.equal(page.data.canConfirm, true);
 });
 
+test('确认首位页上一页会提交 RESET_FIRST_PLAYER 并跟随权威 route', async () => {
+  const commands = [];
+  let redirectUrl = '';
+  const previousPages = global.getCurrentPages;
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/confirmFirstPlayer/index');
+  global.getCurrentPages = () => [{
+    route: 'pages/main-pages/partnerMode/confirmFirstPlayer/index',
+    data: {}
+  }];
+  global.wx = {
+    showToast() {},
+    redirectTo(options) {
+      redirectUrl = options.url;
+      if (typeof options.complete === 'function') options.complete({});
+      else if (typeof options.success === 'function') options.success({});
+    }
+  };
+  app.globalData.roomSession = {
+    roomId: '12345678',
+    dispatch: async (command) => {
+      commands.push(command);
+      return { ok: true, outcome: { committedThroughSeq: 12 } };
+    },
+    getView: () => ({
+      actor: { capabilities: { RESET_FIRST_PLAYER: { allowed: true } } },
+      session: { sessionId: 's1', workflow: { step: 'CONFIRM_FIRST_PLAYER' } }
+    }),
+    getSnapshot: () => ({
+      ok: true,
+      roomId: '12345678',
+      revision: 12,
+      view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
+    })
+  };
+  const page = makePage(definition, {
+    roomId: '12345678',
+    isHost: true
+  });
+  try {
+    await page.handleGoBack();
+    assert.equal(commands[0].type, 'RESET_FIRST_PLAYER');
+    assert.match(redirectUrl, /selectPlayer/);
+  } finally {
+    global.getCurrentPages = previousPages;
+    delete app.globalData.roomSession;
+  }
+});
+
 test('确认首位页不再自己拼 gamepage URL，主副屏都跟 view.route', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../../pages/main-pages/partnerMode/confirmFirstPlayer/index.js'),

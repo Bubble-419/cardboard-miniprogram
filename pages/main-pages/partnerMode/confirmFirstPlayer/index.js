@@ -11,7 +11,6 @@ const {
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
-const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -209,14 +208,16 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-        : '/pages/main-pages/selectPlayer/index?modeId=partner';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/selectPlayer/index',
-        fallbackUrl
-      });
+      if (!this.data.isHost) {
+        wx.showToast({ title: '请等待房主确认', icon: 'none' });
+        return;
+      }
+      const result = await dispatchRoomCommand('RESET_FIRST_PLAYER', {});
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+        return;
+      }
+      await followRoomRouteAfterCommand(result, this.data.roomId);
     }, { loadingText: '正在返回…' });
   }
 }, ['onSlotTap', 'handleConfirm', 'handleGoBack']));

@@ -165,3 +165,43 @@ test('Halli Galli 选择情境后立即进入选择首位玩家页', async () =>
     delete app.globalData.roomSession;
   }
 });
+
+test('情境页上一页取消场次后带着 isHost=1 回到选模式页', async () => {
+  const page = makePage();
+  const commands = [];
+  let redirectUrl = '';
+  app.globalData.roomSession = {
+    roomId: '12345678',
+    getState: () => ({ status: 'READY', roomId: '12345678' }),
+    getView: () => ({
+      actor: { capabilities: { CANCEL_WORKSHOP_SESSION: { allowed: true } } },
+      session: { sessionId: 's1', status: 'CONFIGURING' }
+    }),
+    getSnapshot: () => ({
+      ok: true,
+      roomId: '12345678',
+      isHost: true,
+      revision: 3,
+      view: { session: { sessionId: 's1', status: 'CONFIGURING' } }
+    }),
+    dispatch: async (command) => {
+      commands.push(command);
+      return { ok: true };
+    }
+  };
+  const originalRedirectTo = global.wx.redirectTo;
+  global.wx.redirectTo = (options) => {
+    redirectUrl = options.url;
+    if (typeof options.complete === 'function') options.complete({});
+    else if (typeof options.success === 'function') options.success({});
+  };
+  try {
+    await page.handleGoBack();
+    assert.equal(commands[0].type, 'CANCEL_WORKSHOP_SESSION');
+    assert.match(redirectUrl, /brainstormMode/);
+    assert.match(redirectUrl, /isHost=1/);
+  } finally {
+    global.wx.redirectTo = originalRedirectTo;
+    delete app.globalData.roomSession;
+  }
+});

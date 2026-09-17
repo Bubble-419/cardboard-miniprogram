@@ -127,6 +127,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   const sessionId = host.view.session.sessionId;
   assert.equal(host.view.route.params.modeId, 'partner', 'Partner 情境页必须显式携带 modeId');
   await assertRoutes(h, { host: 'modeIndex', u2: 'subAwait', u3: 'subAwait' }, 'Partner 选择情境');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'bg');
 
   await runCommand(h, 'host', 'SET_SCENARIO', {
     context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
@@ -144,6 +145,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     context: { sessionId }, payload: { text: '问题 C' }
   });
   await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '选择问题');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'selectProblem');
 
   host = await h.snapshot('host');
   const problemId = host.view.session.setup.designProblems[0].contributionId;
@@ -152,6 +154,19 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     payload: { contributionId: problemId }
   });
   await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait' }, 'Partner 选择首位');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'player');
+  assert.equal((await h.snapshot('host')).view.actor.capabilities.RESET_DESIGN_PROBLEM.allowed, true);
+
+  await runCommand(h, 'host', 'RESET_DESIGN_PROBLEM', { context: { sessionId } });
+  await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '从选首位返回重选问题');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'selectProblem');
+  assert.equal((await h.snapshot('host')).view.actor.capabilities.RESET_DESIGN_PROBLEM.allowed, false);
+
+  await runCommand(h, 'host', 'SELECT_DESIGN_PROBLEM', {
+    context: { sessionId, workflowStep: 'SELECT_DESIGN_PROBLEM' },
+    payload: { contributionId: problemId }
+  });
+  await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait' }, '再次选择首位');
 
   host = await h.snapshot('host');
   const hostMemberId = host.view.actor.memberId;
@@ -159,6 +174,16 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
   });
   await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'confirmFirstPlayer', u3: 'confirmFirstPlayer' }, '确认首位');
+
+  await runCommand(h, 'host', 'RESET_FIRST_PLAYER', { context: { sessionId } });
+  await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait' }, '取消确认首位');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'player');
+  assert.equal((await h.snapshot('host')).view.actor.capabilities.RESET_FIRST_PLAYER.allowed, false);
+
+  await runCommand(h, 'host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+  });
+  await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'confirmFirstPlayer', u3: 'confirmFirstPlayer' }, '再次确认首位');
 
   await runCommand(h, 'host', 'CONFIRM_FIRST_PLAYER', {
     context: { sessionId }, payload: { memberId: hostMemberId }

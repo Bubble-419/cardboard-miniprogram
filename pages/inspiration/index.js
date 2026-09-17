@@ -4,6 +4,7 @@ const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
 const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
+const { createInspirationKeyboardLift } = require('../../utils/inspirationKeyboardLift');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -384,6 +385,7 @@ Page(withPageInteractionLock({
     }
     this._inspirationFocusRequestedAt = Date.now();
     this._inspirationNativeFocused = true;
+    this._inspirationLiftHelper().captureBase();
     // 延后 setData，避免 Android 聚焦瞬间重渲把键盘打掉
     if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
     this._inspirationFocusUiTimer = setTimeout(() => {
@@ -452,39 +454,27 @@ Page(withPageInteractionLock({
     this._setInspirationKeyboardHeight(height);
   },
 
-  _isDevtools() {
-    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
-    try {
-      const sys = wx.getSystemInfoSync();
-      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
-    } catch (e) {
-      this._isDevtoolsCached = false;
+  _inspirationLiftHelper() {
+    if (!this._inspirationKeyboardLift) {
+      this._inspirationKeyboardLift = createInspirationKeyboardLift();
     }
-    return this._isDevtoolsCached;
+    return this._inspirationKeyboardLift;
   },
 
   _buildInspirationKeyboardUi(keyboardHeight) {
-    const h = Math.max(0, Number(keyboardHeight) || 0);
-    if (h <= 0) {
+    const helper = this._inspirationLiftHelper();
+    const lift = helper.resolveLiftPx(keyboardHeight);
+    if (lift <= 0) {
       return {
         inspirationKeyboardHeight: 0,
         inspirationLiftStyle: '',
-        inspirationMaskStyle: 'bottom: calc(180rpx + env(safe-area-inset-bottom))'
+        inspirationMaskStyle: helper.buildMaskStyle(0)
       };
     }
     return {
-      inspirationKeyboardHeight: h,
-      inspirationLiftStyle: [
-        'position:fixed',
-        'left:0',
-        'right:0',
-        `bottom:${h}px`,
-        'margin:0',
-        'padding:18rpx 30rpx',
-        'z-index:80',
-        'box-sizing:border-box'
-      ].join(';'),
-      inspirationMaskStyle: `bottom: calc(${h}px + 136rpx)`
+      inspirationKeyboardHeight: lift,
+      inspirationLiftStyle: helper.buildBarStyle(keyboardHeight),
+      inspirationMaskStyle: helper.buildMaskStyle(keyboardHeight)
     };
   },
 
@@ -511,7 +501,7 @@ Page(withPageInteractionLock({
   },
 
   _setInspirationKeyboardHeight(height) {
-    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const next = Math.max(0, Number(height) || 0);
     if (next > 0) {
       this._flushInspirationKeyboardZero(false);
       this._commitInspirationKeyboardHeight(next);

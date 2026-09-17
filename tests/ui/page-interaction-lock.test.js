@@ -188,3 +188,33 @@ test('guards every declared page interaction with the same page lock', async () 
   page.otherButton();
   assert.equal(otherCalls, 1);
 });
+
+test('键盘高度和焦点回调在页面锁期间仍然执行', async () => {
+  let heightCalls = 0;
+  let finish;
+  const definition = withPageInteractionLock({
+    data: {},
+    startRequest() {
+      return runPageInteraction(this, () => new Promise((resolve) => {
+        finish = resolve;
+      }));
+    },
+    onInspirationKeyboardHeightChange() {
+      heightCalls += 1;
+    }
+  }, ['startRequest', 'onInspirationKeyboardHeightChange']);
+  const page = {
+    ...definition,
+    data: { ...definition.data },
+    setData(patch) {
+      Object.assign(this.data, patch);
+    }
+  };
+  const running = page.startRequest();
+  assert.equal(page.data.interactionLocked, true);
+  page.onInspirationKeyboardHeightChange({ detail: { height: 300 } });
+  assert.equal(heightCalls, 1);
+  await Promise.resolve();
+  finish();
+  await running;
+});

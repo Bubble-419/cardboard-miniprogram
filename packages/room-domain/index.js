@@ -300,6 +300,45 @@ function confirmFirstPlayer(aggregate, command, actorUserId, deps) {
     { turnId: turn.turnId, memberId, roundNo: turn.roundNo })], { kind: 'ACCEPTED', turnId: turn.turnId });
 }
 
+function resetFirstPlayer(aggregate, command, actorUserId, deps) {
+  const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const check = assertSession(aggregate, command.context, {
+    mode: MODE.PARTNER,
+    steps: [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]
+  });
+  if (!check.ok) return check;
+  const memberId = check.session.setup.proposedFirstMemberId || null;
+  check.session.setup.proposedFirstMemberId = null;
+  check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+  check.session.workflow.activeMemberId = null;
+  check.session.workflow.turnId = null;
+  check.session.workflow.phaseStartedAt = nowOf(deps);
+  return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId })]);
+}
+
+function resetDesignProblem(aggregate, command, actorUserId, deps) {
+  const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const check = assertSession(aggregate, command.context, {
+    mode: MODE.PARTNER,
+    steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER]
+  });
+  if (!check.ok) return check;
+  const hasProblems = Object.values(ensureFacts(aggregate).contributions).some((row) => (
+    row.sessionId === check.session.sessionId && row.kind === 'DESIGN_PROBLEM'
+  ));
+  if (!hasProblems && !check.session.setup.selectedProblemId) {
+    return fail(ERR.INVALID_TRANSITION, '当前场次没有可重选的设计问题');
+  }
+  check.session.setup.proposedFirstMemberId = null;
+  check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
+  check.session.workflow.activeMemberId = null;
+  check.session.workflow.turnId = null;
+  check.session.workflow.phaseStartedAt = nowOf(deps);
+  return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTION_RESET, {
+    contributionId: check.session.setup.selectedProblemId || null
+  })]);
+}
+
 function cancelSession(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
   const check = assertSession(aggregate, command.context); if (!check.ok) return check;
@@ -378,6 +417,8 @@ function reduceCommand(input) {
     case COMMAND_TYPES.SELECT_DESIGN_PROBLEM: result = selectDesignProblem(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.SELECT_FIRST_PLAYER: result = selectFirstPlayer(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.CONFIRM_FIRST_PLAYER: result = confirmFirstPlayer(aggregate, command, actorUserId, deps); break;
+    case COMMAND_TYPES.RESET_FIRST_PLAYER: result = resetFirstPlayer(aggregate, command, actorUserId, deps); break;
+    case COMMAND_TYPES.RESET_DESIGN_PROBLEM: result = resetDesignProblem(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.CANCEL_WORKSHOP_SESSION: result = cancelSession(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.RETURN_TO_LOBBY: result = returnToLobby(aggregate, command, actorUserId); break;
     case COMMAND_TYPES.REPLAY_WORKSHOP_SESSION: result = replaySession(aggregate, command, actorUserId, deps); break;

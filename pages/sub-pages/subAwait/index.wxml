@@ -1,20 +1,6 @@
-<view class="container {{useHeroLayout ? 'container-hero-scene' : ''}}">
-  <!-- 非 hero 等待场景保留原导航栏 -->
-  <view class="custom-navbar" wx:if="{{!useHeroLayout}}">
-    <view class="navbar-content">
-      <view class="navbar-left">
-        <image class="back-icon" src="/assets/icons/back-arrow.png" mode="aspectFit"></image>
-      </view>
-      <view class="navbar-title">{{navbarTitle}}</view>
-      <view class="navbar-right">
-        <view class="navbar-icon">⋯</view>
-        <view class="navbar-icon">○</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- Hero 等待页：情境 / 首位玩家等（Figma #5904:13756） -->
-  <view class="hero-wait-page" wx:if="{{useHeroLayout}}">
+<view class="container container-hero-scene">
+  <!-- Hero 等待页：情境 / 设计问题 / 首位玩家（Figma #5904:13756） -->
+  <view class="hero-wait-page">
     <image class="bg-pattern" src="/assets/subAwait/bg-dotted-lines.svg" mode="widthFix" />
     <view class="hero-wait-content">
       <view class="hero-section">
@@ -38,31 +24,5 @@
         <text class="status-text">{{statusText}}</text>
       </view>
     </view>
-  </view>
-
-  <!-- 其他等待场景：沿用原布局 -->
-  <view class="waiting-content" wx:else>
-    <view class="countdown" wx:if="{{countdown > 0}}">{{countdown}}s</view>
-
-    <view class="character-container">
-      <view class="character-bg">
-        <view class="character-icon">
-          <view class="character-face">
-            <view class="eye eye-left"></view>
-            <view class="eye eye-right"></view>
-            <view class="mouth"></view>
-            <view class="foot foot-left"></view>
-            <view class="foot foot-right"></view>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <view class="main-text" wx:if="{{!multiLine}}">{{mainText}}</view>
-    <view class="main-text main-text-multiline" wx:else>
-      <text class="main-text-line" wx:for="{{mainTextLines}}" wx:key="*this">{{item}}</text>
-    </view>
-
-    <view class="sub-text">{{subText}}</view>
   </view>
 </view>

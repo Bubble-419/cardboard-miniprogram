@@ -299,3 +299,77 @@ test('Partner 单场内容和行动轮达到上限后仍保留可完成的收尾
   assert.equal(closing.ok, true);
   assert.equal(question.errCode, 'LIMIT_EXCEEDED');
 });
+
+function userIdForSeat(snapshot, memberId) {
+  const member = snapshot.view.room.members.find((item) => item.memberId === memberId);
+  return member.seatNo === 1 ? 'host' : `u${member.seatNo}`;
+}
+
+async function finishActiveTurn(h, sessionId) {
+  const snapshot = await h.snapshot('host');
+  const turn = snapshot.view.session.activeTurn;
+  const others = snapshot.view.room.members
+    .filter((item) => item.memberId !== turn.activeMemberId)
+    .map((item) => userIdForSeat(snapshot, item.memberId));
+  for (const userId of others) {
+    await h.command(userId, 'SUBMIT_PARTNER_SCORE', {
+      context: { sessionId, turnId: turn.turnId }, payload: { scoreHalfSteps: 6 }
+    });
+  }
+  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId: turn.turnId } });
+  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+    context: { sessionId, turnId: turn.turnId }, payload: { statementResult: 'allPass' }
+  });
+}
+
+test('Partner 按首位旋转换人，第 2、3 轮不会停在同一位玩家', async () => {
+  const { h, sessionId, hostMemberId, u2MemberId, u3MemberId } = await seedPartner();
+  const expected = [hostMemberId, u2MemberId, u3MemberId, hostMemberId, u2MemberId];
+  const seen = [(await h.snapshot('host')).view.session.activeTurn.activeMemberId];
+  for (let index = 1; index < expected.length; index += 1) {
+    await finishActiveTurn(h, sessionId);
+    seen.push((await h.snapshot('host')).view.session.activeTurn.activeMemberId);
+  }
+  assert.deepEqual(seen, expected);
+  assert.equal((await h.snapshot('host')).view.session.activeTurn.ordinal, 5);
+  assert.equal((await h.snapshot('host')).view.session.activeTurn.roundNo, 2);
+});
+
+test('首位不是玩家 1 时仍按旋转顺序换人', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  const sessionId = (await h.snapshot('host')).view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
+  const u2MemberId = (await h.snapshot('u2')).view.actor.memberId;
+  const u3MemberId = (await h.snapshot('u3')).view.actor.memberId;
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: u2MemberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', { context: { sessionId }, payload: { memberId: u2MemberId } });
+  const expected = [u2MemberId, u3MemberId, hostMemberId, u2MemberId];
+  const seen = [(await h.snapshot('host')).view.session.activeTurn.activeMemberId];
+  for (let index = 1; index < expected.length; index += 1) {
+    await finishActiveTurn(h, sessionId);
+    seen.push((await h.snapshot('host')).view.session.activeTurn.activeMemberId);
+  }
+  assert.deepEqual(seen, expected);
+});
+
+test('静默只能由当前特殊行动玩家结束', async () => {
+  const { h, sessionId, u2MemberId } = await seedPartner();
+  await finishActiveTurn(h, sessionId);
+  const second = await h.snapshot('host');
+  assert.equal(second.view.session.activeTurn.activeMemberId, u2MemberId);
+  const turnId = second.view.session.activeTurn.turnId;
+  await h.command('u2', 'USE_PARTNER_SPECIAL', { context: { sessionId, turnId }, payload: { kind: 'SILENT' } });
+  const hostEnd = await h.command('host', 'END_PARTNER_SILENT', { context: { sessionId, turnId } });
+  assert.equal(hostEnd.ok, false);
+  assert.equal(hostEnd.errCode, 'INVALID_TRANSITION');
+  assert.equal((await h.snapshot('host')).view.actor.capabilities.END_PARTNER_SILENT.allowed, false);
+  assert.equal((await h.snapshot('u2')).view.actor.capabilities.END_PARTNER_SILENT.allowed, true);
+  assert.equal((await h.command('u2', 'END_PARTNER_SILENT', { context: { sessionId, turnId } })).ok, true);
+});

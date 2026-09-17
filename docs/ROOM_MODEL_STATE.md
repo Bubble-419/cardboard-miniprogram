@@ -72,7 +72,7 @@ Room
 │   └── profile
 ├── currentSessionId
 ├── sessionOrdinal
-├── signalScope             # 当前 Silent 的轻量事务令牌或 null
+├── signalScope             # 当前 Silent 的轻量事务令牌（memberId 为房主）或 null
 └── createdAt / updatedAt
 ```
 
@@ -200,7 +200,8 @@ flowchart LR
 
 ```text
 modeState.partner
-├── roundNo / turnOrdinal
+├── roundNo / turnOrdinal / firstMemberId
+├── roundRemainingMemberIds   # 本轮尚未开始的成员；开始 Turn 时立刻出队
 ├── activeTurn
 │   ├── turnId / activeMemberId / phase
 │   ├── scoreProgress

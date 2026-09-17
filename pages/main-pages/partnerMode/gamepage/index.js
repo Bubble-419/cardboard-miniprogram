@@ -11,6 +11,7 @@ const {
   getAvatarStableKey
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+const { createInspirationKeyboardLift } = require('../../../../utils/inspirationKeyboardLift');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
@@ -58,6 +59,7 @@ const {
   appendImageBlocks,
   limitImageBlocks,
   deriveListsFromBlocks,
+  imageFileRef,
   splitRecordSegments,
   getStatementLabel
 } = require('../../../../utils/partnerRoundContent');
@@ -350,6 +352,7 @@ Page(withPageInteractionLock({
       ? String(options.sessionId)
       : '';
     this._isHistoryReview = isHistoryReview;
+    this._reviewOpenedAsHost = false;
     this._reviewEnterPlayed = false;
     this._reviewStarRevealed = {};
     this._reviewSelfFocusPlayed = false;
@@ -875,6 +878,9 @@ Page(withPageInteractionLock({
       cardIndex: 0,
       cardCount,
       showCurrentActionCard: false,
+      starRatingCollapsed: true,
+      scoreSwipeLocked: false,
+      innerScrollLocked: false,
       paginationDots: buildPaginationDots(0, cardCount),
       indicatorPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
         ? this.data.displayRoundSummaries[0].playerIndex
@@ -1121,7 +1127,7 @@ Page(withPageInteractionLock({
             operationId,
             kind: block.type === 'image' ? 'IMAGE' : 'TEXT',
             text: block.type === 'text' ? block.text : null,
-            fileRef: block.type === 'image' ? block.url : null
+            fileRef: block.type === 'image' ? (imageFileRef(block) || block.url) : null
           }, frozenContext);
           if (!result || result.ok !== true) throw new Error(result && result.errMsg || '新增素材失败');
           continue;
@@ -1133,16 +1139,19 @@ Page(withPageInteractionLock({
             text: block.text
           }, { ...frozenContext, entityVersion: found.entityVersion });
           if (!result || result.ok !== true) throw new Error(result && result.errMsg || '修改素材失败');
-        } else if (block.type === 'image' && block.url !== found.fileRef) {
-          const removed = await dispatchRoomCommand('REMOVE_ARTIFACT', {
-            operationId: found.operationId
-          }, { ...frozenContext, entityVersion: found.entityVersion });
-          if (!removed || removed.ok !== true) throw new Error(removed && removed.errMsg || '替换图片失败');
-          const appended = await dispatchRoomCommand('APPEND_ARTIFACT', {
-            operationId: `${key || found.operationId}_replacement_${Date.now()}`,
-            kind: 'IMAGE', fileRef: block.url
-          }, frozenContext);
-          if (!appended || appended.ok !== true) throw new Error(appended && appended.errMsg || '替换图片失败');
+        } else if (block.type === 'image') {
+          const nextRef = imageFileRef(block) || block.url;
+          if (nextRef && nextRef !== found.fileRef && String(nextRef).indexOf('cloud://') === 0) {
+            const removed = await dispatchRoomCommand('REMOVE_ARTIFACT', {
+              operationId: found.operationId
+            }, { ...frozenContext, entityVersion: found.entityVersion });
+            if (!removed || removed.ok !== true) throw new Error(removed && removed.errMsg || '替换图片失败');
+            const appended = await dispatchRoomCommand('APPEND_ARTIFACT', {
+              operationId: `${key || found.operationId}_replacement_${Date.now()}`,
+              kind: 'IMAGE', fileRef: nextRef
+            }, frozenContext);
+            if (!appended || appended.ok !== true) throw new Error(appended && appended.errMsg || '替换图片失败');
+          }
         }
       }
       for (const item of existing) {
@@ -2017,6 +2026,7 @@ Page(withPageInteractionLock({
         if (!Number.isFinite(rd) || rd <= 0) return false;
         const isReview = this.data.isHistoryReview || this._isHistoryReview;
         if (!isReview && rd >= Number(currentRound || 1)) return false;
+        if (isReview) return true;
         return this._summaryHasContent(item);
       })
       .map((item, summaryIdx) => {
@@ -2472,8 +2482,11 @@ Page(withPageInteractionLock({
       this._renderedPartnerContext = Object.freeze({
         sessionId,
         turnId,
-        workflowStep: isDiscussionPhase(roomPhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN'
+        workflowStep: isClosingPhase(roomPhase)
+          ? (closingStep === CLOSING_STEP_REVIEW ? 'PARTNER_CLOSING_REVIEW' : 'PARTNER_CLOSING_RUNE')
+          : (isDiscussionPhase(roomPhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN')
       });
+      this._openSilentOverlayIfNeeded(roomState);
       this._hydrateCloudRoundMedia(
         roundContent,
         patch.displayRoundSummaries,
@@ -2596,6 +2609,7 @@ Page(withPageInteractionLock({
       });
 
       if (isHistoryReview) {
+        this._reviewOpenedAsHost = result.isHost === true;
         this._lastHistorySnapshotAt = 0;
         this._finalizeHistoryReviewUi(selectedProblemText);
         wx.nextTick(() => {
@@ -2668,6 +2682,27 @@ Page(withPageInteractionLock({
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
+  },
+
+  _openSilentOverlayIfNeeded(roomState) {
+    if (this._isHistoryReviewMode() || this._pageVisible === false) return;
+    if (!roomState || roomState.partnerSilentMode !== true) {
+      this._openedSilentOverlay = false;
+      return;
+    }
+    if (this._openedSilentOverlay) return;
+    this._openedSilentOverlay = true;
+    const url = buildSpecialMoveUrl(
+      this.data.roomId,
+      this.data.currentPlayerIndex || 1,
+      this.data.isCurrentPlayer ? {} : { silent: 1 }
+    );
+    wx.navigateTo({
+      url,
+      fail: () => {
+        this._openedSilentOverlay = false;
+      }
+    });
   },
 
   _startStatePolling() {
@@ -5134,21 +5169,13 @@ Page(withPageInteractionLock({
   },
 
   /**
-   * 灵感输入稳定策略（模拟器 + 真机）：
-   * 1) 栏体始终在文档流；icon / 输入框同高 92rpx
-   * 2) 不绑 focus 属性（真机 focus=false 会锁死输入法）；点击交给 input 原生聚焦
-   * 3) bindfocus 内禁止立刻 setData（Android 会打断键盘）；延后标记 focused
-   * 4) 真机用 transform 上移（键盘高 - 底栏高），底栏留在键盘下；devtools 忽略高度
+   * 灵感输入：原生 input 不跟随 transform，统一用 position:fixed 贴在键盘上方。
    */
-  _isDevtools() {
-    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
-    try {
-      const sys = wx.getSystemInfoSync();
-      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
-    } catch (e) {
-      this._isDevtoolsCached = false;
+  _inspirationLiftHelper() {
+    if (!this._inspirationKeyboardLift) {
+      this._inspirationKeyboardLift = createInspirationKeyboardLift();
     }
-    return this._isDevtoolsCached;
+    return this._inspirationKeyboardLift;
   },
 
   _measureInspirationFooterClearance() {
@@ -5188,28 +5215,10 @@ Page(withPageInteractionLock({
   },
 
   _buildInspirationLiftStyle(keyboardHeight) {
-    const h = Math.max(0, Number(keyboardHeight) || 0);
-    if (h <= 0) return '';
-    // 历史回顾无底部操作栏：用 fixed 贴在键盘上方，避免 overflow:hidden 裁切
-    if (this.data.isHistoryReview || this._isHistoryReview) {
-      return [
-        'position:fixed',
-        'left:0',
-        'right:0',
-        `bottom:${h}px`,
-        'margin:0',
-        'padding:18rpx 30rpx 18rpx',
-        'z-index:80',
-        'background:#fafafa',
-        'box-sizing:border-box'
-      ].join(';');
-    }
-    // 正常对局：按「键盘高 − 灵感栏距窗底空隙」上移，底栏留在键盘下，避免 adjust-position 把空隙顶出来
-    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
-    const dy = Math.max(0, h - footer);
-    return dy > 0
-      ? `transform:translateY(-${dy}px);background:#fafafa`
-      : '';
+    return this._inspirationLiftHelper().buildBarStyle(keyboardHeight, {
+      background: '#fafafa',
+      padding: '18rpx 30rpx'
+    });
   },
 
   _resetInspirationKeyboardUi() {
@@ -5220,15 +5229,16 @@ Page(withPageInteractionLock({
   },
 
   _commitInspirationKeyboardHeight(next) {
+    const liftPx = this._inspirationLiftHelper().resolveLiftPx(next);
     const lift = this._buildInspirationLiftStyle(next);
     if (
-      next === this.data.inspirationKeyboardHeight
+      liftPx === this.data.inspirationKeyboardHeight
       && lift === (this.data.inspirationLiftStyle || '')
     ) {
       return;
     }
     this.setData({
-      inspirationKeyboardHeight: next,
+      inspirationKeyboardHeight: liftPx,
       inspirationLiftStyle: lift
     });
   },
@@ -5244,7 +5254,7 @@ Page(withPageInteractionLock({
   },
 
   _setInspirationKeyboardHeight(height) {
-    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
+    const next = Math.max(0, Number(height) || 0);
     if (next > 0) {
       this._flushInspirationKeyboardZero(false);
       this._commitInspirationKeyboardHeight(next);
@@ -5263,6 +5273,7 @@ Page(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
+    this._inspirationLiftHelper().captureBase();
     this._measureInspirationFooterClearance();
     // 键盘高度有时早于底栏量测返回，稍后按最新 clearance 重算位移
     if (this._inspirationLiftRetryTimer) clearTimeout(this._inspirationLiftRetryTimer);
@@ -5668,7 +5679,11 @@ Page(withPageInteractionLock({
       this._closingFocusUiTimer = null;
     }
     const formVal = e && e.detail && e.detail.value && e.detail.value.closingCreativeText;
-    const text = typeof formVal === 'string' ? formVal : undefined;
+    const formText = Array.isArray(formVal)
+      ? formVal.map((item) => String(item || '')).find((item) => item.trim())
+      : formVal;
+    const draft = (this._closingDraftText != null ? this._closingDraftText : this.data.closingCreativeEditText) || '';
+    const text = typeof formText === 'string' && formText.trim() ? formText : draft;
     return runPageInteraction(this, () => this._commitClosingCreativeEdit({ text }), {
       loadingText: '正在保存创意点…'
     });
@@ -6081,6 +6096,19 @@ Page(withPageInteractionLock({
   handleGoBack() {
     return runPageInteraction(this, async () => {
       this._prepareLeavePage();
+      if (this._isHistoryReviewMode()) {
+        const roomId = this.data.roomId || '';
+        const from = 'closingEnd';
+        const sub = this._reviewOpenedAsHost === false ? '&isSubScreen=1' : '';
+        const fallbackUrl = roomId
+          ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=${from}${sub}`
+          : '/pages/leaderboard/index';
+        safeNavigateBack({
+          expectedPrev: 'pages/leaderboard/index',
+          fallbackUrl
+        });
+        return;
+      }
       const roomId = this.data.roomId || '';
       const fallbackUrl = roomId
         ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`

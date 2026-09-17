@@ -54,10 +54,14 @@ function buildGamepageUrl(roomId, currentPlayerIndex, selectedModeId, options = 
   return `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
 }
 
-function buildSpecialMoveUrl(roomId, currentPlayerIndex) {
+function buildSpecialMoveUrl(roomId, currentPlayerIndex, options) {
   const roomIdEnc = encodeURIComponent(roomId);
   const idx = currentPlayerIndex != null ? currentPlayerIndex : 1;
-  return `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
+  let url = `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}`;
+  if (options && (options.silent === true || options.silent === 1 || options.silent === '1')) {
+    url += '&silent=1';
+  }
+  return url;
 }
 
 function buildClosingStatementUrl(roomId, options = {}) {

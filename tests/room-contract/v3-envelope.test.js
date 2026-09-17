@@ -37,6 +37,14 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.deepEqual(COMMAND_CONTEXT.OPEN_SPY_VOTE, ['sessionId', 'gameId', 'speakerTurnId']);
   assert.deepEqual(COMMAND_CONTEXT.START_NEXT_SPY_ROUND, ['sessionId', 'gameId', 'roundNo']);
   assert.deepEqual(COMMAND_CONTEXT.APPEND_ARTIFACT, ['sessionId', 'turnId', 'workflowStep']);
+  assert.deepEqual(COMMAND_CONTEXT.RESET_FIRST_PLAYER, ['sessionId']);
+  assert.deepEqual(COMMAND_CONTEXT.RESET_DESIGN_PROBLEM, ['sessionId']);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
+    context: { sessionId: 's1' }
+  })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_DESIGN_PROBLEM, {
+    context: { sessionId: 's1' }
+  })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.APPEND_ARTIFACT, {
     context: { sessionId: 's1', turnId: 't1' }, payload: { operationId: 'op', text: 'x' }
   })).ok, false);

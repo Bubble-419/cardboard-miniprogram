@@ -14,6 +14,11 @@ function safeSetData(page, patch) {
   }
 }
 
+/** 键盘高度/焦点回调必须在全屏锁期间继续工作，否则输入栏会停在键盘下面。 */
+function isKeyboardPassthrough(methodName) {
+  return /(?:Focus|Blur|Input|KeyboardHeightChange)$/.test(String(methodName || ''));
+}
+
 function isPageInteractionLocked(page) {
   return !!(
     page
@@ -44,7 +49,9 @@ function withPageInteractionLock(pageDefinition, interactionMethods = []) {
       throw new TypeError(`交互处理器 ${methodName} 不存在`);
     }
     pageDefinition[methodName] = function guardedPageInteraction(...args) {
-      if (isPageInteractionLocked(this)) return undefined;
+      if (!isKeyboardPassthrough(methodName) && isPageInteractionLocked(this)) {
+        return undefined;
+      }
       return original.apply(this, args);
     };
   });
@@ -172,6 +179,7 @@ function runPageInteraction(page, task, options = {}) {
 module.exports = {
   DEFAULT_LOADING_DELAY_MS,
   INTERACTION_LOCK_DATA,
+  isKeyboardPassthrough,
   isPageInteractionLocked,
   runPageNavigation,
   runPageInteraction,

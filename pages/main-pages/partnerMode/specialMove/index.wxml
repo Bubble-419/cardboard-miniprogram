@@ -396,7 +396,7 @@
       <button class="adopt-btn" hover-class="none" bindtap="handleAdoptDeck">采用卡组</button>
     </view>
     <view class="bottom-actions" wx:elif="{{viewMode === 'silent'}}">
-      <button class="end-silent-btn" bindtap="handleEndSilent">结束静默</button>
+      <button wx:if="{{canEndSilent}}" class="end-silent-btn" bindtap="handleEndSilent">结束静默</button>
     </view>
     <view class="bottom-actions" wx:else>
       <button class="confirm-btn {{selectedAction ? 'confirm-btn-ready' : ''}}" bindtap="handleConfirm">确认</button>

@@ -81,7 +81,7 @@ function partnerContent(session, acceptedStages) {
     const blocks = discussion ? content.discussionBlocks : content.playBlocks;
     if (item.kind === 'IMAGE' || (item.fileRef && !item.text)) {
       const url = item.fileRef || '';
-      blocks.push({ type: 'image', url, key: item.artifactId, operationId: item.operationId,
+      blocks.push({ type: 'image', url, fileRef: item.fileRef || url, key: item.artifactId, operationId: item.operationId,
         entityVersion: item.entityVersion });
       (discussion ? content.discussionImages : content.playImages).push(url);
     } else if (item.kind === 'VOICE') {
@@ -260,9 +260,10 @@ function projectPageSnapshot(view, clientState) {
     roomState.closingVoteRequiredCount = closing && closing.requiredCount;
     roomState.scoredCount = turn && turn.scoredCount || 0;
     roomState.totalRequired = turn && turn.requiredScoreCount || 0;
+    const contextTurnId = (turn && turn.turnId) || (closing && closing.sourceTurnId) || null;
     roomState.progress = { scoredCount: roomState.scoredCount, requiredScoreCount: roomState.totalRequired,
-      turnId: turn && turn.turnId,
-      domainTurnId: turn && turn.turnId };
+      turnId: contextTurnId,
+      domainTurnId: contextTurnId };
     roomState.myScoreHalfSteps = view.actor.scoreStatus.submitted ? view.actor.scoreStatus.scoreHalfSteps : null;
     roomState.myScore = roomState.myScoreHalfSteps == null ? null : roomState.myScoreHalfSteps / 2;
     roomState.partnerExpressMessages = (session.recentMessages || []).map((item) => ({

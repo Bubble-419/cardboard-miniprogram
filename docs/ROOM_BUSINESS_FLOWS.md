@@ -60,7 +60,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
-| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置 |
+| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 设计问题 / 首位玩家 |
 | `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题 |
 | `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | Host 选择设计问题 |
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
@@ -83,10 +83,10 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | 无 Session | `addPlayer` | `addPlayer` | — |
 | 任意进行中 Session | 对应下表 | 对应下表 | 非本场参与者固定为 `addPlayer?observing=true` |
-| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | — |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | Player `params.scene=bg` |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
-| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` | — |
-| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | — |
+| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` | Player `params.scene=selectProblem` |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | Player `params.scene=player` |
 | `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `confirmFirstPlayer` | — |
 | `PARTNER_TURN` | `partnerGame` | `partnerGame` | 当前行动者、Host、其他玩家能力不同 |
 | `PARTNER_STATEMENT` | `partnerGame` | `partnerGame` | — |
@@ -134,7 +134,7 @@ flowchart TD
 | `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随。静默模式时其他成员以 `specialMove?silent=1` 叠入；仅房主采麦，声纹经 `PARTNER_SILENT_SOUND` 广播 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
 | `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
@@ -257,6 +257,7 @@ flowchart TD
   COLLECT -->|全员 SUBMIT_DESIGN_PROBLEM| SELECT_PROBLEM_H
   COLLECT -->|全员提交完成| SELECT_PROBLEM_P
   SELECT_PROBLEM_H -->|SELECT_DESIGN_PROBLEM| SELECT_FIRST_H
+  SELECT_FIRST_H -->|RESET_DESIGN_PROBLEM| SELECT_PROBLEM_H
   SELECT_PROBLEM_P -. Event / Snapshot .-> SELECT_FIRST_P
   CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
   CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
@@ -273,7 +274,10 @@ flowchart TD
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
 | Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |
-| Host 从情境页返回大厅 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
+| Host 从确认首位点“上一页” | `RESET_FIRST_PLAYER` | 清掉拟定首位，回到 `SELECT_FIRST_PLAYER`；Host 回 `selectPlayer`，Player 回 `subAwait?scene=player` |
+| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` | 保留已选问题，回到 `SELECT_DESIGN_PROBLEM`；Host 回 `selectProblem`，Player 回 `subAwait?scene=selectProblem`。副屏 `subAwait` 只用 hero 等待样式，没有上一页 |
+| Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 打开 `brainstormMode?isHost=1` 叠层，不走 `navigateBack` |
+| Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 
@@ -320,13 +324,13 @@ flowchart LR
 | 增删改文本/图片/语音 | `APPEND/UPDATE/REMOVE_ARTIFACT` | `operationId + entityVersion` 保证重试和并发正确 |
 | Host “表态并讨论” | `START_PARTNER_STATEMENT` | 当前 required 评分全部完成 |
 | Host “没有疑问/结束讨论” | `ADVANCE_PARTNER_TURN` | 归档当前 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING` |
-| 结束静默 | `END_PARTNER_SILENT` | Host 或当前行动者 |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`SILENT` 后其他成员叠入 `specialMove?silent=1`；仅房主采麦，声纹广播给全员 |
+| 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
 | Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
-Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。
+Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。
 
 ### 5.2 收尾裁决
 

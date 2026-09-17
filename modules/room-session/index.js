@@ -238,10 +238,14 @@ async function getRoomSessionPageSnapshot(roomId, sessionId) {
   const result = await session.sessionSnapshot(sessionId, roomId);
   if (!result || result.ok !== true) return result;
   if (result.view && result.view.session && result.view.session.mode === 'PARTNER') {
-    const history = await getRoomSessionMessages(roomId, sessionId);
-    if (!history || history.ok !== true) return history;
-    // 持续同步 View 保持有界；只有显式历史读取才补齐全部匿名表达。
-    result.view.session.recentMessages = history.messages;
+    try {
+      const history = await getRoomSessionMessages(roomId, sessionId);
+      if (history && history.ok === true) {
+        result.view.session.recentMessages = history.messages;
+      }
+    } catch (error) {
+      console.warn('getRoomSessionPageSnapshot messages', error);
+    }
   }
   return projectPageSnapshot(result.view, {
     roomId: result.roomId,

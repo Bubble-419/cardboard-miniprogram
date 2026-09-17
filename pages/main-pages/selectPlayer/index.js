@@ -89,6 +89,7 @@ Page({
         update.minPlayers = result.members.length;
       }
       this.setData(update);
+      this._startStatePolling();
     } catch (e) {
       console.warn('selectPlayer bootstrap', e);
       wx.showToast({ title: '加载失败', icon: 'none' });
@@ -96,7 +97,7 @@ Page({
   },
 
   onShow() {
-    if (this.data.isWaiting && !this.data.isHost) {
+    if (this.data.roomId) {
       this._startStatePolling();
     }
   },
@@ -507,7 +508,7 @@ Page({
   _goBack() {
     const roomId = this.data.roomId || '';
     const modeId = this.data.selectedModeId || getApp().globalData.gameMode || 'partner';
-    if (this._fromModeIndex) {
+    if (this._fromModeIndex || modeId === 'halliGalli') {
       const modeParam = modeId === 'halliGalli' ? 'halliGalli' : 'partner';
       const fallbackUrl = roomId
         ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=${modeParam}`
@@ -518,16 +519,11 @@ Page({
       });
       return;
     }
-    let fallbackUrl = '/pages/main-pages/brainstormMode/index';
     if (modeId === 'partner') {
-      fallbackUrl = roomId
-        ? `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/selectProblem/index';
-    } else if (modeId === 'halliGalli') {
-      fallbackUrl = roomId
-        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
-        : '/pages/main-pages/modeIndex/index?modeId=halliGalli';
-    } else if (roomId) {
+      return this._resetToSelectProblem(roomId);
+    }
+    let fallbackUrl = '/pages/main-pages/brainstormMode/index';
+    if (roomId) {
       fallbackUrl = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`;
     }
     safeNavigateBack({
@@ -537,5 +533,14 @@ Page({
       ],
       fallbackUrl
     });
+  },
+
+  async _resetToSelectProblem(roomId) {
+    const result = await dispatchRoomCommand('RESET_DESIGN_PROBLEM', {});
+    if (!result || result.ok !== true) {
+      wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      return;
+    }
+    await followRoomRouteAfterCommand(result, roomId);
   }
 });

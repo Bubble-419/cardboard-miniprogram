@@ -387,7 +387,9 @@ flowchart TD
   COLLECT --> SELECT[SELECT_DESIGN_PROBLEM]
   SRC -->|Partner OFFLINE / Halli| FIRST[SELECT_FIRST_PLAYER]
   SELECT --> FIRST
+  FIRST -->|RESET_DESIGN_PROBLEM| SELECT
   FIRST -->|Partner| CONFIRM[CONFIRM_FIRST_PLAYER]
+  CONFIRM -->|RESET_FIRST_PLAYER| FIRST
   FIRST -->|Halli| HA[HALLI_ACTIVITY]
   CONFIRM --> PT[PARTNER_TURN]
 ```
@@ -469,10 +471,10 @@ flowchart LR
 |---|---|---|
 | 无当前 Session | `addPlayer` | `addPlayer` |
 | 非本场 Participant | `addPlayer?observing=true` | 同左 |
-| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg` |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |
-| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` |
-| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` |
+| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait?scene=selectProblem` |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
 | `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `confirmFirstPlayer` |
 | `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame` | `partnerGame` |
 | `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` |
@@ -504,7 +506,7 @@ flowchart TD
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
-| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/member/deadline | 否 |
+| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写 | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
 | 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |

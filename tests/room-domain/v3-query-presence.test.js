@@ -385,6 +385,52 @@ test('瞬时声贝写入与当前静默行动使用同一事务范围令牌', as
   assert.equal(h.repo.rooms.get('12345678').room.signalScope, null);
 });
 
+test('静默声贝仅房主可写，即使当前行动者不是房主', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
+  const playerMemberId = (await h.snapshot('u2')).view.actor.memberId;
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
+    payload: { memberId: playerMemberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: playerMemberId }
+  });
+  snapshot = await h.snapshot('u2');
+  const turnId = snapshot.view.session.activeTurn.turnId;
+  await h.command('u2', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'SILENT' }
+  });
+
+  assert.equal(h.repo.rooms.get('12345678').room.signalScope.memberId, hostMemberId);
+
+  const actorWrite = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.4
+  }, { userId: 'u2' });
+  const hostWrite = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.7
+  }, { userId: 'host' });
+  const otherWrite = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.2
+  }, { userId: 'u3' });
+
+  assert.equal(actorWrite.errCode, 'INVALID_TRANSITION');
+  assert.equal(otherWrite.errCode, 'INVALID_TRANSITION');
+  assert.equal(hostWrite.ok, true);
+  assert.equal(hostWrite.signal.value, 0.7);
+  assert.equal(hostWrite.signal.memberId, hostMemberId);
+
+  const heard = await h.app.sync('12345678', 0, { userId: 'u3' });
+  assert.equal(heard.ephemeral.signals.PARTNER_SILENT_SOUND.value, 0.7);
+});
+
 test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {
   const h = createHarness();
   await h.seedMembers(2);

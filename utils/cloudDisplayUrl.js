@@ -245,7 +245,7 @@ function remapImageBlocks(blocks, urlMap) {
     if (!b || b.type !== 'image' || !b.url) return b;
     const next = urlMap[b.url];
     if (!next || next === b.url) return b;
-    return { ...b, url: next, fileID: isCloudFileId(b.url) ? b.url : b.fileID };
+    return { ...b, url: next, fileRef: isCloudFileId(b.url) ? b.url : (b.fileRef || b.fileID), fileID: isCloudFileId(b.url) ? b.url : b.fileID };
   });
 }
 

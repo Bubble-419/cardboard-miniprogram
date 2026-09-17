@@ -50,11 +50,14 @@ const SCENE_UI = {
   },
   mode: {
     navbarTitle: '',
-    mainText: '等待主屏幕选择游戏模式和目标',
+    mainText: '等待房主确认游戏模式',
     mainTextLines: [],
     subText: '等待中...',
+    subTextLine1: '房主正在选择本次工作坊的游戏模式',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
     multiLine: false,
-    useHeroLayout: false
+    useHeroLayout: true
   },
   player: {
     navbarTitle: '',
@@ -73,6 +76,17 @@ const SCENE_UI = {
     mainTextLines: [],
     subText: '等待中...',
     subTextLine1: '房主正在确认首位出牌玩家',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
+    multiLine: false,
+    useHeroLayout: true
+  },
+  selectProblem: {
+    navbarTitle: '',
+    mainText: '等待房主选择设计问题',
+    mainTextLines: [],
+    subText: '等待中...',
+    subTextLine1: '房主正在挑选本次工作坊的设计问题',
     subTextLine2: '请稍作等待，精彩即将开始~',
     statusText: '正在等待中...',
     multiLine: false,
@@ -142,13 +156,37 @@ function shouldSkipStaleBackwardRedirect(targetPage) {
 const SCENE_PROGRESS_RANK = {
   brainstormMode: 5,
   bg: 10,
+  selectProblem: 30,
   mode: 40,
   player: 50,
   confirmFirstPlayer: 60
 };
 
+const WORKFLOW_STEP_TO_SCENE = {
+  CHOOSE_SCENARIO: 'bg',
+  SELECT_DESIGN_PROBLEM: 'selectProblem',
+  SELECT_FIRST_PLAYER: 'player',
+  CONFIRM_FIRST_PLAYER: 'confirmFirstPlayer'
+};
+
+function sceneFromWorkflowStep(step) {
+  return WORKFLOW_STEP_TO_SCENE[step] || 'bg';
+}
+
+function sceneFromMemberView(view, fallback) {
+  const params = view && view.route && view.route.params;
+  if (params && params.scene && SCENE_UI[params.scene]) return params.scene;
+  const step = view && view.session && view.session.workflow && view.session.workflow.step;
+  if (step && WORKFLOW_STEP_TO_SCENE[step]) return WORKFLOW_STEP_TO_SCENE[step];
+  if (params && params.phase && WORKFLOW_STEP_TO_SCENE[params.phase]) {
+    return WORKFLOW_STEP_TO_SCENE[params.phase];
+  }
+  return fallback || 'bg';
+}
+
 function getSceneUI(scene) {
-  return SCENE_UI[scene] || SCENE_UI.bg;
+  const ui = SCENE_UI[scene] || SCENE_UI.bg;
+  return { ...ui, useHeroLayout: true };
 }
 
 function isAwaitPage(page) {
@@ -363,6 +401,8 @@ module.exports = {
   AWAIT_PAGE_TO_SCENE,
   SCENE_UI,
   getSceneUI,
+  sceneFromWorkflowStep,
+  sceneFromMemberView,
   isAwaitPage,
   getSceneForPage,
   getPageProgressRank,

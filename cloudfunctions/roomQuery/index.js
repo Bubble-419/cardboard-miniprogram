@@ -83,6 +83,8 @@ var require_room_contracts = __commonJS({
       SELECT_DESIGN_PROBLEM: "SELECT_DESIGN_PROBLEM",
       SELECT_FIRST_PLAYER: "SELECT_FIRST_PLAYER",
       CONFIRM_FIRST_PLAYER: "CONFIRM_FIRST_PLAYER",
+      RESET_FIRST_PLAYER: "RESET_FIRST_PLAYER",
+      RESET_DESIGN_PROBLEM: "RESET_DESIGN_PROBLEM",
       CANCEL_WORKSHOP_SESSION: "CANCEL_WORKSHOP_SESSION",
       RETURN_TO_LOBBY: "RETURN_TO_LOBBY",
       REPLAY_WORKSHOP_SESSION: "REPLAY_WORKSHOP_SESSION",
@@ -127,6 +129,7 @@ var require_room_contracts = __commonJS({
       "DESIGN_PROBLEM_SUBMITTED",
       "DESIGN_PROBLEM_UPDATED",
       "DESIGN_PROBLEM_SELECTED",
+      "DESIGN_PROBLEM_SELECTION_RESET",
       "PROBLEM_COLLECTION_COMPLETED",
       "FIRST_PLAYER_SELECTED",
       "FIRST_PLAYER_SELECTION_RESET",
@@ -219,6 +222,8 @@ var require_room_contracts = __commonJS({
       SELECT_DESIGN_PROBLEM: ["sessionId", "workflowStep"],
       SELECT_FIRST_PLAYER: ["sessionId", "workflowStep"],
       CONFIRM_FIRST_PLAYER: ["sessionId"],
+      RESET_FIRST_PLAYER: ["sessionId"],
+      RESET_DESIGN_PROBLEM: ["sessionId"],
       CANCEL_WORKSHOP_SESSION: ["sessionId"],
       RETURN_TO_LOBBY: ["sessionId"],
       REPLAY_WORKSHOP_SESSION: ["sessionId"],
@@ -261,6 +266,8 @@ var require_room_contracts = __commonJS({
       SELECT_DESIGN_PROBLEM: ["contributionId"],
       SELECT_FIRST_PLAYER: ["memberId"],
       CONFIRM_FIRST_PLAYER: ["memberId"],
+      RESET_FIRST_PLAYER: [],
+      RESET_DESIGN_PROBLEM: [],
       CANCEL_WORKSHOP_SESSION: [],
       RETURN_TO_LOBBY: [],
       REPLAY_WORKSHOP_SESSION: [],
@@ -944,7 +951,14 @@ var require_partner = __commonJS({
     function startPartnerFlow(aggregate, firstMemberId, deps) {
       const session = aggregate.currentSession;
       const order = orderedParticipantIds(aggregate, firstMemberId);
-      session.modeState.partner = { roundNo: 1, turnOrdinal: 0, roundRemainingMemberIds: order, activeTurn: null, closing: null };
+      session.modeState.partner = {
+        roundNo: 1,
+        turnOrdinal: 0,
+        firstMemberId: order[0] || firstMemberId || null,
+        roundRemainingMemberIds: order.slice(),
+        activeTurn: null,
+        closing: null
+      };
       session.status = SESSION_STATUS.RUNNING;
       return startPartnerTurn(aggregate, order[0], deps, true);
     }
@@ -952,6 +966,7 @@ var require_partner = __commonJS({
       const session = aggregate.currentSession;
       const partner = partnerState(aggregate);
       const now = nowOf(deps);
+      partner.roundRemainingMemberIds = (partner.roundRemainingMemberIds || []).filter((id) => id !== memberId);
       partner.turnOrdinal += 1;
       const requiredMemberIds = activeParticipantIds(session).filter((id) => id !== memberId);
       const turn = {
@@ -1023,7 +1038,9 @@ var require_partner = __commonJS({
       partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => valid.has(id));
       if (!partner.roundRemainingMemberIds.length) {
         partner.roundNo += 1;
-        partner.roundRemainingMemberIds = activeParticipantsBySeat(aggregate).map((member) => member.memberId);
+        const firstMemberId = valid.has(partner.firstMemberId) ? partner.firstMemberId : activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId;
+        partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
+        partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
       }
       const nextMemberId = partner.roundRemainingMemberIds[0];
       return nextMemberId ? startPartnerTurn(aggregate, nextMemberId, deps, true) : null;
@@ -1322,8 +1339,9 @@ var require_partner = __commonJS({
       if (type === COMMAND_TYPES.END_PARTNER_SILENT) {
         const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
         if (!check.ok) return check;
-        const host = aggregate.room.hostMemberId === actor.memberId;
-        if (!host && check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION);
+        if (check.turn.activeMemberId !== actor.memberId) {
+          return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u7279\u6B8A\u884C\u52A8\u73A9\u5BB6\u53EF\u4EE5\u7ED3\u675F\u9759\u9ED8");
+        }
         if (!check.turn.silentDeadlineAt) return fail(ERR.INVALID_TRANSITION, "\u9759\u9ED8\u884C\u52A8\u672A\u5F00\u542F");
         check.turn.silentDeadlineAt = null;
         check.turn.silentStartedAt = null;
@@ -1419,6 +1437,9 @@ var require_partner = __commonJS({
         return { events, dirtyFacts };
       }
       partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => id !== memberId);
+      if (partner.firstMemberId === memberId) {
+        partner.firstMemberId = partner.roundRemainingMemberIds[0] || activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId || null;
+      }
       if (partner.activeTurn) {
         partner.activeTurn.scoreProgress.requiredMemberIds = partner.activeTurn.scoreProgress.requiredMemberIds.filter((id) => id !== memberId);
         partner.activeTurn.scoreProgress.submittedMemberIds = partner.activeTurn.scoreProgress.submittedMemberIds.filter((id) => id !== memberId);
@@ -2543,6 +2564,43 @@ var require_room_domain = __commonJS({
         { turnId: turn.turnId, memberId, roundNo: turn.roundNo }
       )], { kind: "ACCEPTED", turnId: turn.turnId });
     }
+    function resetFirstPlayer(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, {
+        mode: MODE.PARTNER,
+        steps: [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]
+      });
+      if (!check.ok) return check;
+      const memberId = check.session.setup.proposedFirstMemberId || null;
+      check.session.setup.proposedFirstMemberId = null;
+      check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      check.session.workflow.activeMemberId = null;
+      check.session.workflow.turnId = null;
+      check.session.workflow.phaseStartedAt = nowOf(deps);
+      return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId })]);
+    }
+    function resetDesignProblem(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, {
+        mode: MODE.PARTNER,
+        steps: [WORKFLOW_STEP.SELECT_FIRST_PLAYER]
+      });
+      if (!check.ok) return check;
+      const hasProblems = Object.values(ensureFacts(aggregate).contributions).some((row) => row.sessionId === check.session.sessionId && row.kind === "DESIGN_PROBLEM");
+      if (!hasProblems && !check.session.setup.selectedProblemId) {
+        return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u573A\u6B21\u6CA1\u6709\u53EF\u91CD\u9009\u7684\u8BBE\u8BA1\u95EE\u9898");
+      }
+      check.session.setup.proposedFirstMemberId = null;
+      check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
+      check.session.workflow.activeMemberId = null;
+      check.session.workflow.turnId = null;
+      check.session.workflow.phaseStartedAt = nowOf(deps);
+      return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTION_RESET, {
+        contributionId: check.session.setup.selectedProblemId || null
+      })]);
+    }
     function cancelSession(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
@@ -2663,6 +2721,12 @@ var require_room_domain = __commonJS({
         case COMMAND_TYPES.CONFIRM_FIRST_PLAYER:
           result = confirmFirstPlayer(aggregate, command, actorUserId, deps);
           break;
+        case COMMAND_TYPES.RESET_FIRST_PLAYER:
+          result = resetFirstPlayer(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.RESET_DESIGN_PROBLEM:
+          result = resetDesignProblem(aggregate, command, actorUserId, deps);
+          break;
         case COMMAND_TYPES.CANCEL_WORKSHOP_SESSION:
           result = cancelSession(aggregate, command, actorUserId, deps);
           break;
@@ -2751,6 +2815,12 @@ var require_room_projection = __commonJS({
         [MODE.HALLI_GALLI]: "halliGalli",
         [MODE.SPY]: "spy"
       }[mode] || "";
+    }
+    function subAwaitScene(step) {
+      if (step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) return "selectProblem";
+      if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) return "player";
+      if (step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER) return "confirmFirstPlayer";
+      return "bg";
     }
     function findMember(aggregate, userId) {
       return (aggregate.room.members || []).find((member) => String(member.userId) === String(userId)) || null;
@@ -3018,6 +3088,11 @@ var require_room_projection = __commonJS({
       );
       caps[COMMAND_TYPES.SELECT_FIRST_PLAYER] = capability(isHost && WORKFLOW_GROUPS.FIRST_PLAYER_SELECTION.includes(step), "INVALID_TRANSITION");
       caps[COMMAND_TYPES.CONFIRM_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.RESET_FIRST_PLAYER] = capability(isHost && step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.RESET_DESIGN_PROBLEM] = capability(
+        isHost && session && session.mode === MODE.PARTNER && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER,
+        "INVALID_TRANSITION"
+      );
       caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
       caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, "INVALID_TRANSITION");
       const replayMinimum = session && session.mode === MODE.SPY ? 3 : 2;
@@ -3046,7 +3121,7 @@ var require_room_projection = __commonJS({
       );
       caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN && !!turn && (isActorTurn || isHost) && !!turn.silentDeadlineAt, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN && !!turn && isActorTurn && !!turn.silentDeadlineAt, "INVALID_TRANSITION");
       const canClosingVote = isParticipant && !!partner && !!partner.closing && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE && partner.closing.initiatorMemberId !== actor.memberId && partner.closing.requiredMemberIds.includes(actor.memberId) && !partner.closing.submittedMemberIds.includes(actor.memberId);
       caps[COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE] = capability(canClosingVote, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, "INVALID_TRANSITION");
@@ -3113,6 +3188,9 @@ var require_room_projection = __commonJS({
       const params = { phase: step };
       if (name === "modeIndex") {
         params.modeId = clientModeId(session.mode);
+      }
+      if (name === "subAwait") {
+        params.scene = subAwaitScene(step);
       }
       if (name === "partnerGame") {
         const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
@@ -3451,7 +3529,7 @@ var require_room_application = __commonJS({
         return {
           sessionId: session.sessionId,
           turnId: turn.turnId,
-          memberId: turn.activeMemberId,
+          memberId: aggregate.room.hostMemberId,
           deadlineAt: turn.silentDeadlineAt
         };
       }

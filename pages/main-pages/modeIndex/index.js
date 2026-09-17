@@ -15,7 +15,6 @@ const {
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -311,16 +310,16 @@ Page({
 
   handleGoBack() {
     if (isPageInteractionLocked(this)) return;
-    return runPageInteraction(this, async () => {
+    return runPageNavigation(this, async () => {
+      this._stopStatePolling();
       await this._cancelConfiguringSession();
       const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/brainstormMode/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/brainstormMode/index',
-        fallbackUrl
-      });
+      return {
+        method: 'redirectTo',
+        url: roomId
+          ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=1`
+          : '/pages/main-pages/brainstormMode/index?isHost=1'
+      };
     }, { loadingText: '正在返回…' });
   },
 
