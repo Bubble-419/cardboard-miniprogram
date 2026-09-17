@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
 const { emptyFacts } = require('@cardboard/room-domain');
+const { stableStringify } = require('@cardboard/room-contracts');
 
 // V3 使用独立物理集合，不读取或双写旧协议数据。
 const COLLECTIONS = Object.freeze({
@@ -68,6 +69,19 @@ function openUsers(aggregate) {
     roomId: aggregate.room.roomId, memberId: member.memberId }));
 }
 
+function persistedSession(aggregate, roomId) {
+  if (!aggregate || !aggregate.currentSession) return null;
+  return {
+    ...cleanDoc(aggregate.currentSession),
+    roomId,
+    facts: cleanDoc(aggregate.facts || emptyFacts())
+  };
+}
+
+function sameDocument(left, right) {
+  return stableStringify(left) === stableStringify(right);
+}
+
 function createCloudBaseRoomRepository(deps) {
   const db = deps && deps.db;
   if (!db || typeof db.runTransaction !== 'function') throw new Error('CloudBase transaction database required');
@@ -111,6 +125,9 @@ function createCloudBaseRoomRepository(deps) {
         }
       }
       const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
+      // handler 允许就地修改聚合；在调用前固定比较基线，避免漏写变更。
+      const beforeUsersSnapshot = openUsers(current);
+      const beforeSessionSnapshot = persistedSession(current, resolvedRoomId);
       const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const activityAggregate = [decision.accepted && decision.aggregate, current,
         activeRoomDocument && { room: activeRoomDocument }].find((candidate) => candidate && candidate.room
@@ -128,18 +145,19 @@ function createCloudBaseRoomRepository(deps) {
         createdAt: input.createdAt
       };
       if (decision.accepted) {
-        const beforeUsers = openUsers(current);
+        const beforeUsers = beforeUsersSnapshot;
         const afterUsers = openUsers(decision.aggregate);
         const actorWillHaveActiveIndex = afterUsers.some((member) => member.userId === input.actorUserId);
         if (danglingActive && !actorWillHaveActiveIndex) {
           await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
         }
         await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
-        if (decision.aggregate.currentSession) {
-          const session = cleanDoc(decision.aggregate.currentSession);
-          await transaction.collection(COLLECTIONS.sessions).doc(session.sessionId)
-            .set({ data: { ...session, roomId: resolvedRoomId,
-              facts: cleanDoc(decision.aggregate.facts || emptyFacts()) } });
+        const beforeSession = beforeSessionSnapshot;
+        const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
+        // 房间资料、座位等命令不改变当前场次时，不重写体积更大的 Session/Facts 文档。
+        if (afterSession && !sameDocument(beforeSession, afterSession)) {
+          await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId)
+            .set({ data: afterSession });
         }
         if (decision.archivedSession) {
           const archived = cleanDoc(decision.archivedSession);
@@ -173,8 +191,12 @@ function createCloudBaseRoomRepository(deps) {
             await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).remove();
           }
         }
+        const beforeByUser = new Map(beforeUsers.map((member) => [member.userId, member]));
         for (const member of afterUsers) {
-          await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
+          const before = beforeByUser.get(member.userId);
+          if (!before || !sameDocument(before, member)) {
+            await transaction.collection(COLLECTIONS.active).doc(docId(member.userId)).set({ data: member });
+          }
         }
       } else if (danglingActive) {
         await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
@@ -225,16 +247,17 @@ function createCloudBaseRoomRepository(deps) {
   }
 
   async function readSyncState(roomId, afterSeq, limit) {
-    return db.runTransaction(async (transaction) => {
-      // 高频增量查询只读取轻量 Room 和统一事件流，不加载 RoomSession 聚合。
-      const room = await safeGet(transaction, COLLECTIONS.rooms, roomId);
-      if (!room) return { room: null, events: [] };
-      const ceiling = room.eventSeq;
-      const _ = db.command;
-      const result = await transaction.collection(COLLECTIONS.events)
-        .where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy('seq', 'asc').limit(limit).get();
-      return { room, events: (result && result.data || []).map(cleanDoc) };
-    });
+    // Room/Event 由写事务原子发布。先固定 Room 水位再读 <= ceiling 的 Event，
+    // 并发新命令会被 ceiling 排除；TTL 删除造成的缺口由应用层回退 Snapshot。
+    const room = await safeGet(db, COLLECTIONS.rooms, roomId);
+    if (!room) return { room: null, events: [] };
+    const ceiling = room.eventSeq;
+    // 稳态轮询最常见的是 afterSeq 已追平，直接省去一次空 Event 查询。
+    if (afterSeq >= ceiling) return { room, events: [] };
+    const _ = db.command;
+    const result = await db.collection(COLLECTIONS.events)
+      .where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy('seq', 'asc').limit(limit).get();
+    return { room, events: (result && result.data || []).map(cleanDoc) };
   }
 
   async function findActiveRoom(userId) {
@@ -253,8 +276,13 @@ function createCloudBaseRoomRepository(deps) {
 
   async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
     const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };
-    await db.collection(COLLECTIONS.presence).doc(docId(`${roomId}:${memberId}:${row.deviceSessionId}`)).set({ data: row });
-    return row;
+    const presenceId = docId(`${roomId}:${memberId}:${row.deviceSessionId}`);
+    return db.runTransaction(async (transaction) => {
+      const existing = await safeGet(transaction, COLLECTIONS.presence, presenceId);
+      if (existing && Number(existing.lastSeenAt) >= Number(lastSeenAt)) return existing;
+      await transaction.collection(COLLECTIONS.presence).doc(presenceId).set({ data: row });
+      return row;
+    });
   }
 
   async function listPresence(roomId) {
@@ -264,13 +292,41 @@ function createCloudBaseRoomRepository(deps) {
   }
 
   async function listSignals(roomId) {
-    const result = await db.collection(COLLECTIONS.signals).where({ roomId }).limit(20).get();
-    return (result && result.data || []).map(cleanDoc);
+    // 当前协议只有一个房间级声贝信号，使用确定性主键点查，避免高频轮询扫描集合。
+    const row = await safeGet(db, COLLECTIONS.signals, docId(`${roomId}:PARTNER_SILENT_SOUND`));
+    return row ? [row] : [];
+  }
+
+  async function upsertSignal(input) {
+    return db.runTransaction(async (transaction) => {
+      const room = await safeGet(transaction, COLLECTIONS.rooms, input.roomId);
+      if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+      const member = room.lifecycle === 'OPEN'
+        && (room.members || []).find((item) => item.userId === input.actorUserId);
+      if (!member) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
+      const scope = room.signalScope;
+      if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId
+        || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
+        return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能发布静默声贝' };
+      }
+      const signalId = docId(`${input.roomId}:${input.signalType}`);
+      const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+      if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
+        && Number(existing.updatedAt) >= Number(input.now)) {
+        return { ok: true, signal: existing };
+      }
+      const row = { roomId: input.roomId, signalType: input.signalType, value: input.value,
+        memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
+        updatedAt: input.now, expiresAt: Math.min(Number(scope.deadlineAt), input.now + 3000) };
+      await transaction.collection(COLLECTIONS.signals)
+        .doc(signalId).set({ data: row });
+      return { ok: true, signal: row };
+    });
   }
 
   return { generateRoomId, transactCommand, readAggregate, readSessionAggregate, listSessions, listMessages,
     readSyncState, findActiveRoom,
-    upsertPresence, listPresence, listSignals };
+    upsertPresence, listPresence, listSignals, upsertSignal };
 }
 
 module.exports = { COLLECTIONS, createCloudBaseRoomRepository, digest, docId, safeGet };

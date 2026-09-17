@@ -72,6 +72,7 @@ Room
 │   └── profile
 ├── currentSessionId
 ├── sessionOrdinal
+├── signalScope             # 当前 Silent 的轻量事务令牌或 null
 └── createdAt / updatedAt
 ```
 
@@ -84,7 +85,9 @@ stateDiagram-v2
   DISSOLVED --> [*]
 ```
 
-Room 只保存长期成员关系和同步水位，不承载不断增长的场次内容。`currentSessionId` 为 `null` 表示当前在大厅且没有活跃场次。
+Room 只保存长期成员关系、同步水位和高频辅助协议所需的轻量派生令牌，不承载不断增长的场次内容。
+`currentSessionId` 为 `null` 表示当前在大厅且没有活跃场次。`signalScope` 与 Session 状态在同一
+Command 事务内更新，使 `roomSignal` 无需读取整个 Session，也不会在换 Turn 时写入旧信号。
 
 ### Room 不变量
 
@@ -168,6 +171,9 @@ COMPLETED / CANCELLED Session 归档后不再修改
 Facts 只能属于同一 sessionId
 requiredMemberIds 只包含当前有效 Participant
 submittedMemberIds 必须是 requiredMemberIds 的子集
+单场 Partner 匿名表达最多 500 条，素材最多 1000 条
+Partner 常规行动最多 200 Turn；达到上限后只能发起收尾，不能继续 Statement/Question
+Session + Facts 序列化文档不得超过 6 MiB 安全预算
 ```
 
 ## 4. 三种模式的状态轴
@@ -285,6 +291,16 @@ actorPatch 只作用于当前成员的 actor/route envelope
 应用 publicPatch 再应用本人 actorPatch，结果等于同水位 Snapshot
 ```
 
+```text
+PublicPatch / ActorPatch
+├── set[]    { path, value }
+├── remove[] path
+└── splice[] { path, index, deleteCount, items }
+```
+
+`splice` 用于成员、参与者、消息、素材、回合摘要等数组的局部变化，避免每个 Event
+重复传输整列；三类操作中的路径仍分别受 Public 与 Actor 隐私根限制。
+
 ## 6. Member View
 
 ```text
@@ -353,13 +369,13 @@ erDiagram
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
 | `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
-| `roomV3Signals` | 当前 Turn 的可丢失瞬时信号 | ephemeral 投影 |
+| `roomV3Signals` | 当前 Turn 的可丢失瞬时信号；确定性 `_id` 点读 | ephemeral 投影 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid
 flowchart LR
   SYNC[sync] --> R[roomV3Rooms]
-  SYNC --> E[roomV3Events]
+  SYNC -->|仅有增量时| E[roomV3Events]
   SNAPSHOT[snapshot] --> R
   SNAPSHOT --> S[roomV3Sessions]
   COMMAND[command transaction] --> R
@@ -369,6 +385,8 @@ flowchart LR
 ```
 
 高频 Sync 不重建 Actor View，也不读取 Session；Actor 变化已经在 Event 产生时扇出为 actor patch。
+稳态 `afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询。房间资料等不改变 Session 的
+Command 也不会重写 Session/Facts 或所有未变化的 `ActiveByUser` 索引。
 
 ## 8. 业务状态与瞬时状态
 
@@ -382,6 +400,9 @@ flowchart LR
 | 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地 |
 
 Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。设备离线不会删除 Member；离房、被踢或房间解散后，旧租约即使尚未清理，也必须被成员投影过滤。
+
+`ephemeral.stale.presence/signals` 分别表示对应读取通道暂时不可用。客户端在 stale 时保留上次
+成功值；只有通道读取成功后，空集合才表示当前确实没有在线租约或有效信号。
 
 ## 9. 原子提交与幂等
 

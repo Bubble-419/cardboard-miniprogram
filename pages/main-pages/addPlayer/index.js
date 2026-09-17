@@ -391,8 +391,7 @@ Page(withPageInteractionLock({
         if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
         const roomId = this.data.roomId || getApp().globalData.roomId;
         if (!roomId || !snapshot) return;
-        const raw = snapshot.raw || snapshot;
-        this.loadRoomData(roomId, { silent: true, cachedResult: raw }).then((result) => {
+        this.loadRoomData(roomId, { silent: true, cachedResult: snapshot }).then((result) => {
           if (!this._pageAlive || this._navigatingToBrainstorm || this._joinInFlight) return;
           if (result) this._followRoomPageFromResult(result, roomId);
         });

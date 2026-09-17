@@ -13,7 +13,12 @@ const STEPS_WITHOUT_PLATFORM = [
 
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
-const { dispatchRoomCommand, bindPageToRoomSession, unbindPageFromRoomSession } = require('../../../modules/room-session/index');
+const {
+  dispatchRoomCommand,
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  followRoomRouteAfterCommand
+} = require('../../../modules/room-session/index');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -153,8 +158,13 @@ Page({
       const roomId = app.globalData.roomId || '';
       this._confirmPending = true;
       try {
-        if (roomId && !this.data.includePlatform) {
-          const result = await dispatchRoomCommand('SET_SCENARIO', {
+        let result = null;
+        if (!this.data.includePlatform) {
+          if (!roomId) {
+            wx.showToast({ title: '缺少房间信息', icon: 'none' });
+            return;
+          }
+          result = await dispatchRoomCommand('SET_SCENARIO', {
             source: 'CUSTOM',
             scenario: bg
           });
@@ -174,7 +184,8 @@ Page({
           };
         }
 
-        return;
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._confirmPending = false;
       }

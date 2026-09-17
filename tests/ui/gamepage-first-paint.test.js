@@ -39,7 +39,7 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
       ok: true,
       protocolVersion: 3,
       viewSchemaVersion: 1,
-      eventSchemaVersion: 2,
+      eventSchemaVersion: 3,
       afterSeq: snapshotCalls,
       throughSeq: snapshotCalls,
       roomCurrentSeq: snapshotCalls,

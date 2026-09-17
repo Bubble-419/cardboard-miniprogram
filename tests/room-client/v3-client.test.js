@@ -45,6 +45,29 @@ function recordingTimers() {
   };
 }
 
+function makeStableView(roomId, workshopName) {
+  return {
+    room: {
+      roomId,
+      lifecycle: 'OPEN',
+      workshopName: workshopName || '测试工作坊',
+      createdAt: 1,
+      hostMemberId: 'member-1',
+      members: [{
+        memberId: 'member-1', seatNo: 1, nickName: '房主', avatarRef: null,
+        avatarIndex: null, color: '#5EC159', joinedAt: 1
+      }]
+    },
+    session: null,
+    actor: {
+      memberId: 'member-1', role: 'HOST', seatNo: 1, isParticipant: false,
+      contributionStatus: { submitted: false }, scoreStatus: { submitted: false },
+      voteStatus: { submitted: false }, privateModeState: null, capabilities: {}
+    },
+    route: { name: 'addPlayer', params: {} }
+  };
+}
+
 test('RoomClient 统一使用 2 秒最小轮询间隔', async () => {
   const h = createHarness();
   await h.seedMembers(2);
@@ -267,20 +290,19 @@ test('Spy 分牌后的公共 Event + 本人 ActorPatch 可完整恢复每个人�
 
 test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
   let snapshotCalls = 0;
-  const view = { room: { roomId: '12345678', workshopName: '恢复后' }, session: null,
-    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const view = makeStableView('12345678', '恢复后');
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, roomId: '12345678',
       seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {}, minAvailableSeq: 1 }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 2, stateVersion: 2,
+      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 2, stateVersion: 2,
         commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
-        publicPatch: { set: [], remove: [] }, actorPatch: null }]
+        publicPatch: { set: [], remove: [], splice: [] }, actorPatch: null }]
     } }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
       snapshotRequired: false, events: [] })
   };
@@ -312,17 +334,16 @@ test('传输超时使用相同 commandId 重试', async () => {
 
 test('同步完成水位矛盾时强制 Snapshot，不发布不完整 View', async () => {
   let snapshotCalls = 0;
-  const view = { room: { roomId: '12345678', workshopName: '完整状态' }, session: null,
-    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const view = makeStableView('12345678', '完整状态');
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
       snapshotRequired: false, events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
       snapshotRequired: false, events: []
     } })
@@ -336,8 +357,7 @@ test('同步完成水位矛盾时强制 Snapshot，不发布不完整 View', asy
 
 test('hasMore 却没有事件时强制 Snapshot，避免空批无限追赶', async () => {
   let snapshotCalls = 0;
-  const view = { room: { roomId: '12345678' }, session: null,
-    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const view = makeStableView('12345678');
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => {
@@ -345,7 +365,7 @@ test('hasMore 却没有事件时强制 Snapshot，避免空批无限追赶', asy
       return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
         roomId: '12345678', seq: 0, stateVersion: snapshotCalls, view, ephemeral: {} };
     },
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 1, hasMore: true,
       snapshotRequired: false, events: [] }),
     dispatch: async () => null
@@ -360,20 +380,19 @@ test('hasMore 却没有事件时强制 Snapshot，避免空批无限追赶', asy
 
 test('连续事件缺少最终 publicPatch 时也强制 Snapshot', async () => {
   let snapshotCalls = 0;
-  const view = { room: { roomId: '12345678', workshopName: '快照权威' }, session: null,
-    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const view = makeStableView('12345678', '快照权威');
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
       snapshotRequired: false, events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
-      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+      ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
       snapshotRequired: false,
-      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 1, stateVersion: 1,
+      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
         commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
         actorPatch: null }]
     } })
@@ -387,8 +406,7 @@ test('连续事件缺少最终 publicPatch 时也强制 Snapshot', async () => {
 
 test('事件组 stateVersion 不连续时强制 Snapshot', async () => {
   let snapshotCalls = 0;
-  const view = { room: { roomId: '12345678', workshopName: '权威快照' }, session: null,
-    actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } };
+  const view = makeStableView('12345678', '权威快照');
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => {
@@ -396,12 +414,12 @@ test('事件组 stateVersion 不连续时强制 Snapshot', async () => {
       return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
         roomId: '12345678', seq: 0, stateVersion: 4, view, ephemeral: {} };
     },
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
       snapshotRequired: false,
-      events: [{ eventSchemaVersion: 2, roomId: '12345678', seq: 1, stateVersion: 7,
+      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 7,
         commandId: 'broken-version', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
-        publicPatch: { set: [], remove: [] }, actorPatch: null }]
+        publicPatch: { set: [], remove: [], splice: [] }, actorPatch: null }]
     }),
     dispatch: async () => null
   };
@@ -415,8 +433,7 @@ test('事件组 stateVersion 不连续时强制 Snapshot', async () => {
 
 test('从后台恢复时立即重新读取 Snapshot', async () => {
   let snapshotCalls = 0;
-  const makeView = () => ({ room: { roomId: '12345678', workshopName: `快照${snapshotCalls}` },
-    session: null, actor: { memberId: 'm1' }, route: { name: 'addPlayer', params: {} } });
+  const makeView = () => makeStableView('12345678', `快照${snapshotCalls}`);
   const gateway = {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => {
@@ -509,7 +526,7 @@ test('CREATE_ROOM 不把当前连接的 roomId 发给服务端', async () => {
     currentRoom: async () => ({ ok: true, roomId: '12345678' }),
     snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
       roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
-    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 2,
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
       snapshotRequired: false, events: [] }),
     dispatch: async (envelope) => {
@@ -542,4 +559,261 @@ test('写指令返回终态成员错误时不等待下一轮 poll，立即关闭
   assert.equal(client.getView(), null);
   assert.equal(client.getState().status, 'DISCONNECTED');
   assert.equal(client.getState().error.roomId, '12345678');
+});
+
+test('连续丢失指令响应后，用户重试仍复用未确认的 commandId', async () => {
+  const sent = [];
+  let ids = 0;
+  let failures = 2;
+  const view = { room: { roomId: '12345678', lifecycle: 'OPEN', members: [] }, session: null,
+    actor: { memberId: 'm1', role: 'HOST', capabilities: {} }, route: { name: 'addPlayer', params: {} } };
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
+    sync: async () => null,
+    dispatch: async (envelope) => {
+      sent.push(envelope.commandId);
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('response lost');
+      }
+      return { ok: false, errCode: 'INVALID_TRANSITION', retryable: false };
+    }
+  };
+  const client = createRoomClient({ gateway, ...inertTimers(), commandIdFactory: () => `cmd-${++ids}` });
+  await client.open();
+  const command = { type: 'POST_PARTNER_MESSAGE', payload: { text: '只发一次' },
+    context: { sessionId: 's1', turnId: 't1', workflowStep: 'PARTNER_TURN' } };
+
+  await assert.rejects(() => client.dispatch(command), /response lost/);
+  await client.dispatch(command);
+
+  assert.deepEqual(sent, ['cmd-1', 'cmd-1', 'cmd-1']);
+  client.close();
+});
+
+test('空响应也保留未确认 commandId，避免重复提交同一业务意图', async () => {
+  const sent = [];
+  let calls = 0;
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: null }),
+      snapshot: async () => null,
+      sync: async () => null,
+      dispatch: async (command) => {
+        sent.push(command.commandId);
+        calls += 1;
+        return calls === 1 ? null : { ok: false, errCode: 'INVALID_TRANSITION', retryable: false };
+      }
+    },
+    ...inertTimers(),
+    commandIdFactory: (() => { let id = 0; return () => `empty-${++id}`; })()
+  });
+
+  const first = await client.dispatch({ type: 'CREATE_ROOM', payload: { nickName: '房主' } });
+  const second = await client.dispatch({ type: 'CREATE_ROOM', payload: { nickName: '房主' } });
+
+  assert.equal(first.retryable, true);
+  assert.equal(second.errCode, 'INVALID_TRANSITION');
+  assert.deepEqual(sent, ['empty-1', 'empty-1']);
+  client.close();
+});
+
+test('结构化 retryable 响应后，用户重试仍复用未确认的 commandId', async () => {
+  const sent = [];
+  let calls = 0;
+  let ids = 0;
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: null }),
+      snapshot: async () => null,
+      sync: async () => null,
+      dispatch: async (command) => {
+        sent.push(command.commandId);
+        calls += 1;
+        if (calls <= 2) {
+          return { ok: false, errCode: 'DEPENDENCY_UNAVAILABLE', errMsg: '暂时不可用', retryable: true };
+        }
+        return { ok: false, errCode: 'INVALID_TRANSITION', retryable: false };
+      }
+    },
+    ...inertTimers(),
+    commandIdFactory: () => `retryable-${++ids}`
+  });
+
+  const command = { type: 'CREATE_ROOM', payload: { nickName: '房主' } };
+  const first = await client.dispatch(command);
+  const second = await client.dispatch(command);
+
+  assert.equal(first.retryable, true);
+  assert.equal(second.retryable, false);
+  assert.deepEqual(sent, ['retryable-1', 'retryable-1', 'retryable-1']);
+  client.close();
+});
+
+test('创建已成功但首次 Snapshot 失败时仍返回成功并进入恢复态', async () => {
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: null }),
+      snapshot: async () => { throw new Error('snapshot unavailable'); },
+      sync: async () => null,
+      dispatch: async () => ({ ok: true, commandId: 'create-ok',
+        outcome: { kind: 'ROOM_CREATED', roomId: '12345678' } })
+    },
+    ...inertTimers(),
+    commandIdFactory: () => 'create-ok'
+  });
+
+  const result = await client.dispatch({ type: 'CREATE_ROOM', payload: { nickName: '房主' } });
+
+  assert.equal(result.ok, true);
+  assert.equal(client.getState().roomId, '12345678');
+  assert.equal(client.getState().status, 'DEGRADED');
+  client.close();
+});
+
+test('切换房间成功但新房 Snapshot 失败时清空旧房间的 View 与瞬时态', async () => {
+  const oldView = makeStableView('12345678', '旧房间');
+  let snapshotCalls = 0;
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+      snapshot: async (roomId) => {
+        snapshotCalls += 1;
+        if (roomId === '87654321') throw new Error('new room snapshot unavailable');
+        return {
+          ok: true, protocolVersion: 3, viewSchemaVersion: 1, roomId,
+          seq: 7, stateVersion: 7, view: oldView,
+          ephemeral: { presenceByMemberId: { 'member-1': { online: true } }, signals: {} }
+        };
+      },
+      sync: async () => null,
+      dispatch: async () => ({
+        ok: true,
+        outcome: { kind: 'ROOM_JOINED', roomId: '87654321' }
+      })
+    },
+    ...inertTimers()
+  });
+
+  await client.open();
+  assert.equal(client.getView().room.workshopName, '旧房间');
+  await client.dispatch({ type: 'JOIN_ROOM', roomId: '87654321', payload: { nickName: '玩家' } });
+
+  const state = client.getState();
+  assert.equal(snapshotCalls, 2);
+  assert.equal(state.roomId, '87654321');
+  assert.equal(state.view, null);
+  assert.equal(state.seq, 0);
+  assert.equal(state.stateVersion, 0);
+  assert.deepEqual(state.ephemeral, {});
+  assert.equal(state.status, 'DEGRADED');
+  client.close();
+});
+
+test('结构不完整的 Snapshot 不得成为稳定 View', async () => {
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: 1, stateVersion: 1,
+      view: { room: { roomId: '12345678' }, actor: { memberId: 'm1' }, route: { name: 'addPlayer' } },
+      ephemeral: {} }),
+    sync: async () => null,
+    dispatch: async () => null
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+
+  await client.open();
+
+  assert.equal(client.getView(), null);
+  assert.equal(client.getState().status, 'DEGRADED');
+  client.close();
+});
+
+test('Actor Patch 不得越权改写公共 View', async () => {
+  let snapshotCalls = 0;
+  const snapshotView = () => makeStableView('12345678', `snapshot-${snapshotCalls}`);
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+        roomId: '12345678', seq: 0, stateVersion: 0, view: snapshotView(), ephemeral: {} };
+    },
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, snapshotRequired: false,
+      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
+        commandId: 'bad-actor-patch', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+        publicPatch: { set: [], remove: [], splice: [] },
+        actorPatch: { set: [{ path: 'room', value: {
+          roomId: '12345678', lifecycle: 'OPEN', workshopName: '越权改写', members: []
+        } }], remove: [], splice: [] } }],
+      ephemeral: {} }),
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+  await client.open();
+
+  await timers.run();
+
+  assert.equal(snapshotCalls, 2);
+  assert.notEqual(client.getView().room.workshopName, '越权改写');
+  client.close();
+});
+
+test('Event Patch 破坏 MemberView 骨架时回退 Snapshot', async () => {
+  let snapshotCalls = 0;
+  const stableView = makeStableView('12345678');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+        roomId: '12345678', seq: snapshotCalls - 1, stateVersion: snapshotCalls - 1,
+        view: stableView, ephemeral: {} };
+    },
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, snapshotRequired: false,
+      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
+        commandId: 'remove-session', publicEvents: [{ type: 'WORKSHOP_SESSION_CANCELLED' }],
+        publicPatch: { set: [], remove: ['session'], splice: [] }, actorPatch: null }], ephemeral: {} }),
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+  await client.open();
+
+  await timers.run();
+
+  assert.equal(snapshotCalls, 2);
+  assert.equal(client.getView().session, null);
+  assert.equal(client.getState().seq, 1);
+  client.close();
+});
+
+test('Presence/Signal 查询失败时保留上次瞬时值并标记 stale', async () => {
+  const view = makeStableView('12345678');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1,
+      roomId: '12345678', seq: 0, stateVersion: 0, view,
+      ephemeral: { presenceByMemberId: { m2: { online: true, lastSeenAt: 10 } },
+        signals: { PARTNER_SILENT_SOUND: { value: 0.6 } }, stale: { presence: false, signals: false } } }),
+    sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: 1, eventSchemaVersion: 3,
+      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false, snapshotRequired: false, events: [],
+      ephemeral: { presenceByMemberId: {}, signals: {}, stale: { presence: true, signals: true } } }),
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+  await client.open();
+
+  await timers.run();
+
+  assert.equal(client.getState().ephemeral.presenceByMemberId.m2.online, true);
+  assert.equal(client.getState().ephemeral.signals.PARTNER_SILENT_SOUND.value, 0.6);
+  assert.deepEqual(client.getState().ephemeral.stale, { presence: true, signals: true });
+  client.close();
 });

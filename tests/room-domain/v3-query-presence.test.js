@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
 const { projectPageSnapshot, memberSeat } = require('../../modules/room-session/page-model');
+const {
+  EVENT_SCHEMA_VERSION, MAX_SYNC_RESPONSE_BYTES, stableStringify
+} = require('@cardboard/room-contracts');
 
 test('场次内座位映射优先使用冻结 Participant，而不是后来调整的 Room Seat', () => {
   const view = {
@@ -45,6 +48,42 @@ test('Partner 页面模型把计时锚点换算到本机时钟域', () => {
   assert.equal(page.roomState.partnerSilentStartedAt, 7000);
   assert.equal(page.members.every((member) => !Object.prototype.hasOwnProperty.call(member, 'userId')), true);
   assert.equal(page.roomState.progress.turnId, 't1');
+});
+
+test('Partner 页面模型只消费当前行动范围内且未过期的瞬时信号', () => {
+  const view = {
+    room: {
+      roomId: '12345678', lifecycle: 'OPEN', hostMemberId: 'm1', workshopName: '测试工作坊',
+      createdAt: 1, members: [{ memberId: 'm1', seatNo: 1, nickName: '主持人' }]
+    },
+    session: {
+      sessionId: 's1', mode: 'PARTNER', status: 'RUNNING', workflow: { step: 'PARTNER_TURN' },
+      setup: { scenario: null, selectedProblem: null }, progress: {},
+      participants: [{ memberId: 'm1', seatNoAtStart: 1, nickName: '主持人' }],
+      publicModeState: { turnOrdinal: 1, roundNo: 1, closing: null },
+      activeTurn: {
+        turnId: 't1', ordinal: 1, roundNo: 1, activeMemberId: 'm1',
+        turnStartedAt: 10000, phaseStartedAt: 10000, silentDeadlineAt: 30000,
+        scoredCount: 0, requiredScoreCount: 0
+      },
+      activeArtifacts: [], recentMessages: [], turnSummaries: [], result: null
+    },
+    actor: {
+      memberId: 'm1', role: 'HOST', seatNo: 1, isParticipant: true,
+      contributionStatus: { submitted: false }, scoreStatus: { submitted: false },
+      voteStatus: { submitted: false }, privateModeState: null, capabilities: {}
+    },
+    route: { name: 'partnerGame', params: {} }
+  };
+  const project = (signal, serverNow = 20000) => projectPageSnapshot(view, {
+    seq: 1,
+    serverNow,
+    ephemeral: { signals: { PARTNER_SILENT_SOUND: signal } }
+  }).roomState.partnerSilentSoundLevel;
+
+  assert.equal(project({ value: 0.8, sessionId: 's1', turnId: 't1', expiresAt: 19999 }), 0);
+  assert.equal(project({ value: 0.7, sessionId: 's1', turnId: 'old-turn', expiresAt: 25000 }), 0);
+  assert.equal(project({ value: 0.6, sessionId: 's1', turnId: 't1', expiresAt: 25000 }), 0.6);
 });
 
 test('Snapshot 是可独立恢复的成员视图且不暴露 userId', async () => {
@@ -174,6 +213,66 @@ test('Sync 返回连续投影事件且不泄漏内部事件；过期与越界水
   assert.equal((await h.app.sync('12345678', 999, { userId: 'host' })).snapshotRequired, true);
 });
 
+test('Sync 同时受事件数量与响应字节预算约束', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const aggregate = h.repo.rooms.get('12345678');
+  const payload = '中'.repeat(90000);
+  const events = Array.from({ length: 4 }, (_, index) => ({
+    eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    roomId: '12345678',
+    seq: index + 1,
+    stateVersion: index + 1,
+    commandId: `large-${index + 1}`,
+    sessionId: null,
+    rawEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+    publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+    publicPatch: {
+      set: [{ path: 'room.workshopName', value: `${index}-${payload}` }],
+      remove: [],
+      splice: []
+    },
+    actorProjections: [],
+    occurredAt: index + 1
+  }));
+  aggregate.room.eventSeq = 4;
+  aggregate.room.stateVersion = 4;
+  h.repo.events.set('12345678', events);
+
+  const batch = await h.app.sync('12345678', 0, { userId: 'host' }, { limit: 100 });
+
+  assert.equal(batch.ok, true);
+  assert.equal(batch.snapshotRequired, false);
+  assert.equal(batch.events.length > 0 && batch.events.length < events.length, true);
+  assert.equal(batch.hasMore, true);
+  assert.equal(Buffer.byteLength(stableStringify(batch), 'utf8') <= MAX_SYNC_RESPONSE_BYTES, true);
+});
+
+test('单个事件超过 Sync 字节预算时要求 Snapshot，不能返回不推进的空批', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const aggregate = h.repo.rooms.get('12345678');
+  aggregate.room.eventSeq = 1;
+  aggregate.room.stateVersion = 1;
+  h.repo.events.set('12345678', [{
+    eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    roomId: '12345678', seq: 1, stateVersion: 1, commandId: 'oversized', sessionId: null,
+    rawEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+    publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+    publicPatch: {
+      set: [{ path: 'room.workshopName', value: '大'.repeat(MAX_SYNC_RESPONSE_BYTES) }],
+      remove: [], splice: []
+    },
+    actorProjections: [], occurredAt: 1
+  }]);
+
+  const batch = await h.app.sync('12345678', 0, { userId: 'host' });
+
+  assert.equal(batch.snapshotRequired, true);
+  assert.deepEqual(batch.events, []);
+  assert.equal(batch.throughSeq, 0);
+});
+
 test('Event TTL 清空日志后不会产生空批死循环，而是要求 Snapshot', async () => {
   const h = createHarness();
   await h.seedMembers(2);
@@ -183,6 +282,65 @@ test('Event TTL 清空日志后不会产生空批死循环，而是要求 Snapsh
   const snapshot = await h.snapshot('host');
   assert.equal(batch.snapshotRequired, true);
   assert.equal(snapshot.minAvailableSeq, snapshot.seq + 1);
+});
+
+test('轻量 Sync 不得投影当前 Session 中其他 Turn 的旧信号', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  const snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  h.repo.signals.set('stale-signal', {
+    roomId: '12345678', signalType: 'PARTNER_SILENT_SOUND', value: 0.9,
+    memberId: snapshot.view.actor.memberId, sessionId, turnId: 'old-turn',
+    updatedAt: 1000, expiresAt: 999999
+  });
+
+  const batch = await h.app.sync('12345678', snapshot.seq, { userId: 'host' });
+
+  assert.equal(batch.ok, true);
+  assert.equal(batch.ephemeral.signals.PARTNER_SILENT_SOUND, undefined);
+});
+
+test('瞬时声贝写入与当前静默行动使用同一事务范围令牌', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  snapshot = await h.snapshot('host');
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
+    payload: { memberId: snapshot.view.actor.memberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: snapshot.view.actor.memberId }
+  });
+  snapshot = await h.snapshot('host');
+  const turnId = snapshot.view.session.activeTurn.turnId;
+  await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'SILENT' }
+  });
+
+  const written = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 1.5
+  }, { userId: 'host' });
+  const wrongActor = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.5
+  }, { userId: 'u2' });
+  await h.command('host', 'CANCEL_WORKSHOP_SESSION', { context: { sessionId } });
+  const stale = await h.app.writeSignal({
+    roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.5
+  }, { userId: 'host' });
+
+  assert.equal(written.ok, true);
+  assert.equal(written.signal.value, 1, '声贝值应由服务端收敛到 0～1');
+  assert.equal(wrongActor.errCode, 'INVALID_TRANSITION');
+  assert.equal(stale.errCode, 'INVALID_TRANSITION');
+  assert.equal(h.repo.rooms.get('12345678').room.signalScope, null);
 });
 
 test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {

@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
 const { PROTOCOL_VERSION } = require('@cardboard/room-contracts');
-const { createRoomApplication, createInMemoryRoomRepository } = require('@cardboard/room-application');
+const { createRoomApplication } = require('@cardboard/room-application');
+const { createInMemoryRoomRepository } = require('../../packages/room-application/testing');
 
 test('创建、并发式加入、席位、离开与解散走同一事务模型', async () => {
   const h = createHarness();

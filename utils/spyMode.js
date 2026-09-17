@@ -303,8 +303,7 @@ function startSpyRoomPoll(page, options) {
       if (!roomId) return;
 
       // 解散/不在房间：ok:false，必须先处理回首页（不可因 ok 短路）
-      const raw = snapshot.raw;
-      if (raw && handleRoomGoneFromResult(raw, roomId)) return;
+      if (handleRoomGoneFromResult(snapshot, roomId)) return;
       if (!snapshot.ok) {
         if (handleRoomGoneFromResult({
           ok: false,
@@ -318,9 +317,9 @@ function startSpyRoomPoll(page, options) {
         }
         return;
       }
-      if (!raw || raw.ok !== true) return;
+      if (snapshot.ok !== true) return;
       if (typeof onPollResult === 'function') {
-        onPollResult.call(page, raw);
+        onPollResult.call(page, snapshot);
       }
     }
   }).catch((e) => {
@@ -334,12 +333,15 @@ function stopSpyRoomPoll(page) {
   unbindPageFromRoomSession(page);
 }
 
-/** 写命令后主动拉一次会话，避免等下一轮 poll */
+/**
+ * V3 Command Response 已携带并消费 SyncBatch；这里只读取当前 View 触发兼容调用链，
+ * 不再额外请求完整 Snapshot。
+ */
 function bumpSpyRoomSession() {
   try {
     const session = getActiveRoomSession();
-    if (session && typeof session.refresh === 'function') {
-      return session.refresh().catch(() => null);
+    if (session && typeof session.getSnapshot === 'function') {
+      return Promise.resolve(session.getSnapshot());
     }
   } catch (e) {
     // ignore

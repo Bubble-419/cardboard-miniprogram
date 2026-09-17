@@ -126,9 +126,17 @@
   </view>
 
   <!-- 底部固定操作区（参与 flex，不 position:fixed） -->
-  <view class="bottom-action" wx:if="{{isHost}}">
+  <view class="bottom-action" wx:if="{{isCurrentSpeaker || isHost}}">
     <view class="page-shell">
-      <view class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onStartVote">开始投票</view>
+      <view
+        wx:if="{{isCurrentSpeaker}}"
+        class="primary-btn {{acting ? 'dimmed' : ''}}"
+        bindtap="onFinishSpeak"
+      >我已完成发言</view>
+      <view class="action-hint" wx:if="{{isHost && !isCurrentSpeaker && currentSpeakerName}}">
+        当前发言：{{currentSpeakerName}}
+      </view>
+      <view wx:if="{{isHost}}" class="primary-btn {{acting ? 'dimmed' : ''}}" bindtap="onStartVote">开始投票</view>
     </view>
   </view>
 </view>

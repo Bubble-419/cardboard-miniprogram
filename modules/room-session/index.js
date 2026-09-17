@@ -1,6 +1,6 @@
 'use strict';
 
-const { COMMAND_CONTEXT } = require('../../packages/room-contracts/index');
+const { COMMAND_CONTEXT, ERR } = require('../../packages/room-contracts/index');
 const {
   ROOM_POLL_INTERVAL_MS, createRoomClient, createCloudRoomGateway
 } = require('../../packages/room-client/index');
@@ -63,7 +63,8 @@ function capabilityDenied(cap) {
     HOST_CANNOT_LEAVE: '房主不能离开房间',
     NOT_MEMBER: '您已不在该房间',
     INVALID_TRANSITION: '当前不能执行该操作',
-    SELF_SCORE: '不能给自己打分'
+    SELF_SCORE: '不能给自己打分',
+    LIMIT_EXCEEDED: '当前场次内容已达到上限，请结束场次'
   };
   return { ok: false, errCode: reason || 'FORBIDDEN', errMsg: messages[reason] || '当前不能执行该操作' };
 }
@@ -146,9 +147,31 @@ async function dispatchRoomCommand(type, payload, context, options) {
     const cap = view && view.actor && view.actor.capabilities && view.actor.capabilities[type];
     if (cap && cap.allowed !== true) return capabilityDenied(cap);
   }
+  const validRoomId = (value) => typeof value === 'string' && /^\d{8}$/.test(value.trim());
+  const explicitRoomId = options && options.roomId;
+  let targetRoomId;
+  if (type === 'CREATE_ROOM') {
+    targetRoomId = undefined;
+  } else if (type === 'JOIN_ROOM') {
+    if (!validRoomId(explicitRoomId)) {
+      return { ok: false, errCode: ERR.INVALID_ARGUMENT, errMsg: '请输入 8 位房间号', retryable: false };
+    }
+    targetRoomId = explicitRoomId.trim();
+  } else {
+    // 当前连接是房间 Command 的权威作用域；URL/全局缓存只在连接尚未恢复时兜底。
+    // `undefined`、`null` 等脏路由值不能穿透到云端并显示成无关的协议校验错误。
+    const candidates = [session.roomId, explicitRoomId,
+      getApp().globalData && getApp().globalData.roomId];
+    targetRoomId = candidates.find(validRoomId);
+    if (!targetRoomId) {
+      return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: '房间状态正在恢复，请稍后重试', retryable: true };
+    }
+    targetRoomId = targetRoomId.trim();
+  }
   const result = await session.dispatch({
     type,
-    roomId: type === 'CREATE_ROOM' ? undefined : (options && options.roomId),
+    roomId: targetRoomId,
     context,
     payload
   });
@@ -287,6 +310,32 @@ function followRoomRoute(snapshot, roomId, extra) {
   });
 }
 
+/**
+ * 写指令成功后只跟随服务端已经发布的权威 route。
+ * 若附带 Event 同步没有追到该指令水位，先用 Snapshot 恢复，避免页面猜测下一地址。
+ */
+async function followRoomRouteAfterCommand(result, roomId, extra) {
+  if (!result || result.ok !== true) {
+    return { ok: false, skipped: true, reason: 'COMMAND_FAILED' };
+  }
+  const session = getActiveRoomSession();
+  if (!session || typeof session.getSnapshot !== 'function') {
+    return { ok: false, skipped: true, reason: 'NO_SESSION' };
+  }
+  const committedThroughSeq = Number(result.outcome && result.outcome.committedThroughSeq);
+  let snapshot = session.getSnapshot();
+  if (Number.isInteger(committedThroughSeq) && committedThroughSeq > 0
+    && Number(snapshot && snapshot.revision) < committedThroughSeq
+    && typeof session.refresh === 'function') {
+    snapshot = await session.refresh();
+  }
+  if (Number.isInteger(committedThroughSeq) && committedThroughSeq > 0
+    && Number(snapshot && snapshot.revision) < committedThroughSeq) {
+    return { ok: false, skipped: true, reason: 'VIEW_NOT_COMMITTED' };
+  }
+  return followRoomRoute(snapshot, roomId, extra);
+}
+
 function canRoomCommand(type) {
   const session = getActiveRoomSession();
   const view = session && session.getView();
@@ -297,4 +346,5 @@ function canRoomCommand(type) {
 module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSession, openRoomSession, dispatchRoomCommand,
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
-  bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, canRoomCommand, commandContext };
+  bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, followRoomRouteAfterCommand,
+  canRoomCommand, commandContext };

@@ -1,7 +1,8 @@
 'use strict';
 
 const { PROTOCOL_VERSION } = require('@cardboard/room-contracts');
-const { createRoomApplication, createInMemoryRoomRepository } = require('@cardboard/room-application');
+const { createRoomApplication } = require('@cardboard/room-application');
+const { createInMemoryRoomRepository } = require('../../packages/room-application/testing');
 
 function createHarness(options) {
   let commandSeq = 0;
@@ -14,7 +15,8 @@ function createHarness(options) {
   const app = createRoomApplication(repo, {
     now: () => ++time,
     serverSecret: 'test-secret',
-    wordPairPicker: options && options.wordPairPicker
+    wordPairPicker: options && options.wordPairPicker,
+    maxSessionDocumentBytes: options && options.maxSessionDocumentBytes
   });
   const knownSeq = {};
 

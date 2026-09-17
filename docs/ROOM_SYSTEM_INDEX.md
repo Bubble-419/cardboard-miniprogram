@@ -106,7 +106,7 @@ flowchart LR
 protocolVersion = 3
 schemaVersion = 3
 viewSchemaVersion = 1
-eventSchemaVersion = 2
+eventSchemaVersion = 3
 ```
 
 ```text
@@ -114,7 +114,10 @@ RoomClient 最小轮询间隔 = 2000ms
 Presence 续租请求间隔 = 5000ms
 Presence 在线窗口 = 15000ms
 单次 Sync 上限 = 100 Event Groups
+单次 Sync 响应预算 = 512 KiB（事件区预留 16 KiB 给协议外壳与 ephemeral）
 允许追赶的最大积压 = 300 Event Groups
+Session/Facts 安全预算 = 6 MiB
+Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 ```
 
 ## 核心代码索引
@@ -126,6 +129,7 @@ Presence 在线窗口 = 15000ms
 | Partner / Halli / Spy 规则 | [`packages/room-domain/partner.js`](../packages/room-domain/partner.js)、[`halli.js`](../packages/room-domain/halli.js)、[`spy.js`](../packages/room-domain/spy.js) |
 | Public / Actor / Route / Patch 投影 | [`packages/room-projection/index.js`](../packages/room-projection/index.js) |
 | Command、Snapshot、Sync 编排 | [`packages/room-application/index.js`](../packages/room-application/index.js) |
+| 测试专用内存 Repository | [`packages/room-application/testing.js`](../packages/room-application/testing.js)（不进入云函数构建） |
 | CloudBase Adapter | [`packages/room-cloudbase-adapter/index.js`](../packages/room-cloudbase-adapter/index.js) |
 | 客户端 View 状态机 | [`packages/room-client/index.js`](../packages/room-client/index.js) |
 | 小程序接线与页面模型 | [`modules/room-session/index.js`](../modules/room-session/index.js)、[`page-model.js`](../modules/room-session/page-model.js) |

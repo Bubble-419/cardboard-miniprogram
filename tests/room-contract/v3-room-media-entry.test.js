@@ -118,3 +118,34 @@ test('roomMedia tempUrls 要求调用者当前仍是房间成员', async () => {
   assert.equal(result.errCode, 'NOT_MEMBER');
   assert.equal(tempFileUrlCalls.length, 0);
 });
+
+test('roomMedia tempUrls 可按 roomId/sessionId 授权历史 MemberView 中的文件', async () => {
+  const calls = [];
+  const roomApp = authorizedRoomApp();
+  roomApp.readCurrentRoom = async () => ({ ok: true, roomId: null, membershipId: null });
+  roomApp.readSessionSnapshot = async (roomId, sessionId, actorContext) => {
+    calls.push({ roomId, sessionId, actorContext });
+    return {
+      ok: true,
+      view: {
+        room: { members: [{ avatarRef: ALLOWED_AVATAR }] },
+        session: { activeArtifacts: [{ fileRef: ALLOWED_ARTIFACT }] }
+      }
+    };
+  };
+
+  const { result, tempFileUrlCalls } = await invokeRoomMedia({
+    event: {
+      action: 'tempUrls', roomId: '12345678', sessionId: 'session-history',
+      fileList: [ALLOWED_ARTIFACT]
+    },
+    roomApp
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].roomId, '12345678');
+  assert.deepEqual(calls[0].sessionId, 'session-history');
+  assert.equal(calls[0].actorContext.touchPresence, false);
+  assert.deepEqual(tempFileUrlCalls, [{ fileList: [ALLOWED_ARTIFACT] }]);
+});

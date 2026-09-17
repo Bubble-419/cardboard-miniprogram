@@ -22,8 +22,8 @@
 
       <!-- 标题 -->
       <view class="rules-header">
-        <text class="rules-title">规则说明</text>
-        <text class="rules-subtitle">开始前，先快速了解本轮玩法</text>
+        <text class="rules-title">线下游戏进行中</text>
+        <text class="rules-subtitle">可随时查看规则；完成后进入创意提交阶段</text>
       </view>
 
       <!-- 步骤卡片组 -->
@@ -132,7 +132,7 @@
 
   </scroll-view>
 
-  <!-- 底部：结束游戏（仅房主），固定悬浮在底部 -->
+  <!-- 底部：结束线下游戏并推进到创意阶段（仅房主） -->
   <view class="footer-section" wx:if="{{isHost}}">
     <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
   </view>

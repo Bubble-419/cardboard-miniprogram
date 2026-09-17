@@ -80,6 +80,17 @@ function createNavigationCoordinator(options) {
   let active = false;
   let pending = null;
 
+  function resolvePendingAsSuperseded() {
+    if (!pending) return;
+    const previous = pending;
+    pending = null;
+    previous.waiters.forEach(({ resolve }) => resolve({
+      ok: false,
+      skipped: true,
+      reason: 'SUPERSEDED'
+    }));
+  }
+
   async function reconcile(route, seq, context) {
     const nextSeq = Number(seq) || 0;
     const nextRoomId = String(context && context.roomId || '');
@@ -87,7 +98,7 @@ function createNavigationCoordinator(options) {
       // Event seq 只在单个 Room 内单调；跨房后必须重置导航水位。
       lastRoomId = nextRoomId;
       lastSeq = 0;
-      pending = null;
+      resolvePendingAsSuperseded();
     }
     if (nextSeq < lastSeq) return { ok: false, skipped: true, reason: 'STALE_SEQ' };
     const descriptor = describeRoute(route, context && context.roomId);
@@ -104,8 +115,13 @@ function createNavigationCoordinator(options) {
       return { ok: true, skipped: true, reason: 'HANDLED' };
     }
     if (active) {
-      pending = { route, seq: nextSeq, context };
-      return { ok: false, skipped: true, reason: 'IN_FLIGHT' };
+      // 订阅与用户动作可能同时请求同一条权威 route。后发调用必须等待在途导航，
+      // 否则页面交互锁会提前释放，甚至再次提交同一个操作。
+      return new Promise((resolve, reject) => {
+        const waiters = pending ? pending.waiters : [];
+        waiters.push({ resolve, reject });
+        pending = { route, seq: nextSeq, context, waiters };
+      });
     }
     active = true;
     try {
@@ -119,7 +135,9 @@ function createNavigationCoordinator(options) {
       active = false;
       if (pending) {
         const next = pending; pending = null;
-        reconcile(next.route, next.seq, next.context);
+        reconcile(next.route, next.seq, next.context)
+          .then((result) => next.waiters.forEach(({ resolve }) => resolve(result)))
+          .catch((error) => next.waiters.forEach(({ reject }) => reject(error)));
       }
     }
   }

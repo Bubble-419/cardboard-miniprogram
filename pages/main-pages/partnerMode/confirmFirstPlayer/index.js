@@ -7,6 +7,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
@@ -194,7 +195,10 @@ Page(withPageInteractionLock({
         });
         if (!result || result.ok !== true) {
           wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
+          return;
         }
+        await followRoomRouteAfterCommand(result, this.data.roomId);
+        return null;
       } catch (e) {
         wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
       } finally {

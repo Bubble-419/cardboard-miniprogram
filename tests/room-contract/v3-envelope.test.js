@@ -2,7 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { PROTOCOL_VERSION, COMMAND_TYPES, COMMAND_CONTEXT, validateCommandEnvelope } = require('@cardboard/room-contracts');
+const {
+  PROTOCOL_VERSION, COMMAND_TYPES, COMMAND_CONTEXT, validateCommandEnvelope, validateMemberView
+} = require('@cardboard/room-contracts');
 
 function envelope(type, fields) {
   return { protocolVersion: PROTOCOL_VERSION, commandId: 'cmd-1', roomId: '12345678', knownSeq: 0,
@@ -104,4 +106,54 @@ test('校验嵌套情境、全量席位与语义枚举', () => {
     context: { sessionId: 's', gameId: 'g', voteSessionId: 'v' },
     payload: { abstain: true, targetMemberId: 'm2' }
   })).ok, false);
+});
+
+test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', () => {
+  const view = {
+    room: {
+      roomId: '12345678', lifecycle: 'OPEN', workshopName: '工作坊', createdAt: 1,
+      hostMemberId: 'member-1',
+      members: [{
+        memberId: 'member-1', seatNo: 1, nickName: '房主', avatarRef: null,
+        avatarIndex: null, color: '#5EC159', joinedAt: 1
+      }]
+    },
+    session: {
+      sessionId: 'session-1', ordinal: 1, status: 'RUNNING', mode: 'HALLI_GALLI',
+      participants: [{
+        memberId: 'member-1', seatNoAtStart: 1, status: 'ACTIVE', nickName: '房主',
+        avatarRef: null, avatarIndex: null, color: '#5EC159'
+      }],
+      setup: {
+        scenarioSource: 'OFFLINE', scenario: null, proposedFirstMemberId: 'member-1',
+        selectedProblem: null, designProblems: []
+      },
+      workflow: { step: 'HALLI_ACTIVITY' }, progress: {},
+      publicModeState: { firstMemberId: 'member-1', submittedMemberIds: [], ideas: [] },
+      activeTurn: null, activeArtifacts: [], recentMessages: [], turnSummaries: [], result: null
+    },
+    actor: {
+      memberId: 'member-1', role: 'HOST', seatNo: 1, isParticipant: true,
+      contributionStatus: { submitted: false }, scoreStatus: { submitted: false },
+      voteStatus: { submitted: false }, privateModeState: null,
+      capabilities: { END_HALLI_ACTIVITY: { allowed: true, reason: null } }
+    },
+    route: { name: 'halliGame', params: {} }
+  };
+  assert.equal(validateMemberView(view, '12345678'), true);
+
+  const missingCases = [
+    ['room.members', (copy) => { delete copy.room.members; }],
+    ['room.hostMemberId', (copy) => { delete copy.room.hostMemberId; }],
+    ['actor.scoreStatus', (copy) => { delete copy.actor.scoreStatus; }],
+    ['actor.isParticipant', (copy) => { delete copy.actor.isParticipant; }],
+    ['session.setup.designProblems', (copy) => { delete copy.session.setup.designProblems; }],
+    ['session.activeTurn', (copy) => { delete copy.session.activeTurn; }],
+    ['session.result', (copy) => { delete copy.session.result; }]
+  ];
+  missingCases.forEach(([label, mutate]) => {
+    const copy = JSON.parse(JSON.stringify(view));
+    mutate(copy);
+    assert.equal(validateMemberView(copy, '12345678'), false, `${label} 缺失时必须拒绝`);
+  });
 });

@@ -1,6 +1,6 @@
 'use strict';
 
-const { MODE, WORKFLOW_STEP } = require('../../packages/room-contracts/index');
+const { PROTOCOL_VERSION, MODE, WORKFLOW_STEP } = require('../../packages/room-contracts/index');
 
 const PARTNER_CLOSING_STEPS = new Set([
   WORKFLOW_STEP.PARTNER_CLOSING_VOTE,
@@ -207,7 +207,7 @@ function projectPageSnapshot(view, clientState) {
   const clockOffsetMs = Number(state.serverClockOffsetMs) || 0;
   const members = pageMembers(view, state.historical);
   const roomState = {
-    protocolVersion: 3,
+    protocolVersion: PROTOCOL_VERSION,
     revision: state.seq || 0,
     stateVersion: state.stateVersion || 0,
     lifecycle: view.room.lifecycle,
@@ -241,7 +241,11 @@ function projectPageSnapshot(view, clientState) {
     roomState.partnerSilentStartedAt = turn && clientClockTimestamp(turn.silentStartedAt, clockOffsetMs);
     const silentSignal = state.ephemeral && state.ephemeral.signals
       && state.ephemeral.signals.PARTNER_SILENT_SOUND;
-    roomState.partnerSilentSoundLevel = silentSignal ? silentSignal.value : 0;
+    const signalInCurrentScope = !!(silentSignal && turn
+      && silentSignal.sessionId === session.sessionId
+      && silentSignal.turnId === turn.turnId
+      && Number(silentSignal.expiresAt) > serverNow);
+    roomState.partnerSilentSoundLevel = signalInCurrentScope ? silentSignal.value : 0;
     roomState.partnerClosingStep = closing && closing.stage;
     roomState.closingVoteSessionId = closing && closing.closingVoteSessionId;
     roomState.closingVoteInitiatorIndex = closing && memberSeat(view, closing.initiatorMemberId);
@@ -274,7 +278,7 @@ function projectPageSnapshot(view, clientState) {
   }
   const result = {
     ok: true,
-    protocolVersion: 3,
+    protocolVersion: PROTOCOL_VERSION,
     roomId: view.room.roomId,
     revision: state.seq || 0,
     stateVersion: state.stateVersion || 0,
@@ -295,8 +299,6 @@ function projectPageSnapshot(view, clientState) {
     view,
     ephemeral: state.ephemeral || {}
   };
-  // legacy 页面仍读取 raw，但不能形成循环引用，否则 setData/日志序列化会失败。
-  result.raw = { ...result };
   return result;
 }
 

@@ -3,7 +3,9 @@
 const crypto = require('crypto');
 const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, EVENT_TYPES, ERR,
-  fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString
+  fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString,
+  validatePublicViewPatch, validateActorViewPatch, MAX_SESSION_DOCUMENT_BYTES,
+  MAX_SYNC_RESPONSE_BYTES
 } = require('@cardboard/room-contracts');
 const { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require('@cardboard/room-domain');
 const {
@@ -89,18 +91,6 @@ function buildEventGroup(envelope, domainEvents, room, beforeAggregate, afterAgg
 
 const KNOWN_EVENT_TYPES = new Set(Object.values(EVENT_TYPES));
 
-function validPatch(patch) {
-  const validPath = (path) => typeof path === 'string' && path.length > 0 && path.length <= 512
-    && (path === '$' || path.split('.').every((part) => part
-      && !['__proto__', 'prototype', 'constructor'].includes(part)));
-  return !!patch && Array.isArray(patch.set) && patch.set.length <= 512
-    && Array.isArray(patch.remove) && patch.remove.length <= 512
-    && patch.set.every((item) => item && typeof item === 'object'
-      && Object.keys(item).every((key) => key === 'path' || key === 'value') && validPath(item.path)
-      && Object.prototype.hasOwnProperty.call(item, 'value'))
-    && patch.remove.every(validPath);
-}
-
 function validEventGroup(eventGroup) {
   const projections = eventGroup && eventGroup.actorProjections;
   const recipients = Array.isArray(projections)
@@ -116,10 +106,11 @@ function validEventGroup(eventGroup) {
     && eventGroup.publicEvents.length <= 32
     && eventGroup.publicEvents.every((item) => item && Object.keys(item).length === 1
       && KNOWN_EVENT_TYPES.has(item.type))
-    && validPatch(eventGroup.publicPatch)
+    && validatePublicViewPatch(eventGroup.publicPatch)
     && Array.isArray(projections)
     && projections.length <= 6
-    && projections.every((item) => item && isOpaqueId(item.recipientMemberId) && validPatch(item.actorPatch))
+    && projections.every((item) => item && isOpaqueId(item.recipientMemberId)
+      && validateActorViewPatch(item.actorPatch))
     && new Set(recipients).size === recipients.length;
 }
 
@@ -146,6 +137,34 @@ function createRoomApplication(repo, options) {
   if (!repo || typeof repo.transactCommand !== 'function') throw new Error('RoomRepository required');
   const appOptions = options || {};
   const now = () => Number(typeof appOptions.now === 'function' ? appOptions.now() : (appOptions.now || Date.now()));
+  const requestedSessionLimit = Number(appOptions.maxSessionDocumentBytes);
+  const sessionDocumentByteLimit = Number.isFinite(requestedSessionLimit) && requestedSessionLimit > 0
+    ? Math.min(MAX_SESSION_DOCUMENT_BYTES, requestedSessionLimit)
+    : MAX_SESSION_DOCUMENT_BYTES;
+
+  function validateSessionDocumentSize(aggregate) {
+    const documents = [];
+    if (aggregate && aggregate.currentSession) {
+      documents.push({ ...aggregate.currentSession, roomId: aggregate.room.roomId,
+        facts: aggregate.facts || {} });
+    }
+    if (aggregate && aggregate.archivedSession) {
+      documents.push({ ...aggregate.archivedSession, roomId: aggregate.room.roomId,
+        facts: aggregate.archivedFacts || {} });
+    }
+    for (const document of documents) {
+      let bytes;
+      try {
+        bytes = Buffer.byteLength(JSON.stringify(document), 'utf8');
+      } catch (error) {
+        return fail(ERR.INTERNAL_ERROR, '场次数据无法序列化');
+      }
+      if (bytes > sessionDocumentByteLimit) {
+        return fail(ERR.LIMIT_EXCEEDED, '当前场次数据已达到存储上限，请结束场次');
+      }
+    }
+    return null;
+  }
 
   async function touchActivity(roomId, memberId, actorContext) {
     if (!actorContext || actorContext.touchPresence !== true || !isOpaqueId(actorContext.deviceSessionId)
@@ -159,11 +178,28 @@ function createRoomApplication(repo, options) {
     }
   }
 
+  function signalScopeFromSession(aggregate) {
+    if (!aggregate || !aggregate.room || !aggregate.currentSession) return null;
+    const session = aggregate.currentSession;
+    const turn = session.modeState && session.modeState.partner && session.modeState.partner.activeTurn;
+    if (session.mode !== 'PARTNER' || !turn || !turn.silentDeadlineAt) return null;
+    return { sessionId: session.sessionId, turnId: turn.turnId,
+      memberId: turn.activeMemberId, deadlineAt: turn.silentDeadlineAt };
+  }
+
+  function signalScope(aggregate) {
+    return signalScopeFromSession(aggregate)
+      || (aggregate && !aggregate.currentSession && aggregate.room && aggregate.room.signalScope)
+      || null;
+  }
+
   async function ephemeral(roomId, aggregate) {
-    const [rows, signalRows] = await Promise.all([
-      typeof repo.listPresence === 'function' ? repo.listPresence(roomId).catch(() => []) : [],
-      typeof repo.listSignals === 'function' ? repo.listSignals(roomId).catch(() => []) : []
+    const [presenceResult, signalResult] = await Promise.allSettled([
+      typeof repo.listPresence === 'function' ? repo.listPresence(roomId) : Promise.resolve([]),
+      typeof repo.listSignals === 'function' ? repo.listSignals(roomId) : Promise.resolve([])
     ]);
+    const rows = presenceResult.status === 'fulfilled' ? presenceResult.value : [];
+    const signalRows = signalResult.status === 'fulfilled' ? signalResult.value : [];
     const cutoff = now() - (appOptions.presenceTtlMs || PRESENCE_TTL_MS);
     const currentMemberIds = new Set((aggregate && aggregate.room && aggregate.room.members || [])
       .map((member) => member.memberId));
@@ -174,27 +210,24 @@ function createRoomApplication(repo, options) {
       }
     });
     const signals = {};
-    const activeTurn = aggregate && aggregate.currentSession
-      && aggregate.currentSession.modeState && aggregate.currentSession.modeState.partner
-      && aggregate.currentSession.modeState.partner.activeTurn;
+    const scope = signalScope(aggregate);
     (signalRows || []).filter((row) => {
       if (Number(row.expiresAt) <= now()) return false;
       if (row.signalType !== 'PARTNER_SILENT_SOUND') return true;
-      if (!aggregate || !aggregate.room || row.sessionId !== aggregate.room.currentSessionId) return false;
-      // 增量查询只加载轻量 Room；Snapshot 有完整 Session 时再校验 Turn。
-      if (!aggregate.currentSession) return true;
-      return !!(activeTurn
-        && row.sessionId === aggregate.currentSession.sessionId
-        && row.turnId === activeTurn.turnId
-        && row.memberId === activeTurn.activeMemberId
-        && Number(activeTurn.silentDeadlineAt) > now());
+      return !!(scope
+        && row.sessionId === scope.sessionId
+        && row.turnId === scope.turnId
+        && row.memberId === scope.memberId
+        && Number(scope.deadlineAt) > now());
     }).forEach((row) => {
       if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
         signals[row.signalType] = { value: clone(row.value), memberId: row.memberId,
+          sessionId: row.sessionId, turnId: row.turnId,
           updatedAt: row.updatedAt, expiresAt: row.expiresAt };
       }
     });
-    return { presenceByMemberId: byMemberId, signals };
+    return { presenceByMemberId: byMemberId, signals,
+      stale: { presence: presenceResult.status === 'rejected', signals: signalResult.status === 'rejected' } };
   }
 
   function mergeTouchedPresence(projectedEphemeral, touched) {
@@ -236,6 +269,30 @@ function createRoomApplication(repo, options) {
       serverTime: now(),
       minAvailableSeq: aggregate.minAvailableSeq == null ? 1 : aggregate.minAvailableSeq
     });
+  }
+
+  async function writeSignal(input, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    const roomId = String(input && input.roomId || '');
+    const sessionId = String(input && input.sessionId || '');
+    const turnId = String(input && input.turnId || '');
+    const signalType = String(input && input.signalType || '');
+    const rawValue = input && input.value;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId)
+      || signalType !== 'PARTNER_SILENT_SOUND'
+      || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+      return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+    }
+    if (typeof repo.upsertSignal !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
+    const result = await repo.upsertSignal({ roomId, actorUserId, sessionId, turnId, signalType,
+      value: Math.min(1, Math.max(0, rawValue)), now: now() });
+    if (!result || result.ok !== true) {
+      return fail(result && result.errCode || ERR.INVALID_TRANSITION,
+        result && result.errMsg || '当前不能发布静默声贝');
+    }
+    await touchActivity(roomId, result.signal.memberId, actorContext);
+    return okResult({ signal: result.signal });
   }
 
   async function readSessionSnapshot(roomId, sessionId, actorContext) {
@@ -357,7 +414,7 @@ function createRoomApplication(repo, options) {
     const baseSeq = Number(afterSeq);
     if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, 'afterSeq 必须是非负整数');
     const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
-    const bundle = await repo.readSyncState(roomId, baseSeq, MAX_SYNC_BACKLOG + 1);
+    const bundle = await repo.readSyncState(roomId, baseSeq, limit);
     const room = bundle && (bundle.room || (bundle.aggregate && bundle.aggregate.room));
     const authAggregate = room ? { room, currentSession: null, facts: {} } : null;
     const auth = authorizeRoomRead(authAggregate, actorUserId);
@@ -384,8 +441,23 @@ function createRoomApplication(repo, options) {
         return okResult({ ...base, snapshotRequired: true });
       }
     }
-    const selected = available.slice(0, limit);
-    if (selected.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) {
+    const candidates = available.slice(0, limit);
+    if (candidates.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) {
+      await activityPromise;
+      return okResult({ ...base, snapshotRequired: true });
+    }
+    const selected = [];
+    let eventBytes = 0;
+    // 为响应骨架与最终批次的 Presence/Signal 留出固定余量。
+    const eventByteBudget = MAX_SYNC_RESPONSE_BYTES - (16 * 1024);
+    for (const eventGroup of candidates) {
+      const projected = projectEventGroupForMember(eventGroup, auth.member.memberId);
+      const projectedBytes = Buffer.byteLength(stableStringify(projected), 'utf8');
+      if (eventBytes + projectedBytes > eventByteBudget) break;
+      selected.push(projected);
+      eventBytes += projectedBytes;
+    }
+    if (candidates.length && !selected.length) {
       await activityPromise;
       return okResult({ ...base, snapshotRequired: true });
     }
@@ -401,8 +473,7 @@ function createRoomApplication(repo, options) {
     } else {
       await activityPromise;
     }
-    const events = selected.map((eventGroup) => projectEventGroupForMember(eventGroup, auth.member.memberId));
-    return okResult({ ...base, throughSeq, hasMore, events,
+    return okResult({ ...base, throughSeq, hasMore, events: selected,
       ephemeral: projectedEphemeral, serverTime: now() });
   }
 
@@ -448,6 +519,10 @@ function createRoomApplication(repo, options) {
           wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => effectiveRoomId } });
       if (!domain.ok) return { accepted: false, error: domain };
       const next = domain.aggregate;
+      const storageError = validateSessionDocumentSize(next);
+      if (storageError) return { accepted: false, error: storageError };
+      // SignalScope 是 Room 上的轻量派生投影，与 Session 在同一事务中更新。
+      next.room.signalScope = signalScopeFromSession(next);
       const afterPublic = projectPublicView(next);
       const eventGroup = buildEventGroup(envelope, domain.events, next.room, current, next,
         beforePublic, afterPublic, commandNow);
@@ -484,170 +559,22 @@ function createRoomApplication(repo, options) {
     if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
       response.sync = { snapshotRequired: true, roomId: outcome.roomId };
     } else if (![COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
-      response.sync = await sync(outcome.roomId, envelope.knownSeq, { ...actorContext, touchPresence: false });
+      try {
+        response.sync = await sync(outcome.roomId, envelope.knownSeq,
+          { ...actorContext, touchPresence: false });
+      } catch (syncError) {
+        // Command 已原子提交后，附带同步失败不能把成功伪装成写失败，否则客户端可能换 ID 重复提交。
+        response.sync = { ok: true, protocolVersion: PROTOCOL_VERSION,
+          viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: EVENT_SCHEMA_VERSION,
+          snapshotRequired: true, roomId: outcome.roomId };
+      }
     }
     return response;
   }
 
   return { executeCommand, readCurrentRoom, readSnapshot, readSessionSnapshot,
-    readHistory, readLeaderboard, readMessages, sync };
+    readHistory, readLeaderboard, readMessages, sync, writeSignal };
 }
 
-function createInMemoryRoomRepository(options) {
-  const rooms = new Map();
-  const actions = new Map();
-  const events = new Map();
-  const activeRooms = new Map();
-  const presence = new Map();
-  const signals = new Map();
-  const sessions = new Map();
-  const sessionRooms = new Map();
-  let seq = 10000000;
-  const copy = (value) => clone(value);
-  const receiptKey = (scopeKey, commandId) => `${scopeKey}:${commandId}`;
-  const usersOf = (aggregate) => {
-    if (!aggregate || aggregate.room.lifecycle !== 'OPEN') return [];
-    return (aggregate.room.members || []).map((member) => ({ userId: member.userId,
-      roomId: aggregate.room.roomId, memberId: member.memberId }));
-  };
-
-  return {
-    rooms, actions, events, activeRooms, presence, signals, sessions,
-    generateRoomId(commandId, actorUserId, attempt) {
-      if (options && typeof options.generateRoomId === 'function') return options.generateRoomId(commandId, actorUserId, attempt || 0);
-      seq += 1;
-      return String(seq);
-    },
-    async transactCommand(input, handler) {
-      const key = receiptKey(input.scopeKey, input.commandId);
-      const existing = actions.get(key);
-      if (existing) {
-        const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
-        return conflict ? { conflict: true } : { replayed: true, receipt: copy(existing) };
-      }
-      let resolvedRoomId = input.roomId;
-      if (input.type === COMMAND_TYPES.CREATE_ROOM) {
-        resolvedRoomId = (input.roomIdCandidates || [input.roomId]).find((candidate) => !rooms.has(candidate)) || null;
-      }
-      let activeRoomId = activeRooms.get(input.actorUserId) || null;
-      if (activeRoomId) {
-        const activeAggregate = rooms.get(activeRoomId);
-        const activeMember = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
-          && memberByUserId(activeAggregate.room, input.actorUserId);
-        if (!activeMember) {
-          // 命令事务可修复悬挂唯一索引，避免用户永久无法创建或加入房间。
-          activeRooms.delete(input.actorUserId);
-          activeRoomId = null;
-        }
-      }
-      const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
-      const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
-      const activityAggregate = [decision.accepted && decision.aggregate, current,
-        activeRoomId && rooms.get(activeRoomId)].find((candidate) => candidate && candidate.room
-          && memberByUserId(candidate.room, input.actorUserId)) || null;
-      const activityMember = activityAggregate && activityAggregate.room
-        && memberByUserId(activityAggregate.room, input.actorUserId);
-      const receipt = { scopeKey: input.scopeKey, commandId: input.commandId, actorUserId: input.actorUserId,
-        roomId: resolvedRoomId, type: input.type, requestHash: input.requestHash, accepted: decision.accepted === true,
-        outcome: copy(decision.outcome || null), error: copy(decision.error || null),
-        activityRoomId: activityAggregate && activityAggregate.room && activityAggregate.room.roomId || null,
-        memberId: activityMember && activityMember.memberId || null,
-        committedThroughSeq: decision.outcome && decision.outcome.committedThroughSeq || null,
-        createdAt: input.createdAt };
-      if (decision.accepted) {
-        const beforeUsers = usersOf(current);
-        const afterUsers = usersOf(decision.aggregate);
-        rooms.set(resolvedRoomId, copy(decision.aggregate));
-        if (decision.aggregate.currentSession) {
-          sessions.set(decision.aggregate.currentSession.sessionId, copy({
-            ...decision.aggregate.currentSession,
-            facts: decision.aggregate.facts
-          }));
-          sessionRooms.set(decision.aggregate.currentSession.sessionId, resolvedRoomId);
-        }
-        if (decision.archivedSession) {
-          sessions.set(decision.archivedSession.sessionId, copy({
-            ...decision.archivedSession,
-            facts: decision.archivedFacts || {}
-          }));
-          sessionRooms.set(decision.archivedSession.sessionId, resolvedRoomId);
-        }
-        (decision.events || []).forEach((item) => {
-          if (!events.has(resolvedRoomId)) events.set(resolvedRoomId, []);
-          events.get(resolvedRoomId).push(copy(item));
-        });
-        const afterIds = new Set(afterUsers.map((item) => item.userId));
-        beforeUsers.filter((item) => !afterIds.has(item.userId)).forEach((item) => activeRooms.delete(item.userId));
-        afterUsers.forEach((item) => activeRooms.set(item.userId, item.roomId));
-      }
-      actions.set(key, copy(receipt));
-      return { replayed: false, receipt: copy(receipt) };
-    },
-    async findActiveRoom(userId) {
-      const roomId = activeRooms.get(userId);
-      if (!roomId) return null;
-      const aggregate = rooms.get(roomId);
-      const member = aggregate && aggregate.room.lifecycle === 'OPEN' && memberByUserId(aggregate.room, userId);
-      if (!member) {
-        activeRooms.delete(userId);
-        return null;
-      }
-      return { roomId, memberId: member.memberId };
-    },
-    async readAggregate(roomId) {
-      if (!rooms.has(roomId)) return null;
-      const aggregate = copy(rooms.get(roomId));
-      const firstEvent = (events.get(roomId) || [])[0];
-      aggregate.minAvailableSeq = firstEvent ? firstEvent.seq : aggregate.room.eventSeq + 1;
-      return aggregate;
-    },
-    async readSessionAggregate(roomId, sessionId) {
-      const stored = rooms.get(roomId);
-      const sessionDocument = sessions.get(sessionId)
-        || (stored && stored.currentSession && stored.currentSession.sessionId === sessionId
-          && { ...stored.currentSession, facts: stored.facts });
-      const session = sessionDocument && copy(sessionDocument);
-      if (!stored || !session || (sessionRooms.has(sessionId) && sessionRooms.get(sessionId) !== roomId)) return null;
-      const facts = copy(session.facts || {});
-      delete session.facts;
-      return copy({ room: stored.room, currentSession: session, facts });
-    },
-    async listSessions(roomId, requestOptions) {
-      const before = Number(requestOptions && requestOptions.beforeOrdinal);
-      const limit = Number(requestOptions && requestOptions.limit) || 20;
-      return copy([...sessions.values()].filter((session) => sessionRooms.get(session.sessionId) === roomId
-        && ['COMPLETED', 'CANCELLED'].includes(session.status)
-        && (!Number.isInteger(before) || session.ordinal < before))
-        .sort((a, b) => b.ordinal - a.ordinal).slice(0, limit + 1));
-    },
-    async listMessages(roomId, sessionId, requestOptions) {
-      const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
-      const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);
-      const limit = Number(requestOptions && requestOptions.limit) || 100;
-      const sessionDocument = sessions.get(sessionId);
-      return copy(((sessionDocument && sessionDocument.facts && sessionDocument.facts.messages) || [])
-        .filter((item) => item.sessionId === sessionId
-          && (beforeSeq == null || item.commitSeq < beforeSeq))
-        .sort((a, b) => b.commitSeq - a.commitSeq)
-        .slice(0, limit + 1));
-    },
-    async readSyncState(roomId, afterSeq, limit) {
-      const aggregate = rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
-      const roomEvents = events.get(roomId) || [];
-      if (aggregate) aggregate.minAvailableSeq = roomEvents.length
-        ? roomEvents[0].seq : aggregate.room.eventSeq + 1;
-      return { aggregate,
-        events: copy(roomEvents.filter((item) => item.seq > afterSeq).slice(0, limit)) };
-    },
-    async upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
-      const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };
-      presence.set(`${roomId}:${memberId}:${row.deviceSessionId}`, row);
-      return copy(row);
-    },
-    async listPresence(roomId) { return copy([...presence.values()].filter((item) => item.roomId === roomId)); },
-    async listSignals(roomId) { return copy([...signals.values()].filter((item) => item.roomId === roomId)); }
-  };
-}
-
-module.exports = { createRoomApplication, createInMemoryRoomRepository, hash, deriveCommandSeed,
+module.exports = { createRoomApplication, hash, deriveCommandSeed,
   deterministicRandom, deterministicIds, markCommittedFacts, validEventGroup };

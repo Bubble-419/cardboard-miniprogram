@@ -151,7 +151,7 @@ async function fetchHttpsFallback(fileIds) {
   applyTempFileList(pending, fileList);
 }
 
-async function fetchHttpsViaCloudFunction(fileIds) {
+async function fetchHttpsViaCloudFunction(fileIds, options = {}) {
   const pending = (fileIds || []).filter((id) => id && !cacheValid(cache.get(id)));
   if (!pending.length) return;
   await waitCloudReady();
@@ -159,9 +159,13 @@ async function fetchHttpsViaCloudFunction(fileIds) {
   try {
     const { callCloudFunction } = require('./cloudApi');
     const { getRoomRequestContext } = require('../modules/room-session/index');
+    const mediaScope = {};
+    if (typeof options.roomId === 'string' && options.roomId) mediaScope.roomId = options.roomId;
+    if (typeof options.sessionId === 'string' && options.sessionId) mediaScope.sessionId = options.sessionId;
     const res = await callCloudFunction('roomMedia', {
       action: 'tempUrls',
       fileList: pending,
+      ...mediaScope,
       clientContext: getRoomRequestContext()
     });
     const result = res && (res.result || res);
@@ -204,7 +208,7 @@ async function fetchTempAndCache(fileIds, options = {}) {
   }
 
   const stillMissing = pending.filter((id) => !cacheValid(cache.get(id)));
-  if (stillMissing.length) await fetchHttpsViaCloudFunction(stillMissing);
+  if (stillMissing.length) await fetchHttpsViaCloudFunction(stillMissing, options);
 }
 
 /**

@@ -9,7 +9,8 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   getRoomPageSnapshot,
-  dispatchRoomCommand
+  dispatchRoomCommand,
+  followRoomRouteAfterCommand
 } = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
@@ -167,8 +168,8 @@ Page({
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
       followNavigation: true,
       onSnapshot(snapshot) {
-        if (snapshot && snapshot.ok && snapshot.raw) {
-          this._syncMembersFromResult(snapshot.raw);
+        if (snapshot && snapshot.ok) {
+          this._syncMembersFromResult(snapshot);
         }
       }
     }).catch((e) => console.warn('modeIndex roomSession', e));
@@ -197,7 +198,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (!id) return;
     this.setData({ selectedScenarioId: id, actionMode: 'select' });
-    this._confirmSelectedScenario();
+    return this._confirmSelectedScenario();
   },
 
   /** 新增情境入口 */
@@ -211,10 +212,9 @@ Page({
     if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     if (this.data.actionMode === 'select' && this.data.selectedScenarioId) {
-      this._confirmSelectedScenario();
-      return;
+      return this._confirmSelectedScenario();
     }
-    this._goAddScenario();
+    return this._goAddScenario();
   },
 
   async _goAddScenario() {
@@ -267,7 +267,8 @@ Page({
             wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
             return;
           }
-          return;
+          await followRoomRouteAfterCommand(result, roomId);
+          return null;
         }
 
         if (!scenario.bg) {
@@ -298,7 +299,8 @@ Page({
           wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
           return;
         }
-        return;
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._navPending = false;
       }

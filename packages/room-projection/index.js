@@ -1,7 +1,8 @@
 'use strict';
 
 const {
-  COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, WORKFLOW_GROUPS, LIFECYCLE, SPY_VOTE_DURATION_MS
+  COMMAND_TYPES, MODE, SESSION_STATUS, WORKFLOW_STEP, WORKFLOW_GROUPS, LIFECYCLE, SPY_VOTE_DURATION_MS,
+  MAX_SESSION_MESSAGES, MAX_SESSION_ARTIFACTS, MAX_PARTNER_TURNS
 } = require('../room-contracts/index');
 
 function clone(value) {
@@ -221,7 +222,7 @@ function projectPublicView(aggregate) {
       currentSpeakerMemberId: spy.speakOrder && spy.currentSpeakerIndex < spy.speakOrder.length
         ? spy.speakOrder[spy.currentSpeakerIndex]
         : null,
-      voteSessionId: spy.voteProgress && spy.voteProgress.voteSessionId,
+      voteSessionId: spy.voteProgress ? (spy.voteProgress.voteSessionId || null) : null,
       votedCount: spy.voteProgress ? spy.voteProgress.submittedMemberIds.length : 0,
       requiredVoteCount: spy.voteProgress ? spy.voteProgress.requiredMemberIds.length : 0,
       voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
@@ -253,6 +254,9 @@ function projectCapabilities(aggregate, actor) {
   const isHost = !!(actor && actor.memberId === aggregate.room.hostMemberId);
   const partner = currentPartner(aggregate);
   const turn = partner && partner.activeTurn;
+  const facts = aggregate.facts || {};
+  const canAppendArtifact = Object.keys(facts.artifacts || {}).length < MAX_SESSION_ARTIFACTS;
+  const canPostMessage = (facts.messages || []).length < MAX_SESSION_MESSAGES;
   const isActorTurn = !!(turn && actor && turn.activeMemberId === actor.memberId);
   const caps = {};
   Object.values(COMMAND_TYPES).forEach((type) => { caps[type] = capability(false, 'INVALID_TRANSITION'); });
@@ -302,14 +306,19 @@ function projectCapabilities(aggregate, actor) {
   const closingArtifactStage = isHost && !!(partner && partner.closing)
     && [WORKFLOW_STEP.PARTNER_CLOSING_RUNE, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW].includes(step);
   const canMutateArtifact = activeArtifactStage || closingArtifactStage;
-  caps[COMMAND_TYPES.APPEND_ARTIFACT] = capability(activeArtifactAppendStage || closingArtifactStage, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.APPEND_ARTIFACT] = capability(
+    canAppendArtifact && (activeArtifactAppendStage || closingArtifactStage),
+    canAppendArtifact ? 'INVALID_TRANSITION' : 'LIMIT_EXCEEDED'
+  );
   caps[COMMAND_TYPES.UPDATE_ARTIFACT] = capability(canMutateArtifact, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.REMOVE_ARTIFACT] = capability(canMutateArtifact, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.SUBMIT_PARTNER_SCORE] = capability(isParticipant && !!turn && !isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN, isActorTurn ? 'SELF_SCORE' : 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.POST_PARTNER_MESSAGE] = capability(isParticipant && !!turn && ((step === WORKFLOW_STEP.PARTNER_TURN && !isActorTurn) || step === WORKFLOW_STEP.PARTNER_STATEMENT), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.POST_PARTNER_MESSAGE] = capability(canPostMessage && isParticipant && !!turn
+    && ((step === WORKFLOW_STEP.PARTNER_TURN && !isActorTurn) || step === WORKFLOW_STEP.PARTNER_STATEMENT),
+  canPostMessage ? 'INVALID_TRANSITION' : 'LIMIT_EXCEEDED');
   caps[COMMAND_TYPES.START_PARTNER_STATEMENT] = capability(isHost && step === WORKFLOW_STEP.PARTNER_TURN
-    && !!turn && progressComplete(turn.scoreProgress),
-  'INVALID_TRANSITION');
+    && !!turn && turn.ordinal < MAX_PARTNER_TURNS && progressComplete(turn.scoreProgress),
+  turn && turn.ordinal >= MAX_PARTNER_TURNS ? 'LIMIT_EXCEEDED' : 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN
@@ -439,7 +448,7 @@ function projectActorPatches(beforeAggregate, afterAggregate) {
     const before = projectActorEnvelope(beforeAggregate, member.userId);
     const after = projectActorEnvelope(afterAggregate, member.userId);
     const patch = createPublicPatch(before, after);
-    return patch.set.length || patch.remove.length
+    return patch.set.length || patch.remove.length || patch.splice.length
       ? { recipientMemberId: member.memberId, actorPatch: patch }
       : null;
   }).filter(Boolean);
@@ -448,8 +457,25 @@ function projectActorPatches(beforeAggregate, afterAggregate) {
 function createPublicPatch(before, after) {
   const set = [];
   const remove = [];
+  const splice = [];
   function walk(left, right, path) {
     if (JSON.stringify(left) === JSON.stringify(right)) return;
+    if (Array.isArray(left) && Array.isArray(right) && path) {
+      let prefix = 0;
+      while (prefix < left.length && prefix < right.length
+        && JSON.stringify(left[prefix]) === JSON.stringify(right[prefix])) prefix += 1;
+      let suffix = 0;
+      while (suffix < left.length - prefix && suffix < right.length - prefix
+        && JSON.stringify(left[left.length - 1 - suffix])
+          === JSON.stringify(right[right.length - 1 - suffix])) suffix += 1;
+      splice.push({
+        path,
+        index: prefix,
+        deleteCount: left.length - prefix - suffix,
+        items: clone(right.slice(prefix, right.length - suffix))
+      });
+      return;
+    }
     const bothObjects = left && right && typeof left === 'object' && typeof right === 'object'
       && !Array.isArray(left) && !Array.isArray(right);
     if (!bothObjects) { set.push({ path: path || '$', value: clone(right) }); return; }
@@ -462,7 +488,7 @@ function createPublicPatch(before, after) {
     });
   }
   walk(before, after, '');
-  return { set, remove };
+  return { set, remove, splice };
 }
 
 function setPath(target, path, value) {
@@ -487,12 +513,24 @@ function removePath(target, path) {
   if (cursor && typeof cursor === 'object') delete cursor[parts[parts.length - 1]];
 }
 
+function splicePath(target, operation) {
+  const parts = operation.path.split('.');
+  let cursor = target;
+  for (let i = 0; i < parts.length; i += 1) {
+    if (!cursor || typeof cursor !== 'object') return;
+    cursor = cursor[parts[i]];
+  }
+  if (!Array.isArray(cursor)) return;
+  cursor.splice(operation.index, operation.deleteCount, ...clone(operation.items));
+}
+
 function applyPublicPatch(view, patch) {
   let next = clone(view || {});
   const operations = patch && Array.isArray(patch.set) ? patch.set : [];
   operations.slice().sort((a, b) => a.path.split('.').length - b.path.split('.').length)
     .forEach((operation) => { next = setPath(next, operation.path, operation.value); });
   ((patch && patch.remove) || []).forEach((path) => removePath(next, path));
+  ((patch && patch.splice) || []).forEach((operation) => splicePath(next, operation));
   return next;
 }
 

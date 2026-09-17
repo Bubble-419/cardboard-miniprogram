@@ -211,7 +211,7 @@ stateDiagram-v2
   HALLI_SUMMARY --> COMPLETED: COMPLETE_HALLI_SESSION
 ```
 
-Halli 的线下卡牌活动本身不按每次翻牌写入云端；V3 只同步活动阶段、首位参与者、创意提交进度和汇总结果。
+Halli 的线下卡牌活动本身不按每次翻牌写入云端；V3 只同步活动阶段、首位参与者、创意提交进度和汇总结果。进入 `HALLI_ACTIVITY` 时线下游戏已经开始，活动页保留原业务操作“结束游戏”；该操作提交 `END_HALLI_ACTIVITY` 后，所有成员依据新的 `view.route` 进入创意阶段。
 
 ```mermaid
 flowchart LR
@@ -330,4 +330,35 @@ flowchart LR
   ACTOR --> ROUTE --> PAGE
 ```
 
-页面名不是业务状态。Host 和 Player 均依据 `Member View.route` 跟随流程；本地预览、弹层、输入草稿、焦点和滚动位置可以暂时覆盖导航表现，但不得反向修改权威 Workflow。
+页面名不是业务状态。Host 和 Player 均依据 `Member View.route` 跟随流程；写指令成功后若本地 View 尚未到达该指令的 `committedThroughSeq`，客户端先刷新 Snapshot，再跟随权威 Route，不猜测下一页面。本地预览、弹层、输入草稿、焦点和滚动位置可以暂时覆盖导航表现，但不得反向修改权威 Workflow。
+
+## 10. 端到端验收矩阵
+
+```mermaid
+flowchart LR
+  CMD[业务 Command]
+  AGG[Aggregate @ M]
+  EVENT[Snapshot@N + Events N+1..M]
+  SNAP[Snapshot@M]
+  EQ{Member View 完全相等?}
+  UI[route + page model 可还原]
+
+  CMD --> AGG
+  AGG --> SNAP --> EQ
+  CMD --> EVENT --> EQ
+  EQ -->|是| UI
+  EQ -->|否| FAIL[测试失败]
+```
+
+| 模式/范围 | 自动化验收 |
+|---|---|
+| Halli 主链：情境、首位、活动、创意、汇总、完成 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| Partner 主链：完整配置、行动、评分、表态、换轮、收尾、排行榜 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| Spy 主链：分牌、逐人发言、投票、结算、完成 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| Halli 离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
+| Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
+| Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
+| 页面交互、路由跟随、Snapshot 恢复 | [`tests/ui`](../tests/ui)、[`v3-client.test.js`](../tests/room-client/v3-client.test.js) |
+
+每条主链在每个 Command 前保存 Snapshot，Command 后按顺序消费公共补丁和本人 Actor
+补丁，再与最新 Snapshot 做深度相等比较；同时校验完整 Member View、Route 与 Page Model。

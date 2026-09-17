@@ -231,7 +231,8 @@ test('CloudBase 高频 Sync 只读取轻量 Room 与统一事件流', async () =
   const repo = createCloudBaseRoomRepository({
     db: {
       command: { gt: () => range, lte: () => ({}) },
-      runTransaction: (callback) => callback(transaction)
+      runTransaction: async () => { throw new Error('Sync 不应启动读事务'); },
+      collection: (name) => transaction.collection(name)
     }
   });
 
@@ -239,6 +240,167 @@ test('CloudBase 高频 Sync 只读取轻量 Room 与统一事件流', async () =
   assert.equal(result.room.currentSessionId, 'session-1');
   assert.deepEqual(result.events.map((event) => event.seq), [3]);
   assert.deepEqual(accessedCollections, [COLLECTIONS.rooms, COLLECTIONS.events]);
+});
+
+test('CloudBase 高频 Sync 不开启读事务，且 Event 查询只读客户请求的批量', async () => {
+  const limits = [];
+  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 200,
+    currentSessionId: 'session-1', members: [{ userId: 'host', memberId: 'member-host' }] };
+  const db = {
+    command: { gt: () => ({ and: () => ({}) }), lte: () => ({}) },
+    async runTransaction() { throw new Error('sync 不应启动读事务'); },
+    collection(name) {
+      if (name === COLLECTIONS.rooms) {
+        return { doc: () => ({ get: async () => ({ data: room }) }) };
+      }
+      const query = {
+        where() { return query; },
+        orderBy() { return query; },
+        limit(size) { limits.push(size); return query; },
+        async get() { return { data: [] }; }
+      };
+      return query;
+    }
+  };
+  const repo = createCloudBaseRoomRepository({ db });
+
+  await repo.readSyncState('12345678', 100, 25);
+
+  assert.deepEqual(limits, [25]);
+});
+
+test('CloudBase 稳态 Sync 已追平时不再发起空 Event 查询', async () => {
+  const accessed = [];
+  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 20,
+    members: [{ userId: 'host', memberId: 'member-host' }] };
+  const db = {
+    command: { gt: () => ({ and: () => ({}) }), lte: () => ({}) },
+    runTransaction: async () => { throw new Error('sync 不应启动读事务'); },
+    collection(name) {
+      accessed.push(name);
+      if (name !== COLLECTIONS.rooms) throw new Error('已追平时不应查询 Event');
+      return { doc: () => ({ get: async () => ({ data: room }) }) };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({ db });
+
+  const result = await repo.readSyncState('12345678', 20, 100);
+
+  assert.deepEqual(result.events, []);
+  assert.deepEqual(accessed, [COLLECTIONS.rooms]);
+});
+
+test('CloudBase Presence 与 Signal 拒绝较旧请求覆盖较新时间戳', async () => {
+  const presenceId = docId('12345678:member-host:device-1');
+  const signalId = docId('12345678:PARTNER_SILENT_SOUND');
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', lifecycle: 'OPEN',
+      members: [{ userId: 'host', memberId: 'member-host' }],
+      signalScope: {
+        sessionId: 'session-1', turnId: 'turn-1', memberId: 'member-host', deadlineAt: 10000
+      }
+    }],
+    [`${COLLECTIONS.presence}:${presenceId}`, {
+      roomId: '12345678', memberId: 'member-host', deviceSessionId: 'device-1',
+      lastSeenAt: 2000, online: true
+    }],
+    [`${COLLECTIONS.signals}:${signalId}`, {
+      roomId: '12345678', signalType: 'PARTNER_SILENT_SOUND', value: 0.9,
+      memberId: 'member-host', sessionId: 'session-1', turnId: 'turn-1',
+      updatedAt: 2000, expiresAt: 5000
+    }]
+  ]);
+  const transaction = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) {
+                throw Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+              }
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { documents.set(key, data); }
+          };
+        }
+      };
+    }
+  };
+  const db = {
+    runTransaction: (callback) => callback(transaction),
+    collection: (name) => transaction.collection(name)
+  };
+  const repo = createCloudBaseRoomRepository({ db });
+
+  const presence = await repo.upsertPresence({
+    roomId: '12345678', memberId: 'member-host', deviceSessionId: 'device-1', lastSeenAt: 1000
+  });
+  const signal = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1', turnId: 'turn-1',
+    signalType: 'PARTNER_SILENT_SOUND', value: 0.1, now: 1000
+  });
+
+  assert.equal(presence.lastSeenAt, 2000);
+  assert.equal(documents.get(`${COLLECTIONS.presence}:${presenceId}`).lastSeenAt, 2000);
+  assert.equal(signal.ok, true);
+  assert.equal(signal.signal.updatedAt, 2000);
+  assert.equal(signal.signal.value, 0.9);
+  assert.equal(documents.get(`${COLLECTIONS.signals}:${signalId}`).value, 0.9);
+});
+
+test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃索引', async () => {
+  const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
+      members: [{ userId: 'host', memberId: 'member-host' }]
+    }],
+    [`${COLLECTIONS.sessions}:session-1`, {
+      roomId: '12345678', sessionId: 'session-1', status: 'RUNNING', facts: {
+        turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {}, messages: [], secrets: {}
+      }
+    }],
+    [`${COLLECTIONS.active}:${docId('host')}`, {
+      roomId: '12345678', userId: 'host', memberId: 'member-host'
+    }]
+  ]);
+  const writes = [];
+  const transaction = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) throw missing();
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { writes.push([name, id]); documents.set(key, data); },
+            async remove() { writes.push([name, id, 'remove']); documents.delete(key); }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({ db: { runTransaction: (callback) => callback(transaction) } });
+
+  await repo.transactCommand({
+    scopeKey: '12345678', commandId: 'rename-only', actorUserId: 'host', roomId: '12345678',
+    type: 'UPDATE_ROOM_PROFILE', requestHash: 'hash', createdAt: 2
+  }, ({ aggregate }) => {
+    aggregate.room.workshopName = '新名称';
+    aggregate.room.eventSeq = 2;
+    return { accepted: true, aggregate, dirtyFacts: [], events: [{ roomId: '12345678', seq: 2 }],
+      outcome: { kind: 'ACCEPTED', committedThroughSeq: 2 } };
+  });
+
+  assert.equal(writes.some(([name]) => name === COLLECTIONS.sessions), false);
+  assert.equal(writes.some(([name]) => name === COLLECTIONS.active), false);
+  assert.equal(writes.some(([name]) => name === COLLECTIONS.rooms), true);
+  assert.equal(writes.some(([name]) => name === COLLECTIONS.events), true);
 });
 
 test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', async () => {

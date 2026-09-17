@@ -1,6 +1,8 @@
 'use strict';
 
-const { COMMAND_TYPES } = require('@cardboard/room-contracts');
+const {
+  COMMAND_TYPES, MAX_SESSION_MESSAGES, MAX_SESSION_ARTIFACTS, MAX_PARTNER_TURNS
+} = require('@cardboard/room-contracts');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, memberById, assertHost, assertParticipant,
   assertSession, assertTurn, activeParticipantIds, activeParticipantsBySeat, isActiveParticipant,
@@ -145,6 +147,9 @@ function appendArtifact(aggregate, command, actor, deps) {
     return domainOk(aggregate, [event(EVENT_TYPES.ARTIFACT_APPENDED, { operationId, duplicate: true })],
       { kind: 'ACCEPTED', operationId, artifactId: existing.artifactId });
   }
+  if (Object.keys(facts.artifacts).length >= MAX_SESSION_ARTIFACTS) {
+    return fail(ERR.LIMIT_EXCEEDED, `当前场次素材已达到 ${MAX_SESSION_ARTIFACTS} 条上限`);
+  }
   const count = Object.values(facts.artifacts).filter((item) => item.turnId === command.context.turnId && item.stage === stage && !item.removed).length;
   if (count >= 200) return fail(ERR.LIMIT_EXCEEDED, '当前阶段素材已达到 200 条上限');
   const artifact = {
@@ -253,6 +258,9 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     if (!check.ok) return check;
     if (check.session.workflow.step === WORKFLOW_STEP.PARTNER_TURN && check.turn.activeMemberId === actor.memberId) return fail(ERR.INVALID_TRANSITION, '当前行动者不能发送匿名表达');
     const facts = ensureFacts(aggregate);
+    if (facts.messages.length >= MAX_SESSION_MESSAGES) {
+      return fail(ERR.LIMIT_EXCEEDED, `当前场次匿名表达已达到 ${MAX_SESSION_MESSAGES} 条上限`);
+    }
     const text = String(command.payload.text || '').trim();
     if (!text) return fail(ERR.INVALID_ARGUMENT, '表达内容不能为空');
     if (text.length > 40) return fail(ERR.LIMIT_EXCEEDED, '表达内容最多 40 字');
@@ -269,6 +277,9 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]); if (!check.ok) return check;
     if (!progressComplete(check.turn.scoreProgress)) return fail(ERR.INVALID_TRANSITION, '评分尚未完成');
+    if (check.turn.ordinal >= MAX_PARTNER_TURNS) {
+      return fail(ERR.LIMIT_EXCEEDED, `当前场次已达到 ${MAX_PARTNER_TURNS} 个行动轮，请使用收尾行动`);
+    }
     check.turn.phase = 'STATEMENT'; check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
     check.turn.silentStartedAt = null; check.turn.silentDeadlineAt = null;
     check.session.workflow.step = WORKFLOW_STEP.PARTNER_STATEMENT; check.session.workflow.phaseStartedAt = nowOf(deps);
@@ -290,7 +301,11 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]); if (!check.ok) return check;
     if (check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION, '仅当前行动者可使用');
     if (check.turn.specialUsed) return fail(ERR.INVALID_TRANSITION, '本行动轮已经使用特殊行动');
-    const kind = command.payload.kind; check.turn.specialUsed = kind;
+    const kind = command.payload.kind;
+    if (check.turn.ordinal >= MAX_PARTNER_TURNS && kind !== 'CLOSING') {
+      return fail(ERR.LIMIT_EXCEEDED, `当前场次已达到 ${MAX_PARTNER_TURNS} 个行动轮，请使用收尾行动`);
+    }
+    check.turn.specialUsed = kind;
     const events = [event(EVENT_TYPES.PARTNER_SPECIAL_USED, { turnId: check.turn.turnId, kind })];
     if (kind === 'MASTER') check.turn.masterMode = true;
     if (kind === 'SILENT') {
@@ -324,6 +339,10 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     if (closing.initiatorMemberId === actor.memberId) return fail(ERR.ALREADY_VOTED, '发起者已经自动通过');
     if (!closing.requiredMemberIds.includes(actor.memberId)) return fail(ERR.NOT_PARTICIPANT);
     if (closing.submittedMemberIds.includes(actor.memberId)) return fail(ERR.ALREADY_VOTED);
+    const activeTurn = partnerState(aggregate).activeTurn;
+    if (command.payload.vote === 'question' && activeTurn && activeTurn.ordinal >= MAX_PARTNER_TURNS) {
+      return fail(ERR.LIMIT_EXCEEDED, `当前场次已达到 ${MAX_PARTNER_TURNS} 个行动轮，请选择通过`);
+    }
     const facts = ensureFacts(aggregate); const key = `${closing.closingVoteSessionId}:${actor.memberId}`;
     facts.votes[key] = { sessionId: check.session.sessionId, voteSessionId: closing.closingVoteSessionId,
       memberId: actor.memberId, vote: command.payload.vote, createdAt: nowOf(deps) };

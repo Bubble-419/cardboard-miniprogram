@@ -57,18 +57,36 @@ function collectCloudFileRefs(value, refs = new Set()) {
   return refs;
 }
 
-async function tempUrls(fileList, actorContext) {
+async function tempUrls(fileList, actorContext, scope) {
   if (!Array.isArray(fileList) || fileList.length < 1 || fileList.length > 50
     || fileList.some((id) => typeof id !== 'string' || id.indexOf('cloud://') !== 0)) {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'fileList 不合法' };
   }
   const ids = Array.from(new Set(fileList));
-  const current = await app.readCurrentRoom(actorContext);
-  if (!current.ok) return current;
-  if (!current.roomId) {
-    return { ok: false, errCode: 'NOT_MEMBER', errMsg: '当前没有可访问的房间' };
+  const roomId = String(scope && scope.roomId || '');
+  const sessionId = String(scope && scope.sessionId || '');
+  let snapshot;
+  if (sessionId) {
+    if (!/^\d{8}$/.test(roomId) || sessionId.length > 128) {
+      return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId/sessionId 不合法' };
+    }
+    snapshot = await app.readSessionSnapshot(roomId, sessionId, {
+      ...actorContext,
+      touchPresence: false
+    });
+  } else if (roomId) {
+    if (!/^\d{8}$/.test(roomId)) {
+      return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId 不合法' };
+    }
+    snapshot = await app.readSnapshot(roomId, actorContext);
+  } else {
+    const current = await app.readCurrentRoom(actorContext);
+    if (!current.ok) return current;
+    if (!current.roomId) {
+      return { ok: false, errCode: 'NOT_MEMBER', errMsg: '当前没有可访问的房间' };
+    }
+    snapshot = await app.readSnapshot(current.roomId, { ...actorContext, touchPresence: false });
   }
-  const snapshot = await app.readSnapshot(current.roomId, { ...actorContext, touchPresence: false });
   if (!snapshot.ok) return snapshot;
   // 只允许把当前用户 MemberView 已经可见的媒体引用转换为临时 URL，避免管理员云函数越权签名任意文件。
   const allowedRefs = collectCloudFileRefs(snapshot.view);
@@ -91,7 +109,10 @@ exports.main = async (event) => {
   if (!userId) return { ok: false, errCode: 'UNAUTHENTICATED', errMsg: '未登录' };
   if (action === 'tempUrls') {
     try {
-      return await tempUrls(event && event.fileList, actorContext);
+      return await tempUrls(event && event.fileList, actorContext, {
+        roomId: event && event.roomId,
+        sessionId: event && event.sessionId
+      });
     } catch (e) {
       console.error('roomMedia tempUrls error', e);
       return { ok: false, errCode: e.code || 'INTERNAL_ERROR', errMsg: e.message || 'tempUrls failed' };

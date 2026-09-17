@@ -1484,6 +1484,14 @@ Page(withPageInteractionLock({
     return !!(this.data.isHistoryReview || this._isHistoryReview);
   },
 
+  _mediaResolveOptions() {
+    if (!this._isHistoryReviewMode()) return { roomId: this.data.roomId || '' };
+    return {
+      roomId: this.data.roomId || '',
+      sessionId: this.data.sessionId || ''
+    };
+  },
+
   _reviewCardKey(item, summaryIdx) {
     if (!item || item.round == null || item.playerIndex == null) {
       return summaryIdx != null ? `i${summaryIdx}` : '';
@@ -1777,7 +1785,7 @@ Page(withPageInteractionLock({
     if (!item) return;
     const token = (this._cloudMediaToken || 0) + 1;
     this._cloudMediaToken = token;
-    resolveRoundContentMedia(item).then((resolved) => {
+    resolveRoundContentMedia(item, this._mediaResolveOptions()).then((resolved) => {
       if (this._cloudMediaToken !== token || this._pageVisible === false) return;
       if (!resolved) return;
       const row = (this.data.displayRoundSummaries || [])[idx] || item;
@@ -1796,11 +1804,12 @@ Page(withPageInteractionLock({
     this._cloudMediaToken = token;
     const summaries = Array.isArray(displaySummaries) ? displaySummaries : [];
     const closing = Array.isArray(closingBlocks) ? closingBlocks : [];
+    const mediaOptions = this._mediaResolveOptions();
     Promise.all([
-      resolveRoundContentMedia(roundContent || {}),
-      Promise.all(summaries.map((item) => resolveRoundContentMedia(item || {}))),
+      resolveRoundContentMedia(roundContent || {}, mediaOptions),
+      Promise.all(summaries.map((item) => resolveRoundContentMedia(item || {}, mediaOptions))),
       closing.length
-        ? resolveRoundContentMedia({ playBlocks: closing })
+        ? resolveRoundContentMedia({ playBlocks: closing }, mediaOptions)
         : Promise.resolve(null)
     ]).then(([content, resolvedSummaries, closingResolved]) => {
       if (this._cloudMediaToken !== token || this._pageVisible === false) return;
@@ -1839,7 +1848,7 @@ Page(withPageInteractionLock({
     });
     if (!stillBroken) return;
     this._cloudAvatarResolving = true;
-    prepareMembersForDisplay(list)
+    prepareMembersForDisplay(list, this._mediaResolveOptions())
       .then((prepared) => {
         this._cloudAvatarResolving = false;
         if (this._pageVisible === false) return;

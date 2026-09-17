@@ -3,8 +3,14 @@
 const PROTOCOL_VERSION = 3;
 const SCHEMA_VERSION = 3;
 const VIEW_SCHEMA_VERSION = 1;
-const EVENT_SCHEMA_VERSION = 2;
+const EVENT_SCHEMA_VERSION = 3;
 const MAX_SEATS = 6;
+const MAX_SESSION_MESSAGES = 500;
+const MAX_SESSION_ARTIFACTS = 1000;
+const MAX_PARTNER_TURNS = 200;
+const MAX_SESSION_DOCUMENT_BYTES = 6 * 1024 * 1024;
+// 为 Cloud Function 响应封装、瞬时态和 JSON 元数据预留空间，事件批次控制在 512 KiB 内。
+const MAX_SYNC_RESPONSE_BYTES = 512 * 1024;
 const SPY_VOTE_DURATION_MS = 2 * 60 * 1000;
 
 const LIFECYCLE = Object.freeze({ OPEN: 'OPEN', DISSOLVED: 'DISSOLVED' });
@@ -414,7 +420,155 @@ function stableStringify(value) {
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
 }
 
+function validPatchPath(path) {
+  return typeof path === 'string' && path.length > 0 && path.length <= 512
+    && (path === '$' || path.split('.').every((part) => part
+      && !['__proto__', 'prototype', 'constructor'].includes(part)));
+}
+
+function validatePatch(value) {
+  if (!isRecord(value)
+    || Object.keys(value).some((key) => !['set', 'remove', 'splice'].includes(key))
+    || !Array.isArray(value.remove) || value.remove.length > 512
+    || !Array.isArray(value.set) || value.set.length > 512
+    || !Array.isArray(value.splice) || value.splice.length > 512) return false;
+  return value.set.every((item) => isRecord(item)
+      && Object.keys(item).every((key) => key === 'path' || key === 'value')
+      && Object.prototype.hasOwnProperty.call(item, 'value')
+      && validPatchPath(item.path))
+    && value.remove.every(validPatchPath)
+    && value.splice.every((item) => isRecord(item)
+      && Object.keys(item).every((key) => ['path', 'index', 'deleteCount', 'items'].includes(key))
+      && item.path !== '$' && validPatchPath(item.path)
+      && Number.isInteger(item.index) && item.index >= 0
+      && Number.isInteger(item.deleteCount) && item.deleteCount >= 0
+      && Array.isArray(item.items) && item.items.length <= MAX_SESSION_ARTIFACTS);
+}
+
+function patchStaysWithin(value, roots) {
+  if (!validatePatch(value)) return false;
+  const allowed = new Set(roots);
+  const validOperation = (path, setValue) => {
+    if (path !== '$') return allowed.has(path.split('.')[0]);
+    return isRecord(setValue) && Object.keys(setValue).every((key) => allowed.has(key));
+  };
+  return value.set.every((item) => validOperation(item.path, item.value))
+    && value.remove.every((path) => path !== '$' && validOperation(path))
+    && value.splice.every((item) => validOperation(item.path));
+}
+
+function validatePublicViewPatch(value) {
+  return patchStaysWithin(value, ['room', 'session']);
+}
+
+function validateActorViewPatch(value) {
+  return patchStaysWithin(value, ['actor', 'route']);
+}
+
+function validNullableString(value) {
+  return value == null || typeof value === 'string';
+}
+
+function validProjectedMember(member) {
+  return isRecord(member)
+    && isNonEmptyString(member.memberId)
+    && Number.isInteger(member.seatNo) && member.seatNo >= 1 && member.seatNo <= MAX_SEATS
+    && isNonEmptyString(member.nickName)
+    && validNullableString(member.avatarRef)
+    && (member.avatarIndex == null || (Number.isInteger(member.avatarIndex) && member.avatarIndex >= 0))
+    && typeof member.color === 'string'
+    && Number.isFinite(member.joinedAt);
+}
+
+function validProjectedParticipant(participant) {
+  return isRecord(participant)
+    && isNonEmptyString(participant.memberId)
+    && Number.isInteger(participant.seatNoAtStart)
+    && participant.seatNoAtStart >= 1 && participant.seatNoAtStart <= MAX_SEATS
+    && ['ACTIVE', 'LEFT'].includes(participant.status)
+    && isNonEmptyString(participant.nickName)
+    && validNullableString(participant.avatarRef)
+    && (participant.avatarIndex == null
+      || (Number.isInteger(participant.avatarIndex) && participant.avatarIndex >= 0))
+    && typeof participant.color === 'string';
+}
+
+function validActorStatus(status) {
+  return isRecord(status) && typeof status.submitted === 'boolean';
+}
+
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/**
+ * MemberView 的协议边界校验。模式内部字段由 viewSchemaVersion 演进；这里验证所有页面依赖的稳定骨架。
+ */
+function validateMemberView(view, expectedRoomId) {
+  if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor) || !isRecord(view.route)) return false;
+  if (!hasOwn(view, 'session')) return false;
+  if (typeof view.room.roomId !== 'string' || !/^\d{8}$/.test(view.room.roomId)
+    || (expectedRoomId && view.room.roomId !== expectedRoomId)) return false;
+  if (!Object.values(LIFECYCLE).includes(view.room.lifecycle)
+    || typeof view.room.workshopName !== 'string'
+    || !Number.isFinite(view.room.createdAt)
+    || !isNonEmptyString(view.room.hostMemberId)
+    || !Array.isArray(view.room.members)
+    || !view.room.members.every(validProjectedMember)) return false;
+  const memberIds = view.room.members.map((member) => member.memberId);
+  const seatNos = view.room.members.map((member) => member.seatNo);
+  if (new Set(memberIds).size !== memberIds.length || new Set(seatNos).size !== seatNos.length
+    || (view.room.lifecycle === LIFECYCLE.OPEN && !memberIds.includes(view.room.hostMemberId))) return false;
+  if (!isNonEmptyString(view.actor.memberId)) return false;
+  if (!['HOST', 'PLAYER'].includes(view.actor.role)
+    || !Number.isInteger(view.actor.seatNo)
+    || view.actor.seatNo < 1 || view.actor.seatNo > MAX_SEATS
+    || typeof view.actor.isParticipant !== 'boolean'
+    || !validActorStatus(view.actor.contributionStatus)
+    || !validActorStatus(view.actor.scoreStatus)
+    || !validActorStatus(view.actor.voteStatus)
+    || !(view.actor.privateModeState == null || isRecord(view.actor.privateModeState))
+    || !isRecord(view.actor.capabilities)) return false;
+  if (!Object.values(view.actor.capabilities).every((capability) => isRecord(capability)
+    && typeof capability.allowed === 'boolean'
+    && (capability.reason == null || typeof capability.reason === 'string'))) return false;
+  if (!isNonEmptyString(view.route.name) || !isRecord(view.route.params)) return false;
+  if (view.session == null) return true;
+  const session = view.session;
+  if (!isRecord(session)
+    || !isNonEmptyString(session.sessionId)
+    || !Number.isInteger(session.ordinal) || session.ordinal < 1
+    || !Object.values(SESSION_STATUS).includes(session.status)
+    || !Object.values(MODE).includes(session.mode)
+    || !Array.isArray(session.participants)
+    || !session.participants.every(validProjectedParticipant)
+    || !isRecord(session.setup)
+    || !hasOwn(session.setup, 'scenarioSource')
+    || !hasOwn(session.setup, 'scenario')
+    || !hasOwn(session.setup, 'proposedFirstMemberId')
+    || !hasOwn(session.setup, 'selectedProblem')
+    || !Array.isArray(session.setup.designProblems)
+    || !isRecord(session.workflow)
+    || !Object.values(WORKFLOW_STEP).includes(session.workflow.step)
+    || !isRecord(session.progress)
+    || !isRecord(session.publicModeState)
+    || !hasOwn(session, 'activeTurn')
+    || !(session.activeTurn == null || isRecord(session.activeTurn))
+    || !Array.isArray(session.activeArtifacts)
+    || !Array.isArray(session.recentMessages)
+    || !Array.isArray(session.turnSummaries)
+    || !hasOwn(session, 'result')
+    || !(session.result == null || isRecord(session.result))) return false;
+  const participantIds = session.participants.map((participant) => participant.memberId);
+  const participantSeats = session.participants.map((participant) => participant.seatNoAtStart);
+  return new Set(participantIds).size === participantIds.length
+    && new Set(participantSeats).size === participantSeats.length;
+}
+
 module.exports = { PROTOCOL_VERSION, SCHEMA_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_SEATS,
+  MAX_SESSION_MESSAGES, MAX_SESSION_ARTIFACTS, MAX_PARTNER_TURNS, MAX_SESSION_DOCUMENT_BYTES,
+  MAX_SYNC_RESPONSE_BYTES,
   SPY_VOTE_DURATION_MS,
   LIFECYCLE, SESSION_STATUS, MODE, WORKFLOW_STEP, WORKFLOW_GROUPS, COMMAND_TYPES, EVENT_TYPES, ERR, ERR_MSG, COMMAND_CONTEXT,
-  COMMAND_PAYLOAD_KEYS, fail, okResult, isNonEmptyString, normalizeMode, validateCommandEnvelope, stableStringify };
+  COMMAND_PAYLOAD_KEYS, fail, okResult, isNonEmptyString, normalizeMode, validateCommandEnvelope, stableStringify,
+  validatePatch, validatePublicViewPatch, validateActorViewPatch, validateMemberView };

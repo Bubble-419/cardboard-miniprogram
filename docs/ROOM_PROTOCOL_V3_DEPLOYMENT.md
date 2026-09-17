@@ -29,6 +29,10 @@ flowchart LR
 `packages/room-*` 或任一 `cloudfunctions/*/src` 后，也要重新构建并部署相关云函数。
 客户端与云函数版本不一致时，不属于受支持的运行方式。
 
+当前事件格式为 `eventSchemaVersion = 3`，Patch 包含 `set/remove/splice`。本次不迁移旧数据，
+必须在空的 V3 集合上将客户端与全部 V3 云函数作为同一发布单元部署，不能混用仍生成
+V2 Event 的旧云函数。
+
 ## 1. 发布依赖图
 
 ```mermaid
@@ -67,7 +71,7 @@ flowchart TB
   HISTORY[history] --> SIDX[roomV3Sessions<br/>roomId ASC + status ASC + ordinal DESC]
   SNAPSHOT[snapshot/session] --> SDOC[roomV3Sessions<br/>按 _id 单文档读取]
   MSG[message history] --> MIDX[roomV3Messages<br/>roomId ASC + sessionId ASC + commitSeq DESC]
-  EPHEMERAL[presence/signal] --> PIDX[Presence: roomId ASC + lastSeenAt DESC<br/>Signal: roomId ASC]
+  EPHEMERAL[presence/signal] --> PIDX[Presence: roomId ASC + lastSeenAt DESC<br/>Signal: 确定性 _id 点读]
 ```
 
 | 集合 | 索引字段 | 必需 |
@@ -76,9 +80,9 @@ flowchart TB
 | `roomV3Sessions` | `roomId ASC, status ASC, ordinal DESC` | 是 |
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
-| `roomV3Signals` | `roomId ASC` | 是 |
 
-其余读取使用确定性 `_id`，不需要额外业务索引。
+`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 点读，不需要组合索引。其余读取
+使用确定性 `_id`，不需要额外业务索引。
 
 ## 4. 权限边界
 
@@ -202,7 +206,7 @@ Spy SETTLED 前 Public View/Event 不含 role/word/blurb
 | `SNAPSHOT_REQUIRED` | 比例突增时检查 Event TTL、缺口或客户端版本 |
 | `COMMAND_ID_CONFLICT` | 检查客户端 commandId 生成与复用 |
 | 事务冲突/重试 | 按房间与命令类型观察热点 |
-| RoomSession 文档大小 | 接近 CloudBase 单文档上限时限制单场次内容量或结束场次；不要静默截断权威事实 |
+| `LIMIT_EXCEEDED` / RoomSession 文档大小 | 协议在 6 MiB 安全预算、500 消息、1000 素材、200 常规 Turn 前拒绝增长；引导结束场次，不得放宽到数据库硬上限 |
 | Presence stale | 检查云函数延迟和前后台生命周期 |
 
 ## 9. 切换与回退

@@ -103,7 +103,7 @@ sequenceDiagram
 - 缺口恢复不会把旧 staging View 与新 Snapshot 混用；
 - 页面只依赖最终 `Member View`，不感知本次更新来自 Snapshot 还是 Event。
 
-对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。
+对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。三种模式从配置到完成的 Snapshot/Event 等价验收位于 [`tests/room-domain/v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js)。
 
 ## 1. 最终运行拓扑
 
@@ -208,8 +208,11 @@ flowchart LR
   E -->|查询时白名单投影| OUT[PublicEvents + PublicPatch<br/>+ 当前成员 ActorPatch]
 ```
 
-高频 `sync` 只读取 `roomV3Rooms + roomV3Events`；Snapshot 和 Command 才读取当前
-`roomV3Sessions`。`roomV3Messages` 只是历史分页索引，权威消息仍属于 Session Facts。
+高频 `sync` 先点读 `roomV3Rooms` 固定水位：客户端已追平时不再执行空的 Event 查询；
+有增量时才按 `roomId + seq` 读取 `roomV3Events`。Snapshot 和 Command 才读取当前
+`roomV3Sessions`。每批同时受 100 个 Event Group 和 512 KiB 响应预算约束；单个事件已经
+超过预算时返回 `snapshotRequired`，避免空批不推进。`roomV3Messages` 只是历史分页索引，
+权威消息仍属于 Session Facts。
 
 ## 3. Command 原子提交
 
@@ -273,7 +276,7 @@ flowchart TD
 sequenceDiagram
   participant C as RoomClient
   participant Q as roomQuery
-  participant DB as Transactional Read
+  participant DB as CloudBase
 
   C->>Q: current
   Q-->>C: roomId / null
@@ -284,6 +287,12 @@ sequenceDiagram
 
   loop 单一短轮询计时器
     C->>Q: sync(afterSeq=N)
+    Q->>DB: 点读 Room，固定 roomCurrentSeq
+    alt afterSeq 已追平
+      DB-->>Q: 不查询 Event
+    else 存在增量
+      Q->>DB: 查询 afterSeq < seq <= roomCurrentSeq
+    end
     Q-->>C: 投影事件(N+1...M) + roomCurrentSeq
     alt 连续、完整且已追平
       C->>C: staging 应用后一次发布
@@ -325,7 +334,30 @@ Event.publicPatch 只修改公开 View；Event.actorPatch 只修改当前成员 
 服务端存储 rawEvents + publicPatch + 全成员 actorProjections，查询只返回公共部分和本人补丁
 !hasMore => throughSeq == roomCurrentSeq
 任一条件不可信 => 丢弃 staging，重新 Snapshot
+Event Patch 应用完成后必须再次通过完整 MemberView 骨架校验
 ```
+
+Patch 使用同一组 JSON 安全操作：
+
+```text
+patch
+├── set[]    { path, value }                    # 标量、对象或确需整体替换的值
+├── remove[] path                               # 删除字段
+└── splice[] { path, index, deleteCount, items} # 数组局部增删改
+```
+
+数组变化优先产出单个 `splice` 中段操作，共享前后缀不重复传输。客户端严格按
+`set → remove → splice` 应用公共补丁，再按相同顺序应用本人 Actor 补丁。
+
+Command 的传输结果丢失时，客户端不能生成新 `commandId` 猜测重试。RoomClient 会把同一
+`roomId + type + context + payload` 视为同一未确认意图，在收到明确成功或失败前复用原
+`commandId`；服务端 Receipt 负责把重复提交收敛为一次结果。
+
+State/Event/Receipt 已经提交后，如果附带 Sync 查询失败，`roomCommand` 仍返回 Command 成功，
+并把 Sync 降级为 `snapshotRequired`。客户端进入读模型恢复，而不是把已提交写入伪装成失败。
+业务动作需要切页时，以 Outcome 的 `committedThroughSeq` 检查本地 View；未追平则先刷新
+Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协调器合并，后发调用等待在途
+导航结束，不能硬编码猜测下一页面或提前释放交互锁。
 
 ## 5. Room 与公共配置状态
 
@@ -472,7 +504,7 @@ flowchart TD
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
-| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，绑定 session/turn/deadline | 否 |
+| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/member/deadline | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
 | 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |
@@ -481,6 +513,8 @@ flowchart TD
 RoomClient 的最小轮询间隔为 **2 秒**。所有房间调用复用同一个 `deviceSessionId`；距离上次续租
 达到 **5 秒**时携带 `touchPresence=true`，服务端以自身时间写租约。在线投影窗口为 **15 秒**，
 写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。
+Presence 或 Signal 读取失败时，响应在 `ephemeral.stale` 标记对应通道；客户端保留该通道
+最后一次成功值，直到后续成功响应替换，不能把依赖故障误显示为全员离线或信号归零。
 
 ```mermaid
 sequenceDiagram

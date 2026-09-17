@@ -3,15 +3,17 @@ const assert = require('node:assert/strict');
 
 let pageDefinition = null;
 
-global.Page = (definition) => {
-  pageDefinition = definition;
-};
-global.getApp = () => ({
+const app = {
   globalData: {
     roomId: '12345678',
     gameMode: 'partner'
   }
-});
+};
+
+global.Page = (definition) => {
+  pageDefinition = definition;
+};
+global.getApp = () => app;
 global.wx = {
   showToast() {},
   navigateTo(options) {
@@ -115,5 +117,51 @@ test('keeps the page locked while navigation is still transitioning', async () =
     await Promise.resolve();
   } finally {
     global.wx.navigateTo = originalNavigateTo;
+  }
+});
+
+test('Halli Galli 选择情境后立即进入选择首位玩家页', async () => {
+  const page = makePage();
+  page.setData({
+    modeId: 'halliGalli',
+    selectedScenarioId: 'existing',
+    scenarios: [{
+      id: 'existing',
+      type: 'case',
+      bg: { scene: '办公室', user: '设计师', function: '协作' }
+    }]
+  });
+
+  const commands = [];
+  app.globalData.roomSession = {
+    dispatch: async (command) => {
+      commands.push(command);
+      return { ok: true };
+    },
+    getSnapshot: () => ({
+      ok: true,
+      roomId: '12345678',
+      revision: 4,
+      view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
+    })
+  };
+
+  let redirectUrl = '';
+  const originalRedirectTo = global.wx.redirectTo;
+  global.wx.redirectTo = (options) => {
+    redirectUrl = options.url;
+    if (typeof options.complete === 'function') options.complete({});
+    else if (typeof options.success === 'function') options.success({});
+  };
+
+  try {
+    await page._confirmSelectedScenario();
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0].type, 'SET_SCENARIO');
+    assert.match(redirectUrl, /^\/pages\/main-pages\/selectPlayer\/index\?/);
+    assert.match(redirectUrl, /phase=SELECT_FIRST_PLAYER/);
+  } finally {
+    global.wx.redirectTo = originalRedirectTo;
+    delete app.globalData.roomSession;
   }
 });

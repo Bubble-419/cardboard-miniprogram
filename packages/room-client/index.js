@@ -1,7 +1,8 @@
 'use strict';
 
 const {
-  PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR
+  PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR,
+  stableStringify, validatePublicViewPatch, validateActorViewPatch, validateMemberView
 } = require('../room-contracts/index');
 const { clone, applyProjectedEvent } = require('../room-projection/index');
 
@@ -15,6 +16,10 @@ function defaultCommandId() {
 
 function unwrapCloudResult(response) {
   return response && Object.prototype.hasOwnProperty.call(response, 'result') ? response.result : response;
+}
+
+function isRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** 将 wx.cloud.callFunction 收敛为 RoomClient 唯一传输端口。 */
@@ -44,23 +49,6 @@ function createCloudRoomGateway(options) {
     // Command 放在独立传输字段中，避免 CloudBase 注入的 tcbContext 污染严格协议对象。
     dispatch: (envelope, clientContext) => call('roomCommand', withContext({ command: envelope }, clientContext))
   };
-}
-
-function isRecord(value) {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function validPublicPatch(value) {
-  if (!isRecord(value) || !Array.isArray(value.remove) || value.remove.length > 512
-    || !Array.isArray(value.set) || value.set.length > 512) return false;
-  const validPath = (path) => typeof path === 'string' && path.length > 0 && path.length <= 512
-    && (path === '$' || path.split('.').every((part) => part
-      && !['__proto__', 'prototype', 'constructor'].includes(part)));
-  const validSet = Array.isArray(value.set) && value.set.every((item) => isRecord(item)
-    && Object.keys(item).every((key) => key === 'path' || key === 'value')
-    && Object.prototype.hasOwnProperty.call(item, 'value')
-    && validPath(item.path));
-  return validSet && value.remove.every(validPath);
 }
 
 function createRoomClient(options) {
@@ -95,6 +83,7 @@ function createRoomClient(options) {
   let listenerSeq = 0;
   let queue = Promise.resolve();
   const listeners = new Map();
+  const uncertainCommands = new Map();
 
   function state() {
     return {
@@ -165,6 +154,22 @@ function createRoomClient(options) {
     error = null;
   }
 
+  /** 切换房间时先清空所有房间绑定状态，避免新房恢复失败后继续展示旧房数据。 */
+  function resetRoomBoundState(nextRoomId) {
+    cancelTimer();
+    roomId = nextRoomId || null;
+    view = null;
+    ephemeral = {};
+    appliedSeq = 0;
+    appliedStateVersion = 0;
+    stagingView = null;
+    stagingSeq = 0;
+    stagingStateVersion = 0;
+    consecutiveSyncFailures = 0;
+    serverClockOffsetMs = 0;
+    lastPresenceTouchAt = 0;
+  }
+
   function isTerminalRoomError(connectionError) {
     return [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND]
       .includes(connectionError && connectionError.code);
@@ -185,8 +190,19 @@ function createRoomClient(options) {
       && Number.isInteger(snapshot.seq)
       && Number.isInteger(snapshot.stateVersion)
       && snapshot.roomId === targetRoomId
-      && snapshot.view && snapshot.view.room && snapshot.view.room.roomId === targetRoomId
-      && snapshot.view.actor && snapshot.view.route;
+      && validateMemberView(snapshot.view, targetRoomId);
+  }
+
+  function mergeEphemeral(previous, incoming) {
+    const before = previous || {};
+    const next = incoming || {};
+    const stale = next.stale || {};
+    return {
+      presenceByMemberId: clone(stale.presence
+        ? (before.presenceByMemberId || {}) : (next.presenceByMemberId || {})),
+      signals: clone(stale.signals ? (before.signals || {}) : (next.signals || {})),
+      stale: { presence: stale.presence === true, signals: stale.signals === true }
+    };
   }
 
   async function replaceFromSnapshot(targetRoomId) {
@@ -197,9 +213,11 @@ function createRoomClient(options) {
       invalid.code = (snapshot && snapshot.errCode) || ERR.SNAPSHOT_REQUIRED;
       throw invalid;
     }
+    const sameRoom = roomId === targetRoomId;
     roomId = targetRoomId;
     view = clone(snapshot.view);
-    ephemeral = clone(snapshot.ephemeral || {});
+    // 换房后的瞬时态必须从空状态开始，不能把上一房间的在线状态或信号带过来。
+    ephemeral = mergeEphemeral(sameRoom ? ephemeral : {}, snapshot.ephemeral);
     appliedSeq = snapshot.seq;
     appliedStateVersion = snapshot.stateVersion;
     stagingView = null;
@@ -244,8 +262,8 @@ function createRoomClient(options) {
       || !Array.isArray(item.publicEvents) || item.publicEvents.length === 0 || item.publicEvents.length > 32
       || item.publicEvents.some((publicEvent) => !isRecord(publicEvent)
         || Object.keys(publicEvent).length !== 1 || !knownTypes.has(publicEvent.type))
-      || !validPublicPatch(item.publicPatch)
-      || (item.actorPatch != null && !validPublicPatch(item.actorPatch)))) {
+      || !validatePublicViewPatch(item.publicPatch)
+      || (item.actorPatch != null && !validateActorViewPatch(item.actorPatch)))) {
       throw Object.assign(new Error('事件版本或类型不兼容'), { code: ERR.SNAPSHOT_REQUIRED });
     }
     if (events.length && events[0].seq !== baseSeq + 1) throw Object.assign(new Error('事件不连续'), { code: ERR.SNAPSHOT_REQUIRED });
@@ -276,14 +294,13 @@ function createRoomClient(options) {
       stagingStateVersion = candidateStateVersion;
       return { hasMore: true };
     }
-    if (!candidate || !candidate.room || candidate.room.roomId !== roomId
-      || !candidate.actor || !candidate.route) {
+    if (!validateMemberView(candidate, roomId)) {
       throw Object.assign(new Error('事件投影房间不可信'), { code: ERR.SNAPSHOT_REQUIRED });
     }
     view = candidate;
     appliedSeq = throughSeq;
     appliedStateVersion = candidateStateVersion;
-    ephemeral = clone(batch.ephemeral || {});
+    ephemeral = mergeEphemeral(ephemeral, batch.ephemeral);
     stagingView = null;
     stagingSeq = 0;
     stagingStateVersion = 0;
@@ -377,6 +394,7 @@ function createRoomClient(options) {
       return null;
     }
     try {
+      if (roomId !== current.roomId) resetRoomBoundState(current.roomId);
       await replaceFromSnapshot(current.roomId);
       schedule(0);
       return view;
@@ -424,7 +442,10 @@ function createRoomClient(options) {
   }
 
   async function dispatchInternal(input) {
-    const commandId = input.commandId || makeCommandId();
+    const signature = stableStringify({ roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
+      type: input.type, context: input.context || {}, payload: input.payload || {} });
+    const uncertain = uncertainCommands.get(signature);
+    const commandId = input.commandId || (uncertain && uncertain.commandId) || makeCommandId();
     const envelope = { protocolVersion: PROTOCOL_VERSION, commandId,
       roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
       knownSeq: appliedSeq, type: input.type,
@@ -434,17 +455,39 @@ function createRoomClient(options) {
     do {
       try { result = await gateway.dispatch(envelope, getRequestContext()); } catch (dispatchError) {
         attempts += 1;
-        if (attempts >= 2) throw dispatchError;
+        if (attempts >= 2) {
+          // 响应丢失时不能判定服务端是否已提交；下次相同意图必须复用同一 ID。
+          uncertainCommands.set(signature, { commandId });
+          throw dispatchError;
+        }
         continue;
       }
       if (!(result && result.retryable) || attempts >= 1) break;
       attempts += 1;
     } while (true);
-    if (!result) return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE, errMsg: '命令无响应', retryable: true };
+    if (!result) {
+      // 空响应与网络异常一样无法判断服务端是否已经提交，后续重试必须沿用 commandId。
+      uncertainCommands.set(signature, { commandId });
+      return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE, errMsg: '命令无响应', retryable: true };
+    }
+    if (result.retryable === true) uncertainCommands.set(signature, { commandId });
+    else uncertainCommands.delete(signature);
     const outcome = result.outcome || {};
     if (result.ok && ['ROOM_CREATED', 'ROOM_JOINED'].includes(outcome.kind)) {
-      await replaceFromSnapshot(outcome.roomId);
-      schedule(0);
+      if (roomId !== outcome.roomId) resetRoomBoundState(outcome.roomId);
+      try {
+        await replaceFromSnapshot(outcome.roomId);
+        schedule(0);
+      } catch (snapshotError) {
+        // 写入结果已经明确成功；首次 Snapshot 失败只影响读模型恢复，不能把 Command 伪装成失败。
+        roomId = outcome.roomId;
+        status = 'DEGRADED';
+        consecutiveSyncFailures += 1;
+        error = { errCode: snapshotError.code || ERR.DEPENDENCY_UNAVAILABLE,
+          errMsg: snapshotError.message || '房间已加入，正在恢复状态' };
+        publish();
+        schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
+      }
     } else if (result.ok && ['LEFT_ROOM', 'ROOM_DISSOLVED'].includes(outcome.kind)) {
       resetConnection('READY');
       publish();

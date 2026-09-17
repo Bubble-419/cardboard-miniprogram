@@ -129,8 +129,10 @@ test('扫码路径只在尚未加入时携带 fromScan，房间号主动加入�
 
 test('瞬时声贝信号必须绑定当前 sessionId 和 turnId', () => {
   const source = fs.readFileSync(path.join(root, 'cloudfunctions/roomSignal/src/entry.js'), 'utf8');
+  const adapter = fs.readFileSync(path.join(root, 'packages/room-cloudbase-adapter/index.js'), 'utf8');
   const page = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/specialMove/index.js'), 'utf8');
-  assert.match(source, /session\.sessionId !== sessionId/);
-  assert.match(source, /turn\.turnId !== turnId/);
+  assert.match(source, /app\.writeSignal\(\{ roomId, signalType, sessionId, turnId/);
+  assert.match(adapter, /scope\.sessionId !== input\.sessionId/);
+  assert.match(adapter, /scope\.turnId !== input\.turnId/);
   assert.match(page, /data:\s*\{ roomId, sessionId, turnId, signalType:/);
 });

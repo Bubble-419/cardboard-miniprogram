@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   captureSpyCommandContext,
   spyCommandContextForAction
@@ -34,4 +36,14 @@ test('NOT_MEMBER 与解散/不存在一样属于 Room View 终态', () => {
   const { isRemovedFromRoomResult } = require('../../utils/roomDissolved');
   assert.equal(isRemovedFromRoomResult({ errCode: 'NOT_MEMBER' }), true);
   assert.equal(isRemovedFromRoomResult({ errCode: 'NOT_IN_ROOM' }), true);
+});
+
+test('Spy 当前发言者可在页面结束发言并推进顺序', () => {
+  const root = path.resolve(__dirname, '../..');
+  const source = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.js'), 'utf8');
+  const template = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxml'), 'utf8');
+  assert.match(source, /callSpyAction\('finishSpeak'/);
+  assert.match(source, /onFinishSpeak/);
+  assert.match(template, /wx:if="\{\{isCurrentSpeaker\}\}"/);
+  assert.match(template, /bindtap="onFinishSpeak"/);
 });

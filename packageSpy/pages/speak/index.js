@@ -64,6 +64,8 @@ Page(withPageInteractionLock({
     contentTab: 0,
     acting: false,
     isHost: false,
+    isCurrentSpeaker: false,
+    currentSpeakerName: '',
     tieBreak: false,
     tiedNamesText: '',
     viewerOpen: false,
@@ -143,9 +145,14 @@ Page(withPageInteractionLock({
           : null;
         const members = result.members || [];
         const isHost = result.isHost === true;
+        const currentSpeakerSeat = spyGame && spyGame.speakOrder
+          && spyGame.speakOrder[spyGame.currentSpeakerIndex];
+        const currentSpeaker = members.find((member) => Number(member.playerIndex) === Number(currentSpeakerSeat));
         this.setData({
           avatarList: buildAvatarList(members),
-          isHost
+          isHost,
+          isCurrentSpeaker: !!(currentSpeaker && currentSpeaker.isMe),
+          currentSpeakerName: currentSpeaker && currentSpeaker.nickName || ''
         }, () => {
           if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
@@ -290,6 +297,32 @@ Page(withPageInteractionLock({
     });
   },
 
+  onFinishSpeak() {
+    return runPageInteraction(this, () => this._finishSpeak(), {
+      loadingText: '正在结束发言…'
+    });
+  },
+
+  async _finishSpeak() {
+    if (!this.data.isCurrentSpeaker || this.data.acting) return;
+    this.setData({ acting: true });
+    try {
+      const result = await callSpyAction('finishSpeak', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '操作失败', icon: 'none', duration: 2500 });
+        return;
+      }
+      bumpSpyRoomSession();
+    } catch (e) {
+      wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
+    } finally {
+      if (this._pageAlive) this.setData({ acting: false });
+    }
+  },
+
   async _startVote() {
     if (!this.data.isHost || this.data.acting) return;
     this.setData({ acting: true });
@@ -328,6 +361,7 @@ Page(withPageInteractionLock({
   'onPanelTouchEnd',
   'onTapLibraryCard',
   'onCloseViewer',
+  'onFinishSpeak',
   'onStartVote',
   'handleGoRoom'
 ]));

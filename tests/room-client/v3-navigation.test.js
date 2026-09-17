@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createNavigationCoordinator } = require('../../modules/room-navigation/index');
+const { followRoomRouteAfterCommand } = require('../../modules/room-session/index');
 
 async function withCurrentRoute(route, data, run) {
   const previous = global.getCurrentPages;
@@ -81,3 +82,94 @@ test('回看情境叠层不被游戏同步拆掉，回大厅时关闭', async ()
   });
 });
 
+test('相同状态变更触发的后续导航会等待在途导航完成', async () => {
+  const previousGetCurrentPages = global.getCurrentPages;
+  let currentRoute = 'pages/main-pages/modeIndex/index';
+  global.getCurrentPages = () => [{ route: currentRoute, data: {} }];
+  let completeFirst;
+  const opened = [];
+  try {
+    const navigation = createNavigationCoordinator({
+      open: async (descriptor) => {
+        opened.push(descriptor.url);
+        if (opened.length === 1) {
+          await new Promise((resolve) => { completeFirst = resolve; });
+        }
+        currentRoute = descriptor.path.slice(1);
+      }
+    });
+    const first = navigation.reconcile({ name: 'selectPlayer', params: {} }, 4, {
+      roomId: '12345678'
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    let followFinished = false;
+    const follow = navigation.reconcile({ name: 'selectPlayer', params: {} }, 4, {
+      roomId: '12345678'
+    }).then((result) => {
+      followFinished = true;
+      return result;
+    });
+    await Promise.resolve();
+    assert.equal(followFinished, false, '显式跟随必须等待订阅已经发起的导航');
+
+    completeFirst();
+    await first;
+    const followed = await follow;
+    assert.equal(followed.ok, true);
+    assert.equal(followed.reason, 'SAME_ROUTE');
+    assert.equal(opened.length, 1, '同一目标不能重复打开');
+  } finally {
+    global.getCurrentPages = previousGetCurrentPages;
+  }
+});
+
+test('指令同步未到提交水位时先刷新 Snapshot 再跟随权威 route', async () => {
+  const previousGetApp = global.getApp;
+  const previousGetCurrentPages = global.getCurrentPages;
+  const previousWx = global.wx;
+  let refreshed = 0;
+  let snapshot = {
+    ok: true,
+    roomId: '87654321',
+    revision: 3,
+    view: { route: { name: 'modeIndex', params: {} } }
+  };
+  let opened = '';
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/modeIndex/index', data: {} }];
+  global.getApp = () => ({
+    globalData: {
+      roomSession: {
+        getSnapshot: () => snapshot,
+        refresh: async () => {
+          refreshed += 1;
+          snapshot = {
+            ok: true,
+            roomId: '87654321',
+            revision: 4,
+            view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
+          };
+          return snapshot;
+        }
+      }
+    }
+  });
+  global.wx = {
+    redirectTo(options) {
+      opened = options.url;
+      options.complete({});
+    }
+  };
+  try {
+    const result = await followRoomRouteAfterCommand({
+      ok: true,
+      outcome: { committedThroughSeq: 4 }
+    }, '87654321');
+    assert.equal(result.ok, true);
+    assert.equal(refreshed, 1);
+    assert.match(opened, /^\/pages\/main-pages\/selectPlayer\/index\?/);
+  } finally {
+    global.getApp = previousGetApp;
+    global.getCurrentPages = previousGetCurrentPages;
+    global.wx = previousWx;
+  }
+});

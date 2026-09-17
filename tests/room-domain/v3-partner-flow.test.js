@@ -3,6 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
+const {
+  MAX_SESSION_MESSAGES, MAX_SESSION_ARTIFACTS, MAX_PARTNER_TURNS
+} = require('@cardboard/room-contracts');
 
 async function seedPartner() {
   const h = createHarness();
@@ -252,4 +255,47 @@ test('Partner 离房成员已经提交的 question 不再参与收尾裁决', as
   }
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.workflow.step, 'PARTNER_CLOSING_RUNE');
+});
+
+test('Partner 单场内容和行动轮达到上限后仍保留可完成的收尾路径', async () => {
+  const { h, sessionId, turnId } = await seedPartner();
+  const aggregate = h.repo.rooms.get('12345678');
+  aggregate.facts.messages = Array.from({ length: MAX_SESSION_MESSAGES }, (_, index) => ({
+    messageId: `existing-message-${index}`, sessionId, turnId: 'old-turn', text: '历史消息'
+  }));
+  aggregate.facts.artifacts = Object.fromEntries(Array.from({ length: MAX_SESSION_ARTIFACTS }, (_, index) => [
+    `existing-artifact-${index}`,
+    { artifactId: `artifact-${index}`, operationId: `op-${index}`, sessionId,
+      turnId: 'old-turn', stage: 'PLAY', removed: true }
+  ]));
+  aggregate.currentSession.modeState.partner.activeTurn.ordinal = MAX_PARTNER_TURNS;
+  const limitedView = (await h.snapshot('host')).view;
+
+  const message = await h.command('u2', 'POST_PARTNER_MESSAGE', {
+    context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' }, payload: { text: '超过上限' }
+  });
+  const artifact = await h.command('host', 'APPEND_ARTIFACT', {
+    context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
+    payload: { operationId: 'over-limit', text: '超过上限' }
+  });
+  const nonClosing = await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'MASTER' }
+  });
+  const closing = await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'CLOSING' }
+  });
+  const closingVoteSessionId = (await h.snapshot('host')).view.session.publicModeState.closing.closingVoteSessionId;
+  const question = await h.command('u2', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId }, payload: { vote: 'question' }
+  });
+
+  assert.equal(message.errCode, 'LIMIT_EXCEEDED');
+  assert.equal(artifact.errCode, 'LIMIT_EXCEEDED');
+  assert.deepEqual(limitedView.actor.capabilities.APPEND_ARTIFACT,
+    { allowed: false, reason: 'LIMIT_EXCEEDED' });
+  assert.deepEqual(limitedView.actor.capabilities.START_PARTNER_STATEMENT,
+    { allowed: false, reason: 'LIMIT_EXCEEDED' });
+  assert.equal(nonClosing.errCode, 'LIMIT_EXCEEDED');
+  assert.equal(closing.ok, true);
+  assert.equal(question.errCode, 'LIMIT_EXCEEDED');
 });

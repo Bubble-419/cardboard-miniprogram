@@ -115,6 +115,37 @@ test('客户端 downloadFile/getTempFileURL 都失败时回退云函数临时链
   assert.equal(url, HTTPS_URL);
 });
 
+test('历史媒体回退云函数时携带 roomId/sessionId 授权范围', async () => {
+  let mediaRequest = null;
+  const cloud = {
+    async downloadFile() { throw emptyDownloadError(); },
+    async getTempFileURL({ fileList }) {
+      return { fileList: [{
+        fileID: fileIdFromList(fileList), tempFileURL: '', status: -403003
+      }] };
+    },
+    async callFunction({ name, data }) {
+      assert.equal(name, 'roomMedia');
+      mediaRequest = data;
+      return {
+        result: {
+          ok: true,
+          fileList: [{ fileID: FILE_ID, tempFileURL: HTTPS_URL, status: 0 }]
+        }
+      };
+    }
+  };
+  const { resolveCloudDisplayUrl } = loadResolver(cloud);
+
+  const url = await resolveCloudDisplayUrl(FILE_ID, {
+    roomId: '12345678', sessionId: 'session-history'
+  });
+
+  assert.equal(url, HTTPS_URL);
+  assert.equal(mediaRequest.roomId, '12345678');
+  assert.equal(mediaRequest.sessionId, 'session-history');
+});
+
 test('downloadFile 与 getTempFileURL 与云函数都拿不到地址时展示为空', async () => {
   const cloud = {
     async downloadFile() {

@@ -7,6 +7,7 @@ const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenar
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
@@ -365,7 +366,8 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
       }
-      return;
+      await followRoomRouteAfterCommand(result, roomId);
+      return null;
     } catch (e) {
       console.error('handleConfirm', e);
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
