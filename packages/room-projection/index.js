@@ -373,7 +373,15 @@ function projectRoute(aggregate, actorView) {
     [WORKFLOW_STEP.SPY_SETTLED]: 'spySettle'
   };
   if (session.status === SESSION_STATUS.COMPLETED) {
-    if (session.mode === MODE.PARTNER) return { name: 'leaderboard', params: {} };
+    if (session.mode === MODE.PARTNER) {
+      return {
+        name: 'leaderboard',
+        // 房主保留“返回房间/再来一轮”，其他参与者只展示排行榜副屏。
+        params: host
+          ? { from: 'closingEnd' }
+          : { from: 'closingEnd', isSubScreen: 1 }
+      };
+    }
     if (session.mode === MODE.HALLI_GALLI) return { name: 'creativeSummary', params: {} };
     return { name: 'spySettle', params: {} };
   }

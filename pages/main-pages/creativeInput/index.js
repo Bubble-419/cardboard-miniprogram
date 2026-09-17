@@ -7,6 +7,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
@@ -115,10 +116,8 @@ Page(withPageInteractionLock({
         }
 
         this.setData({ submitted: true });
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/creativeSummary/index?roomId=${encodeURIComponent(roomId)}`
-        };
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } catch (e) {
         console.error('creativeInput handleSubmit', e);
         wx.showToast({ title: '提交失败', icon: 'none' });

@@ -3,6 +3,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot
 } = require('../../modules/room-session/index');
 const { runPageInteraction, runPageNavigation, withPageInteractionLock } = require('../../utils/pageInteractionLock');
@@ -119,7 +120,8 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result && result.errMsg || '开始失败', icon: 'none' });
         return null;
       }
-      // 路由由新 Session 的 View 唯一决定。
+      // 重玩创建了新 Session，必须等待新 Member View 的角色路由完成跳转。
+      await followRoomRouteAfterCommand(result, this.data.roomId);
       return null;
     } finally {
       if (this._pageAlive !== false) this.setData({ actioning: false });

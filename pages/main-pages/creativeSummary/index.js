@@ -8,6 +8,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getActiveRoomSession,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
@@ -155,11 +156,8 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result && result.errMsg || '开始下一轮失败', icon: 'none' });
         return;
       }
-      const roomId = encodeURIComponent(this.data.roomId || '');
-      return {
-        method: 'redirectTo',
-        url: `/pages/main-pages/selectPlayer/index?roomId=${roomId}&modeId=halliGalli`
-      };
+      await followRoomRouteAfterCommand(result, this.data.roomId);
+      return null;
     }, { loadingText: '正在准备下一轮…' });
   },
 

@@ -1,8 +1,35 @@
-# 房间协议 V3 业务流程
+# 房间协议 V3 业务流程与页面路由
 
-> 本文描述当前代码中的可达业务流程。协议同步和恢复见 [V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md)，数据归属见 [房间模型与状态](./ROOM_MODEL_STATE.md)。
+> 业务语义以 V2 基线 `b605ce0` 的页面行为为依据；状态、权限和恢复行为以当前 V3 Domain、Member View 与页面投影为准。协议同步见 [V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md)，数据归属见 [房间模型与状态](./ROOM_MODEL_STATE.md)。
 
-## 1. 全局流程
+## 1. 状态、View 与页面的关系
+
+```mermaid
+flowchart LR
+  ACTION[用户操作] --> COMMAND[V3 Command]
+  COMMAND --> REDUCER[Domain Reducer]
+  REDUCER --> AGG[Room + Current Session + Facts]
+  AGG --> PROJECT[按成员投影 Member View]
+  PROJECT --> ROUTE[view.route<br/>权威业务路由]
+  PROJECT --> PAGE_MODEL[Page Model<br/>旧 WXML 兼容字段]
+  ROUTE --> NAV[Navigation Coordinator]
+  PAGE_MODEL --> PAGE[页面渲染]
+  NAV --> PAGE
+
+  SNAPSHOT[Snapshot] --> PROJECT
+  EVENT[Projected Events] --> CLIENT_REDUCER[客户端 Event Reducer]
+  CLIENT_REDUCER --> ROUTE
+  CLIENT_REDUCER --> PAGE_MODEL
+```
+
+规则：
+
+1. `workflow.step` 表示业务状态，`view.route` 表示该成员在此状态应显示的页面。
+2. `view.route` 同时受成员角色、是否为本场参与者、本人是否已提交影响，不是公共状态的简单别名。
+3. Snapshot 和 Event 必须得到同一份 Member View；页面只消费 Member View，不自行猜测下一业务页面。
+4. `roomState.currentPage` 是旧页面的兼容字段，不是新的权威状态；新代码不得据此写回服务端。
+
+### 1.1 全局生命周期
 
 ```mermaid
 stateDiagram-v2
@@ -14,7 +41,9 @@ stateDiagram-v2
   场次配置 --> 房间大厅: CANCEL_WORKSHOP_SESSION
   场次运行 --> 房间大厅: CANCEL_WORKSHOP_SESSION
   场次完成 --> 房间大厅: RETURN_TO_LOBBY
-  场次完成 --> 场次配置: REPLAY_WORKSHOP_SESSION
+  场次完成 --> 新场次: REPLAY_WORKSHOP_SESSION
+  新场次 --> 场次配置: Halli / Spy
+  新场次 --> 场次运行: Partner
   房间大厅 --> 无房间: LEAVE_ROOM
   房间大厅 --> 房间解散: DISSOLVE_ROOM
   场次配置 --> 房间解散: DISSOLVE_ROOM
@@ -23,9 +52,132 @@ stateDiagram-v2
   房间解散 --> [*]
 ```
 
-房间与场次是两个生命周期：Room 在多个 Workshop Session 之间长期存在；一次 Session 完成或取消后成为不可变归档，Room 可以返回大厅再开始下一场。
+Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后归档；返回大厅会清除 `currentSessionId`，重玩会创建新的 `sessionId`。
 
-## 2. 创建、加入与大厅
+## 2. 权威 Route 注册表
+
+| `view.route.name` | 实际页面 | Page Model `currentPage` | 业务含义 |
+|---|---|---|---|
+| `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
+| `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
+| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置 |
+| `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题 |
+| `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | Host 选择设计问题 |
+| `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
+| `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | 全员确认 Partner 首位玩家 |
+| `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
+| `closingStatement` | `/pages/main-pages/partnerMode/closingStatement/index` | `closingStatement` | Partner 收尾表态 |
+| `leaderboard` | `/pages/leaderboard/index` | `leaderboard` | Partner 已完成排行榜；Host 带 `from=closingEnd`，Player 另带 `isSubScreen=1` |
+| `halliGame` | `/pages/main-pages/halliGalli/gamepage/index` | `gamepage` | 德国心脏病规则和线下活动 |
+| `creativeInput` | `/pages/main-pages/creativeInput/index` | `creativeInput` | 德国心脏病填写创意 |
+| `creativeSummary` | `/pages/main-pages/creativeSummary/index` | `creativeSummary` | 德国心脏病等待/汇总/完成 |
+| `spyIntro` | `/packageSpy/pages/modeIndex/index` | `spyModeIndex` | 谁是卧底规则与开局 |
+| `spySpeak` | `/packageSpy/pages/speak/index` | `spySpeak` | 谁是卧底发言或平票加时 |
+| `spyVote` | `/packageSpy/pages/vote/index` | `spyVote` | 谁是卧底投票 |
+| `spyResult` | `/packageSpy/pages/result/index` | `spyResult` | 未决胜负的轮次结果 |
+| `spySettle` | `/packageSpy/pages/settle/index` | `spySettle` | 胜负结算或已完成场次 |
+
+### 2.1 `workflow.step → view.route` 投影矩阵
+
+| Session / Step | Host Route | 本场 Player Route | 特殊分流 |
+|---|---|---|---|
+| 无 Session | `addPlayer` | `addPlayer` | — |
+| 任意进行中 Session | 对应下表 | 对应下表 | 非本场参与者固定为 `addPlayer?observing=true` |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | — |
+| `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
+| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` | — |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | — |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `confirmFirstPlayer` | — |
+| `PARTNER_TURN` | `partnerGame` | `partnerGame` | 当前行动者、Host、其他玩家能力不同 |
+| `PARTNER_STATEMENT` | `partnerGame` | `partnerGame` | — |
+| `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` | 发起者自动通过，其余玩家可投票 |
+| `PARTNER_CLOSING_RUNE` | `partnerGame` | `partnerGame` | `roomState.partnerClosingStep = rune` |
+| `PARTNER_CLOSING_REVIEW` | `partnerGame` | `partnerGame` | `roomState.partnerClosingStep = review` |
+| Partner `COMPLETED` | `leaderboard?from=closingEnd` | `leaderboard?from=closingEnd&isSubScreen=1` | Host 显示“返回房间/再来一轮”，Player 仅展示排行榜 |
+| `HALLI_ACTIVITY` | `halliGame` | `halliGame` | 只有 Host 显示“结束游戏” |
+| `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后立即投影为 `creativeSummary` |
+| `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | — |
+| Halli `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
+| `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
+| `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 当前发言者可结束发言；Host 可开票 |
+| `SPY_VOTE` | `spyVote` | `spyVote` | 仅存活且未投票成员可提交 |
+| `SPY_RESULT` | `spyResult` | `spyResult` | 任一本场参与者可推进下一轮 |
+| `SPY_SETTLED` | `spySettle` | `spySettle` | 只有 Host 可重开或结束场次 |
+| Spy `COMPLETED` | `spySettle` | `spySettle` | — |
+
+### 2.2 V2 页面在 V3 中的归属
+
+```mermaid
+flowchart TD
+  LOBBY[addPlayer<br/>权威 route: addPlayer]
+  MODE_PICK[brainstormMode<br/>本地选模式叠层]
+  SCENE[modeIndex<br/>权威 route: modeIndex]
+  SCENE_FORM[selectBG<br/>本地表单叠层]
+  SCENE_CONFIRM[confirmBG<br/>本地确认/只读叠层]
+  PARTNER[partner gamepage<br/>权威 route: partnerGame]
+  SPECIAL[specialMove<br/>本地特殊行动叠层]
+  CROP[imageCrop<br/>本地图片叠层]
+  SPY[Spy 业务页<br/>权威 spy routes]
+  LIB[cardLibrary<br/>本地牌库叠层]
+
+  LOBBY --> MODE_PICK
+  MODE_PICK -->|START_WORKSHOP_SESSION| SCENE
+  SCENE --> SCENE_FORM -->|SET_SCENARIO| NEXT[按新 View 跟随下一权威页面]
+  SCENE --> SCENE_CONFIRM -->|SET_SCENARIO| NEXT
+  PARTNER --> SPECIAL -->|USE_PARTNER_SPECIAL| PARTNER
+  PARTNER --> CROP --> PARTNER
+  SPY --> LIB --> SPY
+```
+
+| V2 页面 | V3 定位 | Snapshot / 重连规则 |
+|---|---|---|
+| `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
+| `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
+| `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随 |
+| `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
+| `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
+| `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
+| `packageSpy/pages/nextRound` | 兼容页 | V3 用 `SPY_RESULT → START_NEXT_SPY_ROUND → SPY_SPEAK` 表达 |
+| `partnerMode/statement`、`discussion`、`closingEnd` | 历史兼容页 | 当前权威流程分别收敛到 `partnerGame`、`closingStatement`、`leaderboard` |
+
+### 2.3 断线、冷启动与 Snapshot 恢复
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as 用户
+  participant Home as 小程序启动页
+  participant Client as RoomClient
+  participant Query as roomQuery
+  participant View as Member View
+  participant Nav as Navigation Coordinator
+
+  U->>Home: 冷启动 / 重进小程序
+  Home->>Client: 恢复 active roomId
+  Client->>Query: Snapshot(roomId)
+  Query-->>Client: 完整 Member View + seq
+  Client->>View: projectPageSnapshot(view)
+  Client->>Nav: reconcile(view.route, seq)
+  Nav-->>U: 打开该成员的权威页面
+
+  loop 轮询
+    Client->>Query: Events(afterSeq)
+    Query-->>Client: 公共 Event + 本人 Actor Event
+    Client->>View: 顺序 reduce
+    Client->>Nav: route 改变时跟页
+  end
+
+  alt Event 缺口 / 版本不兼容 / 服务端要求刷新
+    Client->>Query: Snapshot(roomId)
+    Query-->>Client: 完整 Member View
+    Client->>Nav: 以 Snapshot route 重新对齐
+  end
+```
+
+本地叠层只在仍属于同一权威 Route 时保留；一旦 `view.route` 改变，必须关闭叠层并跟随新页面。
+
+## 3. 创建、加入与大厅
 
 ```mermaid
 sequenceDiagram
@@ -49,232 +201,243 @@ sequenceDiagram
   end
   F-->>C: Outcome
   C->>C: 读取 Snapshot
-  C-->>V: 完整 Member View
+  C-->>V: route = addPlayer
 ```
 
-| 操作 | Command | 权限/结果 |
+| V2 页面操作 | V3 Command | 权限 / 结果 |
 |---|---|---|
-| 创建 | `CREATE_ROOM` | 当前没有开放房间；创建者成为 Host、Seat 1 |
-| 加入 | `JOIN_ROOM` | 当前没有其他开放房间；房间未满；重复加入只更新本人资料 |
-| 改房间名 | `UPDATE_ROOM_PROFILE` | Host |
-| 改本人资料 | `UPDATE_MEMBER_PROFILE` | Member 本人 |
-| 调整席位 | `REORDER_SEATS` | Host；必须提交当前全量成员且席位唯一 |
-| 踢人 | `KICK_MEMBER` | Host；不能踢自己 |
-| 离开 | `LEAVE_ROOM` | 非 Host Member |
-| 解散 | `DISSOLVE_ROOM` | Host；终止当前房间连接 |
+| 创建房间 | `CREATE_ROOM` | 无开放房间；创建者成为 Host、Seat 1 |
+| 扫码/输入房间号加入 | `JOIN_ROOM` | 无其他开放房间；未满；重复加入只更新本人资料 |
+| 修改房间名 | `UPDATE_ROOM_PROFILE` | Host |
+| 修改本人资料 | `UPDATE_MEMBER_PROFILE` | Member 本人 |
+| 拖动头像调整座位 | `REORDER_SEATS` | Host；提交当前全量成员且席位唯一 |
+| 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
+| “退出房间” | `LEAVE_ROOM` | 非 Host |
+| “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
+| “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Halli 至少 2 人，Spy 至少 3 人 |
+| “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
 ```mermaid
 flowchart TD
-  JOIN[JOIN_ROOM]
-  ACTIVE{调用者已有开放房间?}
-  SAME{就是目标房间?}
-  CAP{成员数 < 6?}
-  SEAT[分配最小空席]
-  UPDATE[更新本人资料，不新增成员]
-  REJECT[ALREADY_IN_ROOM / ROOM_FULL]
-
-  JOIN --> ACTIVE
-  ACTIVE -->|否| CAP
-  ACTIVE -->|是| SAME
-  SAME -->|是| UPDATE
-  SAME -->|否| REJECT
-  CAP -->|是| SEAT
-  CAP -->|否| REJECT
+  JOIN[JOIN_ROOM] --> ACTIVE{已有开放房间?}
+  ACTIVE -->|否| CAP{目标房间未满?}
+  ACTIVE -->|是| SAME{就是目标房间?}
+  SAME -->|是| UPDATE[更新本人资料]
+  SAME -->|否| REJECT[ALREADY_IN_ROOM]
+  CAP -->|是| SEAT[分配最小空席<br/>route = addPlayer]
+  CAP -->|否| FULL[ROOM_FULL]
 ```
 
-## 3. 场次创建与公共配置
+## 4. 公共配置流程
 
-场次开始时冻结当前成员为 `Session Participant`。此后加入房间的人只成为旁观成员，不进入本场进度集合。
+Session 创建时冻结当前 Room Members 为本场 Participants；此后加入者留在 `addPlayer?observing=true`，直到下一场才进入参与者集合。
 
 ```mermaid
 flowchart TD
-  START[START_WORKSHOP_SESSION]
-  MODE{Mode}
-  SPY[SPY_INTRO]
-  CHOOSE[CHOOSE_SCENARIO]
-  SOURCE{Scenario Source}
-  COLLECT[COLLECT_DESIGN_PROBLEMS]
-  SELECT_PROBLEM[SELECT_DESIGN_PROBLEM]
-  SELECT_FIRST[SELECT_FIRST_PLAYER]
-  CONFIRM_FIRST[CONFIRM_FIRST_PLAYER]
-  PARTNER[PARTNER_TURN]
-  HALLI[HALLI_ACTIVITY]
+  LOBBY[大厅 addPlayer]
+  PICK[选模式叠层 brainstormMode]
+  CHOOSE_H[CHOOSE_SCENARIO<br/>Host: modeIndex]
+  CHOOSE_P[Player: subAwait]
+  COLLECT[COLLECT_DESIGN_PROBLEMS<br/>全员: submitProblem]
+  SELECT_PROBLEM_H[SELECT_DESIGN_PROBLEM<br/>Host: selectProblem]
+  SELECT_PROBLEM_P[Player: subAwait]
+  SELECT_FIRST_H[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
+  SELECT_FIRST_P[Player: subAwait]
+  CONFIRM[CONFIRM_FIRST_PLAYER<br/>全员: confirmFirstPlayer]
+  PARTNER[PARTNER_TURN<br/>全员: partnerGame]
+  HALLI[HALLI_ACTIVITY<br/>全员: halliGame]
+  SPY[SPY_INTRO<br/>全员: spyIntro]
 
-  START --> MODE
-  MODE -->|SPY| SPY
-  MODE -->|PARTNER / HALLI_GALLI| CHOOSE
-  CHOOSE --> SOURCE
-  SOURCE -->|PARTNER 且非 OFFLINE| COLLECT
-  COLLECT --> SELECT_PROBLEM --> SELECT_FIRST
-  SOURCE -->|PARTNER OFFLINE| SELECT_FIRST
-  SOURCE -->|HALLI 任意来源| SELECT_FIRST
-  SELECT_FIRST -->|PARTNER| CONFIRM_FIRST --> PARTNER
-  SELECT_FIRST -->|HALLI_GALLI| HALLI
+  LOBBY --> PICK
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_H
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_P
+  PICK -->|START_WORKSHOP_SESSION Spy| SPY
+  CHOOSE_H -->|SET_SCENARIO Partner 非 OFFLINE| COLLECT
+  CHOOSE_P -. Event / Snapshot .-> COLLECT
+  COLLECT -->|全员 SUBMIT_DESIGN_PROBLEM| SELECT_PROBLEM_H
+  COLLECT -->|全员提交完成| SELECT_PROBLEM_P
+  SELECT_PROBLEM_H -->|SELECT_DESIGN_PROBLEM| SELECT_FIRST_H
+  SELECT_PROBLEM_P -. Event / Snapshot .-> SELECT_FIRST_P
+  CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
+  CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
+  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM
+  CONFIRM -->|CONFIRM_FIRST_PLAYER| PARTNER
+  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli| HALLI
 ```
 
-公共配置 Command：
+| 页面操作 | Command | 业务状态变化 |
+|---|---|---|
+| 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
+| “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
+| Host 编辑问题 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
+| Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
+| “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
+| Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |
+| Host 从情境页返回大厅 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
 
-```text
-START_WORKSHOP_SESSION
-SET_SCENARIO
-SUBMIT_DESIGN_PROBLEM
-UPDATE_DESIGN_PROBLEM
-SELECT_DESIGN_PROBLEM
-SELECT_FIRST_PLAYER
-CONFIRM_FIRST_PLAYER
-CANCEL_WORKSHOP_SESSION
-```
+`SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 
-设计问题在收集完成前互不可见；进入选择问题步骤后，完整列表才进入公共 View。返回上一步会清理不再合法的选择与进度，旧 `workflowStep/entityVersion` 令牌随后失效。
+## 5. Partner
 
-## 4. Partner
-
-### 4.1 主循环
+### 5.1 主循环与页面
 
 ```mermaid
 stateDiagram-v2
   [*] --> PARTNER_TURN
-  PARTNER_TURN --> PARTNER_TURN: 评分 / 匿名表达 / 素材 / HELP_LUCK / MASTER
+  PARTNER_TURN --> PARTNER_TURN: Score / Message / Artifact / HELP_LUCK / MASTER
   PARTNER_TURN --> PARTNER_TURN: SILENT 开始或结束
-  PARTNER_TURN --> PARTNER_STATEMENT: 全部有效评分完成，Host 开始表态
-  PARTNER_STATEMENT --> PARTNER_TURN: Host 归档 Turn 并开始下一 Turn
-  PARTNER_TURN --> PARTNER_CLOSING_VOTE: 当前行动者使用 CLOSING
-  PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一有效成员 question
-  PARTNER_CLOSING_VOTE --> PARTNER_CLOSING_RUNE: 全部有效成员 pass
-  PARTNER_CLOSING_RUNE --> PARTNER_CLOSING_REVIEW: Host 推进
-  PARTNER_CLOSING_REVIEW --> COMPLETED: Host 完成场次
+  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT
+  PARTNER_STATEMENT --> PARTNER_TURN: ADVANCE_PARTNER_TURN
+  PARTNER_TURN --> PARTNER_CLOSING_VOTE: USE_PARTNER_SPECIAL(CLOSING)
+  PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一 question
+  PARTNER_CLOSING_VOTE --> PARTNER_CLOSING_RUNE: 全部 pass
+  PARTNER_CLOSING_RUNE --> PARTNER_CLOSING_REVIEW: ADVANCE_PARTNER_CLOSING
+  PARTNER_CLOSING_REVIEW --> COMPLETED: COMPLETE_PARTNER_SESSION
 ```
 
 ```mermaid
 flowchart LR
-  TURN[Active Turn]
-  SCORE[非行动者唯一 Score]
-  MSG[匿名 Message]
-  ART[TEXT / IMAGE / VOICE Artifact]
-  STATEMENT[Statement Result]
-  SUMMARY[不可变 Turn Summary]
-  BOARD[Leaderboard]
+  TURN[PARTNER_TURN<br/>partnerGame<br/>出牌/评分/匿名表达]
+  STATEMENT[PARTNER_STATEMENT<br/>partnerGame<br/>表态与讨论]
+  VOTE[PARTNER_CLOSING_VOTE<br/>closingStatement<br/>通过/存在疑问]
+  RUNE[PARTNER_CLOSING_RUNE<br/>partnerGame<br/>补全符文]
+  REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
+  BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
 
-  TURN --> SCORE
-  TURN --> MSG
-  TURN --> ART
-  SCORE --> STATEMENT --> SUMMARY
-  ART --> SUMMARY
-  SUMMARY --> BOARD
+  TURN -->|全员评分后 Host“表态并讨论”| STATEMENT
+  STATEMENT -->|Host“没有疑问/结束讨论”| TURN
+  TURN -->|当前行动者“收尾行动”| VOTE
+  VOTE -->|question| TURN
+  VOTE -->|全部 pass| RUNE
+  RUNE -->|Host“下一步”| REVIEW
+  REVIEW -->|Host“结束脑暴”| BOARD
 ```
 
-| Command | 规则 |
-|---|---|
-| `SUBMIT_PARTNER_SCORE` | 非当前行动者提交 0～10 半星单位，同一 Turn 每人一次 |
-| `POST_PARTNER_MESSAGE` | 非行动者可在出牌阶段表达；参与者可在表态讨论阶段表达 |
-| `APPEND/UPDATE/REMOVE_ARTIFACT` | 使用 `operationId` 和 `entityVersion` 保证重试、编辑和删除正确 |
-| `START_PARTNER_STATEMENT` | Host 且全部当前 required 评分完成 |
-| `ADVANCE_PARTNER_TURN` | Host 提交 `allPass/partialPass/allQuestion`，归档旧 Turn 并创建下一 Turn |
-| `USE_PARTNER_SPECIAL` | 仅当前行动者；每个 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING` |
-| `END_PARTNER_SILENT` | Host 或当前行动者；结束 5 分钟静默窗口 |
-| `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其他有效参与者各投 `pass/question` |
-| `ADVANCE_PARTNER_CLOSING` | Host 从 Rune 推进 Review |
-| `COMPLETE_PARTNER_SESSION` | Host 在 Review 完成场次并生成排行榜 |
+| 页面操作 | Command | 约束 / 结果 |
+|---|---|---|
+| 非行动者星级评分 | `SUBMIT_PARTNER_SCORE` | 0～10 半星单位；同一 Turn 每人一次 |
+| 非行动者匿名表达 | `POST_PARTNER_MESSAGE` | 出牌阶段非行动者；讨论阶段所有参与者 |
+| 增删改文本/图片/语音 | `APPEND/UPDATE/REMOVE_ARTIFACT` | `operationId + entityVersion` 保证重试和并发正确 |
+| Host “表态并讨论” | `START_PARTNER_STATEMENT` | 当前 required 评分全部完成 |
+| Host “没有疑问/结束讨论” | `ADVANCE_PARTNER_TURN` | 归档当前 Turn，创建下一 Turn |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING` |
+| 结束静默 | `END_PARTNER_SILENT` | Host 或当前行动者 |
+| “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
+| Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
+| Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
-Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增，而不是每次换人都递增。
+Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。
 
-### 4.2 收尾裁决
+### 5.2 收尾裁决
 
 ```mermaid
 flowchart TD
-  CLOSE[CLOSING]
+  CLOSE[CLOSING<br/>发起者自动 pass]
   VOTE[其他有效参与者投票]
-  COMPLETE{全部 required 已提交?}
+  COMPLETE{required 全部提交?}
   QUESTION{存在 question?}
-  RETURN[归档 CLOSING_QUESTIONED<br/>开始下一 Turn]
-  RUNE[归档 CLOSING_ACCEPTED<br/>进入 Rune]
-  REVIEW[Review]
-  DONE[Session Completed]
+  RETURN[归档 CLOSING_QUESTIONED<br/>开始下一 Turn<br/>route: partnerGame]
+  RUNE[归档 CLOSING_ACCEPTED<br/>stage = RUNE<br/>route: partnerGame]
+  REVIEW[stage = REVIEW<br/>route: partnerGame]
+  DONE[Session Completed<br/>Host: leaderboard 主屏<br/>Player: leaderboard 副屏]
 
   CLOSE --> VOTE --> COMPLETE
   COMPLETE -->|否| VOTE
   COMPLETE -->|是| QUESTION
   QUESTION -->|是| RETURN
-  QUESTION -->|否| RUNE --> REVIEW --> DONE
+  QUESTION -->|否| RUNE
+  RUNE -->|ADVANCE_PARTNER_CLOSING| REVIEW
+  REVIEW -->|COMPLETE_PARTNER_SESSION| DONE
 ```
 
-## 5. Halli Galli
-
-```mermaid
-stateDiagram-v2
-  [*] --> CHOOSE_SCENARIO
-  CHOOSE_SCENARIO --> SELECT_FIRST_PLAYER: SET_SCENARIO
-  SELECT_FIRST_PLAYER --> HALLI_ACTIVITY: SELECT_FIRST_PLAYER
-  HALLI_ACTIVITY --> HALLI_CREATIVE: END_HALLI_ACTIVITY
-  HALLI_CREATIVE --> HALLI_CREATIVE: 每位参与者提交或更新自己的创意
-  HALLI_CREATIVE --> HALLI_SUMMARY: 全部有效参与者已提交
-  HALLI_SUMMARY --> COMPLETED: COMPLETE_HALLI_SESSION
-```
-
-Halli 的线下卡牌活动本身不按每次翻牌写入云端；V3 只同步活动阶段、首位参与者、创意提交进度和汇总结果。进入 `HALLI_ACTIVITY` 时线下游戏已经开始，活动页保留原业务操作“结束游戏”；该操作提交 `END_HALLI_ACTIVITY` 后，所有成员依据新的 `view.route` 进入创意阶段。
+## 6. 德国心脏病（Halli Galli）
 
 ```mermaid
 flowchart LR
-  A[END_HALLI_ACTIVITY]
-  P[requiredMemberIds = 当前有效参与者]
-  I[SUBMIT_HALLI_IDEA<br/>每人一条，可更新]
-  READY{required 全部提交?}
-  SUMMARY[公开所有 Ideas]
-  COMPLETE[Host 完成 Session]
+  SCENE[CHOOSE_SCENARIO<br/>Host: modeIndex]
+  FIRST[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
+  ACTIVITY[HALLI_ACTIVITY<br/>全员: halliGame]
+  INPUT[HALLI_CREATIVE<br/>未提交: creativeInput]
+  WAIT[HALLI_CREATIVE<br/>已提交: creativeSummary]
+  SUMMARY[HALLI_SUMMARY<br/>全员: creativeSummary]
+  COMPLETE[COMPLETED<br/>全员: creativeSummary]
+  REPLAY[新 Session<br/>SELECT_FIRST_PLAYER]
+  LOBBY[大厅<br/>addPlayer]
 
-  A --> P --> I --> READY
-  READY -->|否| I
-  READY -->|是| SUMMARY --> COMPLETE
+  SCENE -->|SET_SCENARIO| FIRST
+  FIRST -->|SELECT_FIRST_PLAYER| ACTIVITY
+  ACTIVITY -->|Host“结束游戏”<br/>END_HALLI_ACTIVITY| INPUT
+  INPUT -->|SUBMIT_HALLI_IDEA| WAIT
+  INPUT -->|最后一人提交| SUMMARY
+  WAIT -->|最后一人提交| SUMMARY
+  SUMMARY -->|COMPLETE_HALLI_SESSION| COMPLETE
+  COMPLETE -->|REPLAY_WORKSHOP_SESSION| REPLAY
+  COMPLETE -->|RETURN_TO_LOBBY| LOBBY
 ```
 
-## 6. Spy
+V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
+
+线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。本人提交后可以先看等待汇总页，但在最后一人提交前不公开其他人的创意正文。
+
+## 7. 谁是卧底（Spy）
 
 ```mermaid
-stateDiagram-v2
-  [*] --> SPY_INTRO
-  SPY_INTRO --> SPY_SPEAK: Host 分牌并随机发言顺序
-  SPY_SPEAK --> SPY_SPEAK: 当前发言者结束，推进下一位
-  SPY_SPEAK --> SPY_VOTE: 发言完成或 Host 强制开票
-  SPY_VOTE --> SPY_TIE_SPEAK: 最高票并列
-  SPY_TIE_SPEAK --> SPY_VOTE: 并列者重新发言后再开票
-  SPY_VOTE --> SPY_RESULT: 未决胜负
-  SPY_VOTE --> SPY_SETTLED: 卧底或平民获胜
-  SPY_RESULT --> SPY_SPEAK: START_NEXT_SPY_ROUND
-  SPY_SETTLED --> SPY_SPEAK: RESTART_SPY_GAME
-  SPY_SETTLED --> COMPLETED: COMPLETE_SPY_SESSION
+flowchart LR
+  INTRO[SPY_INTRO<br/>spyIntro<br/>规则/词库/等待开局]
+  SPEAK[SPY_SPEAK<br/>spySpeak<br/>每人只见本人密牌]
+  VOTE[SPY_VOTE<br/>spyVote]
+  TIE[SPY_TIE_SPEAK<br/>spySpeak<br/>并列者加时]
+  RESULT[SPY_RESULT<br/>spyResult<br/>本轮未决胜负]
+  SETTLE[SPY_SETTLED<br/>spySettle<br/>公开身份与词语]
+  COMPLETE[COMPLETED<br/>spySettle]
+  LOBBY[大厅<br/>addPlayer]
+
+  INTRO -->|Host“开始游戏”<br/>START_SPY_GAME| SPEAK
+  SPEAK -->|当前人“我已完成发言”<br/>ADVANCE_SPY_SPEAKER| SPEAK
+  SPEAK -->|全部讲完自动开票<br/>或 Host“开始投票”| VOTE
+  VOTE -->|最高票并列| TIE
+  TIE -->|并列者讲完| VOTE
+  VOTE -->|无胜负| RESULT
+  RESULT -->|“进入下一轮”<br/>START_NEXT_SPY_ROUND| SPEAK
+  VOTE -->|卧底数为 0<br/>或卧底数 >= 平民数| SETTLE
+  SETTLE -->|Host“再来一局”<br/>RESTART_SPY_GAME| SPEAK
+  SETTLE -->|COMPLETE_SPY_SESSION| COMPLETE
+  COMPLETE -->|RETURN_TO_LOBBY| LOBBY
 ```
 
 ```mermaid
 flowchart TD
   START[START_SPY_GAME<br/>至少 3 人]
-  DEAL[每人一个私密 Actor View]
+  SECRET[为每名成员写入私密 Actor Event]
+  ORDER[随机发言顺序]
   SPEAK[ADVANCE_SPY_SPEAKER]
-  VOTE[OPEN / SUBMIT_SPY_VOTE]
-  RESULT{票型}
+  OPEN[OPEN_SPY_VOTE<br/>或最后一人自动开票]
+  SUBMIT[SUBMIT_SPY_VOTE]
+  SHAPE{票型}
   TIE[并列者重新发言]
-  ABSTAIN[全员弃票，无淘汰]
-  ELIM[淘汰最高票成员]
-  WIN{卧底数为 0<br/>或卧底数 >= 平民数?}
+  ABSTAIN[全员弃票<br/>无淘汰]
+  ELIM[淘汰唯一最高票成员]
+  WIN{满足胜负条件?}
   SETTLED[公开全员身份与词语]
   NEXT[下一轮]
 
-  START --> DEAL --> SPEAK --> VOTE --> RESULT
-  RESULT -->|并列| TIE --> VOTE
-  RESULT -->|无目标票| ABSTAIN --> NEXT
-  RESULT -->|唯一最高票| ELIM --> WIN
+  START --> SECRET --> ORDER --> SPEAK --> OPEN --> SUBMIT --> SHAPE
+  SHAPE -->|并列| TIE --> OPEN
+  SHAPE -->|无目标票| ABSTAIN --> NEXT
+  SHAPE -->|唯一最高票| ELIM --> WIN
   WIN -->|否| NEXT --> SPEAK
   WIN -->|是| SETTLED
 ```
 
-Spy 隐私规则：
+隐私边界：
 
-- 分牌后，每名成员只在自己的 `actor.privateModeState` 看到身份、词语和说明。
-- 公共 Event 只有语义类型和公共补丁，不包含任何密牌 payload。
-- 中途淘汰只公开被淘汰成员身份，不公开词语或其他成员身份。
-- 只有 `SPY_SETTLED` 才公开全员身份和词语；个人投票选择始终不进入公共 View。
-- 服务器用自己的时间裁决 2 分钟投票截止；过期目标票按弃票记录。
+- 本人身份、词语和说明只在本人的 `actor.privateModeState`。
+- 公共 Event 不含密牌；每个成员的 Actor Event 单独扇出。
+- 中途淘汰只公开被淘汰者身份；`SPY_SETTLED` 才公开全部身份和词语。
+- 个人投票选择不进入公共 View；公共 View 只包含进度与结算票型。
+- 投票截止由服务端时间裁决；迟到目标票按弃票记录。
 
-## 7. 成员变化中的原子处理
+## 8. 成员变化中的原子处理
 
 ```mermaid
 flowchart TD
@@ -282,83 +445,85 @@ flowchart TD
   ROOM[从 Room Members 移除]
   PARTICIPANT[Session Participant 标记 LEFT]
   MODE{当前步骤}
-  CANCEL[配置期人数不足则取消 Session]
-  PARTNER[Partner: 缩减评分/投票 required<br/>行动者离开则归档 ABANDONED 并换人]
-  HALLI[Halli: 缩减创意 required<br/>首位离开则选择下一有效参与者]
-  SPY[Spy: 移出发言/投票<br/>重新判定推进与胜负]
-  EVENT[与退出 Event 同一事务提交]
+  CANCEL[配置期人数不足<br/>取消 Session]
+  PARTNER[Partner<br/>缩减评分/收尾 required<br/>行动者离开则归档 ABANDONED 并换人]
+  HALLI[Halli<br/>缩减创意 required<br/>首位离开则选下一有效参与者]
+  SPY[Spy<br/>移出发言/投票<br/>重新判定推进与胜负]
+  EVENT[同一事务提交状态与 Event]
 
   EXIT --> ROOM --> PARTICIPANT --> MODE
-  MODE --> CANCEL
+  MODE --> CANCEL --> EVENT
   MODE --> PARTNER --> EVENT
   MODE --> HALLI --> EVENT
   MODE --> SPY --> EVENT
-  CANCEL --> EVENT
 ```
 
-已经离开的参与者留下的历史事实用于归档回看，但不会继续计入当前 `required/submitted` 集合或投票裁决。
+离开的参与者历史事实保留用于归档回看，但不再计入当前 `required/submitted`、评分或投票裁决。
 
-## 8. 完成、回大厅、重玩与历史
+## 9. 完成、返回大厅、重玩与历史
 
 ```mermaid
-flowchart LR
-  RUN[Current Session]
-  DONE[COMPLETED / CANCELLED<br/>Archived Session]
-  LOBBY[Room 保持 OPEN<br/>currentSessionId = null]
-  REPLAY[新 Session<br/>新 sessionId / ordinal]
+flowchart TD
+  DONE[Completed Session]
+  RETURN[RETURN_TO_LOBBY]
+  REPLAY[REPLAY_WORKSHOP_SESSION]
+  LOBBY[Room OPEN<br/>currentSessionId = null<br/>route: addPlayer]
+  P[Partner 新 Session<br/>复用情境/问题/首位<br/>直接 PARTNER_TURN]
+  H[Halli 新 Session<br/>复用情境<br/>SELECT_FIRST_PLAYER]
+  S[Spy 新 Session<br/>SPY_INTRO]
   HISTORY[History / Session / Leaderboard]
 
-  RUN --> DONE
-  DONE -->|RETURN_TO_LOBBY| LOBBY
-  DONE -->|REPLAY_WORKSHOP_SESSION| REPLAY
+  DONE --> RETURN --> LOBBY
+  DONE --> REPLAY
+  REPLAY --> P
+  REPLAY --> H
+  REPLAY --> S
   DONE --> HISTORY
 ```
 
-- 完成、取消、回大厅、重玩或解散时，旧 Session 与 Facts 作为归档保存；新场次不会复用旧的业务标识。
-- History 按 `ordinal` 分页；精确回看按 `sessionId` 获取独立 Snapshot，不切换当前 RoomClient 活跃连接。
-- 被踢、离房或房间解散后的原参与者仍可读取自己的归档场次，但不能继续读取当前房间。
+旧 Session 和 Facts 归档后不可变；新场次不复用旧 `sessionId/gameId/turnId/voteSessionId`。History 按 `ordinal` 分页，精确回看按 `sessionId` 获取独立 Snapshot，不切换当前 RoomClient 连接。
 
-## 9. View 与页面跟随
-
-```mermaid
-flowchart LR
-  STATE[Workflow Step]
-  ACTOR[Actor Role / Participant / Capabilities]
-  ROUTE[route.name + params]
-  PAGE[业务页面]
-  STATE --> ROUTE
-  ACTOR --> ROUTE --> PAGE
-```
-
-页面名不是业务状态。Host 和 Player 均依据 `Member View.route` 跟随流程；写指令成功后若本地 View 尚未到达该指令的 `committedThroughSeq`，客户端先刷新 Snapshot，再跟随权威 Route，不猜测下一页面。本地预览、弹层、输入草稿、焦点和滚动位置可以暂时覆盖导航表现，但不得反向修改权威 Workflow。
-
-## 10. 端到端验收矩阵
+## 10. View 正确性与端到端验收
 
 ```mermaid
 flowchart LR
   CMD[业务 Command]
   AGG[Aggregate @ M]
-  EVENT[Snapshot@N + Events N+1..M]
-  SNAP[Snapshot@M]
-  EQ{Member View 完全相等?}
-  UI[route + page model 可还原]
+  BASE[旧 Snapshot @ N]
+  EVENTS[Projected Events N+1..M]
+  REDUCED[Event Reduce 后 Member View]
+  SNAP[Snapshot @ M Member View]
+  EQ{深度相等?}
+  ROUTE{Route 与角色矩阵一致?}
+  PAGE{Page Model 可完整生成?}
+  PASS[业务页面可恢复]
 
-  CMD --> AGG
-  AGG --> SNAP --> EQ
-  CMD --> EVENT --> EQ
-  EQ -->|是| UI
-  EQ -->|否| FAIL[测试失败]
+  CMD --> AGG --> SNAP
+  BASE --> EVENTS --> REDUCED
+  REDUCED --> EQ
+  SNAP --> EQ
+  EQ -->|是| ROUTE -->|是| PAGE -->|是| PASS
+  EQ -->|否| FAIL[失败]
+  ROUTE -->|否| FAIL
+  PAGE -->|否| FAIL
 ```
 
-| 模式/范围 | 自动化验收 |
+| 范围 | 自动化验收 |
 |---|---|
-| Halli 主链：情境、首位、活动、创意、汇总、完成 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
-| Partner 主链：完整配置、行动、评分、表态、换轮、收尾、排行榜 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
-| Spy 主链：分牌、逐人发言、投票、结算、完成 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| 三种模式完整 Command 主链、Event 与 Snapshot 等价、Page Model 可还原 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| `workflow.step → role-specific route → physical page` 矩阵 | [`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
 | Halli 离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
 | Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
-| 页面交互、路由跟随、Snapshot 恢复 | [`tests/ui`](../tests/ui)、[`v3-client.test.js`](../tests/room-client/v3-client.test.js) |
+| 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`room-navigation-concurrency.test.js`](../tests/ui/room-navigation-concurrency.test.js) |
 
-每条主链在每个 Command 前保存 Snapshot，Command 后按顺序消费公共补丁和本人 Actor
-补丁，再与最新 Snapshot 做深度相等比较；同时校验完整 Member View、Route 与 Page Model。
+手工多端验收每个关键 Step 至少覆盖：
+
+```mermaid
+flowchart LR
+  A[Host 执行动作] --> B[其他端 Event 跟页]
+  B --> C[关闭任一端]
+  C --> D[冷启动读取 Snapshot]
+  D --> E[恢复到相同角色 Route]
+  E --> F[继续下一 Command]
+```

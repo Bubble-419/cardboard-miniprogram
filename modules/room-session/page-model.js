@@ -8,6 +8,12 @@ const PARTNER_CLOSING_STEPS = new Set([
   WORKFLOW_STEP.PARTNER_CLOSING_REVIEW
 ]);
 
+function partnerClosingStep(stage) {
+  if (stage === 'RUNE') return 'rune';
+  if (stage === 'REVIEW') return 'review';
+  return null;
+}
+
 function modeId(mode) {
   return { PARTNER: 'partner', HALLI_GALLI: 'halliGalli', SPY: 'spy' }[mode] || null;
 }
@@ -246,7 +252,8 @@ function projectPageSnapshot(view, clientState) {
       && silentSignal.turnId === turn.turnId
       && Number(silentSignal.expiresAt) > serverNow);
     roomState.partnerSilentSoundLevel = signalInCurrentScope ? silentSignal.value : 0;
-    roomState.partnerClosingStep = closing && closing.stage;
+    // Domain 使用大写枚举，旧页面组件使用小写枚举；统一在 PageModel 边界转换。
+    roomState.partnerClosingStep = partnerClosingStep(closing && closing.stage);
     roomState.closingVoteSessionId = closing && closing.closingVoteSessionId;
     roomState.closingVoteInitiatorIndex = closing && memberSeat(view, closing.initiatorMemberId);
     roomState.closingVoteSubmittedCount = closing && closing.votedCount;

@@ -50,6 +50,48 @@ test('Partner 页面模型把计时锚点换算到本机时钟域', () => {
   assert.equal(page.roomState.progress.turnId, 't1');
 });
 
+test('Partner 页面模型把收尾阶段枚举转换为页面使用的小写值', () => {
+  const baseView = {
+    room: {
+      roomId: '12345678', lifecycle: 'OPEN', hostMemberId: 'm1', workshopName: '测试工作坊',
+      createdAt: 1, members: [{ memberId: 'm1', seatNo: 1, nickName: '主持人' }]
+    },
+    session: {
+      sessionId: 's1', mode: 'PARTNER', status: 'RUNNING',
+      workflow: { step: 'PARTNER_CLOSING_RUNE' },
+      setup: { scenario: null, selectedProblem: '问题' },
+      participants: [{ memberId: 'm1', seatNoAtStart: 1, nickName: '主持人' }],
+      publicModeState: {
+        turnOrdinal: 1, roundNo: 1,
+        closing: { stage: 'RUNE', sourceTurnId: 't1' }
+      },
+      activeTurn: null, activeArtifacts: [], recentMessages: [], turnSummaries: []
+    },
+    actor: {
+      memberId: 'm1', role: 'HOST', seatNo: 1, isParticipant: true,
+      scoreStatus: { submitted: false }, capabilities: {}
+    },
+    route: { name: 'partnerGame', params: {} }
+  };
+
+  const rune = projectPageSnapshot(baseView, { seq: 1, serverNow: 1, ephemeral: {} });
+  assert.equal(rune.roomState.partnerClosingStep, 'rune');
+
+  const reviewView = {
+    ...baseView,
+    session: {
+      ...baseView.session,
+      workflow: { step: 'PARTNER_CLOSING_REVIEW' },
+      publicModeState: {
+        ...baseView.session.publicModeState,
+        closing: { stage: 'REVIEW', sourceTurnId: 't1' }
+      }
+    }
+  };
+  const review = projectPageSnapshot(reviewView, { seq: 2, serverNow: 2, ephemeral: {} });
+  assert.equal(review.roomState.partnerClosingStep, 'review');
+});
+
 test('Partner 页面模型只消费当前行动范围内且未过期的瞬时信号', () => {
   const view = {
     room: {

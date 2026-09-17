@@ -80,7 +80,7 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
   global.wx = {
     showToast() {},
     redirectTo(options) {
-      finishNavigation = () => options.success({});
+      finishNavigation = () => options.complete({});
     }
   };
 
@@ -93,7 +93,14 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
     selectionAnimationDone: true
   });
   app.globalData.roomSession = {
+    roomId: '12345678',
     getView: () => ({ session: { sessionId: 'session-1' } }),
+    getSnapshot: () => ({
+      ok: true,
+      roomId: '12345678',
+      revision: 2,
+      view: { route: { name: 'confirmFirstPlayer', params: { phase: 'CONFIRM_FIRST_PLAYER' } } }
+    }),
     dispatch: async () => ({ ok: true })
   };
 
@@ -110,6 +117,65 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
   finishNavigation();
   await running;
   assert.equal(page.data.interactionLocked, false, '路由回调后应释放锁');
+  delete app.globalData.roomSession;
+});
+
+test('最后提交设计问题的普通玩家按 Member View 进入等待页，而不是房主选择页', async () => {
+  let redirectUrl = '';
+  global.wx = {
+    showToast() {},
+    redirectTo(options) {
+      redirectUrl = options.url;
+      if (typeof options.complete === 'function') options.complete({});
+    }
+  };
+  const snapshot = {
+    ok: true,
+    roomId: '12345678',
+    revision: 8,
+    memberCount: 2,
+    members: [
+      { memberId: 'member-host', playerIndex: 1, nickName: '房主' },
+      { memberId: 'member-2', playerIndex: 2, nickName: '玩家2', isMe: true }
+    ],
+    view: {
+      route: { name: 'subAwait', params: { phase: 'SELECT_DESIGN_PROBLEM' } },
+      actor: {
+        memberId: 'member-2',
+        contributionStatus: { submitted: true, text: '问题 B' }
+      },
+      session: {
+        setup: {
+          designProblems: [
+            { contributionId: 'p1', memberId: 'member-host', text: '问题 A' },
+            { contributionId: 'p2', memberId: 'member-2', text: '问题 B' }
+          ]
+        },
+        progress: { contributionProgress: { submittedCount: 2, requiredCount: 2 } }
+      }
+    }
+  };
+  app.globalData.roomSession = {
+    roomId: '12345678',
+    getState: () => ({ status: 'READY', roomId: '12345678' }),
+    getView: () => snapshot.view,
+    getSnapshot: () => snapshot,
+    refresh: async () => snapshot,
+    dispatch: async () => ({ ok: true })
+  };
+
+  const definition = loadPageDefinition('../../pages/main-pages/submitProblem/index');
+  const page = makePage(definition, {
+    roomId: '12345678',
+    myPlayerIndex: 2,
+    myNickName: '玩家2',
+    problemText: '问题 B',
+    totalMembers: 2
+  });
+
+  await page.submitProblem();
+  assert.match(redirectUrl, /^\/pages\/sub-pages\/subAwait\/index\?/);
+  assert.doesNotMatch(redirectUrl, /selectProblem/);
   delete app.globalData.roomSession;
 });
 
@@ -133,7 +199,7 @@ test('Halli Galli 自定义情境确认后进入选择首位玩家页', async ()
     getSnapshot: () => ({
       ok: true,
       roomId: '12345678',
-      revision: 4,
+      revision: 10,
       view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
     })
   };
@@ -176,7 +242,7 @@ test('大富翁情境确认后进入提交问题页', async () => {
     getSnapshot: () => ({
       ok: true,
       roomId: '12345678',
-      revision: 4,
+      revision: 12,
       view: { route: { name: 'submitProblem', params: { phase: 'COLLECT_DESIGN_PROBLEMS' } } }
     })
   };
@@ -215,7 +281,7 @@ test('大富翁确认首位玩家后进入游戏页', async () => {
     getSnapshot: () => ({
       ok: true,
       roomId: '12345678',
-      revision: 6,
+      revision: 14,
       view: { route: { name: 'partnerGame', params: { currentPlayerIndex: 2 } } }
     })
   };
@@ -246,4 +312,19 @@ test('Halli Galli 活动页保持原业务语义：房主使用短文案“结�
   assert.match(wxml, /线下游戏进行中/);
   assert.match(wxml, />结束游戏<\/button>/);
   assert.doesNotMatch(wxml, /完成线下游戏，进入创意/);
+});
+
+test('共享玩家列表引用的小程序包内图标必须真实存在', () => {
+  const componentPath = path.join(__dirname, '../../components/user-list/index.wxml');
+  const wxml = fs.readFileSync(componentPath, 'utf8');
+  const assetPaths = Array.from(wxml.matchAll(/src="(\/assets\/[^"]+)"/g), (match) => match[1]);
+
+  assert.ok(assetPaths.length > 0, '共享玩家列表应包含本地图标');
+  assetPaths.forEach((assetPath) => {
+    assert.equal(
+      fs.existsSync(path.join(__dirname, '../..', assetPath.slice(1))),
+      true,
+      `缺少静态资源：${assetPath}`
+    );
+  });
 });

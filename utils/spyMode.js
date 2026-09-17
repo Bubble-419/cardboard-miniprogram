@@ -17,6 +17,7 @@ const { handleRoomGoneFromResult } = require('./roomDissolved');
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getActiveRoomSession,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
@@ -196,11 +197,13 @@ async function callSpyAction(action, data = {}) {
         roomId: String(roomId)
       });
     if (!result || result.ok !== true) return result || { ok: false, errCode: 'EMPTY_RESULT', errMsg: '无返回' };
+    // Spy 的所有阶段切换也只消费服务端 Member View 的权威 route，避免首个分包页面靠轮询猜跳。
+    const navigation = await followRoomRouteAfterCommand(result, roomId);
     const session = getActiveRoomSession();
     const snapshot = session && session.getSnapshot
       ? session.getSnapshot()
       : await getRoomPageSnapshot(roomId, { refresh: false });
-    return spyResultFromSnapshot(result, snapshot);
+    return spyResultFromSnapshot({ ...result, navigation }, snapshot);
   } catch (e) {
     return {
       ok: false,

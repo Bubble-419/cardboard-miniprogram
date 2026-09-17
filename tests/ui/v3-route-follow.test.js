@@ -37,6 +37,7 @@ test('页面命令不自造 commandId，授权读取 actor.capabilities', () => 
   assert.match(session, /cap\.allowed !== true/);
   const spyMode = fs.readFileSync(path.join(root, 'utils/spyMode.js'), 'utf8');
   assert.doesNotMatch(spyMode, /makeSpyCommandId|commandIdFactory|clientCreateId/);
+  assert.match(spyMode, /followRoomRouteAfterCommand\(result, roomId\)/);
   const pages = [...walk('pages'), ...walk('packageSpy')];
   pages.forEach((file) => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');

@@ -10,7 +10,7 @@ const {
 } = require('../../../utils/scenarioCategories');
 const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { getCurrentRoute, openUrl, safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -18,6 +18,7 @@ const {
 } = require('../../../utils/pageInteractionLock');
 const {
   bindPageToRoomSession,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
@@ -144,9 +145,6 @@ Page(withPageInteractionLock({
         patch.problemText = status.myProblemText || '';
       }
       this.setData(patch);
-      if (status.allSubmitted && this._pageVisible !== false) {
-        this._goSelectProblem();
-      }
     } catch (e) {
       console.warn('refreshSubmitStatus', e);
     }
@@ -178,19 +176,6 @@ Page(withPageInteractionLock({
 
   _stopPolling() {
     unbindPageFromRoomSession(this);
-  },
-
-  _goSelectProblem() {
-    if (this._navigating || !this._pageAlive || this._pageVisible === false) return;
-    if (getCurrentRoute() === 'pages/main-pages/selectProblem/index') {
-      this._stopPolling();
-      return;
-    }
-    this._navigating = true;
-    this._stopPolling();
-    clearPendingNavigation();
-    const roomIdEnc = encodeURIComponent(this.data.roomId);
-    openUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`, { preferNavigate: true });
   },
 
   handleOpenCase() {
@@ -316,7 +301,7 @@ Page(withPageInteractionLock({
     return runPageNavigation(this, async () => {
       this.setData({ isSubmitting: true });
       try {
-        await saveProblem(this.data.roomId, {
+        const result = await saveProblem(this.data.roomId, {
           playerIndex: this.data.myPlayerIndex,
           nickName: this.data.myNickName,
           text: problemText
@@ -335,14 +320,9 @@ Page(withPageInteractionLock({
           totalMembers: status.totalMembers || this.data.totalMembers
         });
 
-        if (!status.allSubmitted) return;
-        this._navigating = true;
-        this._stopPolling();
-        clearPendingNavigation();
-        return {
-          method: 'navigateTo',
-          url: `/pages/main-pages/selectProblem/index?roomId=${encodeURIComponent(this.data.roomId)}`
-        };
+        // 最后一位提交者也必须按自己的 Member View 路由：房主进选择页，玩家进等待页。
+        await followRoomRouteAfterCommand(result, this.data.roomId);
+        return null;
       } catch (e) {
         console.error('submitProblem', e);
         wx.showToast({ title: e.message || '提交失败，请重试', icon: 'none' });

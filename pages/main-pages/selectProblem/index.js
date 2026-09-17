@@ -16,6 +16,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
@@ -446,13 +447,8 @@ Page(withPageInteractionLock({
         return;
       }
 
-      const query = roomId
-        ? `?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-        : '?modeId=partner';
-      return {
-        method: 'navigateTo',
-        url: `/pages/main-pages/selectPlayer/index${query}`
-      };
+      await followRoomRouteAfterCommand(result, roomId);
+      return null;
     }, { loadingText: '正在确认问题…' });
   },
 

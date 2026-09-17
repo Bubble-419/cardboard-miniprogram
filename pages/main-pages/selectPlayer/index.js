@@ -1,6 +1,7 @@
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
@@ -442,10 +443,8 @@ Page({
           currentPlayerIndex: member.playerIndex,
           currentPlayerName: member.nickName || `玩家${member.playerIndex}`
         };
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${encodeURIComponent(roomId)}`
-        };
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._navPending = false;
       }
@@ -478,10 +477,8 @@ Page({
           wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
           return;
         }
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}&currentPlayerIndex=${currentPlayerIndex}`
-        };
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._navPending = false;
       }

@@ -13,6 +13,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
@@ -117,17 +118,14 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '房间信息丢失', icon: 'none' });
       return;
     }
-    const roomIdEnc = encodeURIComponent(roomId);
     return runPageNavigation(this, async () => {
       const result = await dispatchRoomCommand('END_HALLI_ACTIVITY', {});
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '结束失败', icon: 'none' });
         return;
       }
-      return {
-        method: 'redirectTo',
-        url: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`
-      };
+      await followRoomRouteAfterCommand(result, roomId);
+      return null;
     }, { loadingText: '正在结束游戏…' });
   },
 

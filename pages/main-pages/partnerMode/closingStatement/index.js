@@ -4,6 +4,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot
 } = require('../../../../modules/room-session/index');
 const { runPageInteraction, withPageInteractionLock } = require('../../../../utils/pageInteractionLock');
@@ -105,7 +106,11 @@ Page(withPageInteractionLock({
         return;
       }
       const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: false });
-      this._applyVoteStatus(snapshot);
+      if (snapshot && snapshot.view && snapshot.view.route
+        && snapshot.view.route.name === 'closingStatement') {
+        this._applyVoteStatus(snapshot);
+      }
+      await followRoomRouteAfterCommand(result, this.data.roomId);
     } catch (e) {
       console.warn('SUBMIT_PARTNER_CLOSING_VOTE', e);
       wx.showToast({ title: '提交失败', icon: 'none' });

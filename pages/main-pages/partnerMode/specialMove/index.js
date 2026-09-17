@@ -1,9 +1,10 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
-const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
+const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   getActiveRoomSession,
   getRoomRequestContext
@@ -977,14 +978,6 @@ Page(withPageInteractionLock({
               this._redirectToGamepageFromRoom(result);
               return true;
             }
-            // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
-            if (state.currentPage === 'closingStatement') {
-              openUrl(buildClosingStatementUrl(roomId, {
-                closingVoteSessionId: state.closingVoteSessionId || '',
-                _t: Date.now()
-              }), { immediate: true });
-              return true;
-            }
             // 仍在 gamepage 且非 master：勿被旧 poll 打回 gamepage（防卡顿回跳）
             // 静默中同样留在 specialMove 控制页
             if (
@@ -1166,21 +1159,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
       }
-      const session = getActiveRoomSession();
-      const snapshot = session && session.getSnapshot();
-      const closingVoteSessionId = snapshot && snapshot.roomState
-        && snapshot.roomState.closingVoteSessionId || '';
-      const url = buildClosingStatementUrl(roomId, {
-        closingVoteSessionId,
-        isInitiator: true,
-        _t: Date.now()
-      });
-      this._stopStatePolling();
-      const navigation = await this._returnToClosingStatement(url);
-      if (!navigation.ok) {
-        this._startStatePolling();
-        wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
-      }
+      await followRoomRouteAfterCommand(result, roomId);
     } finally {
       this._activatingClosing = false;
     }
@@ -1341,21 +1320,6 @@ Page(withPageInteractionLock({
     });
   },
 
-  _returnToClosingStatement(url) {
-    return new Promise((resolve) => {
-      wx.redirectTo({
-        url,
-        success: () => resolve({ ok: true }),
-        fail: () => {
-          wx.reLaunch({
-            url,
-            success: () => resolve({ ok: true }),
-            fail: (error) => resolve({ ok: false, error })
-          });
-        }
-      });
-    });
-  }
 }, [
   'handleGoRoom',
   'handleToggleProblemExpand',

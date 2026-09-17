@@ -3,7 +3,15 @@ const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { dispatchRoomCommand, getRoomPageSnapshot, bindPageToRoomSession, unbindPageFromRoomSession, canRoomCommand, getActiveRoomSession } = require('../../../modules/room-session/index');
+const {
+  dispatchRoomCommand,
+  getRoomPageSnapshot,
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  canRoomCommand,
+  getActiveRoomSession,
+  followRoomRouteAfterCommand
+} = require('../../../modules/room-session/index');
 const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
@@ -257,6 +265,7 @@ Page(withPageInteractionLock({
         title: mode.title,
         description: mode.description
       };
+      await followRoomRouteAfterCommand(result, this.data.roomId);
     } catch (err) {
       wx.showToast({ title: err.errMsg || '选择失败', icon: 'none' });
     } finally {

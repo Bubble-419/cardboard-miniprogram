@@ -311,6 +311,7 @@
   align-items: center;
   justify-content: center;
   letter-spacing: 0.0909em;
+  white-space: nowrap;
   pointer-events: auto;
 }
 

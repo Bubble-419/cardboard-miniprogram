@@ -15,13 +15,13 @@ const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
-const { buildSpecialMoveUrl, buildClosingStatementUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
-const { safeOpenUrl } = require('../../../../utils/pageNavigate');
+const { buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   getActiveRoomSession,
   dispatchRoomCommand,
+  followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   getRoomHistory,
   getRoomSessionPageSnapshot
@@ -211,6 +211,7 @@ Page(withPageInteractionLock({
     roundTimerReady: false,
     roundTimerElapsedRatio: 0,
     roundTimerRemainingSec: 30,
+    roundTimerMaxSec: ROUND_DURATION_SEC,
     cardCount: 1,
     paginationDots: [{ key: 0, sizeClass: 'dot-lg', active: true }],
     playHistory: [],
@@ -2687,21 +2688,6 @@ Page(withPageInteractionLock({
       beforeNavigate(pollResult, page) {
         // 已离开本页（灵感空间等叠层）：不要把隐藏页的跟随订阅打回 gamepage
         if (this._pageVisible === false) return true;
-        const state = pollResult.roomState || {};
-        if (page === 'closingstatement') {
-          safeOpenUrl(buildClosingStatementUrl(roomId, {
-            closingVoteSessionId: state.closingVoteSessionId || '',
-            _t: Date.now()
-          }), { immediate: true });
-          return true;
-        }
-        if (page === 'leaderboard') {
-          safeOpenUrl(buildLeaderboardUrl(roomId, {
-            from: 'closingEnd',
-            isSubScreen: true
-          }), { immediate: true });
-          return true;
-        }
         return false;
       }
     }).catch((e) => console.warn('partner gamepage roomSession', e));
@@ -5599,10 +5585,8 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '状态同步失败', icon: 'none' });
       return;
     }
-    return {
-      method: 'redirectTo',
-      url: buildLeaderboardUrl(roomId, { from: 'closingEnd' })
-    };
+    await followRoomRouteAfterCommand(result, roomId);
+    return null;
   },
 
   handleClosingPhoto() {
