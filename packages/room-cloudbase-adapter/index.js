@@ -3,7 +3,9 @@
 const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
 const { emptyFacts } = require('@cardboard/room-domain');
-const { stableStringify } = require('@cardboard/room-contracts');
+const {
+  PROTOCOL_VERSION, SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify
+} = require('@cardboard/room-contracts');
 
 // V3 使用独立物理集合，不读取或双写旧协议数据。
 const COLLECTIONS = Object.freeze({
@@ -19,6 +21,11 @@ function cleanDoc(value) {
   const next = clone(value);
   delete next._id;
   return next;
+}
+function compatibleRoom(room) {
+  return !!room
+    && room.protocolVersion === PROTOCOL_VERSION
+    && room.schemaVersion === SCHEMA_VERSION;
 }
 async function safeGet(store, collection, id) {
   try {
@@ -37,7 +44,7 @@ async function safeGet(store, collection, id) {
 
 async function loadAggregate(store, roomId) {
   const room = await safeGet(store, COLLECTIONS.rooms, roomId);
-  if (!room) return null;
+  if (!compatibleRoom(room)) return null;
   const currentSession = room.currentSessionId
     ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId)
     : null;
@@ -54,7 +61,7 @@ async function loadAggregate(store, roomId) {
 
 async function loadSessionAggregate(store, roomId, sessionId) {
   const room = await safeGet(store, COLLECTIONS.rooms, roomId);
-  if (!room) return null;
+  if (!compatibleRoom(room)) return null;
   const currentSession = await safeGet(store, COLLECTIONS.sessions, sessionId);
   if (!currentSession || currentSession.roomId !== roomId) return null;
   const facts = currentSession.facts ? cleanDoc(currentSession.facts) : emptyFacts();
@@ -64,7 +71,7 @@ async function loadSessionAggregate(store, roomId, sessionId) {
 }
 
 function openUsers(aggregate) {
-  if (!aggregate || !aggregate.room || aggregate.room.lifecycle !== 'OPEN') return [];
+  if (!aggregate || !compatibleRoom(aggregate.room) || aggregate.room.lifecycle !== 'OPEN') return [];
   return (aggregate.room.members || []).map((member) => ({ userId: member.userId,
     roomId: aggregate.room.roomId, memberId: member.memberId }));
 }
@@ -106,7 +113,7 @@ function createCloudBaseRoomRepository(deps) {
       let danglingActive = false;
       if (activeRoomId) {
         activeRoomDocument = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
-        const activeMember = activeRoomDocument && activeRoomDocument.lifecycle === 'OPEN'
+        const activeMember = compatibleRoom(activeRoomDocument) && activeRoomDocument.lifecycle === 'OPEN'
           && (activeRoomDocument.members || []).some((member) => member.userId === input.actorUserId);
         if (!activeMember) {
           // 只在命令事务内修复悬挂索引，查询接口继续保持只读。
@@ -130,7 +137,8 @@ function createCloudBaseRoomRepository(deps) {
       const beforeSessionSnapshot = persistedSession(current, resolvedRoomId);
       const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const activityAggregate = [decision.accepted && decision.aggregate, current,
-        activeRoomDocument && { room: activeRoomDocument }].find((candidate) => candidate && candidate.room
+        activeRoomDocument && { room: activeRoomDocument }].find((candidate) => candidate
+          && compatibleRoom(candidate.room)
           && (candidate.room.members || []).some((member) => member.userId === input.actorUserId)) || null;
       const activityMember = activityAggregate && activityAggregate.room
         && (activityAggregate.room.members || []).find((member) => member.userId === input.actorUserId);
@@ -250,10 +258,12 @@ function createCloudBaseRoomRepository(deps) {
     // Room/Event 由写事务原子发布。先固定 Room 水位再读 <= ceiling 的 Event，
     // 并发新命令会被 ceiling 排除；TTL 删除造成的缺口由应用层回退 Snapshot。
     const room = await safeGet(db, COLLECTIONS.rooms, roomId);
-    if (!room) return { room: null, events: [] };
+    if (!compatibleRoom(room)) return { room: null, events: [] };
     const ceiling = room.eventSeq;
     // 稳态轮询最常见的是 afterSeq 已追平，直接省去一次空 Event 查询。
     if (afterSeq >= ceiling) return { room, events: [] };
+    // 大积压由应用层内联最新 Snapshot；此处不再无谓读取即将丢弃的 Event。
+    if (ceiling - afterSeq > MAX_INCREMENTAL_SYNC_EVENTS) return { room, events: [] };
     const _ = db.command;
     const result = await db.collection(COLLECTIONS.events)
       .where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy('seq', 'asc').limit(limit).get();
@@ -267,7 +277,7 @@ function createCloudBaseRoomRepository(deps) {
       // current 查询只需验证“用户索引 -> 房间成员”这一条引用。
       // 不加载完整聚合，避免无谓依赖场次、事实集合及其复合索引，也避免在事务内并发查询。
       const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
-      const member = room && room.lifecycle === 'OPEN'
+      const member = compatibleRoom(room) && room.lifecycle === 'OPEN'
         && (room.members || []).find((item) => item.userId === userId);
       return member ? { roomId: active.roomId, memberId: member.memberId }
         : { dangling: true, roomId: active.roomId };
@@ -300,7 +310,7 @@ function createCloudBaseRoomRepository(deps) {
   async function upsertSignal(input) {
     return db.runTransaction(async (transaction) => {
       const room = await safeGet(transaction, COLLECTIONS.rooms, input.roomId);
-      if (!room) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
+      if (!compatibleRoom(room)) return { ok: false, errCode: 'ROOM_NOT_FOUND', errMsg: '房间不存在' };
       const member = room.lifecycle === 'OPEN'
         && (room.members || []).find((item) => item.userId === input.actorUserId);
       if (!member) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };

@@ -29,9 +29,13 @@ flowchart LR
 `packages/room-*` 或任一 `cloudfunctions/*/src` 后，也要重新构建并部署相关云函数。
 客户端与云函数版本不一致时，不属于受支持的运行方式。
 
-当前事件格式为 `eventSchemaVersion = 3`，Patch 包含 `set/remove/splice`。本次不迁移旧数据，
-必须在空的 V3 集合上将客户端与全部 V3 云函数作为同一发布单元部署，不能混用仍生成
-V2 Event 的旧云函数。
+当前事件格式为 `eventSchemaVersion = 3`，Patch 包含 `set/remove/splice`，每个 Event Group 还
+记录生成补丁时的 `viewSchemaVersion`。本次不迁移旧数据，必须在空的 V3 集合上将客户端与
+全部 V3 云函数作为同一发布单元部署，不能混用不同 View/持久化 Schema 的云函数。
+
+产品上线前若修改了 `SCHEMA_VERSION`，请直接清空所有 `roomV3*` 测试集合后重新建房。服务端会
+把版本不匹配的 Room 当作不存在，并将对应 `roomV3ActiveByUser` 视为悬挂索引；账号下一次创建
+房间时会在事务内修复该索引，不需要数据迁移或客户端兼容分支。
 
 ## 1. 发布依赖图
 
@@ -178,7 +182,7 @@ flowchart TD
 | R6 | Halli 全员创意与投稿者离开 | required 集合同步缩减；可进入汇总并完成 |
 | R7 | Spy 分牌、发言、弃票、平票、淘汰、两侧胜负 | 结算前其他成员和公共事件无秘密 |
 | R8 | 行动者/投票者中途离开 | 同一提交内缩减 required/submitted；旧票不参与当前裁决；推进或结算正确 |
-| R9 | 前后台切换、Event 人为过期/缺口 | 恢复时 Snapshot；页面状态可完整还原 |
+| R9 | 前后台切换、Event 人为过期/缺口、积压超过 25 条 | 恢复时直接 Snapshot；Sync 在同一响应内交付 Snapshot；页面状态可完整还原 |
 | R10 | 离开/踢出/解散后旧 Presence/Signal | Snapshot 不再展示旧成员或旧 Turn 信号 |
 | R11 | History / Session / Leaderboard | ordinal 分页无重复；精确 sessionId 回看；离房/被踢/解散后的原参与者仍可还原自己的归档 View |
 | R12 | 关闭旧集合客户端权限 | V3 功能不受影响，客户端无法直读写房间数据 |
@@ -203,7 +207,7 @@ Spy SETTLED 前 Public View/Event 不含 role/word/blurb
 | 信号 | 告警建议 |
 |---|---|
 | `DEPENDENCY_UNAVAILABLE` / `INTERNAL_ERROR` | 连续 5 分钟出现即检查索引、权限和事务限制 |
-| `SNAPSHOT_REQUIRED` | 比例突增时检查 Event TTL、缺口或客户端版本 |
+| `delivery=SNAPSHOT` | 比例突增时检查 Event TTL、缺口、超过 25 条的积压或客户端生命周期 |
 | `COMMAND_ID_CONFLICT` | 检查客户端 commandId 生成与复用 |
 | 事务冲突/重试 | 按房间与命令类型观察热点 |
 | `LIMIT_EXCEEDED` / RoomSession 文档大小 | 协议在 6 MiB 安全预算、500 消息、1000 素材、200 常规 Turn 前拒绝增长；引导结束场次，不得放宽到数据库硬上限 |

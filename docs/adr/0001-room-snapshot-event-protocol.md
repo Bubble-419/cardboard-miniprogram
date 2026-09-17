@@ -31,6 +31,7 @@ flowchart LR
 - Snapshot 完整替换 `Member View`；Event 依次应用公共补丁和当前成员 Actor 补丁。两条路径必须得到相同 View，页面不区分来源。
 - 公共 Event 只携带语义类型；Raw Event 与其他成员 Actor 投影不返回客户端。
 - Event 有保留期。缺口、未知版本、状态版本不连续或不可信水位统一触发 Snapshot，而不是猜测修复。
+- Sync 使用 `EVENTS | SNAPSHOT` 判别交付：连续积压不超过 25 条时返回 Event，超过阈值或事件不可信时在同一响应内返回最新 Snapshot。
 - `knownSeq` 只表示客户端同步水位；业务并发由 `sessionId`、`turnId`、`workflowStep`、`voteSessionId` 等领域上下文令牌裁决。
 - Presence 和 Signal 是瞬时数据，不推进业务水位。
 

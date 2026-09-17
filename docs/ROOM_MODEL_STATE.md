@@ -254,6 +254,7 @@ facts.votes[voteSessionId:memberId]
 ```text
 EventGroup
 ├── eventSchemaVersion
+├── viewSchemaVersion
 ├── roomId
 ├── seq
 ├── stateVersion
@@ -289,6 +290,7 @@ flowchart LR
 ```text
 EventGroup.seq == 前一 EventGroup.seq + 1
 EventGroup.stateVersion == 前一 stateVersion + 1
+EventGroup.viewSchemaVersion == 生成 Patch 时的 Member View Schema
 同一 Command 只提交一个 Event Group
 publicEvents 只暴露已知 type，不带领域 payload
 publicPatch 不得包含 Actor/Route/Navigation 或秘密
@@ -386,7 +388,8 @@ erDiagram
 ```mermaid
 flowchart LR
   SYNC[sync] --> R[roomV3Rooms]
-  SYNC -->|仅有增量时| E[roomV3Events]
+  SYNC -->|连续增量 1..25 条| E[roomV3Events]
+  SYNC -->|积压>25 / 缺口 / 旧 Schema| S[roomV3Sessions]
   SNAPSHOT[snapshot] --> R
   SNAPSHOT --> S[roomV3Sessions]
   COMMAND[command transaction] --> R
@@ -395,10 +398,11 @@ flowchart LR
   COMMAND --> A[roomV3Actions]
 ```
 
-高频 Sync 不重建 Actor View，也不读取 Session；Actor、Route、Navigation 变化已经在 Event
-产生时扇出为 actor patch。
-稳态 `afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询。房间资料等不改变 Session 的
-Command 也不会重写 Session/Facts 或所有未变化的 `ActiveByUser` 索引。
+稳态 Sync 不重建 Actor View，也不读取 Session；Actor、Route、Navigation 变化已经在 Event
+产生时扇出为 actor patch。`afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询；连续
+积压为 1～25 条时读取 Event；积压超过 25 条、缺口或版本不兼容时读取一次 Aggregate，并在同一
+响应内交付最新 Snapshot。房间资料等不改变 Session 的 Command 也不会重写 Session/Facts 或所有
+未变化的 `ActiveByUser` 索引。
 
 ## 8. 业务状态与瞬时状态
 

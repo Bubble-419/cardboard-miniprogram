@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {
   ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway
 } = require('@cardboard/room-client');
-const { VIEW_SCHEMA_VERSION } = require('@cardboard/room-contracts');
+const { VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION } = require('@cardboard/room-contracts');
 const { applyProjectedEvent } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
 
@@ -168,7 +168,7 @@ async function reduceFromSnapshot(h, userId, before, limit = 3) {
   while (true) {
     const batch = await h.app.sync('12345678', afterSeq, { userId }, { limit });
     assert.equal(batch.ok, true);
-    assert.equal(batch.snapshotRequired, false);
+    assert.equal(batch.delivery, 'EVENTS');
     batch.events.forEach((event) => { reduced = applyProjectedEvent(reduced, event); });
     afterSeq = batch.throughSeq;
     if (!batch.hasMore) {
@@ -299,14 +299,15 @@ test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
       seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {}, minAvailableSeq: 1 }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' }, sync: {
       ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
-      afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 2, stateVersion: 2,
+      afterSeq: 0, throughSeq: 2, roomCurrentSeq: 2, hasMore: false, delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 2, stateVersion: 2,
         commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
         publicPatch: { set: [], remove: [], splice: [] }, actorPatch: null }]
     } }),
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
-      snapshotRequired: false, events: [] })
+      delivery: 'EVENTS', events: [] })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
   await client.open();
@@ -343,11 +344,11 @@ test('同步完成水位矛盾时强制 Snapshot，不发布不完整 View', asy
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
-      snapshotRequired: false, events: [] }),
+      delivery: 'EVENTS', events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
       ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 2, hasMore: false,
-      snapshotRequired: false, events: []
+      delivery: 'EVENTS', events: []
     } })
   };
   const client = createRoomClient({ gateway, ...inertTimers() });
@@ -369,7 +370,7 @@ test('hasMore 却没有事件时强制 Snapshot，避免空批无限追赶', asy
     },
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 1, hasMore: true,
-      snapshotRequired: false, events: [] }),
+      delivery: 'EVENTS', events: [] }),
     dispatch: async () => null
   };
   const timers = manualTimers();
@@ -389,12 +390,13 @@ test('连续事件缺少最终 publicPatch 时也强制 Snapshot', async () => {
       roomId: '12345678', seq: snapshotCalls++, stateVersion: snapshotCalls, view, ephemeral: {} }),
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false,
-      snapshotRequired: false, events: [] }),
+      delivery: 'EVENTS', events: [] }),
     dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED' }, sync: {
       ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
-      snapshotRequired: false,
-      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
+      delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 1, stateVersion: 1,
         commandId: 'x', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
         actorPatch: null }]
     } })
@@ -418,8 +420,9 @@ test('事件组 stateVersion 不连续时强制 Snapshot', async () => {
     },
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
-      snapshotRequired: false,
-      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 7,
+      delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 1, stateVersion: 7,
         commandId: 'broken-version', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
         publicPatch: { set: [], remove: [], splice: [] }, actorPatch: null }]
     }),
@@ -453,6 +456,66 @@ test('从后台恢复时立即重新读取 Snapshot', async () => {
   await client.resume();
   assert.equal(snapshotCalls, 2);
   assert.equal(client.getView().room.workshopName, '快照2');
+});
+
+test('Sync 内联 Snapshot 可直接替换 View，不再追加一次 Snapshot 请求', async () => {
+  let snapshotCalls = 0;
+  const initialView = makeStableView('12345678', '初始状态');
+  const latestView = makeStableView('12345678', '最新状态');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 1, stateVersion: 1, view: initialView, ephemeral: {} };
+    },
+    sync: async () => ({
+      ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      eventSchemaVersion: EVENT_SCHEMA_VERSION,
+      delivery: 'SNAPSHOT',
+      snapshot: {
+        ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 30, stateVersion: 30, view: latestView, ephemeral: {}
+      }
+    }),
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+
+  await client.open();
+  await timers.run();
+
+  assert.equal(snapshotCalls, 1);
+  assert.equal(client.getState().seq, 30);
+  assert.equal(client.getView().room.workshopName, '最新状态');
+  client.close();
+});
+
+test('本地没有有效 View 时定时恢复只重试 Snapshot，不发送 sync(0)', async () => {
+  let snapshotCalls = 0;
+  let syncCalls = 0;
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 81, stateVersion: 81,
+        view: { room: { roomId: '12345678' } }, ephemeral: {} };
+    },
+    sync: async () => { syncCalls += 1; return null; },
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+
+  await client.open();
+  await timers.run();
+
+  assert.equal(snapshotCalls, 2);
+  assert.equal(syncCalls, 0);
+  assert.equal(client.getState().status, 'DEGRADED');
+  client.close();
 });
 
 test('首次 current-room 暂时失败时自动退避重试', async () => {
@@ -530,7 +593,7 @@ test('CREATE_ROOM 不把当前连接的 roomId 发给服务端', async () => {
       roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
       afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
-      snapshotRequired: false, events: [] }),
+      delivery: 'EVENTS', events: [] }),
     dispatch: async (envelope) => {
       sent = envelope;
       return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'CREATE_ROOM 不接受客户端 roomId', retryable: false };
@@ -744,8 +807,9 @@ test('Actor Patch 不得越权改写公共 View', async () => {
         roomId: '12345678', seq: 0, stateVersion: 0, view: snapshotView(), ephemeral: {} };
     },
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
-      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 1, stateVersion: 1,
         commandId: 'bad-actor-patch', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
         publicPatch: { set: [], remove: [], splice: [] },
         actorPatch: { set: [{ path: 'room', value: {
@@ -777,8 +841,9 @@ test('Event Patch 破坏 MemberView 骨架时回退 Snapshot', async () => {
         view: stableView, ephemeral: {} };
     },
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
-      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, snapshotRequired: false,
-      events: [{ eventSchemaVersion: 3, roomId: '12345678', seq: 1, stateVersion: 1,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 1, stateVersion: 1,
         commandId: 'remove-session', publicEvents: [{ type: 'WORKSHOP_SESSION_CANCELLED' }],
         publicPatch: { set: [], remove: ['session'], splice: [] }, actorPatch: null }], ephemeral: {} }),
     dispatch: async () => null
@@ -804,7 +869,7 @@ test('Presence/Signal 查询失败时保留上次瞬时值并标记 stale', asyn
       ephemeral: { presenceByMemberId: { m2: { online: true, lastSeenAt: 10 } },
         signals: { PARTNER_SILENT_SOUND: { value: 0.6 } }, stale: { presence: false, signals: false } } }),
     sync: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: 3,
-      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false, snapshotRequired: false, events: [],
+      afterSeq: 0, throughSeq: 0, roomCurrentSeq: 0, hasMore: false, delivery: 'EVENTS', events: [],
       ephemeral: { presenceByMemberId: {}, signals: {}, stale: { presence: true, signals: true } } }),
     dispatch: async () => null
   };

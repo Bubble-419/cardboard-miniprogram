@@ -8,6 +8,12 @@ const {
   docId,
   createCloudBaseRoomRepository
 } = require('@cardboard/room-cloudbase-adapter');
+const { PROTOCOL_VERSION, SCHEMA_VERSION } = require('@cardboard/room-contracts');
+
+const CURRENT_ROOM_VERSION = Object.freeze({
+  protocolVersion: PROTOCOL_VERSION,
+  schemaVersion: SCHEMA_VERSION
+});
 
 function storeRejecting(error) {
   return {
@@ -40,7 +46,7 @@ function createTransactionDbThatRejectsConcurrentQueries() {
           return {
             get() {
               if (name === 'roomV3Rooms') {
-                return guardedResult({ _id: id, roomId: id, lifecycle: 'OPEN',
+                return guardedResult({ _id: id, roomId: id, ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN',
                   currentSessionId: 'session-1', eventSeq: 0, members: [] });
               }
               if (name === 'roomV3Sessions') {
@@ -179,7 +185,7 @@ test('CloudBase 当前房间查询只读取 active 与 room 文档', async () =>
       roomId: '12345678', userId: 'host', memberId: 'member-host'
     }],
     [`${COLLECTIONS.rooms}:12345678`, {
-      roomId: '12345678', lifecycle: 'OPEN',
+      roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN',
       members: [{ userId: 'host', memberId: 'member-host' }]
     }]
   ]);
@@ -209,9 +215,34 @@ test('CloudBase 当前房间查询只读取 active 与 room 文档', async () =>
   assert.deepEqual(accessedCollections, [COLLECTIONS.active, COLLECTIONS.rooms]);
 });
 
+test('CloudBase 把旧持久化 Schema 的活跃房间视为悬挂索引', async () => {
+  const documents = new Map([
+    [`${COLLECTIONS.active}:${docId('host')}`, {
+      roomId: '12345678', userId: 'host', memberId: 'member-host'
+    }],
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION - 1,
+      lifecycle: 'OPEN', members: [{ userId: 'host', memberId: 'member-host' }]
+    }]
+  ]);
+  const transaction = {
+    collection(name) {
+      return { doc(id) { return { async get() { return { data: documents.get(`${name}:${id}`) }; } }; } };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({
+    db: { runTransaction: (callback) => callback(transaction) }
+  });
+
+  assert.deepEqual(await repo.findActiveRoom('host'), {
+    dangling: true,
+    roomId: '12345678'
+  });
+});
+
 test('CloudBase 高频 Sync 只读取轻量 Room 与统一事件流', async () => {
   const accessedCollections = [];
-  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 3,
+  const room = { roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN', eventSeq: 3,
     currentSessionId: 'session-1', members: [{ userId: 'host', memberId: 'member-host' }] };
   const transaction = {
     collection(name) {
@@ -242,9 +273,9 @@ test('CloudBase 高频 Sync 只读取轻量 Room 与统一事件流', async () =
   assert.deepEqual(accessedCollections, [COLLECTIONS.rooms, COLLECTIONS.events]);
 });
 
-test('CloudBase 高频 Sync 不开启读事务，且 Event 查询只读客户请求的批量', async () => {
+test('CloudBase 高频 Sync 不开启读事务，且小积压 Event 查询只读客户请求的批量', async () => {
   const limits = [];
-  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 200,
+  const room = { roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN', eventSeq: 120,
     currentSessionId: 'session-1', members: [{ userId: 'host', memberId: 'member-host' }] };
   const db = {
     command: { gt: () => ({ and: () => ({}) }), lte: () => ({}) },
@@ -271,7 +302,7 @@ test('CloudBase 高频 Sync 不开启读事务，且 Event 查询只读客户请
 
 test('CloudBase 稳态 Sync 已追平时不再发起空 Event 查询', async () => {
   const accessed = [];
-  const room = { roomId: '12345678', lifecycle: 'OPEN', eventSeq: 20,
+  const room = { roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN', eventSeq: 20,
     members: [{ userId: 'host', memberId: 'member-host' }] };
   const db = {
     command: { gt: () => ({ and: () => ({}) }), lte: () => ({}) },
@@ -295,7 +326,7 @@ test('CloudBase Presence 与 Signal 拒绝较旧请求覆盖较新时间戳', as
   const signalId = docId('12345678:PARTNER_SILENT_SOUND');
   const documents = new Map([
     [`${COLLECTIONS.rooms}:12345678`, {
-      roomId: '12345678', lifecycle: 'OPEN',
+      roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN',
       members: [{ userId: 'host', memberId: 'member-host' }],
       signalScope: {
         sessionId: 'session-1', turnId: 'turn-1', memberId: 'member-host', deadlineAt: 10000
@@ -355,7 +386,8 @@ test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃�
   const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
   const documents = new Map([
     [`${COLLECTIONS.rooms}:12345678`, {
-      roomId: '12345678', lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
+      roomId: '12345678', ...CURRENT_ROOM_VERSION,
+      lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
       members: [{ userId: 'host', memberId: 'member-host' }]
     }],
     [`${COLLECTIONS.sessions}:session-1`, {
@@ -407,7 +439,8 @@ test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', asy
   const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
   const documents = new Map([
     [`${COLLECTIONS.rooms}:12345678`, {
-      roomId: '12345678', lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
+      roomId: '12345678', ...CURRENT_ROOM_VERSION,
+      lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
       members: [{ userId: 'host', memberId: 'member-host' }]
     }],
     [`${COLLECTIONS.sessions}:session-1`, {

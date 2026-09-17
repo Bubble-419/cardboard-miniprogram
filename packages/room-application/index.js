@@ -5,7 +5,7 @@ const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, EVENT_TYPES, ERR,
   fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString,
   validatePublicViewPatch, validateActorViewPatch, MAX_SESSION_DOCUMENT_BYTES,
-  MAX_SYNC_RESPONSE_BYTES
+  MAX_SYNC_RESPONSE_BYTES, MAX_INCREMENTAL_SYNC_EVENTS
 } = require('@cardboard/room-contracts');
 const { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require('@cardboard/room-domain');
 const {
@@ -13,7 +13,6 @@ const {
 } = require('@cardboard/room-projection');
 
 const DEFAULT_SYNC_LIMIT = 100;
-const MAX_SYNC_BACKLOG = 300;
 const PRESENCE_TTL_MS = 15000;
 
 function isRoomId(value) {
@@ -75,6 +74,7 @@ function buildEventGroup(envelope, domainEvents, room, beforeAggregate, afterAgg
   if (!events.length) throw new Error('accepted command must produce at least one event');
   return {
     eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    viewSchemaVersion: VIEW_SCHEMA_VERSION,
     roomId: room.roomId,
     seq: room.eventSeq + 1,
     stateVersion: room.stateVersion + 1,
@@ -98,6 +98,7 @@ function validEventGroup(eventGroup) {
     : [];
   return !!eventGroup
     && eventGroup.eventSchemaVersion === EVENT_SCHEMA_VERSION
+    && eventGroup.viewSchemaVersion === VIEW_SCHEMA_VERSION
     && Number.isInteger(eventGroup.seq)
     && Number.isInteger(eventGroup.stateVersion)
     && isNonEmptyString(eventGroup.commandId)
@@ -120,6 +121,7 @@ function projectEventGroupForMember(eventGroup, memberId) {
   // 显式白名单构造传输事件，绝不把 rawEvents 或其他成员投影返回客户端。
   return {
     eventSchemaVersion: eventGroup.eventSchemaVersion,
+    viewSchemaVersion: eventGroup.viewSchemaVersion,
     roomId: eventGroup.roomId,
     seq: eventGroup.seq,
     stateVersion: eventGroup.stateVersion,
@@ -246,16 +248,13 @@ function createRoomApplication(repo, options) {
     return okResult({ roomId: found.roomId, membershipId: found.memberId });
   }
 
-  async function readSnapshot(roomId, actorContext) {
+  async function projectSnapshot(roomId, actorContext, aggregate, touchedPromise) {
     const actorUserId = actorContext && actorContext.userId;
-    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
-    const aggregate = await repo.readAggregate(roomId);
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     const [rawEphemeral, touched] = await Promise.all([
       ephemeral(roomId, aggregate),
-      touchActivity(roomId, auth.member.memberId, actorContext)
+      touchedPromise || touchActivity(roomId, auth.member.memberId, actorContext)
     ]);
     const projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
     return okResult({
@@ -269,6 +268,14 @@ function createRoomApplication(repo, options) {
       serverTime: now(),
       minAvailableSeq: aggregate.minAvailableSeq == null ? 1 : aggregate.minAvailableSeq
     });
+  }
+
+  async function readSnapshot(roomId, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
+    const aggregate = await repo.readAggregate(roomId);
+    return projectSnapshot(roomId, actorContext, aggregate);
   }
 
   async function writeSignal(input, actorContext) {
@@ -423,28 +430,31 @@ function createRoomApplication(repo, options) {
     const base = { protocolVersion: PROTOCOL_VERSION, viewSchemaVersion: VIEW_SCHEMA_VERSION,
       eventSchemaVersion: EVENT_SCHEMA_VERSION,
       afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
-      snapshotRequired: false, events: [], ephemeral: {}, serverTime: now() };
+      delivery: 'EVENTS', events: [], ephemeral: {}, serverTime: now() };
     const activityPromise = touchActivity(roomId, auth.member.memberId, actorContext);
-    if (baseSeq > currentSeq || currentSeq - baseSeq > MAX_SYNC_BACKLOG) {
-      await activityPromise;
-      return okResult({ ...base, snapshotRequired: true });
+    const inlineSnapshot = async () => {
+      const aggregate = await repo.readAggregate(roomId);
+      const snapshot = await projectSnapshot(roomId, actorContext, aggregate, activityPromise);
+      if (!snapshot.ok) return snapshot;
+      return okResult({ protocolVersion: PROTOCOL_VERSION, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        eventSchemaVersion: EVENT_SCHEMA_VERSION, delivery: 'SNAPSHOT', snapshot });
+    };
+    if (baseSeq > currentSeq || currentSeq - baseSeq > MAX_INCREMENTAL_SYNC_EVENTS) {
+      return inlineSnapshot();
     }
     const available = (bundle.events || []).filter((item) => item.seq > baseSeq && item.seq <= currentSeq)
       .sort((a, b) => a.seq - b.seq);
     if (currentSeq > baseSeq && (!available.length || available[0].seq !== baseSeq + 1)) {
-      await activityPromise;
-      return okResult({ ...base, snapshotRequired: true });
+      return inlineSnapshot();
     }
     for (let i = 1; i < available.length; i += 1) {
       if (available[i].seq !== available[i - 1].seq + 1) {
-        await activityPromise;
-        return okResult({ ...base, snapshotRequired: true });
+        return inlineSnapshot();
       }
     }
     const candidates = available.slice(0, limit);
     if (candidates.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) {
-      await activityPromise;
-      return okResult({ ...base, snapshotRequired: true });
+      return inlineSnapshot();
     }
     const selected = [];
     let eventBytes = 0;
@@ -458,8 +468,7 @@ function createRoomApplication(repo, options) {
       eventBytes += projectedBytes;
     }
     if (candidates.length && !selected.length) {
-      await activityPromise;
-      return okResult({ ...base, snapshotRequired: true });
+      return inlineSnapshot();
     }
     const throughSeq = selected.length ? selected[selected.length - 1].seq : baseSeq;
     const hasMore = throughSeq < currentSeq;
@@ -556,17 +565,13 @@ function createRoomApplication(repo, options) {
     const outcome = receipt.outcome;
     const response = okResult({ commandId: envelope.commandId, outcome,
       traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}` });
-    if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
-      response.sync = { snapshotRequired: true, roomId: outcome.roomId };
-    } else if (![COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+    if (![COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM,
+      COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
       try {
         response.sync = await sync(outcome.roomId, envelope.knownSeq,
           { ...actorContext, touchPresence: false });
       } catch (syncError) {
-        // Command 已原子提交后，附带同步失败不能把成功伪装成写失败，否则客户端可能换 ID 重复提交。
-        response.sync = { ok: true, protocolVersion: PROTOCOL_VERSION,
-          viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: EVENT_SCHEMA_VERSION,
-          snapshotRequired: true, roomId: outcome.roomId };
+        // Command 已原子提交；附带同步失败不能把成功伪装成写失败，客户端按下一轮正常同步恢复。
       }
     }
     return response;

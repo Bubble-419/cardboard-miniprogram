@@ -10,9 +10,10 @@ var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
     var PROTOCOL_VERSION = 3;
-    var SCHEMA_VERSION = 3;
+    var SCHEMA_VERSION = 4;
     var VIEW_SCHEMA_VERSION = 2;
     var EVENT_SCHEMA_VERSION = 3;
+    var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
     var MAX_SESSION_MESSAGES = 500;
     var MAX_SESSION_ARTIFACTS = 1e3;
@@ -612,6 +613,7 @@ var require_room_contracts = __commonJS({
       SCHEMA_VERSION,
       VIEW_SCHEMA_VERSION,
       EVENT_SCHEMA_VERSION,
+      MAX_INCREMENTAL_SYNC_EVENTS,
       MAX_SEATS,
       MAX_SESSION_MESSAGES,
       MAX_SESSION_ARTIFACTS,
@@ -3531,7 +3533,8 @@ var require_room_application = __commonJS({
       validatePublicViewPatch,
       validateActorViewPatch,
       MAX_SESSION_DOCUMENT_BYTES,
-      MAX_SYNC_RESPONSE_BYTES
+      MAX_SYNC_RESPONSE_BYTES,
+      MAX_INCREMENTAL_SYNC_EVENTS
     } = require_room_contracts();
     var { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require_room_domain();
     var {
@@ -3542,7 +3545,6 @@ var require_room_application = __commonJS({
       projectActorPatches
     } = require_room_projection();
     var DEFAULT_SYNC_LIMIT = 100;
-    var MAX_SYNC_BACKLOG = 300;
     var PRESENCE_TTL_MS = 15e3;
     function isRoomId(value) {
       return typeof value === "string" && /^\d{8}$/.test(value);
@@ -3593,6 +3595,7 @@ var require_room_application = __commonJS({
       if (!events.length) throw new Error("accepted command must produce at least one event");
       return {
         eventSchemaVersion: EVENT_SCHEMA_VERSION,
+        viewSchemaVersion: VIEW_SCHEMA_VERSION,
         roomId: room.roomId,
         seq: room.eventSeq + 1,
         stateVersion: room.stateVersion + 1,
@@ -3610,12 +3613,13 @@ var require_room_application = __commonJS({
     function validEventGroup(eventGroup) {
       const projections = eventGroup && eventGroup.actorProjections;
       const recipients = Array.isArray(projections) ? projections.map((item) => item && item.recipientMemberId) : [];
-      return !!eventGroup && eventGroup.eventSchemaVersion === EVENT_SCHEMA_VERSION && Number.isInteger(eventGroup.seq) && Number.isInteger(eventGroup.stateVersion) && isNonEmptyString(eventGroup.commandId) && Array.isArray(eventGroup.publicEvents) && eventGroup.publicEvents.length > 0 && eventGroup.publicEvents.length <= 32 && eventGroup.publicEvents.every((item) => item && Object.keys(item).length === 1 && KNOWN_EVENT_TYPES.has(item.type)) && validatePublicViewPatch(eventGroup.publicPatch) && Array.isArray(projections) && projections.length <= 6 && projections.every((item) => item && isOpaqueId(item.recipientMemberId) && validateActorViewPatch(item.actorPatch)) && new Set(recipients).size === recipients.length;
+      return !!eventGroup && eventGroup.eventSchemaVersion === EVENT_SCHEMA_VERSION && eventGroup.viewSchemaVersion === VIEW_SCHEMA_VERSION && Number.isInteger(eventGroup.seq) && Number.isInteger(eventGroup.stateVersion) && isNonEmptyString(eventGroup.commandId) && Array.isArray(eventGroup.publicEvents) && eventGroup.publicEvents.length > 0 && eventGroup.publicEvents.length <= 32 && eventGroup.publicEvents.every((item) => item && Object.keys(item).length === 1 && KNOWN_EVENT_TYPES.has(item.type)) && validatePublicViewPatch(eventGroup.publicPatch) && Array.isArray(projections) && projections.length <= 6 && projections.every((item) => item && isOpaqueId(item.recipientMemberId) && validateActorViewPatch(item.actorPatch)) && new Set(recipients).size === recipients.length;
     }
     function projectEventGroupForMember(eventGroup, memberId) {
       const actorProjection = (eventGroup.actorProjections || []).find((item) => item && item.recipientMemberId === memberId);
       return {
         eventSchemaVersion: eventGroup.eventSchemaVersion,
+        viewSchemaVersion: eventGroup.viewSchemaVersion,
         roomId: eventGroup.roomId,
         seq: eventGroup.seq,
         stateVersion: eventGroup.stateVersion,
@@ -3747,16 +3751,13 @@ var require_room_application = __commonJS({
         await touchActivity(found.roomId, found.memberId, actorContext);
         return okResult({ roomId: found.roomId, membershipId: found.memberId });
       }
-      async function readSnapshot(roomId, actorContext) {
+      async function projectSnapshot(roomId, actorContext, aggregate, touchedPromise) {
         const actorUserId = actorContext && actorContext.userId;
-        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-        if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
-        const aggregate = await repo.readAggregate(roomId);
         const auth = authorizeRoomRead(aggregate, actorUserId);
         if (!auth.ok) return auth;
         const [rawEphemeral, touched] = await Promise.all([
           ephemeral(roomId, aggregate),
-          touchActivity(roomId, auth.member.memberId, actorContext)
+          touchedPromise || touchActivity(roomId, auth.member.memberId, actorContext)
         ]);
         const projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
         return okResult({
@@ -3770,6 +3771,13 @@ var require_room_application = __commonJS({
           serverTime: now(),
           minAvailableSeq: aggregate.minAvailableSeq == null ? 1 : aggregate.minAvailableSeq
         });
+      }
+      async function readSnapshot(roomId, actorContext) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
+        const aggregate = await repo.readAggregate(roomId);
+        return projectSnapshot(roomId, actorContext, aggregate);
       }
       async function writeSignal(input, actorContext) {
         const actorUserId = actorContext && actorContext.userId;
@@ -3940,31 +3948,39 @@ var require_room_application = __commonJS({
           throughSeq: baseSeq,
           roomCurrentSeq: currentSeq,
           hasMore: false,
-          snapshotRequired: false,
+          delivery: "EVENTS",
           events: [],
           ephemeral: {},
           serverTime: now()
         };
         const activityPromise = touchActivity(roomId, auth.member.memberId, actorContext);
-        if (baseSeq > currentSeq || currentSeq - baseSeq > MAX_SYNC_BACKLOG) {
-          await activityPromise;
-          return okResult({ ...base, snapshotRequired: true });
+        const inlineSnapshot = async () => {
+          const aggregate = await repo.readAggregate(roomId);
+          const snapshot = await projectSnapshot(roomId, actorContext, aggregate, activityPromise);
+          if (!snapshot.ok) return snapshot;
+          return okResult({
+            protocolVersion: PROTOCOL_VERSION,
+            viewSchemaVersion: VIEW_SCHEMA_VERSION,
+            eventSchemaVersion: EVENT_SCHEMA_VERSION,
+            delivery: "SNAPSHOT",
+            snapshot
+          });
+        };
+        if (baseSeq > currentSeq || currentSeq - baseSeq > MAX_INCREMENTAL_SYNC_EVENTS) {
+          return inlineSnapshot();
         }
         const available = (bundle.events || []).filter((item) => item.seq > baseSeq && item.seq <= currentSeq).sort((a, b) => a.seq - b.seq);
         if (currentSeq > baseSeq && (!available.length || available[0].seq !== baseSeq + 1)) {
-          await activityPromise;
-          return okResult({ ...base, snapshotRequired: true });
+          return inlineSnapshot();
         }
         for (let i = 1; i < available.length; i += 1) {
           if (available[i].seq !== available[i - 1].seq + 1) {
-            await activityPromise;
-            return okResult({ ...base, snapshotRequired: true });
+            return inlineSnapshot();
           }
         }
         const candidates = available.slice(0, limit);
         if (candidates.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) {
-          await activityPromise;
-          return okResult({ ...base, snapshotRequired: true });
+          return inlineSnapshot();
         }
         const selected = [];
         let eventBytes = 0;
@@ -3977,8 +3993,7 @@ var require_room_application = __commonJS({
           eventBytes += projectedBytes;
         }
         if (candidates.length && !selected.length) {
-          await activityPromise;
-          return okResult({ ...base, snapshotRequired: true });
+          return inlineSnapshot();
         }
         const throughSeq = selected.length ? selected[selected.length - 1].seq : baseSeq;
         const hasMore = throughSeq < currentSeq;
@@ -4111,9 +4126,12 @@ var require_room_application = __commonJS({
           outcome,
           traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}`
         });
-        if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
-          response.sync = { snapshotRequired: true, roomId: outcome.roomId };
-        } else if (![COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+        if (![
+          COMMAND_TYPES.CREATE_ROOM,
+          COMMAND_TYPES.JOIN_ROOM,
+          COMMAND_TYPES.LEAVE_ROOM,
+          COMMAND_TYPES.DISSOLVE_ROOM
+        ].includes(envelope.type)) {
           try {
             response.sync = await sync(
               outcome.roomId,
@@ -4121,14 +4139,6 @@ var require_room_application = __commonJS({
               { ...actorContext, touchPresence: false }
             );
           } catch (syncError) {
-            response.sync = {
-              ok: true,
-              protocolVersion: PROTOCOL_VERSION,
-              viewSchemaVersion: VIEW_SCHEMA_VERSION,
-              eventSchemaVersion: EVENT_SCHEMA_VERSION,
-              snapshotRequired: true,
-              roomId: outcome.roomId
-            };
           }
         }
         return response;
@@ -4164,7 +4174,12 @@ var require_room_cloudbase_adapter = __commonJS({
     var crypto = require("crypto");
     var { clone } = require_room_projection();
     var { emptyFacts } = require_room_domain();
-    var { stableStringify } = require_room_contracts();
+    var {
+      PROTOCOL_VERSION,
+      SCHEMA_VERSION,
+      MAX_INCREMENTAL_SYNC_EVENTS,
+      stableStringify
+    } = require_room_contracts();
     var COLLECTIONS = Object.freeze({
       rooms: "roomV3Rooms",
       sessions: "roomV3Sessions",
@@ -4188,6 +4203,9 @@ var require_room_cloudbase_adapter = __commonJS({
       delete next._id;
       return next;
     }
+    function compatibleRoom(room) {
+      return !!room && room.protocolVersion === PROTOCOL_VERSION && room.schemaVersion === SCHEMA_VERSION;
+    }
     async function safeGet(store, collection, id) {
       try {
         const result = await store.collection(collection).doc(id).get();
@@ -4202,7 +4220,7 @@ var require_room_cloudbase_adapter = __commonJS({
     }
     async function loadAggregate(store, roomId) {
       const room = await safeGet(store, COLLECTIONS.rooms, roomId);
-      if (!room) return null;
+      if (!compatibleRoom(room)) return null;
       const currentSession = room.currentSessionId ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId) : null;
       if (room.currentSessionId && (!currentSession || currentSession.roomId !== roomId)) {
         throw Object.assign(new Error("Room.currentSessionId \u6307\u5411\u65E0\u6548\u573A\u6B21"), { code: "INTERNAL_ERROR" });
@@ -4216,7 +4234,7 @@ var require_room_cloudbase_adapter = __commonJS({
     }
     async function loadSessionAggregate(store, roomId, sessionId) {
       const room = await safeGet(store, COLLECTIONS.rooms, roomId);
-      if (!room) return null;
+      if (!compatibleRoom(room)) return null;
       const currentSession = await safeGet(store, COLLECTIONS.sessions, sessionId);
       if (!currentSession || currentSession.roomId !== roomId) return null;
       const facts = currentSession.facts ? cleanDoc(currentSession.facts) : emptyFacts();
@@ -4225,7 +4243,7 @@ var require_room_cloudbase_adapter = __commonJS({
       return { room, currentSession, facts };
     }
     function openUsers(aggregate) {
-      if (!aggregate || !aggregate.room || aggregate.room.lifecycle !== "OPEN") return [];
+      if (!aggregate || !compatibleRoom(aggregate.room) || aggregate.room.lifecycle !== "OPEN") return [];
       return (aggregate.room.members || []).map((member) => ({
         userId: member.userId,
         roomId: aggregate.room.roomId,
@@ -4264,7 +4282,7 @@ var require_room_cloudbase_adapter = __commonJS({
           let danglingActive = false;
           if (activeRoomId) {
             activeRoomDocument = await safeGet(transaction, COLLECTIONS.rooms, activeRoomId);
-            const activeMember = activeRoomDocument && activeRoomDocument.lifecycle === "OPEN" && (activeRoomDocument.members || []).some((member) => member.userId === input.actorUserId);
+            const activeMember = compatibleRoom(activeRoomDocument) && activeRoomDocument.lifecycle === "OPEN" && (activeRoomDocument.members || []).some((member) => member.userId === input.actorUserId);
             if (!activeMember) {
               activeRoomId = null;
               danglingActive = true;
@@ -4288,7 +4306,7 @@ var require_room_cloudbase_adapter = __commonJS({
             decision.accepted && decision.aggregate,
             current,
             activeRoomDocument && { room: activeRoomDocument }
-          ].find((candidate) => candidate && candidate.room && (candidate.room.members || []).some((member) => member.userId === input.actorUserId)) || null;
+          ].find((candidate) => candidate && compatibleRoom(candidate.room) && (candidate.room.members || []).some((member) => member.userId === input.actorUserId)) || null;
           const activityMember = activityAggregate && activityAggregate.room && (activityAggregate.room.members || []).find((member) => member.userId === input.actorUserId);
           const receipt = {
             scopeKey: input.scopeKey,
@@ -4397,9 +4415,10 @@ var require_room_cloudbase_adapter = __commonJS({
       }
       async function readSyncState(roomId, afterSeq, limit) {
         const room = await safeGet(db2, COLLECTIONS.rooms, roomId);
-        if (!room) return { room: null, events: [] };
+        if (!compatibleRoom(room)) return { room: null, events: [] };
         const ceiling = room.eventSeq;
         if (afterSeq >= ceiling) return { room, events: [] };
+        if (ceiling - afterSeq > MAX_INCREMENTAL_SYNC_EVENTS) return { room, events: [] };
         const _ = db2.command;
         const result = await db2.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
         return { room, events: (result && result.data || []).map(cleanDoc) };
@@ -4409,7 +4428,7 @@ var require_room_cloudbase_adapter = __commonJS({
           const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
           if (!active) return null;
           const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
-          const member = room && room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === userId);
+          const member = compatibleRoom(room) && room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === userId);
           return member ? { roomId: active.roomId, memberId: member.memberId } : { dangling: true, roomId: active.roomId };
         });
       }
@@ -4434,7 +4453,7 @@ var require_room_cloudbase_adapter = __commonJS({
       async function upsertSignal(input) {
         return db2.runTransaction(async (transaction) => {
           const room = await safeGet(transaction, COLLECTIONS.rooms, input.roomId);
-          if (!room) return { ok: false, errCode: "ROOM_NOT_FOUND", errMsg: "\u623F\u95F4\u4E0D\u5B58\u5728" };
+          if (!compatibleRoom(room)) return { ok: false, errCode: "ROOM_NOT_FOUND", errMsg: "\u623F\u95F4\u4E0D\u5B58\u5728" };
           const member = room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === input.actorUserId);
           if (!member) return { ok: false, errCode: "NOT_MEMBER", errMsg: "\u975E\u623F\u95F4\u6210\u5458" };
           const scope = room.signalScope;

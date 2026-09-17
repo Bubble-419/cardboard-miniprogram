@@ -57,7 +57,7 @@ test('Session/Facts 超过安全预算时在事务提交前拒绝继续膨胀', 
   assert.notEqual(h.repo.rooms.get('12345678').room.workshopName, '不应提交');
 });
 
-test('Command 已提交后附带 Sync 失败仍返回成功并要求 Snapshot', async () => {
+test('Command 已提交后附带 Sync 失败仍返回成功且不伪造同步结果', async () => {
   const base = createInMemoryRoomRepository({ generateRoomId: () => '12345678' });
   let failSync = false;
   const repo = {
@@ -82,6 +82,6 @@ test('Command 已提交后附带 Sync 失败仍返回成功并要求 Snapshot', 
 
   assert.equal(updated.ok, true);
   assert.equal(updated.commandId, 'accepted-with-sync-failure');
-  assert.equal(updated.sync.snapshotRequired, true);
+  assert.equal(updated.sync, undefined);
   assert.equal(base.rooms.get('12345678').room.workshopName, '已提交');
 });

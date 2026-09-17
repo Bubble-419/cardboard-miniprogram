@@ -55,7 +55,7 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
       throughSeq: snapshotCalls,
       roomCurrentSeq: snapshotCalls,
       hasMore: false,
-      snapshotRequired: false,
+      delivery: 'EVENTS',
       events: []
     })
   };

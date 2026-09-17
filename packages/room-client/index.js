@@ -125,7 +125,8 @@ function createRoomClient(options) {
     cancelTimer();
     if (disposed || paused || (!roomId && status !== 'DEGRADED')) return;
     timer = setTimeoutFn(() => {
-      const operation = roomId ? syncUntilCurrent : openInternal;
+      // 只有持有可信 View 才能消费增量事件；Snapshot 失败后不得退化成 sync(0)。
+      const operation = roomId ? (view || stagingView ? syncUntilCurrent : resumeInternal) : openInternal;
       return enqueue(operation).catch((syncError) => console.warn('RoomClient sync', syncError));
     }, delay == null ? intervalMs : delay);
   }
@@ -205,9 +206,7 @@ function createRoomClient(options) {
     };
   }
 
-  async function replaceFromSnapshot(targetRoomId) {
-    const requestedAt = Date.now();
-    const snapshot = await gateway.snapshot(targetRoomId, getRequestContext());
+  function installSnapshot(snapshot, targetRoomId, requestedAt) {
     if (!validateSnapshot(snapshot, targetRoomId)) {
       const invalid = new Error((snapshot && snapshot.errMsg) || '无效的房间快照');
       invalid.code = (snapshot && snapshot.errCode) || ERR.SNAPSHOT_REQUIRED;
@@ -231,6 +230,12 @@ function createRoomClient(options) {
     return view;
   }
 
+  async function replaceFromSnapshot(targetRoomId) {
+    const requestedAt = Date.now();
+    const snapshot = await gateway.snapshot(targetRoomId, getRequestContext());
+    return installSnapshot(snapshot, targetRoomId, requestedAt);
+  }
+
   function consumeBatch(batch, requestedAt) {
     if (!batch || batch.ok !== true) {
       const failure = new Error((batch && batch.errMsg) || '同步失败');
@@ -242,7 +247,13 @@ function createRoomClient(options) {
       || batch.eventSchemaVersion !== EVENT_SCHEMA_VERSION) {
       throw Object.assign(new Error('同步协议版本不兼容'), { code: ERR.SNAPSHOT_REQUIRED });
     }
-    if (batch.snapshotRequired) return { snapshotRequired: true };
+    if (batch.delivery === 'SNAPSHOT') {
+      installSnapshot(batch.snapshot, roomId, requestedAt);
+      return { snapshotApplied: true, hasMore: false };
+    }
+    if (batch.delivery !== 'EVENTS') {
+      throw Object.assign(new Error('未知同步交付类型'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
     const baseSeq = stagingView ? stagingSeq : appliedSeq;
     const baseStateVersion = stagingView ? stagingStateVersion : appliedStateVersion;
     if (Number(batch.afterSeq) !== baseSeq) throw Object.assign(new Error('同步水位不匹配'), { code: ERR.SNAPSHOT_REQUIRED });
@@ -257,6 +268,7 @@ function createRoomClient(options) {
     }
     const knownTypes = new Set(Object.values(EVENT_TYPES));
     if (events.some((item) => item.eventSchemaVersion !== EVENT_SCHEMA_VERSION
+      || item.viewSchemaVersion !== VIEW_SCHEMA_VERSION
       || item.roomId !== roomId
       || typeof item.commandId !== 'string' || !item.commandId
       || !Array.isArray(item.publicEvents) || item.publicEvents.length === 0 || item.publicEvents.length > 32
@@ -322,10 +334,7 @@ function createRoomClient(options) {
         syncLimit, getRequestContext());
       while (true) {
         const consumed = consumeBatch(batch, initialBatch ? undefined : requestedAt);
-        if (consumed.snapshotRequired) {
-          await replaceFromSnapshot(roomId);
-          break;
-        }
+        if (consumed.snapshotApplied) break;
         if (!consumed.hasMore) break;
         requestedAt = Date.now();
         batch = await gateway.sync(roomId, stagingSeq, syncLimit, getRequestContext());

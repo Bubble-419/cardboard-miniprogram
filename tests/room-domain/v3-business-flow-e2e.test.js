@@ -23,7 +23,7 @@ async function executeAndReduce(harness, actorUserId, type, fields, viewerUserId
     const before = beforeByViewer.get(viewerUserId);
     const batch = await harness.app.sync('12345678', before.seq, { userId: viewerUserId });
     assert.equal(batch.ok, true);
-    assert.equal(batch.snapshotRequired, false, `${type}/${viewerUserId} 不应要求额外 Snapshot`);
+    assert.equal(batch.delivery, 'EVENTS', `${type}/${viewerUserId} 应使用增量 Event`);
     let reduced = before.view;
     batch.events.forEach((event) => { reduced = applyProjectedEvent(reduced, event); });
 

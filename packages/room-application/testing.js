@@ -1,6 +1,6 @@
 'use strict';
 
-const { COMMAND_TYPES } = require('@cardboard/room-contracts');
+const { PROTOCOL_VERSION, SCHEMA_VERSION, COMMAND_TYPES } = require('@cardboard/room-contracts');
 const { memberByUserId } = require('@cardboard/room-domain');
 const { clone } = require('@cardboard/room-projection');
 
@@ -17,8 +17,11 @@ function createInMemoryRoomRepository(options) {
   let seq = 10000000;
   const copy = (value) => clone(value);
   const receiptKey = (scopeKey, commandId) => `${scopeKey}:${commandId}`;
+  const compatibleRoom = (room) => !!room
+    && room.protocolVersion === PROTOCOL_VERSION
+    && room.schemaVersion === SCHEMA_VERSION;
   const usersOf = (aggregate) => {
-    if (!aggregate || aggregate.room.lifecycle !== 'OPEN') return [];
+    if (!aggregate || !compatibleRoom(aggregate.room) || aggregate.room.lifecycle !== 'OPEN') return [];
     return (aggregate.room.members || []).map((member) => ({ userId: member.userId,
       roomId: aggregate.room.roomId, memberId: member.memberId }));
   };
@@ -48,17 +51,20 @@ function createInMemoryRoomRepository(options) {
       let activeRoomId = activeRooms.get(input.actorUserId) || null;
       if (activeRoomId) {
         const activeAggregate = rooms.get(activeRoomId);
-        const activeMember = activeAggregate && activeAggregate.room.lifecycle === 'OPEN'
+        const activeMember = activeAggregate && compatibleRoom(activeAggregate.room)
+          && activeAggregate.room.lifecycle === 'OPEN'
           && memberByUserId(activeAggregate.room, input.actorUserId);
         if (!activeMember) {
           activeRooms.delete(input.actorUserId);
           activeRoomId = null;
         }
       }
-      const current = resolvedRoomId && rooms.has(resolvedRoomId) ? copy(rooms.get(resolvedRoomId)) : null;
+      const storedCurrent = resolvedRoomId && rooms.has(resolvedRoomId) ? rooms.get(resolvedRoomId) : null;
+      const current = storedCurrent && compatibleRoom(storedCurrent.room) ? copy(storedCurrent) : null;
       const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
       const activityAggregate = [decision.accepted && decision.aggregate, current,
-        activeRoomId && rooms.get(activeRoomId)].find((candidate) => candidate && candidate.room
+        activeRoomId && rooms.get(activeRoomId)].find((candidate) => candidate
+          && compatibleRoom(candidate.room)
           && memberByUserId(candidate.room, input.actorUserId)) || null;
       const activityMember = activityAggregate && activityAggregate.room
         && memberByUserId(activityAggregate.room, input.actorUserId);
@@ -103,7 +109,7 @@ function createInMemoryRoomRepository(options) {
       const roomId = activeRooms.get(userId);
       if (!roomId) return null;
       const aggregate = rooms.get(roomId);
-      const member = aggregate && aggregate.room.lifecycle === 'OPEN'
+      const member = aggregate && compatibleRoom(aggregate.room) && aggregate.room.lifecycle === 'OPEN'
         && memberByUserId(aggregate.room, userId);
       if (!member) {
         activeRooms.delete(userId);
@@ -112,7 +118,7 @@ function createInMemoryRoomRepository(options) {
       return { roomId, memberId: member.memberId };
     },
     async readAggregate(roomId) {
-      if (!rooms.has(roomId)) return null;
+      if (!rooms.has(roomId) || !compatibleRoom(rooms.get(roomId).room)) return null;
       const aggregate = copy(rooms.get(roomId));
       const firstEvent = (events.get(roomId) || [])[0];
       aggregate.minAvailableSeq = firstEvent ? firstEvent.seq : aggregate.room.eventSeq + 1;
@@ -124,7 +130,8 @@ function createInMemoryRoomRepository(options) {
         || (stored && stored.currentSession && stored.currentSession.sessionId === sessionId
           && { ...stored.currentSession, facts: stored.facts });
       const session = sessionDocument && copy(sessionDocument);
-      if (!stored || !session || (sessionRooms.has(sessionId) && sessionRooms.get(sessionId) !== roomId)) return null;
+      if (!stored || !compatibleRoom(stored.room) || !session
+        || (sessionRooms.has(sessionId) && sessionRooms.get(sessionId) !== roomId)) return null;
       const facts = copy(session.facts || {});
       delete session.facts;
       return copy({ room: stored.room, currentSession: session, facts });
@@ -149,7 +156,8 @@ function createInMemoryRoomRepository(options) {
         .slice(0, limit + 1));
     },
     async readSyncState(roomId, afterSeq, limit) {
-      const aggregate = rooms.has(roomId) ? copy(rooms.get(roomId)) : null;
+      const stored = rooms.get(roomId);
+      const aggregate = stored && compatibleRoom(stored.room) ? copy(stored) : null;
       const roomEvents = events.get(roomId) || [];
       if (aggregate) aggregate.minAvailableSeq = roomEvents.length
         ? roomEvents[0].seq : aggregate.room.eventSeq + 1;
@@ -172,9 +180,9 @@ function createInMemoryRoomRepository(options) {
     },
     async upsertSignal(input) {
       const aggregate = rooms.get(input.roomId);
-      const member = aggregate && aggregate.room.lifecycle === 'OPEN'
+      const member = aggregate && compatibleRoom(aggregate.room) && aggregate.room.lifecycle === 'OPEN'
         && memberByUserId(aggregate.room, input.actorUserId);
-      if (!aggregate) return { ok: false, errCode: 'ROOM_NOT_FOUND' };
+      if (!aggregate || !compatibleRoom(aggregate.room)) return { ok: false, errCode: 'ROOM_NOT_FOUND' };
       if (!member) return { ok: false, errCode: 'NOT_MEMBER' };
       const scope = aggregate.room.signalScope;
       if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId

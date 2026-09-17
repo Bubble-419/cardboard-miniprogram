@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
 const { projectPageSnapshot, memberSeat } = require('../../modules/room-session/page-model');
 const {
-  EVENT_SCHEMA_VERSION, MAX_SYNC_RESPONSE_BYTES, stableStringify
+  VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS,
+  MAX_SYNC_RESPONSE_BYTES, stableStringify
 } = require('@cardboard/room-contracts');
 
 test('场次内座位映射优先使用冻结 Participant，而不是后来调整的 Room Seat', () => {
@@ -251,8 +252,48 @@ test('Sync 返回连续投影事件且不泄漏内部事件；过期与越界水
   assert.equal(batch.events.some((item) => Object.prototype.hasOwnProperty.call(item, 'rawEvents')), false);
   assert.equal(batch.events.some((item) => Object.prototype.hasOwnProperty.call(item, 'actorProjections')), false);
   h.repo.events.set('12345678', h.repo.events.get('12345678').slice(1));
-  assert.equal((await h.app.sync('12345678', 0, { userId: 'host' })).snapshotRequired, true);
-  assert.equal((await h.app.sync('12345678', 999, { userId: 'host' })).snapshotRequired, true);
+  assert.equal((await h.app.sync('12345678', 0, { userId: 'host' })).delivery, 'SNAPSHOT');
+  assert.equal((await h.app.sync('12345678', 999, { userId: 'host' })).delivery, 'SNAPSHOT');
+});
+
+test('Sync 不得把旧 View Schema 的 Event 包装成当前版本', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const events = h.repo.events.get('12345678');
+
+  assert.equal(events.every((event) => event.viewSchemaVersion === VIEW_SCHEMA_VERSION), true);
+  events[0].viewSchemaVersion = VIEW_SCHEMA_VERSION - 1;
+
+  const batch = await h.app.sync('12345678', 0, { userId: 'host' });
+  assert.equal(batch.delivery, 'SNAPSHOT');
+  assert.equal(batch.events, undefined);
+});
+
+test('Sync 积压超过 25 条时在同一响应内返回最新 Snapshot', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  for (let index = 0; index < MAX_INCREMENTAL_SYNC_EVENTS - 2; index += 1) {
+    const updated = await h.command('host', 'UPDATE_ROOM_PROFILE', {
+      payload: { workshopName: `工作坊-${index}` }
+    });
+    assert.equal(updated.ok, true);
+  }
+
+  const boundary = await h.app.sync('12345678', 0, { userId: 'host' });
+  assert.equal(boundary.delivery, 'EVENTS');
+  assert.equal(boundary.events.length, MAX_INCREMENTAL_SYNC_EVENTS);
+
+  await h.command('host', 'UPDATE_ROOM_PROFILE', {
+    payload: { workshopName: '工作坊-23' }
+  });
+
+  const batch = await h.app.sync('12345678', 0, { userId: 'host' });
+
+  assert.equal(batch.delivery, 'SNAPSHOT');
+  assert.equal(batch.events, undefined);
+  assert.equal(batch.snapshot.ok, true);
+  assert.equal(batch.snapshot.seq, MAX_INCREMENTAL_SYNC_EVENTS + 1);
+  assert.equal(batch.snapshot.view.room.workshopName, '工作坊-23');
 });
 
 test('Sync 同时受事件数量与响应字节预算约束', async () => {
@@ -262,6 +303,7 @@ test('Sync 同时受事件数量与响应字节预算约束', async () => {
   const payload = '中'.repeat(90000);
   const events = Array.from({ length: 4 }, (_, index) => ({
     eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    viewSchemaVersion: VIEW_SCHEMA_VERSION,
     roomId: '12345678',
     seq: index + 1,
     stateVersion: index + 1,
@@ -284,7 +326,7 @@ test('Sync 同时受事件数量与响应字节预算约束', async () => {
   const batch = await h.app.sync('12345678', 0, { userId: 'host' }, { limit: 100 });
 
   assert.equal(batch.ok, true);
-  assert.equal(batch.snapshotRequired, false);
+  assert.equal(batch.delivery, 'EVENTS');
   assert.equal(batch.events.length > 0 && batch.events.length < events.length, true);
   assert.equal(batch.hasMore, true);
   assert.equal(Buffer.byteLength(stableStringify(batch), 'utf8') <= MAX_SYNC_RESPONSE_BYTES, true);
@@ -298,6 +340,7 @@ test('单个事件超过 Sync 字节预算时要求 Snapshot，不能返回不�
   aggregate.room.stateVersion = 1;
   h.repo.events.set('12345678', [{
     eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    viewSchemaVersion: VIEW_SCHEMA_VERSION,
     roomId: '12345678', seq: 1, stateVersion: 1, commandId: 'oversized', sessionId: null,
     rawEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
     publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
@@ -310,9 +353,8 @@ test('单个事件超过 Sync 字节预算时要求 Snapshot，不能返回不�
 
   const batch = await h.app.sync('12345678', 0, { userId: 'host' });
 
-  assert.equal(batch.snapshotRequired, true);
-  assert.deepEqual(batch.events, []);
-  assert.equal(batch.throughSeq, 0);
+  assert.equal(batch.delivery, 'SNAPSHOT');
+  assert.equal(batch.events, undefined);
 });
 
 test('Event TTL 清空日志后不会产生空批死循环，而是要求 Snapshot', async () => {
@@ -322,7 +364,7 @@ test('Event TTL 清空日志后不会产生空批死循环，而是要求 Snapsh
 
   const batch = await h.app.sync('12345678', 0, { userId: 'host' });
   const snapshot = await h.snapshot('host');
-  assert.equal(batch.snapshotRequired, true);
+  assert.equal(batch.delivery, 'SNAPSHOT');
   assert.equal(snapshot.minAvailableSeq, snapshot.seq + 1);
 });
 

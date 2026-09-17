@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
-const { PROTOCOL_VERSION } = require('@cardboard/room-contracts');
+const { PROTOCOL_VERSION, SCHEMA_VERSION } = require('@cardboard/room-contracts');
 const { createRoomApplication } = require('@cardboard/room-application');
 const { createInMemoryRoomRepository } = require('../../packages/room-application/testing');
 
@@ -100,6 +100,37 @@ test('创建房间会在事务内忽略并修复悬挂的当前房间索引', as
   const created = await app.executeCommand({
     protocolVersion: PROTOCOL_VERSION,
     commandId: 'create-after-dangling-active-room',
+    roomId: '',
+    knownSeq: 0,
+    type: 'CREATE_ROOM',
+    context: {},
+    payload: { nickName: '房主' }
+  }, { userId: 'host' });
+
+  assert.equal(created.ok, true);
+  assert.equal(created.outcome.roomId, '12345678');
+  assert.equal(repo.activeRooms.get('host'), '12345678');
+});
+
+test('旧持久化 Schema 的房间不会困住账号，账号可直接创建新房间', async () => {
+  const repo = createInMemoryRoomRepository({ generateRoomId: () => '12345678' });
+  repo.rooms.set('87654321', {
+    room: {
+      roomId: '87654321', protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION - 1,
+      lifecycle: 'OPEN', members: [{ userId: 'host', memberId: 'legacy-host' }]
+    },
+    currentSession: null,
+    facts: {}
+  });
+  repo.activeRooms.set('host', '87654321');
+  const app = createRoomApplication(repo, { now: () => 1000, serverSecret: 'test-secret' });
+
+  const current = await app.readCurrentRoom({ userId: 'host' });
+  assert.equal(current.roomId, null);
+
+  const created = await app.executeCommand({
+    protocolVersion: PROTOCOL_VERSION,
+    commandId: 'create-after-incompatible-room',
     roomId: '',
     knownSeq: 0,
     type: 'CREATE_ROOM',

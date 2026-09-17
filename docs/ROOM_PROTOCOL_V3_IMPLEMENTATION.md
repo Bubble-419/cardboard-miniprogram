@@ -65,6 +65,10 @@ flowchart TB
 | Snapshot | `view + seq + stateVersion + ephemeral` | 校验完整结构后整体替换稳定 View | 首次打开、前后台恢复、缺口或异常恢复 |
 | Event | `publicPatch + actorPatch + seq + stateVersion` | 在 staging View 依次应用公共补丁和本人补丁，追平后一次发布 | 正常轮询、Command Response 携带 SyncBatch |
 
+`sync` 是无兼容分支的判别联合：`delivery=EVENTS` 最多交付 25 条连续 Event；积压超过 25 条、
+事件缺口、旧 View Schema 或单事件超出字节预算时，服务端改为 `delivery=SNAPSHOT` 并在同一响应
+内携带最新完整 Snapshot。客户端不再为这种情况追加第二次云函数请求。
+
 必须始终满足：
 
 ```text
@@ -213,9 +217,9 @@ flowchart LR
 
 高频 `sync` 先点读 `roomV3Rooms` 固定水位：客户端已追平时不再执行空的 Event 查询；
 有增量时才按 `roomId + seq` 读取 `roomV3Events`。Snapshot 和 Command 才读取当前
-`roomV3Sessions`。每批同时受 100 个 Event Group 和 512 KiB 响应预算约束；单个事件已经
-超过预算时返回 `snapshotRequired`，避免空批不推进。`roomV3Messages` 只是历史分页索引，
-权威消息仍属于 Session Facts。
+`roomV3Sessions`。增量交付最多包含 25 个 Event Group，并受 512 KiB 响应预算约束；积压超过
+25 条、单个事件超过预算或日志不连续时，不读取或不返回将被丢弃的 Event，改为在同一 Sync
+响应内交付最新 Snapshot。`roomV3Messages` 只是历史分页索引，权威消息仍属于 Session Facts。
 
 ## 3. Command 原子提交
 
@@ -308,17 +312,21 @@ sequenceDiagram
     Q->>DB: 点读 Room，固定 roomCurrentSeq
     alt afterSeq 已追平
       DB-->>Q: 不查询 Event
-    else 存在增量
+      Q-->>C: delivery=EVENTS, events=[]
+    else 增量为 1..25 条且连续
       Q->>DB: 查询 afterSeq < seq <= roomCurrentSeq
+      Q-->>C: delivery=EVENTS, events(N+1...M)
+    else 积压>25 / 缺口 / 旧 Schema / 超预算
+      Q->>DB: 读取最新 Aggregate@M
+      Q-->>C: delivery=SNAPSHOT, Snapshot@M
     end
-    Q-->>C: 投影事件(N+1...M) + roomCurrentSeq
-    alt 连续、完整且已追平
+    alt EVENTS 连续、完整且已追平
       C->>C: staging 应用后一次发布
       Q-->>C: 最后一批 + ephemeral
-    else hasMore
+    else EVENTS hasMore
       C->>Q: sync(afterSeq=throughSeq)
-    else 缺口/过期/未知版本/矛盾水位
-      C->>Q: snapshot(roomId)
+    else SNAPSHOT
+      C->>C: 原子替换 View 与 seq
     end
   end
 ```
@@ -330,13 +338,15 @@ stateDiagram-v2
   OPENING --> READY: current + Snapshot
   OPENING --> DEGRADED: 网络/依赖失败
   READY --> SYNCING: timer / Command Response
+  SYNCING --> READY: delivery=SNAPSHOT
   SYNCING --> CATCHING_UP: hasMore
   CATCHING_UP --> CATCHING_UP: 下一完整批
   CATCHING_UP --> READY: 追平并发布
   SYNCING --> RECOVERING: gap / schema / watermark
   RECOVERING --> READY: Snapshot
   SYNCING --> DEGRADED: 可恢复失败
-  DEGRADED --> SYNCING: 指数退避重试
+  DEGRADED --> RECOVERING: 无有效 View，指数退避 Snapshot
+  DEGRADED --> SYNCING: 仍有有效 View，指数退避 Sync
   OPENING --> DISCONNECTED: 非成员/解散/不存在
   RECOVERING --> DISCONNECTED: 非成员/解散/不存在
   READY --> CLOSED: close
@@ -348,10 +358,12 @@ stateDiagram-v2
 Snapshot.seq == Aggregate.room.eventSeq
 Event.seq == 前一 seq + 1
 每个 Event 文档对应一个 commandId，stateVersion == 前一状态版本 + 1
+Event.viewSchemaVersion == 当前 Member View Schema
 Event.publicPatch 只修改公开 View；Event.actorPatch 只修改当前成员 Actor/Route/Navigation
 服务端存储 rawEvents + publicPatch + 全成员 actorProjections，查询只返回公共部分和本人补丁
 !hasMore => throughSeq == roomCurrentSeq
-任一条件不可信 => 丢弃 staging，重新 Snapshot
+本地没有有效 View => 只请求 Snapshot，禁止发送 sync(0)
+任一条件不可信 => 丢弃 staging；服务端 Sync 内联最新 Snapshot，或客户端重新请求 Snapshot
 Event Patch 应用完成后必须再次通过完整 MemberView 骨架校验
 ```
 
@@ -371,8 +383,8 @@ Command 的传输结果丢失时，客户端不能生成新 `commandId` 猜测�
 `roomId + type + context + payload` 视为同一未确认意图，在收到明确成功或失败前复用原
 `commandId`；服务端 Receipt 负责把重复提交收敛为一次结果。
 
-State/Event/Receipt 已经提交后，如果附带 Sync 查询失败，`roomCommand` 仍返回 Command 成功，
-并把 Sync 降级为 `snapshotRequired`。客户端进入读模型恢复，而不是把已提交写入伪装成失败。
+State/Event/Receipt 已经提交后，如果附带 Sync 查询失败，`roomCommand` 仍返回 Command 成功并省略
+附带 Sync。客户端在下一轮正常同步恢复，而不是把已提交写入伪装成失败。
 业务动作需要切页时，以 Outcome 的 `committedThroughSeq` 检查本地 View；未追平则先刷新
 Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协调器合并，后发调用等待在途
 导航结束，不能硬编码猜测下一页面或提前释放交互锁。
