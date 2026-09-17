@@ -4,7 +4,6 @@ const { persistTempPhoto } = require('../../utils/partnerRoundPrivateNotes');
 const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
-const { createInspirationKeyboardLift } = require('../../utils/inspirationKeyboardLift');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -29,7 +28,7 @@ Page(withPageInteractionLock({
     inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
-    /** 键盘升起时把输入栏 fixed 到键盘上方；容器定高不可滚，系统顶页无效 */
+    /** 仅记录键盘可见状态；位置统一交给 input 的 adjust-position */
     inspirationLiftStyle: '',
     inspirationMaskStyle: '',
     inspirationSaving: false,
@@ -385,27 +384,10 @@ Page(withPageInteractionLock({
     }
     this._inspirationFocusRequestedAt = Date.now();
     this._inspirationNativeFocused = true;
-    this._inspirationLiftHelper().captureBase();
-    // 延后 setData，避免 Android 聚焦瞬间重渲把键盘打掉
-    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
-    this._inspirationFocusUiTimer = setTimeout(() => {
-      this._inspirationFocusUiTimer = null;
-      if (!this._inspirationNativeFocused) return;
-      if (!this.data.inspirationInputFocused) {
-        this.setData({ inspirationInputFocused: true });
-      }
-    }, 280);
   },
 
   onInspirationBlur() {
     this._inspirationNativeFocused = false;
-    if (Date.now() - (this._inspirationFocusRequestedAt || 0) < 420) {
-      return;
-    }
-    if (this._inspirationFocusUiTimer) {
-      clearTimeout(this._inspirationFocusUiTimer);
-      this._inspirationFocusUiTimer = null;
-    }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
       if (this.data.inspirationHoldKeyboard) return;
@@ -433,10 +415,6 @@ Page(withPageInteractionLock({
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
-    if (this._inspirationFocusUiTimer) {
-      clearTimeout(this._inspirationFocusUiTimer);
-      this._inspirationFocusUiTimer = null;
-    }
     this._inspirationFocusRequestedAt = 0;
     this._inspirationNativeFocused = false;
     this._flushInspirationKeyboardZero(true);
@@ -454,27 +432,12 @@ Page(withPageInteractionLock({
     this._setInspirationKeyboardHeight(height);
   },
 
-  _inspirationLiftHelper() {
-    if (!this._inspirationKeyboardLift) {
-      this._inspirationKeyboardLift = createInspirationKeyboardLift();
-    }
-    return this._inspirationKeyboardLift;
-  },
-
   _buildInspirationKeyboardUi(keyboardHeight) {
-    const helper = this._inspirationLiftHelper();
-    const lift = helper.resolveLiftPx(keyboardHeight);
-    if (lift <= 0) {
-      return {
-        inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: '',
-        inspirationMaskStyle: helper.buildMaskStyle(0)
-      };
-    }
+    const height = Math.max(0, Number(keyboardHeight) || 0);
     return {
-      inspirationKeyboardHeight: lift,
-      inspirationLiftStyle: helper.buildBarStyle(keyboardHeight),
-      inspirationMaskStyle: helper.buildMaskStyle(keyboardHeight)
+      inspirationKeyboardHeight: height,
+      inspirationLiftStyle: '',
+      inspirationMaskStyle: 'bottom: calc(180rpx + env(safe-area-inset-bottom))'
     };
   },
 
@@ -507,6 +470,8 @@ Page(withPageInteractionLock({
       this._commitInspirationKeyboardHeight(next);
       return;
     }
+    // 键盘动画中可能短暂上报 0；原生输入仍聚焦时不回流页面。
+    if (this._inspirationNativeFocused || this.data.inspirationInputFocused) return;
     // 键盘收起：短防抖过滤弹起动画中的瞬时 0，但确保收起后必定归位
     if (this._inspirationKbZeroTimer) clearTimeout(this._inspirationKbZeroTimer);
     this._inspirationKbZeroTimer = setTimeout(() => {
@@ -522,23 +487,13 @@ Page(withPageInteractionLock({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 只使用 textarea 的 bindkeyboardheightchange，避免全局监听形成第二条高度通道。
   },
 
   _unbindInspirationKeyboard() {
     if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
     this._flushInspirationKeyboardZero(false);
-    if (
-      typeof wx.offKeyboardHeightChange === 'function'
-      && this._onInspirationKeyboardHeightChange
-    ) {
-      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
-    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {

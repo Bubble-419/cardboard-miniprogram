@@ -11,7 +11,6 @@ const {
   getAvatarStableKey
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
-const { createInspirationKeyboardLift } = require('../../../../utils/inspirationKeyboardLift');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
@@ -183,7 +182,7 @@ Page(withPageInteractionLock({
     closingCreativeWantFocus: false,
     closingKeyboardHeight: 0,
     closingCreativeSaving: false,
-    /** 正在输入态编辑的文字块 key；清空并失焦即删除 */
+    /** 正在输入态编辑的文字块 key；仅显式提交时保存或删除 */
     closingCreativeEditingKey: '',
     /** 长按图片后显示删除叉的 block key */
     closingImageDeleteKey: '',
@@ -226,7 +225,7 @@ Page(withPageInteractionLock({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
-    /** transform 上移量；不改文档流，避免进页/点击闪动 */
+    /** 保留空样式字段兼容模板；输入栏位置交给原生 adjust-position */
     inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
@@ -517,11 +516,9 @@ Page(withPageInteractionLock({
       }
       this._syncRoundSpeech();
       this._refreshInspirationCount();
-      this._measureInspirationFooterClearance();
     }).catch((e) => {
       console.warn('gamepage onShow timer sync', e);
       this._refreshInspirationCount();
-      this._measureInspirationFooterClearance();
     });
   },
 
@@ -551,16 +548,32 @@ Page(withPageInteractionLock({
     this._unbindInspirationKeyboard();
     this._persistHistoryReviewSnapshot(true);
     this._closingPickingImage = false;
+    this._closingNativeFocused = false;
     if (this._closingBlurTimer) {
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
     }
+    if (this._closingKbZeroTimer) {
+      clearTimeout(this._closingKbZeroTimer);
+      this._closingKbZeroTimer = null;
+    }
     // 离开时不改 roundTimerVisible：避免卡片框从 timer→idle 布局突变导致转场卡顿
     this._flushInspirationKeyboardZero(true);
-    if (this.data.inspirationKeyboardHeight || this.data.inspirationLiftStyle) {
+    if (
+      this.data.inspirationKeyboardHeight
+      || this.data.inspirationLiftStyle
+      || this.data.inspirationInputFocused
+      || this.data.closingKeyboardHeight
+      || this.data.closingCreativeEditFocus
+    ) {
+      this._inspirationNativeFocused = false;
       this.setData({
+        inspirationInputFocused: false,
         inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: ''
+        inspirationLiftStyle: '',
+        closingCreativeEditFocus: false,
+        closingCreativeWantFocus: false,
+        ...this._resetClosingKeyboardUi()
       });
     }
     this._stopRoundSpeech();
@@ -618,6 +631,14 @@ Page(withPageInteractionLock({
     if (this._innerScrollUnlockTimer) {
       clearTimeout(this._innerScrollUnlockTimer);
       this._innerScrollUnlockTimer = null;
+    }
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
+    if (this._closingKbZeroTimer) {
+      clearTimeout(this._closingKbZeroTimer);
+      this._closingKbZeroTimer = null;
     }
   },
 
@@ -2402,6 +2423,7 @@ Page(withPageInteractionLock({
       patch.closingCreativeWantFocus = false;
       patch.closingCreativeEditingKey = '';
       patch.closingImageDeleteKey = '';
+      Object.assign(patch, this._resetClosingKeyboardUi());
       patch.playDraftText = '';
       patch.playDraftFocused = false;
       patch.discussionDraftText = '';
@@ -5168,57 +5190,9 @@ Page(withPageInteractionLock({
     }
   },
 
-  /**
-   * 灵感输入：原生 input 不跟随 transform，统一用 position:fixed 贴在键盘上方。
-   */
-  _inspirationLiftHelper() {
-    if (!this._inspirationKeyboardLift) {
-      this._inspirationKeyboardLift = createInspirationKeyboardLift();
-    }
-    return this._inspirationKeyboardLift;
-  },
-
-  _measureInspirationFooterClearance() {
-    const run = () => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select('.page-footer')
-        .boundingClientRect((footerRect) => {
-          if (footerRect && footerRect.height) {
-            this._inspirationFooterClearancePx = Math.ceil(footerRect.height);
-            return;
-          }
-          wx.createSelectorQuery()
-            .in(this)
-            .select('.inspiration-bar')
-            .boundingClientRect((rect) => {
-              if (!rect) {
-                this._inspirationFooterClearancePx = 0;
-                return;
-              }
-              let windowHeight = 0;
-              try {
-                windowHeight = (wx.getSystemInfoSync() || {}).windowHeight || 0;
-              } catch (e) {
-                windowHeight = 0;
-              }
-              this._inspirationFooterClearancePx = windowHeight
-                ? Math.max(0, Math.ceil(windowHeight - rect.bottom))
-                : 0;
-            })
-            .exec();
-        })
-        .exec();
-    };
-    if (typeof wx.nextTick === 'function') wx.nextTick(run);
-    else setTimeout(run, 64);
-  },
-
   _buildInspirationLiftStyle(keyboardHeight) {
-    return this._inspirationLiftHelper().buildBarStyle(keyboardHeight, {
-      background: '#fafafa',
-      padding: '18rpx 30rpx'
-    });
+    // 只用 input 的 adjust-position；fixed/transform 会与系统顶页叠加并导致真机跳动。
+    return '';
   },
 
   _resetInspirationKeyboardUi() {
@@ -5229,17 +5203,16 @@ Page(withPageInteractionLock({
   },
 
   _commitInspirationKeyboardHeight(next) {
-    const liftPx = this._inspirationLiftHelper().resolveLiftPx(next);
-    const lift = this._buildInspirationLiftStyle(next);
+    const height = Math.max(0, Number(next) || 0);
     if (
-      liftPx === this.data.inspirationKeyboardHeight
-      && lift === (this.data.inspirationLiftStyle || '')
+      height === this.data.inspirationKeyboardHeight
+      && !this.data.inspirationLiftStyle
     ) {
       return;
     }
     this.setData({
-      inspirationKeyboardHeight: liftPx,
-      inspirationLiftStyle: lift
+      inspirationKeyboardHeight: height,
+      inspirationLiftStyle: ''
     });
   },
 
@@ -5260,6 +5233,7 @@ Page(withPageInteractionLock({
       this._commitInspirationKeyboardHeight(next);
       return;
     }
+    if (this._inspirationNativeFocused || this.data.inspirationInputFocused) return;
     if (this._inspirationKbZeroTimer) clearTimeout(this._inspirationKbZeroTimer);
     this._inspirationKbZeroTimer = setTimeout(() => {
       this._inspirationKbZeroTimer = null;
@@ -5273,34 +5247,10 @@ Page(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
-    this._inspirationLiftHelper().captureBase();
-    this._measureInspirationFooterClearance();
-    // 键盘高度有时早于底栏量测返回，稍后按最新 clearance 重算位移
-    if (this._inspirationLiftRetryTimer) clearTimeout(this._inspirationLiftRetryTimer);
-    this._inspirationLiftRetryTimer = setTimeout(() => {
-      this._inspirationLiftRetryTimer = null;
-      const kh = this.data.inspirationKeyboardHeight;
-      if (kh > 0) {
-        this._commitInspirationKeyboardHeight(kh);
-      }
-    }, 320);
-    // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
-    if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
-    this._inspirationFocusUiTimer = setTimeout(() => {
-      this._inspirationFocusUiTimer = null;
-      if (!this._inspirationNativeFocused) return;
-      if (!this.data.inspirationInputFocused) {
-        this.setData({ inspirationInputFocused: true });
-      }
-    }, 280);
   },
 
   onInspirationBlur() {
     this._inspirationNativeFocused = false;
-    if (this._inspirationFocusUiTimer) {
-      clearTimeout(this._inspirationFocusUiTimer);
-      this._inspirationFocusUiTimer = null;
-    }
     if (this._inspirationBlurTimer) clearTimeout(this._inspirationBlurTimer);
     this._inspirationBlurTimer = setTimeout(() => {
       if (this._inspirationPickingImage) return;
@@ -5328,23 +5278,13 @@ Page(withPageInteractionLock({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 只使用 input 的 bindkeyboardheightchange，避免与 wx 全局监听双通道抖动。
   },
 
   _unbindInspirationKeyboard() {
     if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
     this._flushInspirationKeyboardZero(false);
-    if (
-      typeof wx.offKeyboardHeightChange === 'function'
-      && this._onInspirationKeyboardHeightChange
-    ) {
-      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
-    this._onInspirationKeyboardHeightChange = null;
   },
 
   onInspirationInput(e) {
@@ -5627,7 +5567,18 @@ Page(withPageInteractionLock({
   },
 
   onClosingCreativeTitleTap() {
-    // 已改为常驻 textarea，点击即原生聚焦
+    if (!this.data.isHost || this.data.closingCreativeSaving) return;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
+    // 先进入本地编辑保护态，再渲染 focus=true 的原生 textarea。
+    // 这样 scroll-view 不需要自行把未聚焦 textarea 提升为原生输入层。
+    this.setData({
+      closingCreativeEditFocus: true,
+      closingCreativeWantFocus: true,
+      closingImageDeleteKey: ''
+    });
   },
 
   onClosingCreativeFocus() {
@@ -5637,17 +5588,6 @@ Page(withPageInteractionLock({
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
     }
-    if (this._closingFocusUiTimer) clearTimeout(this._closingFocusUiTimer);
-    this._closingFocusUiTimer = setTimeout(() => {
-      this._closingFocusUiTimer = null;
-      if (!this._closingNativeFocused) return;
-      if (!this.data.closingCreativeEditFocus) {
-        this.setData({
-          closingCreativeEditFocus: true,
-          closingImageDeleteKey: ''
-        });
-      }
-    }, 280);
   },
 
   onClosingCreativeInput(e) {
@@ -5662,8 +5602,15 @@ Page(withPageInteractionLock({
 
   onClosingCreativeKeyboardHeightChange(e) {
     const height = Number(e && e.detail && e.detail.height) || 0;
+    if (height <= 0 && this._closingNativeFocused) return;
     if (height === this.data.closingKeyboardHeight) return;
     this.setData({ closingKeyboardHeight: height });
+  },
+
+  _resetClosingKeyboardUi() {
+    return {
+      closingKeyboardHeight: 0
+    };
   },
 
   onClosingCreativeFormSubmit(e) {
@@ -5673,10 +5620,6 @@ Page(withPageInteractionLock({
     if (this._closingBlurTimer) {
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
-    }
-    if (this._closingFocusUiTimer) {
-      clearTimeout(this._closingFocusUiTimer);
-      this._closingFocusUiTimer = null;
     }
     const formVal = e && e.detail && e.detail.value && e.detail.value.closingCreativeText;
     const formText = Array.isArray(formVal)
@@ -5689,24 +5632,27 @@ Page(withPageInteractionLock({
     });
   },
 
-  async onClosingCreativeBlur() {
+  onClosingCreativeSendTap(e) {
+    // 不依赖 form-type=submit：真机原生 textarea 层可能吞掉相邻按钮的表单提交。
+    return this.onClosingCreativeFormSubmit(e);
+  },
+
+  onClosingCreativeBlur() {
     if (this._closingPickingImage) return;
     if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
-    if (this._closingFocusUiTimer) {
-      clearTimeout(this._closingFocusUiTimer);
-      this._closingFocusUiTimer = null;
-    }
+    this._closingNativeFocused = false;
     if (this._closingBlurTimer) clearTimeout(this._closingBlurTimer);
     this._closingBlurTimer = setTimeout(() => {
       this._closingBlurTimer = null;
       if (this._closingPickingImage) return;
       if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
-      this._closingNativeFocused = false;
-      runPageInteraction(
-        this,
-        () => this._commitClosingCreativeEdit({ allowEmptyExit: true }),
-        { loadingText: '正在保存创意点…' }
-      );
+      if (this._closingNativeFocused) return;
+      this.setData({
+        closingCreativeEditFocus: false,
+        closingCreativeWantFocus: false,
+        ...this._resetClosingKeyboardUi()
+      });
+      this._flushPendingRoomContextIfIdle();
     }, 200);
   },
 
@@ -5769,7 +5715,7 @@ Page(withPageInteractionLock({
             closingCreativeEditFocus: false,
             closingCreativeWantFocus: false,
             closingCreativeEditingKey: ok ? '' : editingKey,
-            closingKeyboardHeight: 0
+            ...this._resetClosingKeyboardUi()
           });
         } finally {
           this.setData({ closingCreativeSaving: false });
@@ -5782,7 +5728,7 @@ Page(withPageInteractionLock({
         this.setData({
           closingCreativeEditFocus: false,
           closingCreativeWantFocus: false,
-          closingKeyboardHeight: 0
+          ...this._resetClosingKeyboardUi()
         });
         this._flushPendingRoomContextIfIdle();
       } else {
@@ -5808,7 +5754,7 @@ Page(withPageInteractionLock({
           closingCreativeEditFocus: false,
           closingCreativeWantFocus: false,
           closingCreativeEditingKey: '',
-          closingKeyboardHeight: 0
+          ...this._resetClosingKeyboardUi()
         });
       }
     } finally {
@@ -5900,7 +5846,7 @@ Page(withPageInteractionLock({
               this.setData({
                 closingCreativeEditFocus: false,
                 closingCreativeWantFocus: false,
-                closingKeyboardHeight: 0
+                ...this._resetClosingKeyboardUi()
               });
               return;
             }
@@ -5917,7 +5863,7 @@ Page(withPageInteractionLock({
                   closingCreativeEditingKey: '',
                   closingCreativeEditFocus: false,
                   closingCreativeWantFocus: false,
-                  closingKeyboardHeight: 0
+                  ...this._resetClosingKeyboardUi()
                 });
               }
             }, { loadingText: '正在上传图片…' });
@@ -6152,7 +6098,9 @@ Page(withPageInteractionLock({
   'onClosingCreativeInput',
   'onClosingCreativeKeyboardHeightChange',
   'onClosingCreativeRemoveBlock',
+  'onClosingCreativeSendTap',
   'onClosingCreativeTextTap',
+  'onClosingCreativeTitleTap',
   'onExpressComposerBlur',
   'onExpressComposerFocus',
   'onExpressConfirm',

@@ -1568,11 +1568,14 @@ game-card-timer {
 }
 
 .closing-compose-input-row .card-inline-textarea {
-  flex: 1;
+  flex: 1 1 0%;
+  width: 0;
   min-width: 0;
 }
 
 .closing-compose-save-btn {
+  position: relative;
+  z-index: 2;
   flex: 0 0 48rpx;
   width: 48rpx !important;
   min-width: 48rpx !important;
@@ -1616,6 +1619,19 @@ game-card-timer {
 .card-inline-textarea-hint {
   min-height: 88rpx;
   padding: 16rpx 0;
+}
+
+.closing-compose-trigger {
+  display: flex;
+  align-items: flex-start;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.closing-compose-draft {
+  color: #5f5f5f;
+  font-size: 28rpx;
+  line-height: 44rpx;
 }
 
 .card-inline-textarea-active {

@@ -153,10 +153,10 @@
                   bindsubmit="onClosingCreativeFormSubmit"
                 >
                   <view class="card-inline-textarea-wrap closing-compose-input-row">
-                    <!-- 勿绑 focus=false：真机会锁死原生键盘。仅编辑已有文字时用 focus=true 的实例。 -->
+                    <!-- 未激活时使用普通 view 接点击；避免 scroll-view 内原生 textarea 吞掉首次聚焦。 -->
                     <textarea
                       wx:if="{{closingCreativeWantFocus}}"
-                      class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
+                      class="card-inline-textarea {{closingCreativeEditFocus || closingKeyboardHeight > 0 ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
                       name="closingCreativeText"
                       value="{{closingCreativeEditText}}"
                       focus="{{true}}"
@@ -164,38 +164,26 @@
                       bindinput="onClosingCreativeInput"
                       bindblur="onClosingCreativeBlur"
                       bindkeyboardheightchange="onClosingCreativeKeyboardHeightChange"
-                      placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
-                      placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
+                      placeholder="{{closingCreativeBlocks.length ? '继续记录…' : '点击开始记录'}}"
+                      placeholder-class="{{closingCreativeEditFocus || closingKeyboardHeight > 0 ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
                       maxlength="500"
                       auto-height
                       disable-default-padding="{{true}}"
                       show-confirm-bar="{{false}}"
                       adjust-position="{{true}}"
                       hold-keyboard="{{true}}"
-                      cursor-spacing="40"
+                      cursor-spacing="120"
                     />
-                    <textarea
+                    <view
                       wx:else
-                      class="card-inline-textarea {{closingCreativeEditFocus ? 'card-inline-textarea-active' : 'card-inline-textarea-hint'}}"
-                      name="closingCreativeText"
-                      value="{{closingCreativeEditText}}"
-                      bindfocus="onClosingCreativeFocus"
-                      bindinput="onClosingCreativeInput"
-                      bindblur="onClosingCreativeBlur"
-                      bindkeyboardheightchange="onClosingCreativeKeyboardHeightChange"
-                      placeholder="{{closingCreativeBlocks.length || closingCreativeEditText ? '' : '点击开始记录'}}"
-                      placeholder-class="{{closingCreativeEditFocus ? 'card-record-placeholder-active' : 'card-record-placeholder'}}"
-                      maxlength="500"
-                      auto-height
-                      disable-default-padding="{{true}}"
-                      show-confirm-bar="{{false}}"
-                      adjust-position="{{true}}"
-                      hold-keyboard="{{true}}"
-                      cursor-spacing="40"
-                    />
+                      class="card-inline-textarea card-inline-textarea-hint closing-compose-trigger"
+                      bindtap="onClosingCreativeTitleTap"
+                    >
+                      <text class="{{closingCreativeEditText ? 'closing-compose-draft' : 'card-record-placeholder'}}">{{closingCreativeEditText || (closingCreativeBlocks.length ? '继续记录…' : '点击开始记录')}}</text>
+                    </view>
                     <button
                       class="closing-compose-save-btn {{closingCreativeSaving ? 'closing-compose-save-disabled' : ''}}"
-                      form-type="submit"
+                      bindtap="onClosingCreativeSendTap"
                       hover-class="none"
                       disabled="{{closingCreativeSaving}}"
                     >
@@ -229,7 +217,7 @@
 
       <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
       <view
-        class="inspiration-bar inspiration-bar-closing {{isHost || closingStep === 'review' ? '' : 'inspiration-bar-safe-bottom'}} {{closingCreativeEditFocus ? 'inspiration-bar-kb-hidden' : ''}}"
+        class="inspiration-bar inspiration-bar-closing {{isHost || closingStep === 'review' ? '' : 'inspiration-bar-safe-bottom'}} {{closingKeyboardHeight > 0 ? 'inspiration-bar-kb-hidden' : ''}}"
         style="{{inspirationLiftStyle}}"
       >
         <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
@@ -281,8 +269,8 @@
               placeholder-class="inspiration-placeholder"
               maxlength="2000"
               confirm-type="done"
-              adjust-position="{{false}}"
-              cursor-spacing="12"
+              adjust-position="{{true}}"
+              cursor-spacing="120"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -995,8 +983,8 @@
             placeholder-class="inspiration-placeholder"
             maxlength="2000"
             confirm-type="done"
-            adjust-position="{{false}}"
-            cursor-spacing="12"
+            adjust-position="{{true}}"
+            cursor-spacing="120"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
