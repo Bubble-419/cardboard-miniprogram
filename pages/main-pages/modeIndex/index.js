@@ -10,6 +10,7 @@ const {
   unbindPageFromRoomSession,
   getRoomPageSnapshot,
   dispatchRoomCommand,
+  executeProjectedBack,
   followRoomRouteAfterCommand
 } = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
@@ -310,16 +311,13 @@ Page({
 
   handleGoBack() {
     if (isPageInteractionLocked(this)) return;
-    return runPageNavigation(this, async () => {
+    return runPageInteraction(this, async () => {
       this._stopStatePolling();
-      await this._cancelConfiguringSession();
-      const roomId = this.data.roomId || '';
-      return {
-        method: 'redirectTo',
-        url: roomId
-          ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=1`
-          : '/pages/main-pages/brainstormMode/index?isHost=1'
-      };
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+        this._startStatePolling();
+      }
     }, { loadingText: '正在返回…' });
   },
 

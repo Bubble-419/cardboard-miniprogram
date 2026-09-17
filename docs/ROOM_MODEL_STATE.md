@@ -21,6 +21,7 @@ flowchart TB
     PUBLIC[Public View]
     ACTOR[Actor View]
     ROUTE[Route]
+    NAV[Navigation]
     VIEW[Member View]
   end
 
@@ -39,6 +40,7 @@ flowchart TB
   PUBLIC --> VIEW
   ACTOR --> VIEW
   ROUTE --> VIEW
+  NAV --> VIEW
   ROOM --> EVENT
   SESSION --> EVENT
   FACTS --> EVENT
@@ -129,6 +131,7 @@ RoomSession
 ├── setup
 ├── workflow
 │   ├── step
+│   ├── revision
 │   ├── roundNo
 │   ├── activeMemberId
 │   ├── turnId
@@ -171,6 +174,7 @@ COMPLETED / CANCELLED Session 归档后不再修改
 Facts 只能属于同一 sessionId
 requiredMemberIds 只包含当前有效 Participant
 submittedMemberIds 必须是 requiredMemberIds 的子集
+workflow.revision 是正整数；每次阶段切换或同阶段重新进入都单调递增
 单场 Partner 匿名表达最多 500 条，素材最多 1000 条
 Partner 常规行动最多 200 Turn；达到上限后只能发起收尾，不能继续 Statement/Question
 Session + Facts 序列化文档不得超过 6 MiB 安全预算
@@ -287,8 +291,8 @@ EventGroup.seq == 前一 EventGroup.seq + 1
 EventGroup.stateVersion == 前一 stateVersion + 1
 同一 Command 只提交一个 Event Group
 publicEvents 只暴露已知 type，不带领域 payload
-publicPatch 不得包含 Actor/Route 或秘密
-actorPatch 只作用于当前成员的 actor/route envelope
+publicPatch 不得包含 Actor/Route/Navigation 或秘密
+actorPatch 只作用于当前成员的 actor/route/navigation envelope
 应用 publicPatch 再应用本人 actorPatch，结果等于同水位 Snapshot
 ```
 
@@ -320,9 +324,11 @@ MemberView
 │   ├── contributionStatus / scoreStatus / voteStatus
 │   ├── privateModeState
 │   └── capabilities
-└── route
+├── route
     ├── name
     └── params
+└── navigation
+    └── back: NONE | COMMAND(commandType, context, after)
 ```
 
 ```mermaid
@@ -330,6 +336,7 @@ flowchart TB
   PUBLIC[Public View<br/>所有获权成员相同]
   ACTOR[Actor View<br/>本人状态与权限]
   ROUTE[Route<br/>Workflow + Actor 派生]
+  NAV[Navigation<br/>成员权限 + Workflow 派生]
   VIEW[Member View]
   SNAP[Snapshot 完整替换]
   EVENT[Event publicPatch + actorPatch]
@@ -338,6 +345,7 @@ flowchart TB
   PUBLIC --> VIEW
   ACTOR --> VIEW
   ROUTE --> VIEW
+  NAV --> VIEW
   SNAP --> VIEW
   EVENT --> VIEW
   VIEW --> PAGE
@@ -345,7 +353,9 @@ flowchart TB
 
 View 的两种更新路径属于同一个 Interface：Snapshot 直接提供完整 View；Event 只提供从旧 View 到新 View 的安全增量。页面永远只看到发布后的完整 View。
 
-`capabilities` 是服务端投影的 UI 操作提示，不代替 Command 时的服务端授权。`route` 是展示投影，不是业务事实，客户端不能把页面名写回服务器。
+`capabilities` 是服务端投影的 UI 操作提示，不代替 Command 时的服务端授权。`route` 和
+`navigation` 都是成员级展示投影，不是业务事实。页面不得写回页面名，也不得根据物理页面栈
+拼后退目标；`navigation.back.context.workflowRevision` 用于阻止旧页面的 ABA 重放。
 
 ## 7. 物理集合
 
@@ -385,7 +395,8 @@ flowchart LR
   COMMAND --> A[roomV3Actions]
 ```
 
-高频 Sync 不重建 Actor View，也不读取 Session；Actor 变化已经在 Event 产生时扇出为 actor patch。
+高频 Sync 不重建 Actor View，也不读取 Session；Actor、Route、Navigation 变化已经在 Event
+产生时扇出为 actor patch。
 稳态 `afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询。房间资料等不改变 Session 的
 Command 也不会重写 Session/Facts 或所有未变化的 `ActiveByUser` 索引。
 
@@ -394,11 +405,11 @@ Command 也不会重写 Session/Facts 或所有未变化的 `ActiveByUser` 索�
 | 数据 | 改变 `stateVersion/eventSeq` | 进入稳定 View | 来源 |
 |---|:---:|:---:|---|
 | Room / Session / Facts | 是 | 是 | Command 事务 |
-| Public / Actor / Route Patch | 跟随 Command | 是 | Event Group |
+| Public / Actor / Route / Navigation Patch | 跟随 Command | 是 | Event Group |
 | Presence | 否 | 否，进入 `ephemeral` | 任意房间请求顺带续租 |
 | Signal | 否 | 否，进入 `ephemeral` | `roomSignal` |
 | 服务端时钟偏差 | 否 | 否，RoomClient 元数据 | 响应 `serverTime` |
-| 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地 |
+| 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地；需恢复的草稿按房间/场次/Turn 隔离 |
 
 Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。设备离线不会删除 Member；离房、被踢或房间解散后，旧租约即使尚未清理，也必须被成员投影过滤。
 

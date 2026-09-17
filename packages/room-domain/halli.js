@@ -3,6 +3,7 @@
 const { COMMAND_TYPES } = require('@cardboard/room-contracts');
 const {
   event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
+  transitionWorkflow,
   activeParticipantIds, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
@@ -11,10 +12,10 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
     if (!check.ok) return check;
-    check.session.workflow.step = WORKFLOW_STEP.HALLI_CREATIVE;
-    check.session.workflow.activeMemberId = null;
-    check.session.workflow.turnId = null;
-    check.session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_CREATIVE, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
     return domainOk(aggregate, [event(EVENT_TYPES.HALLI_CREATIVE_STARTED, { sessionId: check.session.sessionId })]);
   }
@@ -36,8 +37,10 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
     const events = [event(EVENT_TYPES.HALLI_IDEA_SUBMITTED, { memberId: actor.member.memberId,
       submittedCount: progress.submittedMemberIds.length, requiredCount: progress.requiredMemberIds.length })];
     if (progressComplete(progress)) {
-      check.session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_SUMMARY, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: check.session.sessionId }));
     }
     return domainOk(aggregate, events, { kind: 'ACCEPTED', contributionId: facts.contributions[key].contributionId },
@@ -68,8 +71,10 @@ function handleHalliParticipantLeft(aggregate, memberId, deps) {
     && session.setup.proposedFirstMemberId === memberId) {
     const replacement = activeParticipantIds(session)[0] || null;
     session.setup.proposedFirstMemberId = replacement;
-    session.workflow.activeMemberId = replacement;
-    session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
+      activeMemberId: replacement,
+      turnId: null
+    });
     events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTED, {
       memberId: replacement,
       nextStep: WORKFLOW_STEP.HALLI_ACTIVITY,
@@ -82,7 +87,10 @@ function handleHalliParticipantLeft(aggregate, memberId, deps) {
     progress.submittedMemberIds = progress.submittedMemberIds.filter((id) => id !== memberId);
     if (session.workflow.step === WORKFLOW_STEP.HALLI_CREATIVE
       && progressComplete(progress)) {
-      session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
+      transitionWorkflow(session, WORKFLOW_STEP.HALLI_SUMMARY, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: session.sessionId }));
     }
   }

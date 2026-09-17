@@ -1,11 +1,11 @@
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  executeProjectedBack,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -506,41 +506,11 @@ Page({
   },
 
   _goBack() {
-    const roomId = this.data.roomId || '';
-    const modeId = this.data.selectedModeId || getApp().globalData.gameMode || 'partner';
-    if (this._fromModeIndex || modeId === 'halliGalli') {
-      const modeParam = modeId === 'halliGalli' ? 'halliGalli' : 'partner';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=${modeParam}`
-        : `/pages/main-pages/modeIndex/index?modeId=${modeParam}`;
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/modeIndex/index',
-        fallbackUrl
-      });
-      return;
-    }
-    if (modeId === 'partner') {
-      return this._resetToSelectProblem(roomId);
-    }
-    let fallbackUrl = '/pages/main-pages/brainstormMode/index';
-    if (roomId) {
-      fallbackUrl = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`;
-    }
-    safeNavigateBack({
-      expectedPrev: [
-        'pages/main-pages/selectProblem/index',
-        'pages/main-pages/modeIndex/index'
-      ],
-      fallbackUrl
+    return executeProjectedBack(this.data.roomId).then((result) => {
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      }
+      return result;
     });
-  },
-
-  async _resetToSelectProblem(roomId) {
-    const result = await dispatchRoomCommand('RESET_DESIGN_PROBLEM', {});
-    if (!result || result.ok !== true) {
-      wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
-      return;
-    }
-    await followRoomRouteAfterCommand(result, roomId);
   }
 });

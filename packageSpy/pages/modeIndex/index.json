@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "谁是卧底",
   "navigationStyle": "custom",
+  "disableSwipeBack": true,
   "disableScroll": true,
   "usingComponents": {
     "player-top-bar": "/components/player-top-bar/index",

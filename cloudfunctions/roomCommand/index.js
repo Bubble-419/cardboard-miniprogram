@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 3;
-    var VIEW_SCHEMA_VERSION = 1;
+    var VIEW_SCHEMA_VERSION = 2;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_SEATS = 6;
     var MAX_SESSION_MESSAGES = 500;
@@ -85,6 +85,7 @@ var require_room_contracts = __commonJS({
       CONFIRM_FIRST_PLAYER: "CONFIRM_FIRST_PLAYER",
       RESET_FIRST_PLAYER: "RESET_FIRST_PLAYER",
       RESET_DESIGN_PROBLEM: "RESET_DESIGN_PROBLEM",
+      RESET_SCENARIO: "RESET_SCENARIO",
       CANCEL_WORKSHOP_SESSION: "CANCEL_WORKSHOP_SESSION",
       RETURN_TO_LOBBY: "RETURN_TO_LOBBY",
       REPLAY_WORKSHOP_SESSION: "REPLAY_WORKSHOP_SESSION",
@@ -131,6 +132,7 @@ var require_room_contracts = __commonJS({
       "DESIGN_PROBLEM_SELECTED",
       "DESIGN_PROBLEM_SELECTION_RESET",
       "PROBLEM_COLLECTION_COMPLETED",
+      "SCENARIO_SELECTION_RESET",
       "FIRST_PLAYER_SELECTED",
       "FIRST_PLAYER_SELECTION_RESET",
       "PARTNER_TURN_STARTED",
@@ -216,14 +218,15 @@ var require_room_contracts = __commonJS({
       [ERR.SNAPSHOT_REQUIRED]: "\u9700\u8981\u91CD\u65B0\u83B7\u53D6\u5FEB\u7167"
     });
     var COMMAND_CONTEXT = Object.freeze({
-      SET_SCENARIO: ["sessionId", "workflowStep"],
-      SUBMIT_DESIGN_PROBLEM: ["sessionId"],
-      UPDATE_DESIGN_PROBLEM: ["sessionId", "workflowStep", "entityVersion"],
-      SELECT_DESIGN_PROBLEM: ["sessionId", "workflowStep"],
-      SELECT_FIRST_PLAYER: ["sessionId", "workflowStep"],
-      CONFIRM_FIRST_PLAYER: ["sessionId"],
-      RESET_FIRST_PLAYER: ["sessionId"],
-      RESET_DESIGN_PROBLEM: ["sessionId"],
+      SET_SCENARIO: ["sessionId", "workflowStep", "workflowRevision"],
+      SUBMIT_DESIGN_PROBLEM: ["sessionId", "workflowRevision"],
+      UPDATE_DESIGN_PROBLEM: ["sessionId", "workflowStep", "workflowRevision", "entityVersion"],
+      SELECT_DESIGN_PROBLEM: ["sessionId", "workflowStep", "workflowRevision"],
+      SELECT_FIRST_PLAYER: ["sessionId", "workflowStep", "workflowRevision"],
+      CONFIRM_FIRST_PLAYER: ["sessionId", "workflowRevision"],
+      RESET_FIRST_PLAYER: ["sessionId", "workflowRevision"],
+      RESET_DESIGN_PROBLEM: ["sessionId", "workflowRevision"],
+      RESET_SCENARIO: ["sessionId", "workflowRevision"],
       CANCEL_WORKSHOP_SESSION: ["sessionId"],
       RETURN_TO_LOBBY: ["sessionId"],
       REPLAY_WORKSHOP_SESSION: ["sessionId"],
@@ -268,6 +271,7 @@ var require_room_contracts = __commonJS({
       CONFIRM_FIRST_PLAYER: ["memberId"],
       RESET_FIRST_PLAYER: [],
       RESET_DESIGN_PROBLEM: [],
+      RESET_SCENARIO: [],
       CANCEL_WORKSHOP_SESSION: [],
       RETURN_TO_LOBBY: [],
       REPLAY_WORKSHOP_SESSION: [],
@@ -496,7 +500,7 @@ var require_room_contracts = __commonJS({
       if (unknownContext) return fail(ERR.INVALID_ARGUMENT, `context.${unknownContext} \u4E0D\u5C5E\u4E8E ${type}`);
       for (const key of contextKeys) {
         if (context[key] == null || context[key] === "") return fail(ERR.INVALID_ARGUMENT, `context.${key} \u5FC5\u586B`);
-        if (!["entityVersion", "roundNo"].includes(key) && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
+        if (!["entityVersion", "roundNo", "workflowRevision"].includes(key) && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
           return fail(ERR.INVALID_ARGUMENT, `context.${key} \u5FC5\u987B\u662F 1\uFF5E128 \u5B57\u7B26`);
         }
       }
@@ -505,6 +509,9 @@ var require_room_contracts = __commonJS({
       }
       if (context.roundNo != null && (!Number.isInteger(context.roundNo) || context.roundNo < 1)) {
         return fail(ERR.INVALID_ARGUMENT, "context.roundNo \u5FC5\u987B\u662F\u6B63\u6574\u6570");
+      }
+      if (context.workflowRevision != null && (!Number.isInteger(context.workflowRevision) || context.workflowRevision < 1)) {
+        return fail(ERR.INVALID_ARGUMENT, "context.workflowRevision \u5FC5\u987B\u662F\u6B63\u6574\u6570");
       }
       const payloadResult = validatePayload(type, payload);
       if (!payloadResult.ok) return payloadResult;
@@ -544,7 +551,7 @@ var require_room_contracts = __commonJS({
       return patchStaysWithin(value, ["room", "session"]);
     }
     function validateActorViewPatch(value) {
-      return patchStaysWithin(value, ["actor", "route"]);
+      return patchStaysWithin(value, ["actor", "route", "navigation"]);
     }
     function validNullableString(value) {
       return value == null || typeof value === "string";
@@ -561,8 +568,26 @@ var require_room_contracts = __commonJS({
     function hasOwn(record, key) {
       return Object.prototype.hasOwnProperty.call(record, key);
     }
+    function validProjectedBack(back) {
+      if (!isRecord(back) || !["NONE", "COMMAND"].includes(back.kind)) return false;
+      if (back.kind === "NONE") return Object.keys(back).length === 1;
+      const allowed = [
+        COMMAND_TYPES.CANCEL_WORKSHOP_SESSION,
+        COMMAND_TYPES.RESET_SCENARIO,
+        COMMAND_TYPES.RESET_DESIGN_PROBLEM,
+        COMMAND_TYPES.RESET_FIRST_PLAYER
+      ];
+      if (!allowed.includes(back.commandType) || !isRecord(back.context)) return false;
+      const expectedKeys = COMMAND_CONTEXT[back.commandType] || [];
+      const actualKeys = Object.keys(back.context);
+      if (actualKeys.length !== expectedKeys.length || expectedKeys.some((key) => !hasOwn(back.context, key))) return false;
+      if (!isNonEmptyString(back.context.sessionId)) return false;
+      if (expectedKeys.includes("workflowRevision") && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
+      const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION ? "OPEN_MODE_PICKER" : "FOLLOW_ROUTE";
+      return back.after === expectedAfter;
+    }
     function validateMemberView(view, expectedRoomId) {
-      if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor) || !isRecord(view.route)) return false;
+      if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor) || !isRecord(view.route) || !isRecord(view.navigation) || !isRecord(view.navigation.back)) return false;
       if (!hasOwn(view, "session")) return false;
       if (typeof view.room.roomId !== "string" || !/^\d{8}$/.test(view.room.roomId) || expectedRoomId && view.room.roomId !== expectedRoomId) return false;
       if (!Object.values(LIFECYCLE).includes(view.room.lifecycle) || typeof view.room.workshopName !== "string" || !Number.isFinite(view.room.createdAt) || !isNonEmptyString(view.room.hostMemberId) || !Array.isArray(view.room.members) || !view.room.members.every(validProjectedMember)) return false;
@@ -573,9 +598,11 @@ var require_room_contracts = __commonJS({
       if (!["HOST", "PLAYER"].includes(view.actor.role) || !Number.isInteger(view.actor.seatNo) || view.actor.seatNo < 1 || view.actor.seatNo > MAX_SEATS || typeof view.actor.isParticipant !== "boolean" || !validActorStatus(view.actor.contributionStatus) || !validActorStatus(view.actor.scoreStatus) || !validActorStatus(view.actor.voteStatus) || !(view.actor.privateModeState == null || isRecord(view.actor.privateModeState)) || !isRecord(view.actor.capabilities)) return false;
       if (!Object.values(view.actor.capabilities).every((capability) => isRecord(capability) && typeof capability.allowed === "boolean" && (capability.reason == null || typeof capability.reason === "string"))) return false;
       if (!isNonEmptyString(view.route.name) || !isRecord(view.route.params)) return false;
+      const back = view.navigation.back;
+      if (!validProjectedBack(back)) return false;
       if (view.session == null) return true;
       const session = view.session;
-      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
+      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1 || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
       const participantIds = session.participants.map((participant) => participant.memberId);
       const participantSeats = session.participants.map((participant) => participant.seatNoAtStart);
       return new Set(participantIds).size === participantIds.length && new Set(participantSeats).size === participantSeats.length;
@@ -781,9 +808,23 @@ var require_model = __commonJS({
       if (context.workflowStep && context.workflowStep !== session.workflow.step) {
         return fail(ERR.STALE_CONTEXT, "\u5DE5\u4F5C\u6D41\u6B65\u9AA4\u5DF2\u7ECF\u53D8\u5316");
       }
+      if (context.workflowRevision != null && Number(context.workflowRevision) !== Number(session.workflow.revision)) {
+        return fail(ERR.STALE_CONTEXT, "\u5DE5\u4F5C\u6D41\u9636\u6BB5\u5DF2\u7ECF\u53D8\u5316");
+      }
       if (options && options.mode && session.mode !== options.mode) return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u6A21\u5F0F\u4E0D\u5339\u914D");
       if (options && options.steps && !options.steps.includes(session.workflow.step)) return fail(ERR.INVALID_TRANSITION);
       return okResult({ session });
+    }
+    function transitionWorkflow(session, step, deps, patch) {
+      const previous = session.workflow || {};
+      session.workflow = {
+        ...previous,
+        ...patch || {},
+        step,
+        revision: Math.max(0, Number(previous.revision) || 0) + 1,
+        phaseStartedAt: nowOf(deps)
+      };
+      return session.workflow;
     }
     function assertTurn(aggregate, context, steps) {
       const check = assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
@@ -815,7 +856,7 @@ var require_model = __commonJS({
         mode,
         participants,
         setup: { scenarioSource: null, scenario: null, selectedProblemId: null, proposedFirstMemberId: null, ...clone(copiedSetup) || {} },
-        workflow: { step, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
+        workflow: { step, revision: 1, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
         progress: {},
         modeState: {},
         result: null,
@@ -888,6 +929,7 @@ var require_model = __commonJS({
       assertParticipant,
       assertSession,
       assertTurn,
+      transitionWorkflow,
       newSession,
       normalizeScenario,
       markParticipantLeft,
@@ -927,6 +969,7 @@ var require_partner = __commonJS({
       assertParticipant,
       assertSession,
       assertTurn,
+      transitionWorkflow,
       activeParticipantIds,
       activeParticipantsBySeat,
       isActiveParticipant,
@@ -985,13 +1028,11 @@ var require_partner = __commonJS({
         scoreProgress: { requiredMemberIds, submittedMemberIds: [] }
       };
       partner.activeTurn = turn;
-      session.workflow = {
-        step: WORKFLOW_STEP.PARTNER_TURN,
+      transitionWorkflow(session, WORKFLOW_STEP.PARTNER_TURN, deps, {
         roundNo: partner.roundNo,
         activeMemberId: memberId,
-        turnId: turn.turnId,
-        phaseStartedAt: now
-      };
+        turnId: turn.turnId
+      });
       session.progress.scoreProgress = clone(turn.scoreProgress);
       session.updatedAt = now;
       return turn;
@@ -1187,13 +1228,11 @@ var require_partner = __commonJS({
         ], dirty };
       }
       closing.stage = "RUNE";
-      session.workflow = {
-        step: WORKFLOW_STEP.PARTNER_CLOSING_RUNE,
+      transitionWorkflow(session, WORKFLOW_STEP.PARTNER_CLOSING_RUNE, deps, {
         roundNo: partner.roundNo,
         activeMemberId: null,
-        turnId: closing.sourceTurnId,
-        phaseStartedAt: nowOf(deps)
-      };
+        turnId: closing.sourceTurnId
+      });
       return { events: [
         event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, reason: summary.reason }),
         event(EVENT_TYPES.PARTNER_CLOSING_ACCEPTED, { closingVoteSessionId: closing.closingVoteSessionId })
@@ -1280,8 +1319,11 @@ var require_partner = __commonJS({
         check.turn.masterMode = false;
         check.turn.silentStartedAt = null;
         check.turn.silentDeadlineAt = null;
-        check.session.workflow.step = WORKFLOW_STEP.PARTNER_STATEMENT;
-        check.session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_STATEMENT, deps, {
+          roundNo: check.turn.roundNo,
+          activeMemberId: check.turn.activeMemberId,
+          turnId: check.turn.turnId
+        });
         return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_STATEMENT_STARTED, { turnId: check.turn.turnId })]);
       }
       if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN) {
@@ -1330,8 +1372,11 @@ var require_partner = __commonJS({
             stage: "VOTE",
             createdAt: nowOf(deps)
           };
-          check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_VOTE;
-          check.session.workflow.phaseStartedAt = nowOf(deps);
+          transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_CLOSING_VOTE, deps, {
+            roundNo: check.turn.roundNo,
+            activeMemberId: check.turn.activeMemberId,
+            turnId: check.turn.turnId
+          });
           events.push(event(EVENT_TYPES.PARTNER_CLOSING_VOTE_STARTED, { closingVoteSessionId: voteSessionId, initiatorMemberId: actor.memberId }));
         }
         return domainOk(aggregate, events);
@@ -1387,8 +1432,10 @@ var require_partner = __commonJS({
         if (!check.ok) return check;
         const partner = partnerState(aggregate);
         partner.closing.stage = "REVIEW";
-        check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_REVIEW;
-        check.session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, deps, {
+          activeMemberId: null,
+          turnId: partner.closing.sourceTurnId
+        });
         return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_CLOSING_REVIEW_STARTED, { sourceTurnId: partner.closing.sourceTurnId })]);
       }
       if (type === COMMAND_TYPES.COMPLETE_PARTNER_SESSION) {
@@ -1422,16 +1469,18 @@ var require_partner = __commonJS({
       if (!partner) {
         const contribution = session && session.progress && session.progress.contributionProgress;
         if (session && session.workflow.step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS && contribution && progressComplete(contribution)) {
-          session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
-          session.workflow.phaseStartedAt = nowOf(deps);
+          transitionWorkflow(session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+            activeMemberId: null,
+            turnId: null
+          });
           events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: session.sessionId }));
         }
         if (session && session.workflow.step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER && session.setup.proposedFirstMemberId === memberId) {
           session.setup.proposedFirstMemberId = null;
-          session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-          session.workflow.activeMemberId = null;
-          session.workflow.turnId = null;
-          session.workflow.phaseStartedAt = nowOf(deps);
+          transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+            activeMemberId: null,
+            turnId: null
+          });
           events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId }));
         }
         return { events, dirtyFacts };
@@ -1493,6 +1542,7 @@ var require_halli = __commonJS({
       assertHost,
       assertParticipant,
       assertSession,
+      transitionWorkflow,
       activeParticipantIds,
       progressComplete,
       MODE,
@@ -1507,10 +1557,10 @@ var require_halli = __commonJS({
         if (!host.ok) return host;
         const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
         if (!check.ok) return check;
-        check.session.workflow.step = WORKFLOW_STEP.HALLI_CREATIVE;
-        check.session.workflow.activeMemberId = null;
-        check.session.workflow.turnId = null;
-        check.session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_CREATIVE, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
         return domainOk(aggregate, [event(EVENT_TYPES.HALLI_CREATIVE_STARTED, { sessionId: check.session.sessionId })]);
       }
@@ -1540,8 +1590,10 @@ var require_halli = __commonJS({
           requiredCount: progress.requiredMemberIds.length
         })];
         if (progressComplete(progress)) {
-          check.session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
-          check.session.workflow.phaseStartedAt = nowOf(deps);
+          transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_SUMMARY, deps, {
+            activeMemberId: null,
+            turnId: null
+          });
           events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: check.session.sessionId }));
         }
         return domainOk(
@@ -1574,8 +1626,10 @@ var require_halli = __commonJS({
       if (session.workflow.step === WORKFLOW_STEP.HALLI_ACTIVITY && session.setup.proposedFirstMemberId === memberId) {
         const replacement = activeParticipantIds(session)[0] || null;
         session.setup.proposedFirstMemberId = replacement;
-        session.workflow.activeMemberId = replacement;
-        session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
+          activeMemberId: replacement,
+          turnId: null
+        });
         events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTED, {
           memberId: replacement,
           nextStep: WORKFLOW_STEP.HALLI_ACTIVITY,
@@ -1587,7 +1641,10 @@ var require_halli = __commonJS({
         progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
         progress.submittedMemberIds = progress.submittedMemberIds.filter((id) => id !== memberId);
         if (session.workflow.step === WORKFLOW_STEP.HALLI_CREATIVE && progressComplete(progress)) {
-          session.workflow.step = WORKFLOW_STEP.HALLI_SUMMARY;
+          transitionWorkflow(session, WORKFLOW_STEP.HALLI_SUMMARY, deps, {
+            activeMemberId: null,
+            turnId: null
+          });
           events.push(event(EVENT_TYPES.HALLI_SUMMARY_READY, { sessionId: session.sessionId }));
         }
       }
@@ -1731,6 +1788,7 @@ var require_spy = __commonJS({
       assertHost,
       assertParticipant,
       assertSession,
+      transitionWorkflow,
       activeParticipantsBySeat,
       progressComplete,
       MODE,
@@ -1807,13 +1865,11 @@ var require_spy = __commonJS({
       spy.speakTurnStartedAt = nowOf(deps);
       spy.voteProgress = null;
       spy.tieBreak = tieBreak === true;
-      session.workflow = {
-        step: tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK,
+      transitionWorkflow(session, tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK, deps, {
         roundNo: spy.roundNo,
         activeMemberId: order[0] || null,
-        turnId: spy.speakerTurnId,
-        phaseStartedAt: nowOf(deps)
-      };
+        turnId: spy.speakerTurnId
+      });
       return event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: order[0] || null, tieBreak: spy.tieBreak });
     }
     function openVote(aggregate, deps) {
@@ -1822,13 +1878,11 @@ var require_spy = __commonJS({
       const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
       spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
       spy.voteStartedAt = nowOf(deps);
-      session.workflow = {
-        step: WORKFLOW_STEP.SPY_VOTE,
+      transitionWorkflow(session, WORKFLOW_STEP.SPY_VOTE, deps, {
         roundNo: spy.roundNo,
         activeMemberId: null,
-        turnId: spy.voteProgress.voteSessionId,
-        phaseStartedAt: nowOf(deps)
-      };
+        turnId: spy.voteProgress.voteSessionId
+      });
       return event(EVENT_TYPES.SPY_VOTE_OPENED, { voteSessionId: spy.voteProgress.voteSessionId, requiredCount: requiredMemberIds.length, tieBreak: spy.tieBreak });
     }
     function startGame(aggregate, deps, restarted) {
@@ -1950,16 +2004,16 @@ var require_spy = __commonJS({
       if (winner) {
         spy.winnerSide = winner;
         spy.reveal = reveal(aggregate, spy);
-        session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
-        session.workflow.activeMemberId = null;
-        session.workflow.turnId = null;
-        session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(session, WORKFLOW_STEP.SPY_SETTLED, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
       } else {
-        session.workflow.step = WORKFLOW_STEP.SPY_RESULT;
-        session.workflow.activeMemberId = null;
-        session.workflow.turnId = null;
-        session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(session, WORKFLOW_STEP.SPY_RESULT, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         events.push(event(EVENT_TYPES.SPY_ROUND_COMPLETED, { roundNo: spy.roundNo, eliminatedMemberId: eliminated && eliminated.memberId, tallies: tally }));
       }
       return events;
@@ -1991,9 +2045,10 @@ var require_spy = __commonJS({
         else {
           check.spy.speakerTurnId = idOf(deps, "speaker");
           check.spy.speakTurnStartedAt = nowOf(deps);
-          check.session.workflow.activeMemberId = check.spy.speakOrder[check.spy.currentSpeakerIndex];
-          check.session.workflow.turnId = check.spy.speakerTurnId;
-          check.session.workflow.phaseStartedAt = nowOf(deps);
+          transitionWorkflow(check.session, check.session.workflow.step, deps, {
+            activeMemberId: check.spy.speakOrder[check.spy.currentSpeakerIndex],
+            turnId: check.spy.speakerTurnId
+          });
           events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, {
             speakerTurnId: check.spy.speakerTurnId,
             memberId: check.session.workflow.activeMemberId,
@@ -2114,10 +2169,10 @@ var require_spy = __commonJS({
       if (winner && session.workflow.step !== WORKFLOW_STEP.SPY_SETTLED) {
         spy.winnerSide = winner;
         spy.reveal = reveal(aggregate, spy);
-        session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
-        session.workflow.activeMemberId = null;
-        session.workflow.turnId = null;
-        session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(session, WORKFLOW_STEP.SPY_SETTLED, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
         return { events, dirtyFacts: [] };
       }
@@ -2134,9 +2189,10 @@ var require_spy = __commonJS({
           const now = nowOf(deps);
           spy.speakerTurnId = idOf(deps, "speaker");
           spy.speakTurnStartedAt = now;
-          session.workflow.activeMemberId = spy.speakOrder[spy.currentSpeakerIndex];
-          session.workflow.turnId = spy.speakerTurnId;
-          session.workflow.phaseStartedAt = now;
+          transitionWorkflow(session, session.workflow.step, deps, {
+            activeMemberId: spy.speakOrder[spy.currentSpeakerIndex],
+            turnId: spy.speakerTurnId
+          });
           events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: session.workflow.activeMemberId, tieBreak: spy.tieBreak }));
         }
       }
@@ -2200,6 +2256,7 @@ var require_room_domain = __commonJS({
       assertHost,
       assertParticipant,
       assertSession,
+      transitionWorkflow,
       newSession,
       normalizeScenario,
       markParticipantLeft,
@@ -2442,10 +2499,17 @@ var require_room_domain = __commonJS({
       check.session.setup.proposedFirstMemberId = null;
       check.session.progress = {};
       if (check.session.mode === MODE.PARTNER && normalized.source !== "OFFLINE") {
-        check.session.workflow.step = WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS;
+        transitionWorkflow(check.session, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
-      } else check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      } else {
+        transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
+      }
       return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SET, {
         source: normalized.source,
         nextStep: check.session.workflow.step
@@ -2477,8 +2541,10 @@ var require_room_domain = __commonJS({
         requiredCount: progress.requiredMemberIds.length
       })];
       if (progressComplete(progress)) {
-        check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
-        check.session.workflow.phaseStartedAt = nowOf(deps);
+        transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
         events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: check.session.sessionId }));
       }
       return domainOk(
@@ -2526,10 +2592,10 @@ var require_room_domain = __commonJS({
       if (!problem) return fail(ERR.STALE_CONTEXT, "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728");
       check.session.setup.selectedProblemId = contributionId;
       check.session.setup.proposedFirstMemberId = null;
-      check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-      check.session.workflow.activeMemberId = null;
-      check.session.workflow.turnId = null;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTED, { contributionId })]);
     }
     function selectFirstPlayer(aggregate, command, actorUserId, deps) {
@@ -2542,13 +2608,18 @@ var require_room_domain = __commonJS({
       const memberId = String(command.payload.memberId || "");
       if (!activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, "\u9996\u4F4D\u6210\u5458\u4E0D\u53EF\u7528");
       check.session.setup.proposedFirstMemberId = memberId;
-      if (check.session.mode === MODE.PARTNER) check.session.workflow.step = WORKFLOW_STEP.CONFIRM_FIRST_PLAYER;
-      else if (check.session.mode === MODE.HALLI_GALLI) {
+      if (check.session.mode === MODE.PARTNER) {
+        transitionWorkflow(check.session, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
+      } else if (check.session.mode === MODE.HALLI_GALLI) {
         check.session.status = SESSION_STATUS.RUNNING;
-        check.session.workflow.step = WORKFLOW_STEP.HALLI_ACTIVITY;
-        check.session.workflow.activeMemberId = memberId;
+        transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
+          activeMemberId: memberId,
+          turnId: null
+        });
       } else return fail(ERR.INVALID_TRANSITION);
-      check.session.workflow.phaseStartedAt = nowOf(deps);
       return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTED, { memberId, nextStep: check.session.workflow.step })]);
     }
     function confirmFirstPlayer(aggregate, command, actorUserId, deps) {
@@ -2574,10 +2645,10 @@ var require_room_domain = __commonJS({
       if (!check.ok) return check;
       const memberId = check.session.setup.proposedFirstMemberId || null;
       check.session.setup.proposedFirstMemberId = null;
-      check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-      check.session.workflow.activeMemberId = null;
-      check.session.workflow.turnId = null;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId })]);
     }
     function resetDesignProblem(aggregate, command, actorUserId, deps) {
@@ -2593,13 +2664,42 @@ var require_room_domain = __commonJS({
         return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u573A\u6B21\u6CA1\u6709\u53EF\u91CD\u9009\u7684\u8BBE\u8BA1\u95EE\u9898");
       }
       check.session.setup.proposedFirstMemberId = null;
-      check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
-      check.session.workflow.activeMemberId = null;
-      check.session.workflow.turnId = null;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTION_RESET, {
         contributionId: check.session.setup.selectedProblemId || null
       })]);
+    }
+    function resetScenario(aggregate, command, actorUserId, deps) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      const check = assertSession(aggregate, command.context, {
+        steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
+      });
+      if (!check.ok) return check;
+      if (![MODE.PARTNER, MODE.HALLI_GALLI].includes(check.session.mode)) {
+        return fail(ERR.INVALID_TRANSITION);
+      }
+      const dirtyFacts = [];
+      Object.entries(ensureFacts(aggregate).contributions).forEach(([key, row]) => {
+        if (row.sessionId !== check.session.sessionId) return;
+        delete aggregate.facts.contributions[key];
+        dirtyFacts.push({ kind: "contributions", id: key, remove: true });
+      });
+      check.session.setup.scenarioSource = null;
+      check.session.setup.scenario = null;
+      check.session.setup.selectedProblemId = null;
+      check.session.setup.proposedFirstMemberId = null;
+      check.session.progress = {};
+      transitionWorkflow(check.session, WORKFLOW_STEP.CHOOSE_SCENARIO, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
+      return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SELECTION_RESET, {
+        sessionId: check.session.sessionId
+      })], { kind: "ACCEPTED" }, dirtyFacts);
     }
     function cancelSession(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
@@ -2666,7 +2766,12 @@ var require_room_domain = __commonJS({
         session.setup.proposedFirstMemberId = validFirst;
         const turn = startPartnerFlow(aggregate, validFirst, deps);
         events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: validFirst, roundNo: 1 }));
-      } else if (session.mode === MODE.HALLI_GALLI) session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+      } else if (session.mode === MODE.HALLI_GALLI) {
+        transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+          activeMemberId: null,
+          turnId: null
+        });
+      }
       return domainOk(aggregate, events, { kind: "SESSION_REPLAYED", sessionId: session.sessionId }, dirtyFacts);
     }
     function reduceCommand(input) {
@@ -2726,6 +2831,9 @@ var require_room_domain = __commonJS({
           break;
         case COMMAND_TYPES.RESET_DESIGN_PROBLEM:
           result = resetDesignProblem(aggregate, command, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.RESET_SCENARIO:
+          result = resetScenario(aggregate, command, actorUserId, deps);
           break;
         case COMMAND_TYPES.CANCEL_WORKSHOP_SESSION:
           result = cancelSession(aggregate, command, actorUserId, deps);
@@ -3093,6 +3201,10 @@ var require_room_projection = __commonJS({
         isHost && session && session.mode === MODE.PARTNER && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER,
         "INVALID_TRANSITION"
       );
+      caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
+        isHost && session && [MODE.PARTNER, MODE.HALLI_GALLI].includes(session.mode) && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
+        "INVALID_TRANSITION"
+      );
       caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
       caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, "INVALID_TRANSITION");
       const replayMinimum = session && session.mode === MODE.SPY ? 3 : 2;
@@ -3201,6 +3313,36 @@ var require_room_projection = __commonJS({
       }
       return { name, params };
     }
+    function noBack() {
+      return { kind: "NONE" };
+    }
+    function projectNavigation(aggregate, actorView) {
+      const session = aggregate.currentSession;
+      if (!session || !actorView || !actorView.isParticipant || actorView.role !== "HOST") {
+        return { back: noBack() };
+      }
+      const commandBack = (commandType, after) => ({
+        kind: "COMMAND",
+        commandType,
+        context: commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION ? { sessionId: session.sessionId } : { sessionId: session.sessionId, workflowRevision: session.workflow.revision },
+        after: after || "FOLLOW_ROUTE"
+      });
+      const step = session.workflow.step;
+      if ([WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.SPY_INTRO].includes(step)) {
+        return { back: commandBack(COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, "OPEN_MODE_PICKER") };
+      }
+      if (step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) {
+        return { back: commandBack(COMMAND_TYPES.RESET_SCENARIO) };
+      }
+      if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) {
+        const hasSelectedProblem = session.mode === MODE.PARTNER && !!session.setup.selectedProblemId;
+        return { back: commandBack(hasSelectedProblem ? COMMAND_TYPES.RESET_DESIGN_PROBLEM : COMMAND_TYPES.RESET_SCENARIO) };
+      }
+      if (step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER) {
+        return { back: commandBack(COMMAND_TYPES.RESET_FIRST_PLAYER) };
+      }
+      return { back: noBack() };
+    }
     function projectActorView(aggregate, actorUserId) {
       const session = aggregate.currentSession;
       let member = findMember(aggregate, actorUserId);
@@ -3238,12 +3380,21 @@ var require_room_projection = __commonJS({
       const publicView = projectPublicView(aggregate);
       const actor = projectActorView(aggregate, actorUserId);
       if (!publicView || !actor) return null;
-      return { ...publicView, actor, route: projectRoute(aggregate, actor) };
+      return {
+        ...publicView,
+        actor,
+        route: projectRoute(aggregate, actor),
+        navigation: projectNavigation(aggregate, actor)
+      };
     }
     function projectActorEnvelope(aggregate, actorUserId) {
       if (!aggregate || !aggregate.room) return null;
       const actor = projectActorView(aggregate, actorUserId);
-      return actor ? { actor, route: projectRoute(aggregate, actor) } : null;
+      return actor ? {
+        actor,
+        route: projectRoute(aggregate, actor),
+        navigation: projectNavigation(aggregate, actor)
+      } : null;
     }
     function projectActorPatches(beforeAggregate, afterAggregate) {
       if (!afterAggregate || !afterAggregate.room) return [];
@@ -3333,10 +3484,12 @@ var require_room_projection = __commonJS({
       let publicPart = clone(view || {});
       delete publicPart.actor;
       delete publicPart.route;
+      delete publicPart.navigation;
       publicPart = applyPublicPatch(publicPart, event && event.publicPatch);
       let actorPart = {
         actor: clone(view && view.actor),
-        route: clone(view && view.route)
+        route: clone(view && view.route),
+        navigation: clone(view && view.navigation)
       };
       if (event && event.actorPatch) actorPart = applyPublicPatch(actorPart, event.actorPatch);
       return { ...publicPart, ...actorPart };
@@ -3348,6 +3501,7 @@ var require_room_projection = __commonJS({
       projectMemberView,
       projectCapabilities,
       projectRoute,
+      projectNavigation,
       projectActorEnvelope,
       projectActorPatches,
       createPublicPatch,

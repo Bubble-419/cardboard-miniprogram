@@ -28,6 +28,7 @@ flowchart LR
 2. `view.route` 同时受成员角色、是否为本场参与者、本人是否已提交影响，不是公共状态的简单别名。
 3. Snapshot 和 Event 必须得到同一份 Member View；页面只消费 Member View，不自行猜测下一业务页面。
 4. `roomState.currentPage` 是旧页面的兼容字段，不是新的权威状态；新代码不得据此写回服务端。
+5. `view.navigation.back` 表示当前成员可执行的业务后退；页面栈、来源页和 URL 都无权决定状态回退。
 
 ### 1.1 全局生命周期
 
@@ -141,7 +142,36 @@ flowchart TD
 | `packageSpy/pages/nextRound` | 兼容页 | V3 用 `SPY_RESULT → START_NEXT_SPY_ROUND → SPY_SPEAK` 表达 |
 | `partnerMode/statement`、`discussion`、`closingEnd` | 历史兼容页 | 当前权威流程分别收敛到 `partnerGame`、`closingStatement`、`leaderboard` |
 
-### 2.3 断线、冷启动与 Snapshot 恢复
+本地叠层使用精确的 Route Owner：`brainstormMode→addPlayer`、`selectBG→modeIndex`、
+`case→submitProblem`、`specialMove/imageCrop/inspiration→partnerGame`、`cardLibrary→spyIntro`。
+只有 Owner 未变化才保留；不得使用通配 Owner 把过期叠层留在新的业务状态上。
+
+### 2.3 统一后退策略
+
+```mermaid
+flowchart LR
+  VIEW[Member View<br/>navigation.back] --> KIND{kind}
+  KIND -->|NONE| STAY[不展示业务后退<br/>禁用侧滑返回]
+  KIND -->|COMMAND| SEND[提交投影的 Command + context]
+  SEND --> ROUTE[跟随新 view.route]
+  ROUTE --> AFTER{after}
+  AFTER -->|FOLLOW_ROUTE| DONE[完成]
+  AFTER -->|OPEN_MODE_PICKER| PICK[打开 brainstormMode 本地叠层]
+```
+
+| 当前权威状态 | 谁可后退 | 投影 Command | 结果 |
+|---|---|---|---|
+| `CHOOSE_SCENARIO` / `SPY_INTRO` | Host | `CANCEL_WORKSHOP_SESSION` | 先回 `addPlayer`，再打开选模式叠层 |
+| `SELECT_DESIGN_PROBLEM` | Host（当前 UI 不展示按钮） | `RESET_SCENARIO` | 清空本场情境、问题与选择，回 `CHOOSE_SCENARIO` |
+| `SELECT_FIRST_PLAYER`，Partner 已选问题 | Host | `RESET_DESIGN_PROBLEM` | 保留问题列表，回 `SELECT_DESIGN_PROBLEM` |
+| `SELECT_FIRST_PLAYER`，Partner 线下或 Halli | Host | `RESET_SCENARIO` | 回 `CHOOSE_SCENARIO` |
+| `CONFIRM_FIRST_PLAYER` | Host | `RESET_FIRST_PLAYER` | 清掉拟定首位，回 `SELECT_FIRST_PLAYER` |
+| 运行期、收尾、汇总、结算、Player 等待态 | 无 | `NONE` | 不展示伪后退；仅按后续业务 Command 前进 |
+
+后退 Command 携带投影时的 `workflowRevision`。A→B→A 后重放旧按钮会被拒绝，页面再由
+Event 或 Snapshot 收敛到最新 View。
+
+### 2.4 断线、冷启动与 Snapshot 恢复
 
 ```mermaid
 sequenceDiagram
@@ -257,11 +287,14 @@ flowchart TD
   COLLECT -->|全员 SUBMIT_DESIGN_PROBLEM| SELECT_PROBLEM_H
   COLLECT -->|全员提交完成| SELECT_PROBLEM_P
   SELECT_PROBLEM_H -->|SELECT_DESIGN_PROBLEM| SELECT_FIRST_H
+  SELECT_PROBLEM_H -->|RESET_SCENARIO| CHOOSE_H
   SELECT_FIRST_H -->|RESET_DESIGN_PROBLEM| SELECT_PROBLEM_H
+  SELECT_FIRST_H -->|无已选问题时 RESET_SCENARIO| CHOOSE_H
   SELECT_PROBLEM_P -. Event / Snapshot .-> SELECT_FIRST_P
   CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
   CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM
+  CONFIRM -->|RESET_FIRST_PLAYER| SELECT_FIRST_H
   CONFIRM -->|CONFIRM_FIRST_PLAYER| PARTNER
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli| HALLI
 ```
@@ -275,7 +308,8 @@ flowchart TD
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
 | Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |
 | Host 从确认首位点“上一页” | `RESET_FIRST_PLAYER` | 清掉拟定首位，回到 `SELECT_FIRST_PLAYER`；Host 回 `selectPlayer`，Player 回 `subAwait?scene=player` |
-| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` | 保留已选问题，回到 `SELECT_DESIGN_PROBLEM`；Host 回 `selectProblem`，Player 回 `subAwait?scene=selectProblem`。副屏 `subAwait` 只用 hero 等待样式，没有上一页 |
+| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` 或 `RESET_SCENARIO` | Partner 已选问题时回选问题；Partner 线下或 Halli 回选情境。副屏等待态没有上一页 |
+| Host 从选问题页执行协议后退 | `RESET_SCENARIO` | 清空旧情境、问题 Facts、选择和进度，回 `CHOOSE_SCENARIO`；当前页面未展示该按钮 |
 | Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 打开 `brainstormMode?isHost=1` 叠层，不走 `navigateBack` |
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
 
@@ -331,6 +365,10 @@ flowchart LR
 | Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。
+
+收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
+隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
+刷新丢失，也不能阻塞后续权威 View 应用。
 
 ### 5.2 收尾裁决
 

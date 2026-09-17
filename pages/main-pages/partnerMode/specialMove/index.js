@@ -24,7 +24,6 @@ const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
 const { buildDisplaySummaries } = require('../../../../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
-const { createInspirationKeyboardLift } = require('../../../../utils/inspirationKeyboardLift');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
@@ -200,11 +199,11 @@ Page(withPageInteractionLock({
     if (this.data.roomId) {
       this._startStatePolling();
     }
-    this._measureInspirationFooterClearance();
   },
 
   onHide() {
     this._unbindInspirationKeyboard();
+    this._flushInspirationKeyboardZero(true);
     this.setData({
       inspirationKeyboardHeight: 0,
       inspirationLiftStyle: ''
@@ -363,47 +362,37 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在打开灵感空间…' });
   },
 
-  _inspirationLiftHelper() {
-    if (!this._inspirationKeyboardLift) {
-      this._inspirationKeyboardLift = createInspirationKeyboardLift();
+  _resetInspirationKeyboardUi() {
+    return { inspirationKeyboardHeight: 0, inspirationLiftStyle: '' };
+  },
+
+  _commitInspirationKeyboardHeight(next) {
+    const height = Math.max(0, Number(next) || 0);
+    if (height === this.data.inspirationKeyboardHeight && !this.data.inspirationLiftStyle) return;
+    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle: '' });
+  },
+
+  _flushInspirationKeyboardZero(immediate) {
+    if (this._inspirationKbZeroTimer) {
+      clearTimeout(this._inspirationKbZeroTimer);
+      this._inspirationKbZeroTimer = null;
     }
-    return this._inspirationKeyboardLift;
-  },
-
-  _measureInspirationFooterClearance() {
-    setTimeout(() => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select('.page-footer')
-        .boundingClientRect((rect) => {
-          this._inspirationFooterClearancePx = rect && rect.height
-            ? Math.ceil(rect.height)
-            : 0;
-        })
-        .exec();
-    }, 64);
-  },
-
-  _buildInspirationLiftStyle(keyboardHeight) {
-    return this._inspirationLiftHelper().buildBarStyle(keyboardHeight, {
-      background: '#fafafa'
-    });
+    if (immediate) this._commitInspirationKeyboardHeight(0);
   },
 
   _setInspirationKeyboardHeight(height) {
     const next = Math.max(0, Number(height) || 0);
-    const liftPx = this._inspirationLiftHelper().resolveLiftPx(next);
-    const style = this._buildInspirationLiftStyle(next);
-    if (
-      liftPx === this.data.inspirationKeyboardHeight
-      && style === this.data.inspirationLiftStyle
-    ) {
+    if (next > 0) {
+      this._flushInspirationKeyboardZero(false);
+      this._commitInspirationKeyboardHeight(next);
       return;
     }
-    this.setData({
-      inspirationKeyboardHeight: liftPx,
-      inspirationLiftStyle: style
-    });
+    if (this._inspirationNativeFocused || this.data.inspirationInputFocused) return;
+    if (this._inspirationKbZeroTimer) clearTimeout(this._inspirationKbZeroTimer);
+    this._inspirationKbZeroTimer = setTimeout(() => {
+      this._inspirationKbZeroTimer = null;
+      this._commitInspirationKeyboardHeight(0);
+    }, 120);
   },
 
   onInspirationFocus() {
@@ -412,7 +401,6 @@ Page(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
-    this._inspirationLiftHelper().captureBase();
     // 延后标记，避开 Android「聚焦瞬间 setData 打掉输入法」
     if (this._inspirationFocusUiTimer) clearTimeout(this._inspirationFocusUiTimer);
     this._inspirationFocusUiTimer = setTimeout(() => {
@@ -435,8 +423,7 @@ Page(withPageInteractionLock({
       if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: ''
+        ...this._resetInspirationKeyboardUi()
       });
     }, 180);
   },
@@ -455,22 +442,13 @@ Page(withPageInteractionLock({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 只使用 input 的 bindkeyboardheightchange，避免全局监听与组件事件重复抖动。
   },
 
   _unbindInspirationKeyboard() {
     if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
-    if (
-      typeof wx.offKeyboardHeightChange === 'function'
-      && this._onInspirationKeyboardHeightChange
-    ) {
-      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
-    this._onInspirationKeyboardHeightChange = null;
+    this._flushInspirationKeyboardZero(false);
   },
 
   onInspirationInput(e) {
@@ -1409,4 +1387,8 @@ Page(withPageInteractionLock({
   'onChatInput',
   'onTapSuggestion',
   'handleSendChat'
-]));
+], {
+  passthroughMethods: [
+    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange'
+  ]
+}));

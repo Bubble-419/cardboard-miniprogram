@@ -67,7 +67,9 @@ test('selectPlayer 上一页会提交 RESET_DESIGN_PROBLEM 并跟随权威 route
     },
     getView: () => ({
       actor: { capabilities: { RESET_DESIGN_PROBLEM: { allowed: true } } },
-      session: { sessionId: 's1', workflow: { step: 'SELECT_FIRST_PLAYER' } }
+      session: { sessionId: 's1', workflow: { step: 'SELECT_FIRST_PLAYER', revision: 3 } },
+      navigation: { back: { kind: 'COMMAND', commandType: 'RESET_DESIGN_PROBLEM',
+        context: { sessionId: 's1', workflowRevision: 3 }, after: 'FOLLOW_ROUTE' } }
     }),
     getSnapshot: () => ({
       ok: true,
@@ -84,6 +86,7 @@ test('selectPlayer 上一页会提交 RESET_DESIGN_PROBLEM 并跟随权威 route
   try {
     await page.goBack();
     assert.equal(commands[0].type, 'RESET_DESIGN_PROBLEM');
+    assert.deepEqual(commands[0].context, { sessionId: 's1', workflowRevision: 3 });
     assert.match(redirectUrl, /selectProblem/);
   } finally {
     global.getCurrentPages = previousPages;
@@ -101,6 +104,7 @@ test('selectPlayer 等待态和 subAwait 都不展示上一页', () => {
     'utf8'
   );
   assert.match(selectPlayer, /empty-wait-state" wx:if="\{\{isWaiting\}\}"/);
+  assert.match(selectPlayer, /navbar-left" wx:if="\{\{isHost\}\}"/);
   assert.doesNotMatch(selectPlayer, /empty-wait-state[\s\S]{0,240}page-footer/);
   assert.doesNotMatch(subAwait, /page-footer/);
   assert.doesNotMatch(subAwait, /bindtap="goBack"/);

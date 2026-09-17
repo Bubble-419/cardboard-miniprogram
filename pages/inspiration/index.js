@@ -650,4 +650,8 @@ Page(withPageInteractionLock({
   'onInspirationPreviewPhoto', 'onInspirationRemovePhoto', 'onInspirationFocus',
   'onInspirationBlur', 'onInspirationInput', 'onInspirationKeyboardHeightChange',
   'onInspirationActionTap'
-]));
+], {
+  passthroughMethods: [
+    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange'
+  ]
+}));

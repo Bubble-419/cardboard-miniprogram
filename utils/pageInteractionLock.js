@@ -14,11 +14,6 @@ function safeSetData(page, patch) {
   }
 }
 
-/** 键盘高度/焦点回调必须在全屏锁期间继续工作，否则输入栏会停在键盘下面。 */
-function isKeyboardPassthrough(methodName) {
-  return /(?:Focus|Blur|Input|KeyboardHeightChange)$/.test(String(methodName || ''));
-}
-
 function isPageInteractionLocked(page) {
   return !!(
     page
@@ -33,7 +28,7 @@ function isPageInteractionLocked(page) {
  * 为页面注入锁定状态，并统一守卫 WXML 交互处理器。
  * 页面只需声明会被用户直接触发的方法名；锁定期间这些方法全部忽略。
  */
-function withPageInteractionLock(pageDefinition, interactionMethods = []) {
+function withPageInteractionLock(pageDefinition, interactionMethods = [], options = {}) {
   if (!pageDefinition || typeof pageDefinition !== 'object') {
     throw new TypeError('pageDefinition 必须为对象');
   }
@@ -43,13 +38,14 @@ function withPageInteractionLock(pageDefinition, interactionMethods = []) {
     ...(pageDefinition.data || {})
   };
 
+  const passthroughMethods = new Set(options.passthroughMethods || []);
   [...new Set(interactionMethods)].forEach((methodName) => {
     const original = pageDefinition[methodName];
     if (typeof original !== 'function') {
       throw new TypeError(`交互处理器 ${methodName} 不存在`);
     }
     pageDefinition[methodName] = function guardedPageInteraction(...args) {
-      if (!isKeyboardPassthrough(methodName) && isPageInteractionLocked(this)) {
+      if (!passthroughMethods.has(methodName) && isPageInteractionLocked(this)) {
         return undefined;
       }
       return original.apply(this, args);
@@ -179,8 +175,8 @@ function runPageInteraction(page, task, options = {}) {
 module.exports = {
   DEFAULT_LOADING_DELAY_MS,
   INTERACTION_LOCK_DATA,
-  isKeyboardPassthrough,
   isPageInteractionLocked,
+  waitForPageNavigation,
   runPageNavigation,
   runPageInteraction,
   withPageInteractionLock

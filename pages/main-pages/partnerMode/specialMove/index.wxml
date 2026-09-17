@@ -331,7 +331,7 @@
               type="text"
               value="{{inspirationDraftText}}"
               maxlength="200"
-              adjust-position="{{false}}"
+              adjust-position="{{true}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
@@ -339,7 +339,7 @@
               bindblur="onInspirationBlur"
               bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
-              cursor-spacing="12"
+              cursor-spacing="120"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
               <image

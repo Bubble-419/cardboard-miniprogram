@@ -133,9 +133,29 @@ function assertSession(aggregate, context, options) {
   if (context.workflowStep && context.workflowStep !== session.workflow.step) {
     return fail(ERR.STALE_CONTEXT, '工作流步骤已经变化');
   }
+  if (context.workflowRevision != null
+    && Number(context.workflowRevision) !== Number(session.workflow.revision)) {
+    return fail(ERR.STALE_CONTEXT, '工作流阶段已经变化');
+  }
   if (options && options.mode && session.mode !== options.mode) return fail(ERR.INVALID_TRANSITION, '当前模式不匹配');
   if (options && options.steps && !options.steps.includes(session.workflow.step)) return fail(ERR.INVALID_TRANSITION);
   return okResult({ session });
+}
+
+/**
+ * 所有业务阶段切换都经过此处，revision 作为同一 step 再次进入时的 ABA 防护令牌。
+ * patch 只描述新阶段的游标字段；未提供的字段沿用上一阶段。
+ */
+function transitionWorkflow(session, step, deps, patch) {
+  const previous = session.workflow || {};
+  session.workflow = {
+    ...previous,
+    ...(patch || {}),
+    step,
+    revision: Math.max(0, Number(previous.revision) || 0) + 1,
+    phaseStartedAt: nowOf(deps)
+  };
+  return session.workflow;
 }
 function assertTurn(aggregate, context, steps) {
   const check = assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
@@ -163,7 +183,7 @@ function newSession(aggregate, mode, copiedSetup, deps) {
   const session = {
     sessionId: idOf(deps, 'session'), ordinal, status: SESSION_STATUS.CONFIGURING, mode, participants,
     setup: { scenarioSource: null, scenario: null, selectedProblemId: null, proposedFirstMemberId: null, ...(clone(copiedSetup) || {}) },
-    workflow: { step, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
+    workflow: { step, revision: 1, roundNo: null, activeMemberId: null, turnId: null, phaseStartedAt: now },
     progress: {}, modeState: {}, result: null, startedAt: now, completedAt: null, updatedAt: now
   };
   aggregate.room.sessionOrdinal = ordinal;
@@ -206,7 +226,7 @@ module.exports = {
   memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
   activeParticipantIds, activeParticipantsBySeat, progressComplete,
   nextSeat, nextColor, createMember, createRoomAggregate,
-  assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, newSession,
+  assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, transitionWorkflow, newSession,
   normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,
   normalizeMode, LIFECYCLE
 };

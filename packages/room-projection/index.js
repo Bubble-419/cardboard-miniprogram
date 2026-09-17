@@ -308,6 +308,11 @@ function projectCapabilities(aggregate, actor) {
     isHost && session && session.mode === MODE.PARTNER && step === WORKFLOW_STEP.SELECT_FIRST_PLAYER,
     'INVALID_TRANSITION'
   );
+  caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
+    isHost && session && [MODE.PARTNER, MODE.HALLI_GALLI].includes(session.mode)
+      && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
+    'INVALID_TRANSITION'
+  );
   caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RETURN_TO_LOBBY] = capability(isHost && !!session && session.status === SESSION_STATUS.COMPLETED, 'INVALID_TRANSITION');
   const replayMinimum = session && session.mode === MODE.SPY ? 3 : 2;
@@ -428,6 +433,45 @@ function projectRoute(aggregate, actorView) {
   return { name, params };
 }
 
+function noBack() {
+  return { kind: 'NONE' };
+}
+
+/**
+ * 权威页面的后退同样由 Member View 投影。页面只执行策略，不再根据来源页面栈猜测业务状态。
+ */
+function projectNavigation(aggregate, actorView) {
+  const session = aggregate.currentSession;
+  if (!session || !actorView || !actorView.isParticipant || actorView.role !== 'HOST') {
+    return { back: noBack() };
+  }
+  const commandBack = (commandType, after) => ({
+    kind: 'COMMAND',
+    commandType,
+    context: commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION
+      ? { sessionId: session.sessionId }
+      : { sessionId: session.sessionId, workflowRevision: session.workflow.revision },
+    after: after || 'FOLLOW_ROUTE'
+  });
+  const step = session.workflow.step;
+  if ([WORKFLOW_STEP.CHOOSE_SCENARIO, WORKFLOW_STEP.SPY_INTRO].includes(step)) {
+    return { back: commandBack(COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, 'OPEN_MODE_PICKER') };
+  }
+  if (step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) {
+    return { back: commandBack(COMMAND_TYPES.RESET_SCENARIO) };
+  }
+  if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) {
+    const hasSelectedProblem = session.mode === MODE.PARTNER && !!session.setup.selectedProblemId;
+    return { back: commandBack(hasSelectedProblem
+      ? COMMAND_TYPES.RESET_DESIGN_PROBLEM
+      : COMMAND_TYPES.RESET_SCENARIO) };
+  }
+  if (step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER) {
+    return { back: commandBack(COMMAND_TYPES.RESET_FIRST_PLAYER) };
+  }
+  return { back: noBack() };
+}
+
 function projectActorView(aggregate, actorUserId) {
   const session = aggregate.currentSession;
   let member = findMember(aggregate, actorUserId);
@@ -466,13 +510,15 @@ function projectMemberView(aggregate, actorUserId) {
   const publicView = projectPublicView(aggregate);
   const actor = projectActorView(aggregate, actorUserId);
   if (!publicView || !actor) return null;
-  return { ...publicView, actor, route: projectRoute(aggregate, actor) };
+  return { ...publicView, actor, route: projectRoute(aggregate, actor),
+    navigation: projectNavigation(aggregate, actor) };
 }
 
 function projectActorEnvelope(aggregate, actorUserId) {
   if (!aggregate || !aggregate.room) return null;
   const actor = projectActorView(aggregate, actorUserId);
-  return actor ? { actor, route: projectRoute(aggregate, actor) } : null;
+  return actor ? { actor, route: projectRoute(aggregate, actor),
+    navigation: projectNavigation(aggregate, actor) } : null;
 }
 
 /**
@@ -575,16 +621,19 @@ function applyProjectedEvent(view, event) {
   let publicPart = clone(view || {});
   delete publicPart.actor;
   delete publicPart.route;
+  delete publicPart.navigation;
   publicPart = applyPublicPatch(publicPart, event && event.publicPatch);
 
   let actorPart = {
     actor: clone(view && view.actor),
-    route: clone(view && view.route)
+    route: clone(view && view.route),
+    navigation: clone(view && view.navigation)
   };
   if (event && event.actorPatch) actorPart = applyPublicPatch(actorPart, event.actorPatch);
   return { ...publicPart, ...actorPart };
 }
 
 module.exports = { clone, projectPublicView, projectActorView, projectMemberView, projectCapabilities, projectRoute,
+  projectNavigation,
   projectActorEnvelope, projectActorPatches,
   createPublicPatch, applyPublicPatch, applyProjectedEvent };

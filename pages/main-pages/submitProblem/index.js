@@ -10,7 +10,7 @@ const {
 } = require('../../../utils/scenarioCategories');
 const { buildUserListFromMembersAsync } = require('../../../utils/userListData');
 const { goRoomPage } = require('../../../utils/goRoomPage');
-const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+const { clearPendingNavigation } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -198,19 +198,6 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在打开案例…' });
   },
 
-  handleGoBack() {
-    return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/partnerMode/confirmBG/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/partnerMode/confirmBG/index',
-        fallbackUrl
-      });
-    }, { loadingText: '正在返回…' });
-  },
-
   handleGoRoom() {
     return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
       loadingText: '正在返回房间…'
@@ -333,7 +320,9 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在提交问题…' });
   }
 }, [
-  'handleOpenCase', 'handleGoBack', 'handleGoRoom', 'handleViewContext',
+  'handleOpenCase', 'handleGoRoom', 'handleViewContext',
   'selectCategory', 'onInputFocus', 'onInputBlur', 'onInput', 'preventTouchMove',
   'submitProblem'
-]));
+], {
+  passthroughMethods: ['onInputFocus', 'onInputBlur']
+}));

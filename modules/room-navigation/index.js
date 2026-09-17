@@ -21,16 +21,15 @@ const ROUTES = Object.freeze({
   spySettle: { path: '/packageSpy/pages/settle/index', mode: 'redirectTo', pageKey: 'spysettle' }
 });
 
-/** 叠层归属：仍停在所属 route 时不拆；route 一旦离开所属页就跟随。`*` 表示除回大厅外都保留。 */
+/** 叠层归属：只在明确所属的权威 route 上保留，route 变化后必须立即跟随。 */
 const OVERLAY_OWNERS = Object.freeze({
-  'pages/inspiration/index': '*',
-  'pages/main-pages/case/index': '*',
-  'pages/main-pages/partnerMode/imageCrop/index': '*',
+  'pages/inspiration/index': ['partnerGame'],
+  'pages/main-pages/case/index': ['submitProblem'],
+  'pages/main-pages/partnerMode/imageCrop/index': ['partnerGame'],
   'pages/main-pages/partnerMode/specialMove/index': ['partnerGame'],
-  'packageSpy/pages/cardLibrary/index': '*',
+  'packageSpy/pages/cardLibrary/index': ['spyIntro'],
   'pages/main-pages/brainstormMode/index': ['addPlayer'],
-  'pages/main-pages/selectBG/index': ['modeIndex'],
-  'pages/main-pages/partnerMode/confirmBG/index': ['modeIndex']
+  'pages/main-pages/selectBG/index': ['modeIndex']
 });
 
 function currentPage() {
@@ -39,19 +38,21 @@ function currentPage() {
   return pages.length ? pages[pages.length - 1] : null;
 }
 
-function isReadOnlyConfirmOverlay(page) {
-  if (!page || page.route !== 'pages/main-pages/partnerMode/confirmBG/index') return false;
+function confirmOverlayOwner(page) {
+  if (!page || page.route !== 'pages/main-pages/partnerMode/confirmBG/index') return '';
   const data = page.data || {};
-  return !!(page._fromGameView || data.fromGameView
-    || ['game', 'select', 'submit'].includes(String(data.from || '')));
+  if (page._fromGameView || data.fromGameView || String(data.from || '') === 'game') return 'partnerGame';
+  if (String(data.from || '') === 'select') return 'selectProblem';
+  if (String(data.from || '') === 'submit') return 'submitProblem';
+  return 'modeIndex';
 }
 
 function isLocalOverlay(current, routeName) {
   const page = currentPage();
-  if (isReadOnlyConfirmOverlay(page)) return routeName !== 'addPlayer';
+  const confirmOwner = confirmOverlayOwner(page);
+  if (confirmOwner) return confirmOwner === routeName;
   const owners = OVERLAY_OWNERS[current];
   if (!owners) return false;
-  if (owners === '*') return routeName !== 'addPlayer';
   return owners.includes(routeName);
 }
 

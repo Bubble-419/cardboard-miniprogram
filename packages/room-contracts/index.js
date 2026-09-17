@@ -2,7 +2,7 @@
 
 const PROTOCOL_VERSION = 3;
 const SCHEMA_VERSION = 3;
-const VIEW_SCHEMA_VERSION = 1;
+const VIEW_SCHEMA_VERSION = 2;
 const EVENT_SCHEMA_VERSION = 3;
 const MAX_SEATS = 6;
 const MAX_SESSION_MESSAGES = 500;
@@ -68,6 +68,7 @@ const COMMAND_TYPES = Object.freeze({
   UPDATE_DESIGN_PROBLEM: 'UPDATE_DESIGN_PROBLEM', SELECT_DESIGN_PROBLEM: 'SELECT_DESIGN_PROBLEM',
   SELECT_FIRST_PLAYER: 'SELECT_FIRST_PLAYER', CONFIRM_FIRST_PLAYER: 'CONFIRM_FIRST_PLAYER',
   RESET_FIRST_PLAYER: 'RESET_FIRST_PLAYER', RESET_DESIGN_PROBLEM: 'RESET_DESIGN_PROBLEM',
+  RESET_SCENARIO: 'RESET_SCENARIO',
   CANCEL_WORKSHOP_SESSION: 'CANCEL_WORKSHOP_SESSION', RETURN_TO_LOBBY: 'RETURN_TO_LOBBY',
   REPLAY_WORKSHOP_SESSION: 'REPLAY_WORKSHOP_SESSION', APPEND_ARTIFACT: 'APPEND_ARTIFACT',
   UPDATE_ARTIFACT: 'UPDATE_ARTIFACT', REMOVE_ARTIFACT: 'REMOVE_ARTIFACT',
@@ -89,6 +90,7 @@ const EVENT_TYPES = Object.freeze([
   'WORKSHOP_SESSION_STARTED', 'WORKSHOP_SESSION_CANCELLED', 'WORKSHOP_SESSION_REPLAYED',
   'WORKSHOP_SESSION_COMPLETED', 'SCENARIO_SET', 'DESIGN_PROBLEM_SUBMITTED', 'DESIGN_PROBLEM_UPDATED',
   'DESIGN_PROBLEM_SELECTED', 'DESIGN_PROBLEM_SELECTION_RESET', 'PROBLEM_COLLECTION_COMPLETED',
+  'SCENARIO_SELECTION_RESET',
   'FIRST_PLAYER_SELECTED', 'FIRST_PLAYER_SELECTION_RESET',
   'PARTNER_TURN_STARTED', 'PARTNER_TURN_COMPLETED', 'PARTNER_TURN_ABANDONED',
   'PARTNER_SCORE_RECORDED', 'PARTNER_STATEMENT_STARTED', 'PARTNER_SPECIAL_USED',
@@ -126,11 +128,15 @@ const ERR_MSG = Object.freeze({
 });
 
 const COMMAND_CONTEXT = Object.freeze({
-  SET_SCENARIO: ['sessionId', 'workflowStep'], SUBMIT_DESIGN_PROBLEM: ['sessionId'],
-  UPDATE_DESIGN_PROBLEM: ['sessionId', 'workflowStep', 'entityVersion'],
-  SELECT_DESIGN_PROBLEM: ['sessionId', 'workflowStep'],
-  SELECT_FIRST_PLAYER: ['sessionId', 'workflowStep'], CONFIRM_FIRST_PLAYER: ['sessionId'],
-  RESET_FIRST_PLAYER: ['sessionId'], RESET_DESIGN_PROBLEM: ['sessionId'],
+  SET_SCENARIO: ['sessionId', 'workflowStep', 'workflowRevision'],
+  SUBMIT_DESIGN_PROBLEM: ['sessionId', 'workflowRevision'],
+  UPDATE_DESIGN_PROBLEM: ['sessionId', 'workflowStep', 'workflowRevision', 'entityVersion'],
+  SELECT_DESIGN_PROBLEM: ['sessionId', 'workflowStep', 'workflowRevision'],
+  SELECT_FIRST_PLAYER: ['sessionId', 'workflowStep', 'workflowRevision'],
+  CONFIRM_FIRST_PLAYER: ['sessionId', 'workflowRevision'],
+  RESET_FIRST_PLAYER: ['sessionId', 'workflowRevision'],
+  RESET_DESIGN_PROBLEM: ['sessionId', 'workflowRevision'],
+  RESET_SCENARIO: ['sessionId', 'workflowRevision'],
   CANCEL_WORKSHOP_SESSION: ['sessionId'], RETURN_TO_LOBBY: ['sessionId'], REPLAY_WORKSHOP_SESSION: ['sessionId'],
   APPEND_ARTIFACT: ['sessionId', 'turnId', 'workflowStep'],
   UPDATE_ARTIFACT: ['sessionId', 'turnId', 'workflowStep', 'entityVersion'],
@@ -171,6 +177,7 @@ const COMMAND_PAYLOAD_KEYS = Object.freeze({
   CONFIRM_FIRST_PLAYER: ['memberId'],
   RESET_FIRST_PLAYER: [],
   RESET_DESIGN_PROBLEM: [],
+  RESET_SCENARIO: [],
   CANCEL_WORKSHOP_SESSION: [],
   RETURN_TO_LOBBY: [],
   REPLAY_WORKSHOP_SESSION: [],
@@ -398,7 +405,7 @@ function validateCommandEnvelope(raw) {
   if (unknownContext) return fail(ERR.INVALID_ARGUMENT, `context.${unknownContext} 不属于 ${type}`);
   for (const key of contextKeys) {
     if (context[key] == null || context[key] === '') return fail(ERR.INVALID_ARGUMENT, `context.${key} 必填`);
-    if (!['entityVersion', 'roundNo'].includes(key)
+    if (!['entityVersion', 'roundNo', 'workflowRevision'].includes(key)
       && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
       return fail(ERR.INVALID_ARGUMENT, `context.${key} 必须是 1～128 字符`);
     }
@@ -410,6 +417,10 @@ function validateCommandEnvelope(raw) {
   if (context.roundNo != null
     && (!Number.isInteger(context.roundNo) || context.roundNo < 1)) {
     return fail(ERR.INVALID_ARGUMENT, 'context.roundNo 必须是正整数');
+  }
+  if (context.workflowRevision != null
+    && (!Number.isInteger(context.workflowRevision) || context.workflowRevision < 1)) {
+    return fail(ERR.INVALID_ARGUMENT, 'context.workflowRevision 必须是正整数');
   }
   const payloadResult = validatePayload(type, payload);
   if (!payloadResult.ok) return payloadResult;
@@ -466,7 +477,7 @@ function validatePublicViewPatch(value) {
 }
 
 function validateActorViewPatch(value) {
-  return patchStaysWithin(value, ['actor', 'route']);
+  return patchStaysWithin(value, ['actor', 'route', 'navigation']);
 }
 
 function validNullableString(value) {
@@ -505,11 +516,31 @@ function hasOwn(record, key) {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
+function validProjectedBack(back) {
+  if (!isRecord(back) || !['NONE', 'COMMAND'].includes(back.kind)) return false;
+  if (back.kind === 'NONE') return Object.keys(back).length === 1;
+  const allowed = [COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, COMMAND_TYPES.RESET_SCENARIO,
+    COMMAND_TYPES.RESET_DESIGN_PROBLEM, COMMAND_TYPES.RESET_FIRST_PLAYER];
+  if (!allowed.includes(back.commandType) || !isRecord(back.context)) return false;
+  const expectedKeys = COMMAND_CONTEXT[back.commandType] || [];
+  const actualKeys = Object.keys(back.context);
+  if (actualKeys.length !== expectedKeys.length
+    || expectedKeys.some((key) => !hasOwn(back.context, key))) return false;
+  if (!isNonEmptyString(back.context.sessionId)) return false;
+  if (expectedKeys.includes('workflowRevision')
+    && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
+  const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION
+    ? 'OPEN_MODE_PICKER'
+    : 'FOLLOW_ROUTE';
+  return back.after === expectedAfter;
+}
+
 /**
  * MemberView 的协议边界校验。模式内部字段由 viewSchemaVersion 演进；这里验证所有页面依赖的稳定骨架。
  */
 function validateMemberView(view, expectedRoomId) {
-  if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor) || !isRecord(view.route)) return false;
+  if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor)
+    || !isRecord(view.route) || !isRecord(view.navigation) || !isRecord(view.navigation.back)) return false;
   if (!hasOwn(view, 'session')) return false;
   if (typeof view.room.roomId !== 'string' || !/^\d{8}$/.test(view.room.roomId)
     || (expectedRoomId && view.room.roomId !== expectedRoomId)) return false;
@@ -537,6 +568,8 @@ function validateMemberView(view, expectedRoomId) {
     && typeof capability.allowed === 'boolean'
     && (capability.reason == null || typeof capability.reason === 'string'))) return false;
   if (!isNonEmptyString(view.route.name) || !isRecord(view.route.params)) return false;
+  const back = view.navigation.back;
+  if (!validProjectedBack(back)) return false;
   if (view.session == null) return true;
   const session = view.session;
   if (!isRecord(session)
@@ -554,6 +587,7 @@ function validateMemberView(view, expectedRoomId) {
     || !Array.isArray(session.setup.designProblems)
     || !isRecord(session.workflow)
     || !Object.values(WORKFLOW_STEP).includes(session.workflow.step)
+    || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1
     || !isRecord(session.progress)
     || !isRecord(session.publicModeState)
     || !hasOwn(session, 'activeTurn')

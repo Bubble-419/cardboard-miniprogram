@@ -1,14 +1,7 @@
 <view class="container {{hasVoted || isInitiator ? 'container-hero-scene' : ''}}">
   <view class="custom-navbar" wx:if="{{!hasVoted && !isInitiator}}">
     <view class="navbar-content">
-      <view class="navbar-left">
-        <image
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
-          bindtap="handleGoBack"
-        />
-      </view>
+      <view class="navbar-left"></view>
       <view class="navbar-title"></view>
       <view class="navbar-right"></view>
     </view>

@@ -1,4 +1,3 @@
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -156,15 +155,4 @@ Page(withPageInteractionLock({
     unbindPageFromRoomSession(this);
   },
 
-  handleGoBack() {
-    return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
-        fallbackUrl: roomId
-          ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${encodeURIComponent(roomId)}`
-          : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
-      });
-    }, { loadingText: '正在返回…' });
-  }
-}, ['handleGoBack', 'onIdeaInput', 'handleSubmit', 'handleViewSummary']));
+}, ['onIdeaInput', 'handleSubmit', 'handleViewSummary']));

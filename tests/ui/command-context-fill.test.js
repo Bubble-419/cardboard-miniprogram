@@ -9,7 +9,7 @@ const VIEW = {
   session: {
     sessionId: 'sess-ready',
     activeTurn: { turnId: 'turn-ready' },
-    workflow: { step: 'PARTNER_TURN' }
+    workflow: { step: 'PARTNER_TURN', revision: 1 }
   }
 };
 

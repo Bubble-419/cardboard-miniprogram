@@ -1,4 +1,3 @@
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const {
   runPageInteraction,
@@ -175,15 +174,4 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在返回房间…' });
   },
 
-  handleGoBack() {
-    return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/creativeInput/index',
-        fallbackUrl: roomId
-          ? `/pages/main-pages/creativeInput/index?roomId=${encodeURIComponent(roomId)}`
-          : '/pages/main-pages/modeIndex/index?modeId=halliGalli'
-      });
-    }, { loadingText: '正在返回…' });
-  }
-}, ['handleFinish', 'handleGoRoom', 'handleGoBack']));
+}, ['handleFinish', 'handleGoRoom']));

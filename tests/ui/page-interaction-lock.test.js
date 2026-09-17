@@ -202,7 +202,9 @@ test('键盘高度和焦点回调在页面锁期间仍然执行', async () => {
     onInspirationKeyboardHeightChange() {
       heightCalls += 1;
     }
-  }, ['startRequest', 'onInspirationKeyboardHeightChange']);
+  }, ['startRequest', 'onInspirationKeyboardHeightChange'], {
+    passthroughMethods: ['onInspirationKeyboardHeightChange']
+  });
   const page = {
     ...definition,
     data: { ...definition.data },
@@ -214,6 +216,26 @@ test('键盘高度和焦点回调在页面锁期间仍然执行', async () => {
   assert.equal(page.data.interactionLocked, true);
   page.onInspirationKeyboardHeightChange({ detail: { height: 300 } });
   assert.equal(heightCalls, 1);
+  await Promise.resolve();
+  finish();
+  await running;
+});
+
+test('名称看起来像输入回调的方法也必须显式声明后才能穿透页面锁', async () => {
+  let inputCalls = 0;
+  let finish;
+  const definition = withPageInteractionLock({
+    data: {},
+    startRequest() {
+      return runPageInteraction(this, () => new Promise((resolve) => { finish = resolve; }));
+    },
+    onRoomNameInput() { inputCalls += 1; }
+  }, ['startRequest', 'onRoomNameInput']);
+  const page = { ...definition, data: {}, setData(patch) { Object.assign(this.data, patch); } };
+
+  const running = page.startRequest();
+  page.onRoomNameInput({ detail: { value: '不会误穿透' } });
+  assert.equal(inputCalls, 0);
   await Promise.resolve();
   finish();
   await running;

@@ -1,5 +1,3 @@
-const { buildGamepageUrl, buildLeaderboardUrl } = require('../../../../utils/modeRoutes');
-const { openUrl } = require('../../../../utils/pageNavigate');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
@@ -119,15 +117,4 @@ Page(withPageInteractionLock({
     }
   },
 
-  handleGoBack() {
-    return runPageInteraction(this, async () => {
-      if (!this.data.hasVoted && !this.data.isInitiator) {
-        wx.showToast({ title: '请先完成收尾表态', icon: 'none' });
-        return;
-      }
-      openUrl(buildGamepageUrl(this.data.roomId, 1, 'partner'), {
-        immediate: true, preferReLaunch: true
-      });
-    }, { loadingText: '正在返回…' });
-  }
-}, ['handleVote', 'handleGoBack']));
+}, ['handleVote']));

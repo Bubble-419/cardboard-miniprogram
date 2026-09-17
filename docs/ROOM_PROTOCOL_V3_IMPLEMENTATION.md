@@ -31,7 +31,7 @@ V3 遵循以下不可拆分的原则：
 
 1. **服务端权威**：Room、当前 Session 和 Facts 是唯一业务事实源。客户端只提交意图，不提交最终状态、身份或权限结论。
 2. **Command 原子化**：每个已接受 Command 在同一事务内提交 State、一个 Event Group 和 Command Receipt；失败不得留下部分结果。
-3. **精确上下文**：并发冲突通过 `sessionId`、`turnId`、`workflowStep`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
+3. **精确上下文**：并发冲突通过 `sessionId`、`turnId`、`workflowStep`、`workflowRevision`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
 4. **事件只负责同步**：Event 是有保留期的有序同步日志，不是从创世事件重建服务端状态的完整事件溯源。Event 不可用时直接恢复 Snapshot。
 5. **View 是成员投影**：页面只消费由服务端为当前成员投影的完整 `Member View`，不得读取 Aggregate、Raw Event 或其他成员的 Actor 投影。
 6. **Snapshot 与 Event 等价**：同一个 `Member View` 必须既能由 Snapshot 完整替换，也能由前一 View 顺序应用 Event Patch 得到；页面不能根据来源执行不同业务逻辑。
@@ -185,7 +185,7 @@ view
 ├── session
 │   ├── { sessionId, ordinal, status, mode, participants[] }
 │   ├── setup { scenarioSource, scenario, selectedProblem, proposedFirstMemberId }
-│   ├── workflow { step, roundNo, activeMemberId, turnId, phaseStartedAt }
+│   ├── workflow { step, revision, roundNo, activeMemberId, turnId, phaseStartedAt }
 │   ├── progress / publicModeState / activeTurn
 │   └── result / recentMessages / activeArtifacts / turnSummaries
 ├── actor
@@ -193,7 +193,10 @@ view
 │   ├── contributionStatus / scoreStatus / voteStatus
 │   ├── privateModeState  # 仅本人 Spy 牌
 │   └── capabilities      # 每种 Command 的 allowed/reason
-└── route { name, params }
+├── route { name, params }
+└── navigation.back
+    ├── { kind: NONE }
+    └── { kind: COMMAND, commandType, context, after }
 ```
 
 物理存储保持三个清晰边界：
@@ -252,6 +255,21 @@ flowchart LR
   CMD --> CHECK{仍是同一工作流步骤?}
   CHECK -->|是| COMMIT[写入对应阶段]
   CHECK -->|否| STALE[STALE_CONTEXT<br/>禁止落入下一阶段]
+```
+
+配置阶段还使用单调递增的 `workflow.revision` 防止 ABA：即使页面从 A 进入 B 又回到 A，旧 A
+页面捕获的 Command 也会因 revision 过期而返回 `STALE_CONTEXT`，不能覆盖新的 A。所有阶段切换，
+包括同一 `step` 的重新进入，都必须通过 Domain 的 `transitionWorkflow` 推进 revision。
+
+```mermaid
+sequenceDiagram
+  participant UI as 旧页面 A@revision=2
+  participant D as Domain
+  participant V as 新 View
+  UI->>D: Command(context revision=2)
+  D->>V: A→B→A，当前 revision=4
+  D-->>UI: STALE_CONTEXT
+  V-->>UI: Snapshot/Event 投影 A@revision=4
 ```
 
 ```mermaid
@@ -330,7 +348,7 @@ stateDiagram-v2
 Snapshot.seq == Aggregate.room.eventSeq
 Event.seq == 前一 seq + 1
 每个 Event 文档对应一个 commandId，stateVersion == 前一状态版本 + 1
-Event.publicPatch 只修改公开 View；Event.actorPatch 只修改当前成员 Actor/Route
+Event.publicPatch 只修改公开 View；Event.actorPatch 只修改当前成员 Actor/Route/Navigation
 服务端存储 rawEvents + publicPatch + 全成员 actorProjections，查询只返回公共部分和本人补丁
 !hasMore => throughSeq == roomCurrentSeq
 任一条件不可信 => 丢弃 staging，重新 Snapshot
@@ -358,6 +376,10 @@ State/Event/Receipt 已经提交后，如果附带 Sync 查询失败，`roomComm
 业务动作需要切页时，以 Outcome 的 `committedThroughSeq` 检查本地 View；未追平则先刷新
 Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协调器合并，后发调用等待在途
 导航结束，不能硬编码猜测下一页面或提前释放交互锁。
+
+业务“后退”也属于成员投影：页面只执行 `view.navigation.back`。`COMMAND` 类型携带服务端生成的
+精确 context，成功后先跟随新的 `view.route`；选择模式这种本地叠层再按 `after=OPEN_MODE_PICKER`
+打开。运行期不可逆页面投影 `NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
 
 ## 5. Room 与公共配置状态
 
@@ -537,7 +559,7 @@ sequenceDiagram
 |---|---|
 | Schema / Command / Event / Error | `packages/room-contracts` |
 | Room / Partner / Halli / Spy Reducer | `packages/room-domain` |
-| Public / Actor / Route / Capability / Event Reduce | `packages/room-projection` |
+| Public / Actor / Route / Navigation / Capability / Event Reduce | `packages/room-projection` |
 | 事务编排 / Snapshot / Sync / History | `packages/room-application` |
 | CloudBase 事务仓储 | `packages/room-cloudbase-adapter` |
 | 客户端恢复与单轮询 | `packages/room-client` |

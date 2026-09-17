@@ -12,6 +12,12 @@ const {
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
+const {
+  storageKey: roomDraftStorageKey,
+  readRoomLocalDraft,
+  writeRoomLocalDraft,
+  clearRoomLocalDraft
+} = require('../../../../utils/roomLocalDraft');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
@@ -2412,6 +2418,25 @@ Page(withPageInteractionLock({
       if (!hostEditingClosing) {
         patch.closingCreativeBlocks = closingCreative;
         Object.assign(patch, this._closingDeckImagePatch(closingCreative));
+      }
+      if (this.data.isHost && closingStep === CLOSING_STEP_REVIEW) {
+        const draftScope = { roomId: this.data.roomId, sessionId, turnId };
+        const draftScopeKey = roomDraftStorageKey('PARTNER_CLOSING_REVIEW', draftScope);
+        if (draftScopeKey && draftScopeKey !== this._closingDraftScopeKey) {
+          this._closingDraftScopeKey = draftScopeKey;
+          const draft = readRoomLocalDraft('PARTNER_CLOSING_REVIEW', draftScope);
+          if (draft && typeof draft.text === 'string' && draft.text) {
+            const editingKey = (closingCreative || []).some((item) => item.key === draft.editingKey)
+              ? draft.editingKey
+              : '';
+            this._closingDraftText = draft.text;
+            patch.closingCreativeEditText = draft.text;
+            patch.closingCreativeHasText = !!draft.text.trim();
+            patch.closingCreativeEditingKey = editingKey;
+            patch.closingCreativeEditFocus = false;
+            patch.closingCreativeWantFocus = false;
+          }
+        }
       }
     } else if (phaseChanged) {
       patch.closingReviewRounds = [];
@@ -5598,6 +5623,23 @@ Page(withPageInteractionLock({
       closingCreativeEditText: text,
       closingCreativeHasText: !!text.trim()
     });
+    writeRoomLocalDraft('PARTNER_CLOSING_REVIEW', this._closingDraftScope(), {
+      text,
+      editingKey: this.data.closingCreativeEditingKey || ''
+    });
+  },
+
+  _closingDraftScope() {
+    return {
+      roomId: this.data.roomId,
+      sessionId: this.data.sessionId,
+      turnId: this.data.turnId
+    };
+  },
+
+  _clearClosingLocalDraft() {
+    clearRoomLocalDraft('PARTNER_CLOSING_REVIEW', this._closingDraftScope());
+    this._closingDraftScopeKey = '';
   },
 
   onClosingCreativeKeyboardHeightChange(e) {
@@ -5615,8 +5657,7 @@ Page(withPageInteractionLock({
 
   onClosingCreativeFormSubmit(e) {
     if (this.data.closingCreativeSaving) return;
-    this._closingSaveIgnoreBlurUntil = Date.now() + 800;
-    this._closingNativeFocused = true;
+    this._closingSaveIgnoreBlurUntil = 0;
     if (this._closingBlurTimer) {
       clearTimeout(this._closingBlurTimer);
       this._closingBlurTimer = null;
@@ -5638,9 +5679,10 @@ Page(withPageInteractionLock({
   },
 
   onClosingCreativeBlur() {
+    // 原生焦点是真实状态，必须先释放；UI 防抖不能把焦点保护永久留在 true。
+    this._closingNativeFocused = false;
     if (this._closingPickingImage) return;
     if (Date.now() < (this._closingSaveIgnoreBlurUntil || 0)) return;
-    this._closingNativeFocused = false;
     if (this._closingBlurTimer) clearTimeout(this._closingBlurTimer);
     this._closingBlurTimer = setTimeout(() => {
       this._closingBlurTimer = null;
@@ -5654,6 +5696,20 @@ Page(withPageInteractionLock({
       });
       this._flushPendingRoomContextIfIdle();
     }, 200);
+  },
+
+  _releaseClosingInputGuard() {
+    this._closingNativeFocused = false;
+    this._closingSaveIgnoreBlurUntil = 0;
+    if (this._closingBlurTimer) {
+      clearTimeout(this._closingBlurTimer);
+      this._closingBlurTimer = null;
+    }
+    this.setData({
+      closingCreativeEditFocus: false,
+      closingCreativeWantFocus: false,
+      ...this._resetClosingKeyboardUi()
+    });
   },
 
   /** 点击已记录文字 → 拉回输入态编辑；清空后失焦即删除 */
@@ -5684,6 +5740,11 @@ Page(withPageInteractionLock({
     }
 
     this.setData({ closingCreativeWantFocus: false }, () => {
+      this._closingDraftText = block.text || '';
+      writeRoomLocalDraft('PARTNER_CLOSING_REVIEW', this._closingDraftScope(), {
+        text: block.text || '',
+        editingKey: key
+      });
       this.setData({
         closingCreativeEditText: block.text || '',
         closingCreativeHasText: !!(block.text || '').trim(),
@@ -5707,8 +5768,9 @@ Page(withPageInteractionLock({
     if (!segments.length) {
       if (editingKey) {
         this.setData({ closingCreativeSaving: true });
+        let ok = false;
         try {
-          const ok = await this._removeClosingCreativeBlockByKey(editingKey);
+          ok = await this._removeClosingCreativeBlockByKey(editingKey);
           this.setData({
             closingCreativeEditText: '',
             closingCreativeHasText: false,
@@ -5717,8 +5779,10 @@ Page(withPageInteractionLock({
             closingCreativeEditingKey: ok ? '' : editingKey,
             ...this._resetClosingKeyboardUi()
           });
+          if (ok) this._clearClosingLocalDraft();
         } finally {
           this.setData({ closingCreativeSaving: false });
+          if (!ok) this._releaseClosingInputGuard();
           this._flushPendingRoomContextIfIdle();
         }
         return;
@@ -5738,14 +5802,15 @@ Page(withPageInteractionLock({
     }
 
     this.setData({ closingCreativeSaving: true });
+    let ok = false;
     try {
-      let ok = false;
       if (editingKey) {
         ok = await this._replaceClosingCreativeText(editingKey, raw);
       } else {
         ok = await this._appendClosingCreativeContent({ text: raw });
       }
       if (ok) {
+        this._clearClosingLocalDraft();
         this._closingDraftText = '';
         this._closingNativeFocused = false;
         this.setData({
@@ -5759,6 +5824,7 @@ Page(withPageInteractionLock({
       }
     } finally {
       this.setData({ closingCreativeSaving: false });
+      if (!ok) this._releaseClosingInputGuard();
       this._flushPendingRoomContextIfIdle();
     }
   },
@@ -6128,4 +6194,10 @@ Page(withPageInteractionLock({
   'onTapSpecialMove',
   'openExpressComposer',
   'toggleExpressChatInCard'
-]));
+], {
+  passthroughMethods: [
+    'onClosingCreativeFocus', 'onClosingCreativeBlur', 'onClosingCreativeKeyboardHeightChange',
+    'onExpressComposerBlur', 'onExpressComposerFocus',
+    'onInspirationBlur', 'onInspirationFocus', 'onInspirationKeyboardHeightChange'
+  ]
+}));

@@ -5,7 +5,7 @@ const {
 } = require('@cardboard/room-contracts');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, memberById, assertHost, assertParticipant,
-  assertSession, assertTurn, activeParticipantIds, activeParticipantsBySeat, isActiveParticipant,
+  assertSession, assertTurn, transitionWorkflow, activeParticipantIds, activeParticipantsBySeat, isActiveParticipant,
   progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
@@ -55,8 +55,11 @@ function startPartnerTurn(aggregate, memberId, deps, countsForRound) {
     scoreProgress: { requiredMemberIds, submittedMemberIds: [] }
   };
   partner.activeTurn = turn;
-  session.workflow = { step: WORKFLOW_STEP.PARTNER_TURN, roundNo: partner.roundNo,
-    activeMemberId: memberId, turnId: turn.turnId, phaseStartedAt: now };
+  transitionWorkflow(session, WORKFLOW_STEP.PARTNER_TURN, deps, {
+    roundNo: partner.roundNo,
+    activeMemberId: memberId,
+    turnId: turn.turnId
+  });
   session.progress.scoreProgress = clone(turn.scoreProgress);
   session.updatedAt = now;
   return turn;
@@ -232,8 +235,11 @@ function resolveClosing(aggregate, deps) {
       event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: question.memberId, roundNo: turn.roundNo })], dirty };
   }
   closing.stage = 'RUNE';
-  session.workflow = { step: WORKFLOW_STEP.PARTNER_CLOSING_RUNE, roundNo: partner.roundNo,
-    activeMemberId: null, turnId: closing.sourceTurnId, phaseStartedAt: nowOf(deps) };
+  transitionWorkflow(session, WORKFLOW_STEP.PARTNER_CLOSING_RUNE, deps, {
+    roundNo: partner.roundNo,
+    activeMemberId: null,
+    turnId: closing.sourceTurnId
+  });
   return { events: [event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, reason: summary.reason }),
     event(EVENT_TYPES.PARTNER_CLOSING_ACCEPTED, { closingVoteSessionId: closing.closingVoteSessionId })], dirty };
 }
@@ -295,7 +301,11 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     }
     check.turn.phase = 'STATEMENT'; check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
     check.turn.silentStartedAt = null; check.turn.silentDeadlineAt = null;
-    check.session.workflow.step = WORKFLOW_STEP.PARTNER_STATEMENT; check.session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_STATEMENT, deps, {
+      roundNo: check.turn.roundNo,
+      activeMemberId: check.turn.activeMemberId,
+      turnId: check.turn.turnId
+    });
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_STATEMENT_STARTED, { turnId: check.turn.turnId })]);
   }
 
@@ -329,8 +339,11 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
       const requiredMemberIds = activeParticipantIds(check.session).filter((id) => id !== actor.memberId);
       partnerState(aggregate).closing = { closingVoteSessionId: voteSessionId, sourceTurnId: check.turn.turnId,
         initiatorMemberId: actor.memberId, requiredMemberIds, submittedMemberIds: [], stage: 'VOTE', createdAt: nowOf(deps) };
-      check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_VOTE;
-      check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_CLOSING_VOTE, deps, {
+        roundNo: check.turn.roundNo,
+        activeMemberId: check.turn.activeMemberId,
+        turnId: check.turn.turnId
+      });
       events.push(event(EVENT_TYPES.PARTNER_CLOSING_VOTE_STARTED, { closingVoteSessionId: voteSessionId, initiatorMemberId: actor.memberId }));
     }
     return domainOk(aggregate, events);
@@ -373,7 +386,10 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
   if (type === COMMAND_TYPES.ADVANCE_PARTNER_CLOSING) {
     const check = assertPartnerSession(aggregate, command.context, [WORKFLOW_STEP.PARTNER_CLOSING_RUNE]); if (!check.ok) return check;
     const partner = partnerState(aggregate); partner.closing.stage = 'REVIEW';
-    check.session.workflow.step = WORKFLOW_STEP.PARTNER_CLOSING_REVIEW; check.session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, deps, {
+      activeMemberId: null,
+      turnId: partner.closing.sourceTurnId
+    });
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_CLOSING_REVIEW_STARTED, { sourceTurnId: partner.closing.sourceTurnId })]);
   }
 
@@ -400,17 +416,19 @@ function handlePartnerParticipantLeft(aggregate, memberId, deps) {
     const contribution = session && session.progress && session.progress.contributionProgress;
     if (session && session.workflow.step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS
       && contribution && progressComplete(contribution)) {
-      session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
-      session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: session.sessionId }));
     }
     if (session && session.workflow.step === WORKFLOW_STEP.CONFIRM_FIRST_PLAYER
       && session.setup.proposedFirstMemberId === memberId) {
       session.setup.proposedFirstMemberId = null;
-      session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-      session.workflow.activeMemberId = null;
-      session.workflow.turnId = null;
-      session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+        activeMemberId: null,
+        turnId: null
+      });
       events.push(event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId }));
     }
     return { events, dirtyFacts };

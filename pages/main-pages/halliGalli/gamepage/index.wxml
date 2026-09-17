@@ -4,9 +4,7 @@
     <player-top-bar
       avatarList="{{avatarList}}"
       maxVisible="{{5}}"
-      enableAdd="{{true}}"
       bind:goroom="handleGoRoom"
-      bind:addtap="handleGoBack"
     />
   </view>
 

@@ -4,7 +4,8 @@ const { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require('@cardboard/room-contrac
 const { SPY_WORD_PAIRS } = require('./spyWordPairs');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
-  activeParticipantsBySeat, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
+  transitionWorkflow, activeParticipantsBySeat, progressComplete,
+  MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
 function randomOf(deps) { return deps && typeof deps.random === 'function' ? deps.random : Math.random; }
@@ -51,8 +52,11 @@ function startSpeaker(aggregate, order, deps, tieBreak) {
   spy.speakOrder = order.slice(); spy.currentSpeakerIndex = 0; spy.speakerTurnId = idOf(deps, 'speaker');
   spy.speakRoundStartedAt = nowOf(deps); spy.speakTurnStartedAt = nowOf(deps); spy.voteProgress = null;
   spy.tieBreak = tieBreak === true;
-  session.workflow = { step: tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK,
-    roundNo: spy.roundNo, activeMemberId: order[0] || null, turnId: spy.speakerTurnId, phaseStartedAt: nowOf(deps) };
+  transitionWorkflow(session, tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK, deps, {
+    roundNo: spy.roundNo,
+    activeMemberId: order[0] || null,
+    turnId: spy.speakerTurnId
+  });
   return event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: order[0] || null, tieBreak: spy.tieBreak });
 }
 function openVote(aggregate, deps) {
@@ -60,8 +64,11 @@ function openVote(aggregate, deps) {
   const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
   spy.voteProgress = { voteSessionId: idOf(deps, 'vote'), requiredMemberIds, submittedMemberIds: [] };
   spy.voteStartedAt = nowOf(deps);
-  session.workflow = { step: WORKFLOW_STEP.SPY_VOTE, roundNo: spy.roundNo, activeMemberId: null,
-    turnId: spy.voteProgress.voteSessionId, phaseStartedAt: nowOf(deps) };
+  transitionWorkflow(session, WORKFLOW_STEP.SPY_VOTE, deps, {
+    roundNo: spy.roundNo,
+    activeMemberId: null,
+    turnId: spy.voteProgress.voteSessionId
+  });
   return event(EVENT_TYPES.SPY_VOTE_OPENED, { voteSessionId: spy.voteProgress.voteSessionId, requiredCount: requiredMemberIds.length, tieBreak: spy.tieBreak });
 }
 function startGame(aggregate, deps, restarted) {
@@ -141,12 +148,16 @@ function resolveVote(aggregate, deps) {
     { memberId: eliminated.memberId, nickName: eliminated.nickName, maxVotes: max }));
   if (winner) {
     spy.winnerSide = winner; spy.reveal = reveal(aggregate, spy);
-    session.workflow.step = WORKFLOW_STEP.SPY_SETTLED; session.workflow.activeMemberId = null;
-    session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(session, WORKFLOW_STEP.SPY_SETTLED, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
   } else {
-    session.workflow.step = WORKFLOW_STEP.SPY_RESULT; session.workflow.activeMemberId = null;
-    session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(session, WORKFLOW_STEP.SPY_RESULT, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     events.push(event(EVENT_TYPES.SPY_ROUND_COMPLETED, { roundNo: spy.roundNo, eliminatedMemberId: eliminated && eliminated.memberId, tallies: tally }));
   }
   return events;
@@ -176,8 +187,10 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
     if (check.spy.currentSpeakerIndex >= check.spy.speakOrder.length) events.push(openVote(aggregate, deps));
     else {
       check.spy.speakerTurnId = idOf(deps, 'speaker'); check.spy.speakTurnStartedAt = nowOf(deps);
-      check.session.workflow.activeMemberId = check.spy.speakOrder[check.spy.currentSpeakerIndex];
-      check.session.workflow.turnId = check.spy.speakerTurnId; check.session.workflow.phaseStartedAt = nowOf(deps);
+      transitionWorkflow(check.session, check.session.workflow.step, deps, {
+        activeMemberId: check.spy.speakOrder[check.spy.currentSpeakerIndex],
+        turnId: check.spy.speakerTurnId
+      });
       events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: check.spy.speakerTurnId,
         memberId: check.session.workflow.activeMemberId, tieBreak: check.spy.tieBreak }));
     }
@@ -277,8 +290,11 @@ function handleSpyParticipantLeft(aggregate, memberId, deps) {
   }
   const winner = winnerSide(aggregate, spy);
   if (winner && session.workflow.step !== WORKFLOW_STEP.SPY_SETTLED) {
-    spy.winnerSide = winner; spy.reveal = reveal(aggregate, spy); session.workflow.step = WORKFLOW_STEP.SPY_SETTLED;
-    session.workflow.activeMemberId = null; session.workflow.turnId = null; session.workflow.phaseStartedAt = nowOf(deps);
+    spy.winnerSide = winner; spy.reveal = reveal(aggregate, spy);
+    transitionWorkflow(session, WORKFLOW_STEP.SPY_SETTLED, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     events.push(event(EVENT_TYPES.SPY_GAME_SETTLED, { winnerSide: winner, reveal: clone(spy.reveal) }));
     return { events, dirtyFacts: [] };
   }
@@ -294,9 +310,10 @@ function handleSpyParticipantLeft(aggregate, memberId, deps) {
     else {
       const now = nowOf(deps);
       spy.speakerTurnId = idOf(deps, 'speaker'); spy.speakTurnStartedAt = now;
-      session.workflow.activeMemberId = spy.speakOrder[spy.currentSpeakerIndex];
-      session.workflow.turnId = spy.speakerTurnId;
-      session.workflow.phaseStartedAt = now;
+      transitionWorkflow(session, session.workflow.step, deps, {
+        activeMemberId: spy.speakOrder[spy.currentSpeakerIndex],
+        turnId: spy.speakerTurnId
+      });
       events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: session.workflow.activeMemberId, tieBreak: spy.tieBreak }));
     }
   }

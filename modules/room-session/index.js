@@ -6,6 +6,7 @@ const {
 } = require('../../packages/room-client/index');
 const { createNavigationCoordinator } = require('../room-navigation/index');
 const { projectPageSnapshot } = require('./page-model');
+const { waitForPageNavigation } = require('../../utils/pageInteractionLock');
 
 const navigation = createNavigationCoordinator();
 
@@ -34,6 +35,9 @@ function commandContext(type, explicit) {
   }
   if (tokens.includes('workflowStep') && missingContextToken(context.workflowStep) && session) {
     context.workflowStep = session.workflow.step;
+  }
+  if (tokens.includes('workflowRevision') && missingContextToken(context.workflowRevision) && session) {
+    context.workflowRevision = session.workflow.revision;
   }
   if (tokens.includes('closingVoteSessionId') && missingContextToken(context.closingVoteSessionId)
     && partner && partner.closing) {
@@ -240,11 +244,17 @@ async function getRoomSessionPageSnapshot(roomId, sessionId) {
   if (result.view && result.view.session && result.view.session.mode === 'PARTNER') {
     try {
       const history = await getRoomSessionMessages(roomId, sessionId);
-      if (history && history.ok === true) {
-        result.view.session.recentMessages = history.messages;
+      if (!history || history.ok !== true) {
+        return history || { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+          errMsg: '历史消息加载失败', retryable: true };
       }
+      result.view.session.recentMessages = history.messages;
     } catch (error) {
       console.warn('getRoomSessionPageSnapshot messages', error);
+      return { ok: false, roomId, sessionId,
+        errCode: error && (error.code || error.errCode) || ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: error && (error.message || error.errMsg) || '历史消息加载失败',
+        retryable: true };
     }
   }
   return projectPageSnapshot(result.view, {
@@ -340,6 +350,35 @@ async function followRoomRouteAfterCommand(result, roomId, extra) {
   return followRoomRoute(snapshot, roomId, extra);
 }
 
+/** 执行 Member View 投影出的权威后退策略，页面不得再根据页面栈猜测业务状态。 */
+async function executeProjectedBack(roomId) {
+  const session = getActiveRoomSession();
+  const view = session && session.getView && session.getView();
+  const back = view && view.navigation && view.navigation.back;
+  if (!back || back.kind !== 'COMMAND') {
+    return { ok: false, errCode: ERR.INVALID_TRANSITION, errMsg: '当前页面不能返回上一步' };
+  }
+  const result = await dispatchRoomCommand(back.commandType, {}, back.context);
+  if (!result || result.ok !== true) return result;
+  const followed = await followRoomRouteAfterCommand(result, roomId);
+  if (!followed || followed.ok !== true) {
+    return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+      errMsg: '房间状态正在同步，请稍后重试', retryable: true };
+  }
+  if (back.after === 'OPEN_MODE_PICKER') {
+    const targetRoomId = roomId || (session && session.roomId) || '';
+    const query = targetRoomId ? `?roomId=${encodeURIComponent(targetRoomId)}&isHost=1` : '?isHost=1';
+    const opened = await waitForPageNavigation('navigateTo', {
+      url: `/pages/main-pages/brainstormMode/index${query}`
+    });
+    if (!opened.ok) {
+      return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: '打开模式选择失败，请重试', retryable: true };
+    }
+  }
+  return { ...result, navigation: followed };
+}
+
 function canRoomCommand(type) {
   const session = getActiveRoomSession();
   const view = session && session.getView();
@@ -351,4 +390,4 @@ module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSessio
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, followRoomRouteAfterCommand,
-  canRoomCommand, commandContext };
+  executeProjectedBack, canRoomCommand, commandContext };

@@ -175,14 +175,19 @@ test('情境页上一页取消场次后带着 isHost=1 回到选模式页', asyn
     getState: () => ({ status: 'READY', roomId: '12345678' }),
     getView: () => ({
       actor: { capabilities: { CANCEL_WORKSHOP_SESSION: { allowed: true } } },
-      session: { sessionId: 's1', status: 'CONFIGURING' }
+      session: { sessionId: 's1', status: 'CONFIGURING' },
+      navigation: { back: { kind: 'COMMAND', commandType: 'CANCEL_WORKSHOP_SESSION',
+        context: { sessionId: 's1' }, after: 'OPEN_MODE_PICKER' } }
     }),
     getSnapshot: () => ({
       ok: true,
       roomId: '12345678',
       isHost: true,
-      revision: 3,
-      view: { session: { sessionId: 's1', status: 'CONFIGURING' } }
+      revision: 300,
+      view: {
+        session: null,
+        route: { name: 'addPlayer', params: {} }
+      }
     }),
     dispatch: async (command) => {
       commands.push(command);
@@ -190,18 +195,23 @@ test('情境页上一页取消场次后带着 isHost=1 回到选模式页', asyn
     }
   };
   const originalRedirectTo = global.wx.redirectTo;
-  global.wx.redirectTo = (options) => {
+  const originalNavigateTo = global.wx.navigateTo;
+  const captureNavigation = (options) => {
     redirectUrl = options.url;
     if (typeof options.complete === 'function') options.complete({});
     else if (typeof options.success === 'function') options.success({});
   };
+  global.wx.redirectTo = captureNavigation;
+  global.wx.navigateTo = captureNavigation;
   try {
     await page.handleGoBack();
     assert.equal(commands[0].type, 'CANCEL_WORKSHOP_SESSION');
+    assert.deepEqual(commands[0].context, { sessionId: 's1' });
     assert.match(redirectUrl, /brainstormMode/);
     assert.match(redirectUrl, /isHost=1/);
   } finally {
     global.wx.redirectTo = originalRedirectTo;
+    global.wx.navigateTo = originalNavigateTo;
     delete app.globalData.roomSession;
   }
 });

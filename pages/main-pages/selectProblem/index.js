@@ -7,7 +7,7 @@ const {
 } = require('../../../utils/scenarioCategories');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { safeNavigateBack, clearPendingNavigation } = require('../../../utils/pageNavigate');
+const { clearPendingNavigation } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -16,6 +16,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  executeProjectedBack,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
@@ -454,14 +455,10 @@ Page(withPageInteractionLock({
 
   goBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/submitProblem/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/submitProblem/index',
-        fallbackUrl
-      });
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      }
     }, { loadingText: '正在返回…' });
   },
 
@@ -498,4 +495,6 @@ Page(withPageInteractionLock({
   'handleViewContext', 'selectProblem', 'stopPropagation', 'onSaveEdit',
   'onEditProblem', 'onProblemInput', 'onProblemBlur', 'confirmSelection',
   'goBack', 'handleGoRoom'
-]));
+], {
+  passthroughMethods: ['onProblemBlur']
+}));

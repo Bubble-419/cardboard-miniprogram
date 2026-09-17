@@ -4,7 +4,6 @@
  */
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { prepareMembersForDisplay } = require('../../../../utils/avatars');
-const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -129,22 +128,6 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
-  handleGoBack() {
-    return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=halliGalli`
-        : '/pages/main-pages/addPlayer/index';
-      safeNavigateBack({
-        expectedPrev: [
-          'pages/main-pages/selectPlayer/index',
-          'pages/main-pages/addPlayer/index'
-        ],
-        fallbackUrl
-      });
-    }, { loadingText: '正在返回…' });
-  },
-
   onStepImgError(e) {
     const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
     if (!key) return;
@@ -168,4 +151,4 @@ Page(withPageInteractionLock({
       loadingText: '正在返回房间…'
     });
   }
-}, ['handleEndGame', 'handleGoBack', 'handleGoRoom', 'onStepImgError']));
+}, ['handleEndGame', 'handleGoRoom', 'onStepImgError']));

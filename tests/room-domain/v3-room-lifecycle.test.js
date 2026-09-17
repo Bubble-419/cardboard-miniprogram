@@ -166,14 +166,17 @@ test('Partner 确认页返回后可重选首位，旧选择令牌不能覆盖新
   snapshot = await h.snapshot('host');
   const hostMemberId = snapshot.view.actor.memberId;
   const u2MemberId = (await h.snapshot('u2')).view.actor.memberId;
+  const firstSelectionRevision = snapshot.view.session.workflow.revision;
   await h.command('host', 'SELECT_FIRST_PLAYER', {
-    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER', workflowRevision: firstSelectionRevision },
+    payload: { memberId: hostMemberId }
   });
   assert.equal((await h.command('host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'CONFIRM_FIRST_PLAYER' }, payload: { memberId: u2MemberId }
   })).ok, true);
   const stale = await h.command('host', 'SELECT_FIRST_PLAYER', {
-    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER', workflowRevision: firstSelectionRevision },
+    payload: { memberId: hostMemberId }
   });
   assert.equal(stale.errCode, 'STALE_CONTEXT');
   await h.command('host', 'CONFIRM_FIRST_PLAYER', {

@@ -1,5 +1,6 @@
 {
   "navigationStyle": "custom",
+  "disableSwipeBack": true,
   "usingComponents": {
     "page-footer": "/components/page-footer/index"
   }

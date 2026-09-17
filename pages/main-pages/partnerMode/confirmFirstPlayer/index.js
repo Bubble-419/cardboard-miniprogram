@@ -7,6 +7,7 @@ const {
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
+  executeProjectedBack,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
@@ -212,12 +213,10 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '请等待房主确认', icon: 'none' });
         return;
       }
-      const result = await dispatchRoomCommand('RESET_FIRST_PLAYER', {});
+      const result = await executeProjectedBack(this.data.roomId);
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
-        return;
       }
-      await followRoomRouteAfterCommand(result, this.data.roomId);
     }, { loadingText: '正在返回…' });
   }
 }, ['onSlotTap', 'handleConfirm', 'handleGoBack']));

@@ -1,6 +1,6 @@
 'use strict';
 
-const { PROTOCOL_VERSION } = require('@cardboard/room-contracts');
+const { PROTOCOL_VERSION, COMMAND_CONTEXT } = require('@cardboard/room-contracts');
 const { createRoomApplication } = require('@cardboard/room-application');
 const { createInMemoryRoomRepository } = require('../../packages/room-application/testing');
 
@@ -23,13 +23,21 @@ function createHarness(options) {
   async function command(userId, type, fields) {
     const input = fields || {};
     const roomId = input.roomId || (options && options.roomId) || '12345678';
+    const context = { ...(input.context || {}) };
+    const contextTokens = COMMAND_CONTEXT[type] || [];
+    if (contextTokens.includes('workflowRevision') && context.workflowRevision == null) {
+      const current = await app.readSnapshot(roomId, { userId });
+      const revision = current && current.ok && current.view && current.view.session
+        && current.view.session.workflow && current.view.session.workflow.revision;
+      if (revision != null) context.workflowRevision = revision;
+    }
     const envelope = {
       protocolVersion: PROTOCOL_VERSION,
       commandId: input.commandId || `command-${++commandSeq}`,
       roomId: type === 'CREATE_ROOM' ? (input.roomId || '') : roomId,
       knownSeq: input.knownSeq == null ? (knownSeq[userId] || 0) : input.knownSeq,
       type,
-      context: input.context || {},
+      context,
       payload: input.payload || {}
     };
     const result = await app.executeCommand(envelope, { userId });

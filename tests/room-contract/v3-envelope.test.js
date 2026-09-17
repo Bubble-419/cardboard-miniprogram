@@ -37,13 +37,17 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.deepEqual(COMMAND_CONTEXT.OPEN_SPY_VOTE, ['sessionId', 'gameId', 'speakerTurnId']);
   assert.deepEqual(COMMAND_CONTEXT.START_NEXT_SPY_ROUND, ['sessionId', 'gameId', 'roundNo']);
   assert.deepEqual(COMMAND_CONTEXT.APPEND_ARTIFACT, ['sessionId', 'turnId', 'workflowStep']);
-  assert.deepEqual(COMMAND_CONTEXT.RESET_FIRST_PLAYER, ['sessionId']);
-  assert.deepEqual(COMMAND_CONTEXT.RESET_DESIGN_PROBLEM, ['sessionId']);
+  assert.deepEqual(COMMAND_CONTEXT.RESET_FIRST_PLAYER, ['sessionId', 'workflowRevision']);
+  assert.deepEqual(COMMAND_CONTEXT.RESET_DESIGN_PROBLEM, ['sessionId', 'workflowRevision']);
+  assert.deepEqual(COMMAND_CONTEXT.RESET_SCENARIO, ['sessionId', 'workflowRevision']);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
-    context: { sessionId: 's1' }
+    context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_DESIGN_PROBLEM, {
-    context: { sessionId: 's1' }
+    context: { sessionId: 's1', workflowRevision: 1 }
+  })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_SCENARIO, {
+    context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.APPEND_ARTIFACT, {
     context: { sessionId: 's1', turnId: 't1' }, payload: { operationId: 'op', text: 'x' }
@@ -94,7 +98,7 @@ test('指令、context 与 payload 都拒绝未知或模糊结构', () => {
 
 test('校验嵌套情境、全量席位与语义枚举', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SET_SCENARIO, {
-    context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO' },
+    context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO', workflowRevision: 1 },
     payload: { source: 'CUSTOM', scenario: { scene: '场景', user: '用户', function: '功能', secret: 'x' } }
   })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.REORDER_SEATS, {
@@ -104,11 +108,11 @@ test('校验嵌套情境、全量席位与语义枚举', () => {
     context: { sessionId: 's', turnId: 't' }, payload: { statementResult: 'unknown' }
   })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SET_SCENARIO, {
-    context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO' },
+    context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO', workflowRevision: 1 },
     payload: { source: 'CUSTOM', scenario: { scene: '场景', user: '用户', function: '功能' } }
   })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.CONFIRM_FIRST_PLAYER, {
-    context: { sessionId: 's' }, payload: {}
+    context: { sessionId: 's', workflowRevision: 1 }, payload: {}
   })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SUBMIT_SPY_VOTE, {
     context: { sessionId: 's', gameId: 'g', voteSessionId: 'v' },
@@ -136,7 +140,7 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
         scenarioSource: 'OFFLINE', scenario: null, proposedFirstMemberId: 'member-1',
         selectedProblem: null, designProblems: []
       },
-      workflow: { step: 'HALLI_ACTIVITY' }, progress: {},
+      workflow: { step: 'HALLI_ACTIVITY', revision: 1 }, progress: {},
       publicModeState: { firstMemberId: 'member-1', submittedMemberIds: [], ideas: [] },
       activeTurn: null, activeArtifacts: [], recentMessages: [], turnSummaries: [], result: null
     },
@@ -146,7 +150,8 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
       voteStatus: { submitted: false }, privateModeState: null,
       capabilities: { END_HALLI_ACTIVITY: { allowed: true, reason: null } }
     },
-    route: { name: 'halliGame', params: {} }
+    route: { name: 'halliGame', params: {} },
+    navigation: { back: { kind: 'NONE' } }
   };
   assert.equal(validateMemberView(view, '12345678'), true);
 
@@ -155,6 +160,8 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
     ['room.hostMemberId', (copy) => { delete copy.room.hostMemberId; }],
     ['actor.scoreStatus', (copy) => { delete copy.actor.scoreStatus; }],
     ['actor.isParticipant', (copy) => { delete copy.actor.isParticipant; }],
+    ['navigation.back', (copy) => { delete copy.navigation.back; }],
+    ['session.workflow.revision', (copy) => { delete copy.session.workflow.revision; }],
     ['session.setup.designProblems', (copy) => { delete copy.session.setup.designProblems; }],
     ['session.activeTurn', (copy) => { delete copy.session.activeTurn; }],
     ['session.result', (copy) => { delete copy.session.result; }]
@@ -163,5 +170,18 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
     const copy = JSON.parse(JSON.stringify(view));
     mutate(copy);
     assert.equal(validateMemberView(copy, '12345678'), false, `${label} 缺失时必须拒绝`);
+  });
+
+  const invalidBackCases = [
+    { kind: 'COMMAND', commandType: 'CREATE_ROOM', context: {}, after: 'FOLLOW_ROUTE' },
+    { kind: 'COMMAND', commandType: 'RESET_FIRST_PLAYER', context: { sessionId: 's1' }, after: 'FOLLOW_ROUTE' },
+    { kind: 'COMMAND', commandType: 'RESET_FIRST_PLAYER',
+      context: { sessionId: 's1', workflowRevision: 1 }, after: 'OPEN_MODE_PICKER' },
+    { kind: 'NONE', after: 'FOLLOW_ROUTE' }
+  ];
+  invalidBackCases.forEach((back) => {
+    const copy = JSON.parse(JSON.stringify(view));
+    copy.navigation.back = back;
+    assert.equal(validateMemberView(copy, '12345678'), false, `非法 back 投影必须拒绝: ${JSON.stringify(back)}`);
   });
 });

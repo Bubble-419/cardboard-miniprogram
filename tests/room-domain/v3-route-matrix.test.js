@@ -60,6 +60,21 @@ function userForMember(snapshot, memberId) {
   return member.seatNo === 1 ? 'host' : `u${member.seatNo}`;
 }
 
+function assertBack(snapshot, commandType, after = 'FOLLOW_ROUTE') {
+  const back = snapshot.view.navigation.back;
+  if (!commandType) {
+    assert.deepEqual(back, { kind: 'NONE' });
+    return;
+  }
+  assert.equal(back.kind, 'COMMAND');
+  assert.equal(back.commandType, commandType);
+  assert.equal(back.after, after);
+  assert.equal(back.context.sessionId, snapshot.view.session.sessionId);
+  if (commandType !== 'CANCEL_WORKSHOP_SESSION') {
+    assert.equal(back.context.workflowRevision, snapshot.view.session.workflow.revision);
+  }
+}
+
 test('权威 route 注册表与业务文档中的物理页面一一对应', () => {
   assert.deepEqual(Object.keys(ROUTES).sort(), Object.keys(ROUTE_MATRIX).sort());
   Object.entries(ROUTE_MATRIX).forEach(([routeName, [path]]) => {
@@ -71,11 +86,14 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
   const h = createHarness();
   await h.seedMembers(3);
   await assertRoutes(h, { host: 'addPlayer', u2: 'addPlayer', u3: 'addPlayer' }, '大厅');
+  assertBack(await h.snapshot('host'), null);
 
   await runCommand(h, 'host', 'START_WORKSHOP_SESSION', { payload: { mode: 'HALLI_GALLI' } });
   let host = await h.snapshot('host');
   const sessionId = host.view.session.sessionId;
   assert.equal(host.view.route.params.modeId, 'halliGalli', 'Halli 情境页必须显式携带 modeId');
+  assertBack(host, 'CANCEL_WORKSHOP_SESSION', 'OPEN_MODE_PICKER');
+  assertBack(await h.snapshot('u2'), null);
   await assertRoutes(h, { host: 'modeIndex', u2: 'subAwait', u3: 'subAwait' }, '选择情境');
 
   // 场次开始后加入者不是本场 Participant，始终停留在大厅旁观。
@@ -91,11 +109,13 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
   await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait', u4: 'addPlayer' }, '选择首位');
 
   host = await h.snapshot('host');
+  assertBack(host, 'RESET_SCENARIO');
   await runCommand(h, 'host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
     payload: { memberId: host.view.actor.memberId }
   });
   await assertRoutes(h, { host: 'halliGame', u2: 'halliGame', u3: 'halliGame', u4: 'addPlayer' }, '线下活动');
+  assertBack(await h.snapshot('host'), null);
 
   await runCommand(h, 'host', 'END_HALLI_ACTIVITY', { context: { sessionId } });
   await assertRoutes(h, { host: 'creativeInput', u2: 'creativeInput', u3: 'creativeInput' }, '填写创意');
@@ -126,6 +146,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   let host = await h.snapshot('host');
   const sessionId = host.view.session.sessionId;
   assert.equal(host.view.route.params.modeId, 'partner', 'Partner 情境页必须显式携带 modeId');
+  assertBack(host, 'CANCEL_WORKSHOP_SESSION', 'OPEN_MODE_PICKER');
   await assertRoutes(h, { host: 'modeIndex', u2: 'subAwait', u3: 'subAwait' }, 'Partner 选择情境');
   assert.equal((await h.snapshot('u2')).view.route.params.scene, 'bg');
 
@@ -145,6 +166,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     context: { sessionId }, payload: { text: '问题 C' }
   });
   await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '选择问题');
+  assertBack(await h.snapshot('host'), 'RESET_SCENARIO');
   assert.equal((await h.snapshot('u2')).view.route.params.scene, 'selectProblem');
 
   host = await h.snapshot('host');
@@ -156,6 +178,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait' }, 'Partner 选择首位');
   assert.equal((await h.snapshot('u2')).view.route.params.scene, 'player');
   assert.equal((await h.snapshot('host')).view.actor.capabilities.RESET_DESIGN_PROBLEM.allowed, true);
+  assertBack(await h.snapshot('host'), 'RESET_DESIGN_PROBLEM');
 
   await runCommand(h, 'host', 'RESET_DESIGN_PROBLEM', { context: { sessionId } });
   await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '从选首位返回重选问题');
@@ -174,6 +197,8 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
   });
   await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'confirmFirstPlayer', u3: 'confirmFirstPlayer' }, '确认首位');
+  assertBack(await h.snapshot('host'), 'RESET_FIRST_PLAYER');
+  assertBack(await h.snapshot('u2'), null);
 
   await runCommand(h, 'host', 'RESET_FIRST_PLAYER', { context: { sessionId } });
   await assertRoutes(h, { host: 'selectPlayer', u2: 'subAwait', u3: 'subAwait' }, '取消确认首位');
@@ -189,6 +214,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
     context: { sessionId }, payload: { memberId: hostMemberId }
   });
   await assertRoutes(h, { host: 'partnerGame', u2: 'partnerGame', u3: 'partnerGame' }, 'Partner 行动');
+  assertBack(await h.snapshot('host'), null);
 
   host = await h.snapshot('host');
   const firstTurnId = host.view.session.activeTurn.turnId;
@@ -250,9 +276,12 @@ test('Spy：发言、投票、平票、轮次结果、下一轮和结算均投�
   let host = await h.snapshot('host');
   const sessionId = host.view.session.sessionId;
   await assertRoutes(h, { host: 'spyIntro', u2: 'spyIntro', u3: 'spyIntro' }, 'Spy 规则页');
+  assertBack(host, 'CANCEL_WORKSHOP_SESSION', 'OPEN_MODE_PICKER');
+  assertBack(await h.snapshot('u2'), null);
 
   await runCommand(h, 'host', 'START_SPY_GAME', { context: { sessionId } });
   await assertRoutes(h, { host: 'spySpeak', u2: 'spySpeak', u3: 'spySpeak' }, 'Spy 发言');
+  assertBack(await h.snapshot('host'), null);
 
   host = await h.snapshot('host');
   const gameId = host.view.session.publicModeState.gameId;

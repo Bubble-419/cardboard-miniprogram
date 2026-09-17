@@ -123,7 +123,9 @@ test('确认首位页上一页会提交 RESET_FIRST_PLAYER 并跟随权威 route
     },
     getView: () => ({
       actor: { capabilities: { RESET_FIRST_PLAYER: { allowed: true } } },
-      session: { sessionId: 's1', workflow: { step: 'CONFIRM_FIRST_PLAYER' } }
+      session: { sessionId: 's1', workflow: { step: 'CONFIRM_FIRST_PLAYER', revision: 4 } },
+      navigation: { back: { kind: 'COMMAND', commandType: 'RESET_FIRST_PLAYER',
+        context: { sessionId: 's1', workflowRevision: 4 }, after: 'FOLLOW_ROUTE' } }
     }),
     getSnapshot: () => ({
       ok: true,
@@ -139,6 +141,7 @@ test('确认首位页上一页会提交 RESET_FIRST_PLAYER 并跟随权威 route
   try {
     await page.handleGoBack();
     assert.equal(commands[0].type, 'RESET_FIRST_PLAYER');
+    assert.deepEqual(commands[0].context, { sessionId: 's1', workflowRevision: 4 });
     assert.match(redirectUrl, /selectPlayer/);
   } finally {
     global.getCurrentPages = previousPages;

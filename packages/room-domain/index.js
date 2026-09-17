@@ -11,6 +11,7 @@ const {
   memberByUserId, memberById, isHost, activeParticipantIds, activeParticipantsBySeat, nextSeat,
   progressComplete,
   createMember, createRoomAggregate, assertRoom, assertMember, assertHost, assertParticipant, assertSession,
+  transitionWorkflow,
   newSession, normalizeScenario, markParticipantLeft, normalizeMode, LIFECYCLE, MODE, SESSION_STATUS,
   WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS
 } = model;
@@ -208,10 +209,17 @@ function setScenario(aggregate, command, actorUserId, deps) {
   check.session.setup.proposedFirstMemberId = null;
   check.session.progress = {};
   if (check.session.mode === MODE.PARTNER && normalized.source !== 'OFFLINE') {
-    check.session.workflow.step = WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS;
+    transitionWorkflow(check.session, WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
-  } else check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-  check.session.workflow.phaseStartedAt = nowOf(deps);
+  } else {
+    transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
+  }
   return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SET, {
     source: normalized.source, nextStep: check.session.workflow.step
   })], { kind: 'ACCEPTED' }, dirtyFacts);
@@ -231,7 +239,10 @@ function submitDesignProblem(aggregate, command, actorUserId, deps) {
   const events = [event(EVENT_TYPES.DESIGN_PROBLEM_SUBMITTED, { memberId: auth.member.memberId,
     submittedCount: progress.submittedMemberIds.length, requiredCount: progress.requiredMemberIds.length })];
   if (progressComplete(progress)) {
-    check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM; check.session.workflow.phaseStartedAt = nowOf(deps);
+    transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
     events.push(event(EVENT_TYPES.PROBLEM_COLLECTION_COMPLETED, { sessionId: check.session.sessionId }));
   }
   return domainOk(aggregate, events, { kind: 'ACCEPTED', contributionId: facts.contributions[key].contributionId },
@@ -266,10 +277,10 @@ function selectDesignProblem(aggregate, command, actorUserId, deps) {
   if (!problem) return fail(ERR.STALE_CONTEXT, '设计问题不存在');
   check.session.setup.selectedProblemId = contributionId;
   check.session.setup.proposedFirstMemberId = null;
-  check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-  check.session.workflow.activeMemberId = null;
-  check.session.workflow.turnId = null;
-  check.session.workflow.phaseStartedAt = nowOf(deps);
+  transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+    activeMemberId: null,
+    turnId: null
+  });
   return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTED, { contributionId })]);
 }
 
@@ -281,12 +292,19 @@ function selectFirstPlayer(aggregate, command, actorUserId, deps) {
   const memberId = String(command.payload.memberId || '');
   if (!activeParticipantIds(check.session).includes(memberId)) return fail(ERR.STALE_CONTEXT, '首位成员不可用');
   check.session.setup.proposedFirstMemberId = memberId;
-  if (check.session.mode === MODE.PARTNER) check.session.workflow.step = WORKFLOW_STEP.CONFIRM_FIRST_PLAYER;
+  if (check.session.mode === MODE.PARTNER) {
+    transitionWorkflow(check.session, WORKFLOW_STEP.CONFIRM_FIRST_PLAYER, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
+  }
   else if (check.session.mode === MODE.HALLI_GALLI) {
-    check.session.status = SESSION_STATUS.RUNNING; check.session.workflow.step = WORKFLOW_STEP.HALLI_ACTIVITY;
-    check.session.workflow.activeMemberId = memberId;
+    check.session.status = SESSION_STATUS.RUNNING;
+    transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
+      activeMemberId: memberId,
+      turnId: null
+    });
   } else return fail(ERR.INVALID_TRANSITION);
-  check.session.workflow.phaseStartedAt = nowOf(deps);
   return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTED, { memberId, nextStep: check.session.workflow.step })]);
 }
 
@@ -309,10 +327,10 @@ function resetFirstPlayer(aggregate, command, actorUserId, deps) {
   if (!check.ok) return check;
   const memberId = check.session.setup.proposedFirstMemberId || null;
   check.session.setup.proposedFirstMemberId = null;
-  check.session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
-  check.session.workflow.activeMemberId = null;
-  check.session.workflow.turnId = null;
-  check.session.workflow.phaseStartedAt = nowOf(deps);
+  transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+    activeMemberId: null,
+    turnId: null
+  });
   return domainOk(aggregate, [event(EVENT_TYPES.FIRST_PLAYER_SELECTION_RESET, { memberId })]);
 }
 
@@ -330,13 +348,42 @@ function resetDesignProblem(aggregate, command, actorUserId, deps) {
     return fail(ERR.INVALID_TRANSITION, '当前场次没有可重选的设计问题');
   }
   check.session.setup.proposedFirstMemberId = null;
-  check.session.workflow.step = WORKFLOW_STEP.SELECT_DESIGN_PROBLEM;
-  check.session.workflow.activeMemberId = null;
-  check.session.workflow.turnId = null;
-  check.session.workflow.phaseStartedAt = nowOf(deps);
+  transitionWorkflow(check.session, WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, deps, {
+    activeMemberId: null,
+    turnId: null
+  });
   return domainOk(aggregate, [event(EVENT_TYPES.DESIGN_PROBLEM_SELECTION_RESET, {
     contributionId: check.session.setup.selectedProblemId || null
   })]);
+}
+
+function resetScenario(aggregate, command, actorUserId, deps) {
+  const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const check = assertSession(aggregate, command.context, {
+    steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
+  });
+  if (!check.ok) return check;
+  if (![MODE.PARTNER, MODE.HALLI_GALLI].includes(check.session.mode)) {
+    return fail(ERR.INVALID_TRANSITION);
+  }
+  const dirtyFacts = [];
+  Object.entries(ensureFacts(aggregate).contributions).forEach(([key, row]) => {
+    if (row.sessionId !== check.session.sessionId) return;
+    delete aggregate.facts.contributions[key];
+    dirtyFacts.push({ kind: 'contributions', id: key, remove: true });
+  });
+  check.session.setup.scenarioSource = null;
+  check.session.setup.scenario = null;
+  check.session.setup.selectedProblemId = null;
+  check.session.setup.proposedFirstMemberId = null;
+  check.session.progress = {};
+  transitionWorkflow(check.session, WORKFLOW_STEP.CHOOSE_SCENARIO, deps, {
+    activeMemberId: null,
+    turnId: null
+  });
+  return domainOk(aggregate, [event(EVENT_TYPES.SCENARIO_SELECTION_RESET, {
+    sessionId: check.session.sessionId
+  })], { kind: 'ACCEPTED' }, dirtyFacts);
 }
 
 function cancelSession(aggregate, command, actorUserId, deps) {
@@ -391,7 +438,12 @@ function replaySession(aggregate, command, actorUserId, deps) {
     session.setup.proposedFirstMemberId = validFirst;
     const turn = startPartnerFlow(aggregate, validFirst, deps);
     events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: validFirst, roundNo: 1 }));
-  } else if (session.mode === MODE.HALLI_GALLI) session.workflow.step = WORKFLOW_STEP.SELECT_FIRST_PLAYER;
+  } else if (session.mode === MODE.HALLI_GALLI) {
+    transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
+      activeMemberId: null,
+      turnId: null
+    });
+  }
   return domainOk(aggregate, events, { kind: 'SESSION_REPLAYED', sessionId: session.sessionId }, dirtyFacts);
 }
 
@@ -419,6 +471,7 @@ function reduceCommand(input) {
     case COMMAND_TYPES.CONFIRM_FIRST_PLAYER: result = confirmFirstPlayer(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.RESET_FIRST_PLAYER: result = resetFirstPlayer(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.RESET_DESIGN_PROBLEM: result = resetDesignProblem(aggregate, command, actorUserId, deps); break;
+    case COMMAND_TYPES.RESET_SCENARIO: result = resetScenario(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.CANCEL_WORKSHOP_SESSION: result = cancelSession(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.RETURN_TO_LOBBY: result = returnToLobby(aggregate, command, actorUserId); break;
     case COMMAND_TYPES.REPLAY_WORKSHOP_SESSION: result = replaySession(aggregate, command, actorUserId, deps); break;

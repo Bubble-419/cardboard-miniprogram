@@ -16,7 +16,7 @@ const {
 } = require('../../../utils/spyMode');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { executeProjectedBack } = require('../../../modules/room-session/index');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -237,14 +237,10 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/brainstormMode/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/brainstormMode/index',
-        fallbackUrl
-      });
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      }
     }, { loadingText: '正在返回…' });
   },
 
