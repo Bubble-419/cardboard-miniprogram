@@ -104,6 +104,39 @@ test('Spy 全员弃票产生无淘汰轮结果，并可开始下一轮', async (
   assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
 });
 
+test('Spy 平票加时只能投首轮并列成员', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const firstVoteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const hostMemberId = snapshot.view.actor.memberId;
+  const u2MemberId = (await h.snapshot('u2')).view.actor.memberId;
+
+  await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: firstVoteSessionId }, payload: { targetMemberId: u2MemberId }
+  });
+  await h.command('u2', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: firstVoteSessionId }, payload: { targetMemberId: hostMemberId }
+  });
+  await h.command('u3', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: firstVoteSessionId }, payload: { abstain: true }
+  });
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_TIE_SPEAK');
+  assert.deepEqual(new Set(snapshot.view.session.publicModeState.lastResult.tiedMemberIds), new Set([hostMemberId, u2MemberId]));
+
+  snapshot = await finishSpeaking(h, sessionId, gameId);
+  const tieVoteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const u3MemberId = (await h.snapshot('u3')).view.actor.memberId;
+  const invalid = await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: tieVoteSessionId }, payload: { targetMemberId: u3MemberId }
+  });
+
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.errCode, 'INVALID_ARGUMENT');
+  assert.equal((await h.snapshot('host')).view.actor.voteStatus.submitted, false);
+});
+
 test('Spy 房主强制开票必须绑定当前发言令牌', async () => {
   const { h, sessionId, gameId } = await seedSpy();
   let snapshot = await h.snapshot('host');

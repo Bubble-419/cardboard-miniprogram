@@ -2006,6 +2006,12 @@ var require_spy = __commonJS({
           if (!targetMemberId || targetMemberId === actor.member.memberId) return fail(ERR.INVALID_ARGUMENT, "\u8BF7\u9009\u62E9\u5176\u4ED6\u5B58\u6D3B\u6210\u5458");
           const target = playerByMemberId(check.spy, targetMemberId);
           if (!target || !target.alive || target.left) return fail(ERR.INVALID_ARGUMENT, "\u6295\u7968\u76EE\u6807\u4E0D\u53EF\u7528");
+          if (check.spy.tieBreak) {
+            const tiedMemberIds = check.spy.lastResult && check.spy.lastResult.tiedMemberIds || [];
+            if (!tiedMemberIds.includes(targetMemberId)) {
+              return fail(ERR.INVALID_ARGUMENT, "\u52A0\u65F6\u53EA\u80FD\u6295\u5E76\u5217\u6210\u5458");
+            }
+          }
         }
         const facts = ensureFacts(aggregate);
         const key = `${progress.voteSessionId}:${actor.member.memberId}`;

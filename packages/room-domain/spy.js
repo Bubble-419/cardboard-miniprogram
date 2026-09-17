@@ -209,6 +209,12 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
       if (!targetMemberId || targetMemberId === actor.member.memberId) return fail(ERR.INVALID_ARGUMENT, '请选择其他存活成员');
       const target = playerByMemberId(check.spy, targetMemberId);
       if (!target || !target.alive || target.left) return fail(ERR.INVALID_ARGUMENT, '投票目标不可用');
+      if (check.spy.tieBreak) {
+        const tiedMemberIds = (check.spy.lastResult && check.spy.lastResult.tiedMemberIds) || [];
+        if (!tiedMemberIds.includes(targetMemberId)) {
+          return fail(ERR.INVALID_ARGUMENT, '加时只能投并列成员');
+        }
+      }
     }
     const facts = ensureFacts(aggregate); const key = `${progress.voteSessionId}:${actor.member.memberId}`;
     facts.votes[key] = { sessionId: check.session.sessionId, gameId: check.spy.gameId,

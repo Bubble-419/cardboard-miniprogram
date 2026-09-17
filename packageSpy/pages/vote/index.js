@@ -263,6 +263,10 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '不能投自己', icon: 'none' });
       return;
     }
+    if (this.data.tieBreak && !slot.isTied) {
+      wx.showToast({ title: '加时只能投并列玩家', icon: 'none' });
+      return;
+    }
     this.setData({ selectedIndex: index });
   },
 

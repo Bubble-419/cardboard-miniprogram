@@ -49,6 +49,10 @@
   box-shadow: 0 0 0 6rpx #5EC159, 0 0 0 12rpx rgba(224, 138, 30, 0.45);
 }
 
+.avatar-slot.is-disabled {
+  opacity: 0.42;
+}
+
 .avatar-slot.voted .avatar-badge {
   opacity: 1;
 }
