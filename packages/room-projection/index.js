@@ -9,6 +9,14 @@ function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function clientModeId(mode) {
+  return {
+    [MODE.PARTNER]: 'partner',
+    [MODE.HALLI_GALLI]: 'halliGalli',
+    [MODE.SPY]: 'spy'
+  }[mode] || '';
+}
+
 function activeParticipants(session) {
   return ((session && session.participants) || []).filter((item) => item.status === 'ACTIVE');
 }
@@ -390,6 +398,11 @@ function projectRoute(aggregate, actorView) {
   }
   const name = routes[step] || 'addPlayer';
   const params = { phase: step };
+  // 共用的情境选择页不能依赖客户端历史状态判断模式；断线重连时必须由权威 View
+  // 明确携带 modeId，否则页面默认值会把 Halli 会话误当成 Partner 会话。
+  if (name === 'modeIndex') {
+    params.modeId = clientModeId(session.mode);
+  }
   if (name === 'partnerGame') {
     const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
     const participant = turn && findParticipant(session, turn.activeMemberId);

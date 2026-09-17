@@ -75,6 +75,7 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
   await runCommand(h, 'host', 'START_WORKSHOP_SESSION', { payload: { mode: 'HALLI_GALLI' } });
   let host = await h.snapshot('host');
   const sessionId = host.view.session.sessionId;
+  assert.equal(host.view.route.params.modeId, 'halliGalli', 'Halli 情境页必须显式携带 modeId');
   await assertRoutes(h, { host: 'modeIndex', u2: 'subAwait', u3: 'subAwait' }, '选择情境');
 
   // 场次开始后加入者不是本场 Participant，始终停留在大厅旁观。
@@ -124,6 +125,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await runCommand(h, 'host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
   let host = await h.snapshot('host');
   const sessionId = host.view.session.sessionId;
+  assert.equal(host.view.route.params.modeId, 'partner', 'Partner 情境页必须显式携带 modeId');
   await assertRoutes(h, { host: 'modeIndex', u2: 'subAwait', u3: 'subAwait' }, 'Partner 选择情境');
 
   await runCommand(h, 'host', 'SET_SCENARIO', {

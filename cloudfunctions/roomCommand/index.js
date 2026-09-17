@@ -2739,6 +2739,13 @@ var require_room_projection = __commonJS({
     function clone(value) {
       return value == null ? value : JSON.parse(JSON.stringify(value));
     }
+    function clientModeId(mode) {
+      return {
+        [MODE.PARTNER]: "partner",
+        [MODE.HALLI_GALLI]: "halliGalli",
+        [MODE.SPY]: "spy"
+      }[mode] || "";
+    }
     function findMember(aggregate, userId) {
       return (aggregate.room.members || []).find((member) => String(member.userId) === String(userId)) || null;
     }
@@ -3098,6 +3105,9 @@ var require_room_projection = __commonJS({
       }
       const name = routes[step] || "addPlayer";
       const params = { phase: step };
+      if (name === "modeIndex") {
+        params.modeId = clientModeId(session.mode);
+      }
       if (name === "partnerGame") {
         const turn = currentPartner(aggregate) && currentPartner(aggregate).activeTurn;
         const participant = turn && findParticipant(session, turn.activeMemberId);

@@ -210,12 +210,13 @@ function resolveHostMainPageUrl(page, roomState, roomId) {
   const p = (page || '').toLowerCase();
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
+  const modeId = resolveModeIdForNavigation(state);
   const hostMap = {
     brainstormmode: `/pages/main-pages/brainstormMode/index?roomId=${roomIdEnc}&isHost=1`,
-    auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}`,
-    selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}`,
+    auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
+    selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}&mode=${encodeURIComponent(modeId)}`,
     confirmbg: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
-    selectplayer: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&isHost=1`,
+    selectplayer: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}&isHost=1`,
     confirmfirstplayer: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isHost=1`
   };
   return hostMap[p] || null;

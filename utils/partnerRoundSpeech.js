@@ -60,7 +60,9 @@ function createPartnerRoundSpeech(hooks = {}) {
     recording = false;
     segmentContext = null;
     console.warn('partnerRoundSpeech recorder error', err);
-    if (active) scheduleNextSegment();
+    // 录音器不可用时（开发者工具常见 NotFoundError）不要高频重启。
+    // 保持 active，使页面轮询不会再次 start；页面离开后 stop/destroy 会正常复位。
+    clearSegmentTimer();
   };
 
   recorder.onStop(onStopHandler);
