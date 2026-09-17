@@ -215,3 +215,71 @@ test('情境页上一页取消场次后带着 isHost=1 回到选模式页', asyn
     delete app.globalData.roomSession;
   }
 });
+
+test('情境页后退不得在 reLaunch 忙期丢失选模式叠层', async () => {
+  const page = makePage();
+  const roomId = '87654321';
+  page.setData({ roomId });
+  app.globalData.roomId = roomId;
+  app.globalData.roomSession = {
+    roomId,
+    getState: () => ({ status: 'READY', roomId }),
+    getView: () => ({
+      actor: { capabilities: { CANCEL_WORKSHOP_SESSION: { allowed: true } } },
+      session: { sessionId: 's-race', status: 'CONFIGURING' },
+      navigation: { back: { kind: 'COMMAND', commandType: 'CANCEL_WORKSHOP_SESSION',
+        context: { sessionId: 's-race' }, after: 'OPEN_MODE_PICKER' } }
+    }),
+    getSnapshot: () => ({
+      ok: true,
+      roomId,
+      revision: 901,
+      view: { session: null, route: { name: 'addPlayer', params: {} } }
+    }),
+    dispatch: async () => ({ ok: true })
+  };
+
+  const previousWx = global.wx;
+  const previousGetCurrentPages = global.getCurrentPages;
+  let currentRoute = 'pages/main-pages/modeIndex/index';
+  let visibleUrl = '/pages/main-pages/modeIndex/index';
+  let reLaunchBusy = false;
+  global.getCurrentPages = () => [{ route: currentRoute, data: {} }];
+  global.wx = {
+    showToast() {},
+    reLaunch(options) {
+      visibleUrl = options.url;
+      currentRoute = 'pages/main-pages/addPlayer/index';
+      reLaunchBusy = true;
+      if (typeof options.complete === 'function') options.complete({});
+      setImmediate(() => { reLaunchBusy = false; });
+    },
+    navigateTo(options) {
+      if (reLaunchBusy) {
+        if (typeof options.fail === 'function') {
+          options.fail({ errMsg: 'navigateTo:fail page is reLaunching' });
+        }
+        return;
+      }
+      visibleUrl = options.url;
+      currentRoute = 'pages/main-pages/brainstormMode/index';
+      if (typeof options.success === 'function') options.success({});
+    },
+    redirectTo(options) {
+      visibleUrl = options.url;
+      currentRoute = 'pages/main-pages/brainstormMode/index';
+      if (typeof options.success === 'function') options.success({});
+    }
+  };
+
+  try {
+    await page.handleGoBack();
+    assert.match(visibleUrl, /brainstormMode/,
+      '用户最终应看到模式选择，不能因为 reLaunch 竞态停在大厅');
+  } finally {
+    global.wx = previousWx;
+    global.getCurrentPages = previousGetCurrentPages;
+    app.globalData.roomId = '12345678';
+    delete app.globalData.roomSession;
+  }
+});

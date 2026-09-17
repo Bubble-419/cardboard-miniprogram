@@ -328,13 +328,13 @@ function followRoomRoute(snapshot, roomId, extra) {
  * 写指令成功后只跟随服务端已经发布的权威 route。
  * 若附带 Event 同步没有追到该指令水位，先用 Snapshot 恢复，避免页面猜测下一地址。
  */
-async function followRoomRouteAfterCommand(result, roomId, extra) {
+async function getCommittedSnapshotAfterCommand(result) {
   if (!result || result.ok !== true) {
-    return { ok: false, skipped: true, reason: 'COMMAND_FAILED' };
+    return { ok: false, result: { ok: false, skipped: true, reason: 'COMMAND_FAILED' } };
   }
   const session = getActiveRoomSession();
   if (!session || typeof session.getSnapshot !== 'function') {
-    return { ok: false, skipped: true, reason: 'NO_SESSION' };
+    return { ok: false, result: { ok: false, skipped: true, reason: 'NO_SESSION' } };
   }
   const committedThroughSeq = Number(result.outcome && result.outcome.committedThroughSeq);
   let snapshot = session.getSnapshot();
@@ -345,9 +345,15 @@ async function followRoomRouteAfterCommand(result, roomId, extra) {
   }
   if (Number.isInteger(committedThroughSeq) && committedThroughSeq > 0
     && Number(snapshot && snapshot.revision) < committedThroughSeq) {
-    return { ok: false, skipped: true, reason: 'VIEW_NOT_COMMITTED' };
+    return { ok: false, result: { ok: false, skipped: true, reason: 'VIEW_NOT_COMMITTED' } };
   }
-  return followRoomRoute(snapshot, roomId, extra);
+  return { ok: true, snapshot };
+}
+
+async function followRoomRouteAfterCommand(result, roomId, extra) {
+  const committed = await getCommittedSnapshotAfterCommand(result);
+  if (!committed.ok) return committed.result;
+  return followRoomRoute(committed.snapshot, roomId, extra);
 }
 
 /** 执行 Member View 投影出的权威后退策略，页面不得再根据页面栈猜测业务状态。 */
@@ -360,21 +366,35 @@ async function executeProjectedBack(roomId) {
   }
   const result = await dispatchRoomCommand(back.commandType, {}, back.context);
   if (!result || result.ok !== true) return result;
-  const followed = await followRoomRouteAfterCommand(result, roomId);
-  if (!followed || followed.ok !== true) {
-    return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
-      errMsg: '房间状态正在同步，请稍后重试', retryable: true };
-  }
   if (back.after === 'OPEN_MODE_PICKER') {
+    const committed = await getCommittedSnapshotAfterCommand(result);
+    if (!committed.ok) {
+      return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: '房间状态正在同步，请稍后重试', retryable: true };
+    }
+    const authoritativeRoute = committed.snapshot && committed.snapshot.view
+      && committed.snapshot.view.route;
+    if (!authoritativeRoute || authoritativeRoute.name !== 'addPlayer') {
+      const latestFollow = await followRoomRoute(committed.snapshot, roomId);
+      return { ...result, navigation: latestFollow };
+    }
     const targetRoomId = roomId || (session && session.roomId) || '';
     const query = targetRoomId ? `?roomId=${encodeURIComponent(targetRoomId)}&isHost=1` : '?isHost=1';
-    const opened = await waitForPageNavigation('navigateTo', {
+    // 不要先 reLaunch 大厅再紧接 navigateTo：微信运行时会在 reLaunch 忙期
+    // 拒绝第二次导航，从而让用户错误地停在大厅。直接替换为大厅所属的本地叠层。
+    const opened = await waitForPageNavigation('redirectTo', {
       url: `/pages/main-pages/brainstormMode/index${query}`
     });
     if (!opened.ok) {
       return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
         errMsg: '打开模式选择失败，请重试', retryable: true };
     }
+    return { ...result, navigation: { ok: true, skipped: true, reason: 'LOCAL_OVERLAY' } };
+  }
+  const followed = await followRoomRouteAfterCommand(result, roomId);
+  if (!followed || followed.ok !== true) {
+    return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE,
+      errMsg: '房间状态正在同步，请稍后重试', retryable: true };
   }
   return { ...result, navigation: followed };
 }

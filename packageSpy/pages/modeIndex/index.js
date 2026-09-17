@@ -237,9 +237,13 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
+      // 先解绑权威路由订阅：取消场次会把 route 切回 addPlayer；若订阅先执行
+      // reLaunch，紧随其后的模式选择 redirectTo 会被微信运行时拒绝。
+      this.stopPolling();
       const result = await executeProjectedBack(this.data.roomId);
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+        this.startPolling();
       }
     }, { loadingText: '正在返回…' });
   },
