@@ -62,7 +62,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
 | `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 设计问题 / 首位玩家 / 确认首位 |
-| `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题 |
+| `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题；已提交者可催促未提交者 |
 | `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | Host 选择设计问题 |
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
 | `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | Host 确认 Partner 首位玩家 |
@@ -306,6 +306,7 @@ flowchart TD
 |---|---|---|
 | 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
+| 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
 | Host 编辑问题 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |

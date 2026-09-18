@@ -85,7 +85,8 @@ flowchart TB
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 
-`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 点读，不需要组合索引。其余读取
+`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 和
+`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 两点读，不需要组合索引。其余读取
 使用确定性 `_id`，不需要额外业务索引。
 
 ## 4. 权限边界
@@ -106,7 +107,7 @@ flowchart LR
 - `roomV3Sessions`、`roomV3Events`、`roomV3Actions` 均不开放客户端读权限；其中包含私密事实或成员投影。
 - 日志不得输出 openid、Spy 词语/身份、投票明细、消息或素材正文。
 - `roomMedia` 生成二维码前通过 Member Snapshot 鉴权；强制刷新仅 Host。
-- `roomSignal` 只接受当前行动者、当前 session/turn 且 Silent 未过期的信号。
+- `roomSignal` 只接受已登记类型：静默声贝须绑定当前 session/turn 且 Silent 未过期，仅房主可写；设计问题催促须在 `COLLECT_DESIGN_PROBLEMS` 且调用者已提交。
 
 ## 5. 构建与部署顺序
 

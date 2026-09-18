@@ -37,7 +37,7 @@
         </view>
 
         <!-- 输入框 + 字数计数 + 提交图标 -->
-        <view class="form-input-wrap">
+        <view class="form-input-wrap {{inputNudgeShake ? 'form-input-wrap-nudge' : ''}}">
           <view class="textarea-box">
             <textarea
               class="problem-input"
@@ -62,6 +62,13 @@
             />
           </view>
         </view>
+
+        <view
+          wx:if="{{showNudgeHint}}"
+          class="nudge-hint {{nudgeHintFading ? 'nudge-hint-out' : ''}}"
+        >
+          <text class="nudge-hint-text">小伙伴在催你提交啦</text>
+        </view>
       </view>
     </view>
 
@@ -84,6 +91,17 @@
     showPrev="{{false}}"
   >
     <button class="confirm-btn" bindtap="submitProblem">确认问题</button>
+  </page-footer>
+  <page-footer
+    wx:if="{{showNudgeButton}}"
+    extClass="footer-action"
+    showPrev="{{false}}"
+  >
+    <button
+      class="nudge-btn {{nudgeDisabled ? 'nudge-btn-disabled' : ''}}"
+      disabled="{{nudgeDisabled}}"
+      bindtap="nudgeUnsubmittedPlayers"
+    >{{nudgeDisabled ? '已催促 ' + nudgeCooldownLeft + 's' : '催促其他人'}}</button>
   </page-footer>
 </view>
 

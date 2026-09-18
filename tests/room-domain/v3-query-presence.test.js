@@ -6,7 +6,8 @@ const { createHarness } = require('../helpers/room-v3');
 const { projectPageSnapshot, memberSeat } = require('../../modules/room-session/page-model');
 const {
   VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS,
-  MAX_SYNC_RESPONSE_BYTES, stableStringify
+  MAX_SYNC_RESPONSE_BYTES, SIGNAL_TYPES, SIGNAL_TTL_MS, DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+  stableStringify
 } = require('@cardboard/room-contracts');
 
 test('场次内座位映射优先使用冻结 Participant，而不是后来调整的 Room Seat', () => {
@@ -471,6 +472,108 @@ test('静默声贝仅房主可写，即使当前行动者不是房主', async ()
 
   const heard = await h.app.sync('12345678', 0, { userId: 'u3' });
   assert.equal(heard.ephemeral.signals.PARTNER_SILENT_SOUND.value, 0.7);
+});
+
+async function startCollectingDesignProblems(h, memberCount) {
+  await h.seedMembers(memberCount);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  const started = await h.snapshot('host');
+  const sessionId = started.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
+    payload: {
+      source: 'CUSTOM',
+      scenario: { scene: '课堂', user: '学生', platform: '小程序', function: '协作' }
+    }
+  });
+  return sessionId;
+}
+
+test('已提交者可广播催促未提交者，且不推进业务水位', async () => {
+  const h = createHarness();
+  const sessionId = await startCollectingDesignProblems(h, 3);
+  await h.command('host', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何让协作更顺畅？' }
+  });
+  const before = await h.snapshot('host');
+
+  const denied = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'u2' });
+  const written = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  const after = await h.snapshot('u2');
+  const batch = await h.app.sync('12345678', before.seq, { userId: 'u2' });
+
+  assert.equal(denied.ok, false);
+  assert.equal(denied.errCode, 'INVALID_TRANSITION');
+  assert.equal(written.ok, true);
+  assert.equal(written.signal.signalType, SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE);
+  assert.equal(written.signal.value, 1);
+  assert.equal(after.seq, before.seq);
+  assert.equal(after.stateVersion, before.stateVersion);
+  assert.equal(after.ephemeral.signals.DESIGN_PROBLEM_NUDGE.sessionId, sessionId);
+  assert.equal(batch.ok, true);
+  assert.equal(batch.delivery, 'EVENTS');
+  assert.equal(batch.ephemeral.signals.DESIGN_PROBLEM_NUDGE.updatedAt, written.signal.updatedAt);
+});
+
+test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催促', async () => {
+  const h = createHarness();
+  const sessionId = await startCollectingDesignProblems(h, 3);
+  await h.command('host', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何让协作更顺畅？' }
+  });
+  await h.command('u2', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何降低沟通成本？' }
+  });
+
+  const first = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  const replay = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  const other = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'u2' });
+
+  assert.equal(first.ok, true);
+  assert.equal(replay.ok, true);
+  assert.equal(replay.signal.updatedAt, first.signal.updatedAt);
+  assert.equal(other.ok, true);
+  assert.equal(other.signal.updatedAt > first.signal.updatedAt, true);
+  assert.equal(other.signal.memberId !== first.signal.memberId, true);
+});
+
+test('催促信号过期后不再投影，离开收集问题步骤后不能再写', async () => {
+  const h = createHarness();
+  const sessionId = await startCollectingDesignProblems(h, 3);
+  await h.command('host', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何让协作更顺畅？' }
+  });
+  const written = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  assert.equal(written.ok, true);
+
+  h.advanceTime(SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE] + 1);
+  const expired = await h.snapshot('u2');
+  assert.equal(expired.ephemeral.signals.DESIGN_PROBLEM_NUDGE, undefined);
+
+  await h.command('u2', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何降低沟通成本？' }
+  });
+  await h.command('u3', 'SUBMIT_DESIGN_PROBLEM', {
+    context: { sessionId }, payload: { text: '如何快速达成共识？' }
+  });
+  const stale = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.errCode, 'INVALID_TRANSITION');
+  assert.equal(DESIGN_PROBLEM_NUDGE_COOLDOWN_MS, 15000);
 });
 
 test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {

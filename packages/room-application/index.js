@@ -5,7 +5,7 @@ const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, EVENT_TYPES, ERR,
   fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString,
   validatePublicViewPatch, validateActorViewPatch, MAX_SESSION_DOCUMENT_BYTES,
-  MAX_SYNC_RESPONSE_BYTES, MAX_INCREMENTAL_SYNC_EVENTS
+  MAX_SYNC_RESPONSE_BYTES, MAX_INCREMENTAL_SYNC_EVENTS, SIGNAL_TYPES
 } = require('@cardboard/room-contracts');
 const { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require('@cardboard/room-domain');
 const {
@@ -213,14 +213,22 @@ function createRoomApplication(repo, options) {
     });
     const signals = {};
     const scope = signalScope(aggregate);
+    const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId
+      || aggregate && aggregate.room && aggregate.room.currentSessionId
+      || null;
     (signalRows || []).filter((row) => {
       if (Number(row.expiresAt) <= now()) return false;
-      if (row.signalType !== 'PARTNER_SILENT_SOUND') return true;
-      return !!(scope
-        && row.sessionId === scope.sessionId
-        && row.turnId === scope.turnId
-        && row.memberId === scope.memberId
-        && Number(scope.deadlineAt) > now());
+      if (row.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
+        return !!(scope
+          && row.sessionId === scope.sessionId
+          && row.turnId === scope.turnId
+          && row.memberId === scope.memberId
+          && Number(scope.deadlineAt) > now());
+      }
+      if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
+        return !!(currentSessionId && row.sessionId === currentSessionId);
+      }
+      return false;
     }).forEach((row) => {
       if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
         signals[row.signalType] = { value: clone(row.value), memberId: row.memberId,
@@ -286,17 +294,33 @@ function createRoomApplication(repo, options) {
     const signalType = String(input && input.signalType || '');
     const rawValue = input && input.value;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId)
-      || signalType !== 'PARTNER_SILENT_SOUND'
-      || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+    const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
+    const designNudge = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE;
+    if (silentSound) {
+      if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId)
+        || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+        return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+      }
+    } else if (designNudge) {
+      if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+        return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+      }
+    } else {
       return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
     }
     if (typeof repo.upsertSignal !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
-    const result = await repo.upsertSignal({ roomId, actorUserId, sessionId, turnId, signalType,
-      value: Math.min(1, Math.max(0, rawValue)), now: now() });
+    const result = await repo.upsertSignal({
+      roomId,
+      actorUserId,
+      sessionId,
+      turnId: silentSound ? turnId : '',
+      signalType,
+      value: silentSound ? Math.min(1, Math.max(0, rawValue)) : 1,
+      now: now()
+    });
     if (!result || result.ok !== true) {
       return fail(result && result.errCode || ERR.INVALID_TRANSITION,
-        result && result.errMsg || '当前不能发布静默声贝');
+        result && result.errMsg || (silentSound ? '当前不能发布静默声贝' : '当前不能催促提交设计问题'));
     }
     await touchActivity(roomId, result.signal.memberId, actorContext);
     return okResult({ signal: result.signal });

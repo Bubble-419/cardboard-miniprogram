@@ -2,9 +2,10 @@
 
 const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
-const { emptyFacts } = require('@cardboard/room-domain');
+const { emptyFacts, designProblemNudgeDeniedReason } = require('@cardboard/room-domain');
 const {
-  PROTOCOL_VERSION, SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify
+  PROTOCOL_VERSION, SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify,
+  SIGNAL_TYPES, SIGNAL_TTL_MS, DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
 } = require('@cardboard/room-contracts');
 
 // V3 使用独立物理集合，不读取或双写旧协议数据。
@@ -302,9 +303,10 @@ function createCloudBaseRoomRepository(deps) {
   }
 
   async function listSignals(roomId) {
-    // 当前协议只有一个房间级声贝信号，使用确定性主键点查，避免高频轮询扫描集合。
-    const row = await safeGet(db, COLLECTIONS.signals, docId(`${roomId}:PARTNER_SILENT_SOUND`));
-    return row ? [row] : [];
+    const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => (
+      safeGet(db, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))
+    )));
+    return rows.filter(Boolean);
   }
 
   async function upsertSignal(input) {
@@ -314,23 +316,60 @@ function createCloudBaseRoomRepository(deps) {
       const member = room.lifecycle === 'OPEN'
         && (room.members || []).find((item) => item.userId === input.actorUserId);
       if (!member) return { ok: false, errCode: 'NOT_MEMBER', errMsg: '非房间成员' };
-      const scope = room.signalScope;
-      if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId
-        || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
-        return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能发布静默声贝' };
+      if (input.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
+        const scope = room.signalScope;
+        if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId
+          || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能发布静默声贝' };
+        }
+        const signalId = docId(`${input.roomId}:${input.signalType}`);
+        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+        if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: existing };
+        }
+        const row = { roomId: input.roomId, signalType: input.signalType, value: input.value,
+          memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
+          updatedAt: input.now,
+          expiresAt: Math.min(Number(scope.deadlineAt), input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.PARTNER_SILENT_SOUND]) };
+        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        return { ok: true, signal: row };
       }
-      const signalId = docId(`${input.roomId}:${input.signalType}`);
-      const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-      if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
-        && Number(existing.updatedAt) >= Number(input.now)) {
-        return { ok: true, signal: existing };
+      if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
+        if (room.currentSessionId !== input.sessionId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能催促提交设计问题' };
+        }
+        const session = await safeGet(transaction, COLLECTIONS.sessions, input.sessionId);
+        if (!session || session.roomId !== input.roomId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能催促提交设计问题' };
+        }
+        const denied = designProblemNudgeDeniedReason(session, member.memberId);
+        if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const signalId = docId(`${input.roomId}:${input.signalType}`);
+        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+        if (existing && existing.sessionId === input.sessionId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: existing };
+        }
+        if (existing && existing.sessionId === input.sessionId
+          && existing.memberId === member.memberId
+          && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
+          return { ok: true, signal: existing };
+        }
+        const row = {
+          roomId: input.roomId,
+          signalType: input.signalType,
+          value: 1,
+          memberId: member.memberId,
+          sessionId: input.sessionId,
+          turnId: '',
+          updatedAt: input.now,
+          expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
+        };
+        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        return { ok: true, signal: row };
       }
-      const row = { roomId: input.roomId, signalType: input.signalType, value: input.value,
-        memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
-        updatedAt: input.now, expiresAt: Math.min(Number(scope.deadlineAt), input.now + 3000) };
-      await transaction.collection(COLLECTIONS.signals)
-        .doc(signalId).set({ data: row });
-      return { ok: true, signal: row };
+      return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };
     });
   }
 

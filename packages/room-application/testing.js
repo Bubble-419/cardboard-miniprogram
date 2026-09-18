@@ -1,7 +1,8 @@
 'use strict';
 
-const { PROTOCOL_VERSION, SCHEMA_VERSION, COMMAND_TYPES } = require('@cardboard/room-contracts');
-const { memberByUserId } = require('@cardboard/room-domain');
+const { PROTOCOL_VERSION, SCHEMA_VERSION, COMMAND_TYPES, SIGNAL_TYPES, SIGNAL_TTL_MS,
+  DESIGN_PROBLEM_NUDGE_COOLDOWN_MS } = require('@cardboard/room-contracts');
+const { memberByUserId, designProblemNudgeDeniedReason } = require('@cardboard/room-domain');
 const { clone } = require('@cardboard/room-projection');
 
 /** 仅供单元测试使用；生产云函数不应打包内存仓储。 */
@@ -184,22 +185,57 @@ function createInMemoryRoomRepository(options) {
         && memberByUserId(aggregate.room, input.actorUserId);
       if (!aggregate || !compatibleRoom(aggregate.room)) return { ok: false, errCode: 'ROOM_NOT_FOUND' };
       if (!member) return { ok: false, errCode: 'NOT_MEMBER' };
-      const scope = aggregate.room.signalScope;
-      if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId
-        || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
-        return { ok: false, errCode: 'INVALID_TRANSITION' };
+      if (input.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
+        const scope = aggregate.room.signalScope;
+        if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId
+          || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
+          return { ok: false, errCode: 'INVALID_TRANSITION' };
+        }
+        const key = `${input.roomId}:${input.signalType}`;
+        const existing = signals.get(key);
+        if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: copy(existing) };
+        }
+        const row = { roomId: input.roomId, signalType: input.signalType, value: input.value,
+          memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
+          updatedAt: input.now,
+          expiresAt: Math.min(scope.deadlineAt, input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.PARTNER_SILENT_SOUND]) };
+        signals.set(key, copy(row));
+        return { ok: true, signal: copy(row) };
       }
-      const key = `${input.roomId}:${input.signalType}`;
-      const existing = signals.get(key);
-      if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
-        && Number(existing.updatedAt) >= Number(input.now)) {
-        return { ok: true, signal: copy(existing) };
+      if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
+        const session = aggregate.currentSession;
+        if (!session || session.sessionId !== input.sessionId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能催促提交设计问题' };
+        }
+        const denied = designProblemNudgeDeniedReason(session, member.memberId);
+        if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const key = `${input.roomId}:${input.signalType}`;
+        const existing = signals.get(key);
+        if (existing && existing.sessionId === input.sessionId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: copy(existing) };
+        }
+        if (existing && existing.sessionId === input.sessionId
+          && existing.memberId === member.memberId
+          && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
+          return { ok: true, signal: copy(existing) };
+        }
+        const row = {
+          roomId: input.roomId,
+          signalType: input.signalType,
+          value: 1,
+          memberId: member.memberId,
+          sessionId: input.sessionId,
+          turnId: '',
+          updatedAt: input.now,
+          expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
+        };
+        signals.set(key, copy(row));
+        return { ok: true, signal: copy(row) };
       }
-      const row = { roomId: input.roomId, signalType: input.signalType, value: input.value,
-        memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
-        updatedAt: input.now, expiresAt: Math.min(scope.deadlineAt, input.now + 3000) };
-      signals.set(key, copy(row));
-      return { ok: true, signal: copy(row) };
+      return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };
     }
   };
 }
