@@ -9,8 +9,8 @@ const {
   getActiveRoomSession,
   getRoomRequestContext
 } = require('../../../../modules/room-session/index');
-const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
-const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
+const { resolveSelectedDesignProblem } = require('../utils/selectedDesignProblem');
+const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../utils/partnerPlayerTurn');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl } = require('../../../../utils/pageNavigate');
 const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
@@ -22,7 +22,7 @@ const {
 const { isRoundTimerActive, buildPaginationDots } = require('../../../../utils/partnerRoundTimer');
 const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
-const { buildDisplaySummaries } = require('../../../../utils/partnerRoundNavigation');
+const { buildDisplaySummaries } = require('../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
 

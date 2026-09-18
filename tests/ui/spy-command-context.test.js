@@ -7,7 +7,7 @@ const path = require('node:path');
 const {
   captureSpyCommandContext,
   spyCommandContextForAction
-} = require('../../utils/spyMode');
+} = require('../../packageSpy/utils/spyMode');
 
 test('Spy 写指令使用页面已渲染的并发令牌，不被后来 Snapshot 偷换', () => {
   const rendered = {

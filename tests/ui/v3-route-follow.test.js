@@ -22,7 +22,7 @@ test('房间页不再用旧副屏跟随跳转，只消费 view.route', () => {
   const files = [
     ...walk('pages'),
     ...walk('packageSpy'),
-    'utils/spyMode.js'
+    'packageSpy/utils/spyMode.js'
   ];
   files.forEach((file) => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
@@ -35,7 +35,7 @@ test('页面命令不自造 commandId，授权读取 actor.capabilities', () => 
   assert.doesNotMatch(session, /commandId:\s*input\.commandId/);
   assert.match(session, /view\.actor\.capabilities/);
   assert.match(session, /cap\.allowed !== true/);
-  const spyMode = fs.readFileSync(path.join(root, 'utils/spyMode.js'), 'utf8');
+  const spyMode = fs.readFileSync(path.join(root, 'packageSpy/utils/spyMode.js'), 'utf8');
   assert.doesNotMatch(spyMode, /makeSpyCommandId|commandIdFactory|clientCreateId/);
   assert.match(spyMode, /followRoomRouteAfterCommand\(result, roomId\)/);
   const pages = [...walk('pages'), ...walk('packageSpy')];
@@ -49,8 +49,8 @@ test('倒计时不再用 SPEAK_ROUND_MS / VOTE_ROUND_MS 本地裁决', () => {
   const files = [
     ...walk('pages'),
     ...walk('packageSpy'),
-    'utils/spyMode.js',
-    'utils/spyGameState.js'
+    'packageSpy/utils/spyMode.js',
+    'packageSpy/utils/spyGameState.js'
   ];
   files.forEach((file) => {
     const source = fs.readFileSync(path.join(root, file), 'utf8');

@@ -17,7 +17,7 @@ const {
   readRoomLocalDraft,
   writeRoomLocalDraft,
   clearRoomLocalDraft
-} = require('../../../../utils/roomLocalDraft');
+} = require('../utils/roomLocalDraft');
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
@@ -32,7 +32,7 @@ const {
   getRoomHistory,
   getRoomSessionPageSnapshot
 } = require('../../../../modules/room-session/index');
-const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
+const { resolveSelectedDesignProblem } = require('../utils/selectedDesignProblem');
 const {
   PHASE_PLAY,
   PHASE_DISCUSSION,
@@ -44,13 +44,13 @@ const {
   isClosingPhase,
   STATEMENT_ALL_PASS,
   STATEMENT_ALL_QUESTION
-} = require('../../../../utils/partnerGamePhase');
+} = require('../utils/partnerGamePhase');
 const {
   getNextPlayerTurn,
   buildPartnerAvatarList,
   resolveCurrentPlayerFromRoom,
   toPlayerIndex
-} = require('../../../../utils/partnerPlayerTurn');
+} = require('../utils/partnerPlayerTurn');
 const {
   getRoundTimerState,
   buildPaginationDots,
@@ -72,8 +72,8 @@ const {
   buildDisplaySummaries,
   playerHasSummaryCards,
   isSamePlayerIndex
-} = require('../../../../utils/partnerRoundNavigation');
-const { createPartnerRoundSpeech } = require('../../../../utils/partnerRoundSpeech');
+} = require('../utils/partnerRoundNavigation');
+const { createPartnerRoundSpeech } = require('../utils/partnerRoundSpeech');
 const {
   attachPrivateNotesToSummaries,
   loadAllPrivateNotes,
@@ -98,7 +98,7 @@ const {
 const {
   resolvePartnerScoreProgress,
   shouldApplyRoomSnapshot
-} = require('../../../../utils/partnerScoreProgress');
+} = require('../utils/partnerScoreProgress');
 const {
   buildReviewSnapshot,
   saveReviewSnapshot,

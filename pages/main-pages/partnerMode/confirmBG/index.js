@@ -2,7 +2,7 @@ const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } =
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
-const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
+const { resolveSelectedDesignProblem } = require('../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
 const {
   bindPageToRoomSession,

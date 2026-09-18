@@ -10,7 +10,7 @@ const {
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
-} = require('../../../utils/spyMode');
+} = require('../../utils/spyMode');
 const {
   runPageInteraction,
   withPageInteractionLock

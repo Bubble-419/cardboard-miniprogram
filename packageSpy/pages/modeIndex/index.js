@@ -13,9 +13,9 @@ const {
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
-} = require('../../../utils/spyMode');
-const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
-const { SPY_PHASE } = require('../../../utils/spyGameState');
+} = require('../../utils/spyMode');
+const { getLibraryGroupCount } = require('../../utils/spyWordCardAssets');
+const { SPY_PHASE } = require('../../utils/spyGameState');
 const { executeProjectedBack } = require('../../../modules/room-session/index');
 const {
   runPageInteraction,

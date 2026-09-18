@@ -12,13 +12,13 @@ const {
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
-} = require('../../../utils/spyMode');
+} = require('../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
 const {
   buildTiedNames,
   isTieReturnPending,
   showTieReturnModal
-} = require('../../../utils/spyTiePrompt');
+} = require('../../utils/spyTiePrompt');
 const {
   runPageInteraction,
   withPageInteractionLock

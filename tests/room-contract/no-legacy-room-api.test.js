@@ -58,6 +58,7 @@ test('app.json 中的页面均以准确大小写注册且文件完整', () => {
 test('房间运行时代码不直接访问数据库，也不调用旧房间云函数', () => {
   const runtimeFiles = [
     ...registeredPages().map((page) => `${page}.js`),
+    ...walkFiles('pages', (file) => file.endsWith('.js')),
     ...walkFiles('modules', (file) => file.endsWith('.js')),
     ...walkFiles('utils', (file) => file.endsWith('.js')),
     ...walkFiles('packageSpy', (file) => file.endsWith('.js'))
@@ -105,7 +106,7 @@ test('小程序运行时协议包不依赖未上传的 workspace node_modules', 
 
 test('语音转写不再绕过 V3 协议写旧房间', () => {
   const source = fs.readFileSync(path.join(root, 'cloudfunctions/speechToText/src/entry.js'), 'utf8');
-  const client = fs.readFileSync(path.join(root, 'utils/partnerRoundSpeech.js'), 'utf8');
+  const client = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/utils/partnerRoundSpeech.js'), 'utf8');
   assert.doesNotMatch(source, /ROOMS_COLLECTION|partnerCurrentRoundContent|collection\s*\(\s*['"]rooms['"]\s*\)/);
   assert.match(client, /dispatchRoomCommand\s*\(\s*['"]APPEND_ARTIFACT['"]/);
   assert.match(client, /segmentContext\s*=\s*\{ roomId, sessionId: session\.sessionId, turnId: turn\.turnId, phase \}/);

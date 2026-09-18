@@ -10,10 +10,10 @@ const {
   roleLabel,
   winnerLabel
 } = require('./spyGameState');
-const { openUrl } = require('./pageNavigate');
-const { goRoomPage } = require('./goRoomPage');
-const { buildAvatarList, buildAvatarListAsync } = require('./avatars');
-const { handleRoomGoneFromResult } = require('./roomDissolved');
+const { openUrl } = require('../../utils/pageNavigate');
+const { goRoomPage } = require('../../utils/goRoomPage');
+const { buildAvatarList, buildAvatarListAsync } = require('../../utils/avatars');
+const { handleRoomGoneFromResult } = require('../../utils/roomDissolved');
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
@@ -21,7 +21,7 @@ const {
   getActiveRoomSession,
   getRoomPageSnapshot,
   unbindPageFromRoomSession
-} = require('../modules/room-session/index');
+} = require('../../modules/room-session/index');
 
 /** 拉取房间；若已解散/不在房间则统一回首页并返回 null */
 async function fetchRoomDataOrExit(roomId) {
