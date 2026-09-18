@@ -54,10 +54,11 @@
   flex-shrink: 0;
 }
 
-/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+/* player-top-bar 已自带左右预留，需同时抵消父级左右 padding，否则右侧头像会被胶囊裁切 */
 .header-section > player-top-bar {
   margin-left: -48rpx;
-  width: calc(100% + 48rpx);
+  margin-right: -48rpx;
+  width: calc(100% + 96rpx);
 }
 
 /* 工作坊名称: Figma 18px Medium #45AD59 → 36rpx */

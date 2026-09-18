@@ -29,10 +29,11 @@
   gap: 24rpx;
 }
 
-/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+/* player-top-bar 已自带左右预留，需同时抵消父级左右 padding，否则右侧头像会被胶囊裁切 */
 .header-section > player-top-bar {
   margin-left: -40rpx;
-  width: calc(100% + 40rpx);
+  margin-right: -40rpx;
+  width: calc(100% + 80rpx);
 }
 
 /* TopBar: Figma row, fill, alignItems center */

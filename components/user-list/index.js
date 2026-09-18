@@ -127,6 +127,7 @@ Component({
     actingOnActionPage: true,
     displayList: [],
     overflowCount: 0,
+    stackRowStyle: '',
     isPartnerGameVisual: false
   },
 
@@ -137,16 +138,21 @@ Component({
       let nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
       nextDisplay = this._preserveDisplayAvatars(nextDisplay, this.data.displayList || []);
       const nextOverflow = max > 0 && list.length > max ? list.length - max : 0;
+      const nextStackStyle = this._stackRowStyle(nextDisplay, nextOverflow);
       // 临时 HTTPS 签名变化时稳定键不变，避免无意义 setData 触发 <image> 重载闪烁
       const nextFp = this._avatarDisplayFingerprint(nextDisplay, nextOverflow);
       if (nextFp && nextFp === this._avatarDisplayFingerprintCache) {
+        if (nextStackStyle !== this.data.stackRowStyle) {
+          this.setData({ stackRowStyle: nextStackStyle });
+        }
         return;
       }
       this._avatarDisplayFingerprintCache = nextFp;
       this._avatarErrorRetry = {};
       this.setData({
         displayList: nextDisplay,
-        overflowCount: nextOverflow
+        overflowCount: nextOverflow,
+        stackRowStyle: nextStackStyle
       });
     },
     'actingUser, currentUser, selectedUser, indicatorUser, showActingFrame, enableSelectedFrame, visualMode, onActionPage, specialMoveActive': function syncFrameUsers() {
@@ -173,7 +179,8 @@ Component({
       this._avatarDisplayFingerprintCache = this._avatarDisplayFingerprint(nextDisplay, nextOverflow);
       this.setData({
         displayList: nextDisplay,
-        overflowCount: nextOverflow
+        overflowCount: nextOverflow,
+        stackRowStyle: this._stackRowStyle(nextDisplay, nextOverflow)
       });
       this._syncFrameUsers();
       this._syncRoundTimerKey();
@@ -219,6 +226,20 @@ Component({
       }
       const q = url.indexOf('?');
       return q >= 0 ? url.slice(0, q) : url;
+    },
+
+    /** 叠放头像条：给 scroll-view 子节点明确宽度，避免微信里撑不开导致右侧被裁切 */
+    _stackRowStyle(list, overflowCount) {
+      if (this.properties.layout !== 'stack') return '';
+      let n = (list || []).length;
+      if (overflowCount > 0) n += 1;
+      if (this.properties.enableAdd) n += 1;
+      if (n <= 0) return '';
+      const avatarRpx = 80;
+      const overlapRpx = 16;
+      const endPadRpx = 8;
+      const width = avatarRpx + (n - 1) * (avatarRpx - overlapRpx) + endPadRpx;
+      return `width:${width}rpx;`;
     },
 
     _avatarDisplayFingerprint(list, overflowCount) {

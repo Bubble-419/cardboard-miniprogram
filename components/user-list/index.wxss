@@ -308,17 +308,18 @@
 
 .layout-stack .avatar-scroll {
   width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
+  height: 80rpx;
+  white-space: nowrap;
 }
 
 .layout-stack .avatar-row-stack {
   display: inline-flex;
   align-items: center;
+  flex-wrap: nowrap;
   padding: 0;
-  box-sizing: border-box;
-  height: 100%;
+  box-sizing: content-box;
+  height: 80rpx;
+  flex-shrink: 0;
 }
 
 .layout-stack .avatar-item {

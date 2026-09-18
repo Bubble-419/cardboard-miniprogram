@@ -51,6 +51,15 @@
   overflow: hidden;
 }
 
+/* 约束 user-list 宿主：避免按全部头像撑开后被裁切、内部无法横滑 */
+.avatar-group > user-list,
+.top-bar-user-list {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .top-bar-right-spacer {
   flex-shrink: 0;
 }
