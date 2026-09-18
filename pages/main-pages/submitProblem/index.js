@@ -469,7 +469,7 @@ Page(withPageInteractionLock({
           totalMembers: status.totalMembers || this.data.totalMembers
         }));
 
-        // 最后一位提交者也必须按自己的 Member View 路由：房主进选择页，玩家进等待页。
+        // 最后一位提交者也必须按自己的 Member View 路由：全员进入选择设计问题页。
         await followRoomRouteAfterCommand(result, this.data.roomId);
         return null;
       } catch (e) {

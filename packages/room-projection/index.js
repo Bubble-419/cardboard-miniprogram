@@ -385,7 +385,7 @@ function projectRoute(aggregate, actorView) {
   const routes = {
     [WORKFLOW_STEP.CHOOSE_SCENARIO]: host ? 'modeIndex' : 'subAwait',
     [WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS]: 'submitProblem',
-    [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM]: host ? 'selectProblem' : 'subAwait',
+    [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM]: 'selectProblem',
     [WORKFLOW_STEP.SELECT_FIRST_PLAYER]: host ? 'selectPlayer' : 'subAwait',
     [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]: host ? 'confirmFirstPlayer' : 'subAwait',
     [WORKFLOW_STEP.PARTNER_TURN]: 'partnerGame', [WORKFLOW_STEP.PARTNER_STATEMENT]: 'partnerGame',

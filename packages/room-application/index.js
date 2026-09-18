@@ -228,6 +228,9 @@ function createRoomApplication(repo, options) {
       if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
         return !!(currentSessionId && row.sessionId === currentSessionId);
       }
+      if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
+        return !!(currentSessionId && row.sessionId === currentSessionId && String(row.value || ''));
+      }
       return false;
     }).forEach((row) => {
       if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
@@ -296,6 +299,7 @@ function createRoomApplication(repo, options) {
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
     const designNudge = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE;
+    const designEditing = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING;
     if (silentSound) {
       if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId)
         || typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
@@ -303,6 +307,16 @@ function createRoomApplication(repo, options) {
       }
     } else if (designNudge) {
       if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+        return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+      }
+    } else if (designEditing) {
+      if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+        return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+      }
+      if (rawValue != null && rawValue !== '' && typeof rawValue !== 'string') {
+        return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
+      }
+      if (rawValue && !isOpaqueId(String(rawValue).trim())) {
         return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
       }
     } else {
@@ -315,12 +329,16 @@ function createRoomApplication(repo, options) {
       sessionId,
       turnId: silentSound ? turnId : '',
       signalType,
-      value: silentSound ? Math.min(1, Math.max(0, rawValue)) : 1,
+      value: silentSound
+        ? Math.min(1, Math.max(0, rawValue))
+        : (designEditing ? String(rawValue || '').trim() : 1),
       now: now()
     });
     if (!result || result.ok !== true) {
       return fail(result && result.errCode || ERR.INVALID_TRANSITION,
-        result && result.errMsg || (silentSound ? '当前不能发布静默声贝' : '当前不能催促提交设计问题'));
+        result && result.errMsg || (silentSound
+          ? '当前不能发布静默声贝'
+          : (designEditing ? '当前不能同步设计问题编辑态' : '当前不能催促提交设计问题')));
     }
     await touchActivity(roomId, result.signal.memberId, actorContext);
     return okResult({ signal: result.signal });

@@ -120,7 +120,7 @@ test('selectPlayer confirm blocks reselect until redirect completion', async () 
   delete app.globalData.roomSession;
 });
 
-test('最后提交设计问题的普通玩家按 Member View 进入等待页，而不是房主选择页', async () => {
+test('最后提交设计问题的普通玩家按 Member View 进入只读选择页', async () => {
   let redirectUrl = '';
   global.wx = {
     showToast() {},
@@ -139,7 +139,7 @@ test('最后提交设计问题的普通玩家按 Member View 进入等待页，�
       { memberId: 'member-2', playerIndex: 2, nickName: '玩家2', isMe: true }
     ],
     view: {
-      route: { name: 'subAwait', params: { phase: 'SELECT_DESIGN_PROBLEM' } },
+      route: { name: 'selectProblem', params: { phase: 'SELECT_DESIGN_PROBLEM' } },
       actor: {
         memberId: 'member-2',
         contributionStatus: { submitted: true, text: '问题 B' }
@@ -174,8 +174,8 @@ test('最后提交设计问题的普通玩家按 Member View 进入等待页，�
   });
 
   await page.submitProblem();
-  assert.match(redirectUrl, /^\/pages\/sub-pages\/subAwait\/index\?/);
-  assert.doesNotMatch(redirectUrl, /selectProblem/);
+  assert.match(redirectUrl, /selectProblem/);
+  assert.doesNotMatch(redirectUrl, /subAwait/);
   delete app.globalData.roomSession;
 });
 

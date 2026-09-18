@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
-const { emptyFacts, designProblemNudgeDeniedReason } = require('@cardboard/room-domain');
+const { emptyFacts, designProblemNudgeDeniedReason, designProblemEditingDeniedReason } = require('@cardboard/room-domain');
 const {
   PROTOCOL_VERSION, SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify,
   SIGNAL_TYPES, SIGNAL_TTL_MS, DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
@@ -365,6 +365,41 @@ function createCloudBaseRoomRepository(deps) {
           turnId: '',
           updatedAt: input.now,
           expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
+        };
+        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        return { ok: true, signal: row };
+      }
+      if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
+        if (room.currentSessionId !== input.sessionId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能同步设计问题编辑态' };
+        }
+        const session = await safeGet(transaction, COLLECTIONS.sessions, input.sessionId);
+        if (!session || session.roomId !== input.roomId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能同步设计问题编辑态' };
+        }
+        const contributionId = String(input.value || '').trim();
+        const denied = designProblemEditingDeniedReason(
+          session, room.hostMemberId, member.memberId, contributionId, session.facts
+        );
+        if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const signalId = docId(`${input.roomId}:${input.signalType}`);
+        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+        if (existing && existing.sessionId === input.sessionId
+          && String(existing.value || '') === contributionId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: existing };
+        }
+        const row = {
+          roomId: input.roomId,
+          signalType: input.signalType,
+          value: contributionId,
+          memberId: member.memberId,
+          sessionId: input.sessionId,
+          turnId: '',
+          updatedAt: input.now,
+          expiresAt: contributionId
+            ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]
+            : input.now
         };
         await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
         return { ok: true, signal: row };

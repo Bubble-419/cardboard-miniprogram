@@ -576,6 +576,86 @@ test('催促信号过期后不再投影，离开收集问题步骤后不能再�
   assert.equal(DESIGN_PROBLEM_NUDGE_COOLDOWN_MS, 15000);
 });
 
+async function startSelectingDesignProblems(h, memberCount) {
+  const sessionId = await startCollectingDesignProblems(h, memberCount);
+  const users = ['host', 'u2', 'u3'].slice(0, memberCount);
+  const texts = ['如何让协作更顺畅？', '如何降低沟通成本？', '如何快速达成共识？'];
+  for (let i = 0; i < users.length; i += 1) {
+    await h.command(users[i], 'SUBMIT_DESIGN_PROBLEM', {
+      context: { sessionId }, payload: { text: texts[i] }
+    });
+  }
+  return sessionId;
+}
+
+test('房主可广播设计问题编辑态，非房主能看到且不推进业务水位', async () => {
+  const h = createHarness();
+  const sessionId = await startSelectingDesignProblems(h, 3);
+  const host = await h.snapshot('host');
+  const problemId = host.view.session.setup.designProblems[0].contributionId;
+  const before = await h.snapshot('u2');
+
+  const denied = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'u2' });
+  const written = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'host' });
+  const after = await h.snapshot('u2');
+  const page = projectPageSnapshot(after.view, {
+    roomId: after.roomId, seq: after.seq, stateVersion: after.stateVersion,
+    serverNow: after.serverTime, ephemeral: after.ephemeral
+  });
+
+  assert.equal(denied.ok, false);
+  assert.equal(denied.errCode, 'HOST_REQUIRED');
+  assert.equal(written.ok, true);
+  assert.equal(written.signal.signalType, SIGNAL_TYPES.DESIGN_PROBLEM_EDITING);
+  assert.equal(written.signal.value, problemId);
+  assert.equal(after.seq, before.seq);
+  assert.equal(after.stateVersion, before.stateVersion);
+  assert.equal(after.ephemeral.signals.DESIGN_PROBLEM_EDITING.value, problemId);
+  assert.equal(after.view.route.name, 'selectProblem');
+  assert.equal(page.roomState.editingProblemId, problemId);
+  assert.equal(page.roomState.currentPage, 'selectProblem');
+});
+
+test('结束编辑或过期后不再投影编辑态，离开选题步骤后不能再写', async () => {
+  const h = createHarness();
+  const sessionId = await startSelectingDesignProblems(h, 3);
+  const host = await h.snapshot('host');
+  const problemId = host.view.session.setup.designProblems[0].contributionId;
+  const written = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'host' });
+  assert.equal(written.ok, true);
+
+  const cleared = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: ''
+  }, { userId: 'host' });
+  const afterClear = await h.snapshot('u2');
+  assert.equal(cleared.ok, true);
+  assert.equal(afterClear.ephemeral.signals.DESIGN_PROBLEM_EDITING, undefined);
+
+  const rewritten = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'host' });
+  assert.equal(rewritten.ok, true);
+  h.advanceTime(SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING] + 1);
+  const expired = await h.snapshot('u2');
+  assert.equal(expired.ephemeral.signals.DESIGN_PROBLEM_EDITING, undefined);
+
+  await h.command('host', 'SELECT_DESIGN_PROBLEM', {
+    context: { sessionId, workflowStep: 'SELECT_DESIGN_PROBLEM' },
+    payload: { contributionId: problemId }
+  });
+  const stale = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'host' });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.errCode, 'INVALID_TRANSITION');
+});
+
 test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {
   const h = createHarness();
   await h.seedMembers(2);
