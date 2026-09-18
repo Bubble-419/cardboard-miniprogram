@@ -55,6 +55,10 @@
         "type": "folder"
       },
       {
+        "value": "cloudfunctions",
+        "type": "folder"
+      },
+      {
         "value": "cloud-common",
         "type": "folder"
       },
@@ -72,6 +76,10 @@
       },
       {
         "value": "packages/room-cloudbase-adapter",
+        "type": "folder"
+      },
+      {
+        "value": "assets/figma",
         "type": "folder"
       },
       {
@@ -112,6 +120,22 @@
       },
       {
         "value": "assets/icons/aaatest.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/wearable.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/share.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/display.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/question-mark.png",
         "type": "file"
       }
     ],
