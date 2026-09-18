@@ -40,6 +40,10 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.deepEqual(COMMAND_CONTEXT.RESET_FIRST_PLAYER, ['sessionId', 'workflowRevision']);
   assert.deepEqual(COMMAND_CONTEXT.RESET_DESIGN_PROBLEM, ['sessionId', 'workflowRevision']);
   assert.deepEqual(COMMAND_CONTEXT.RESET_SCENARIO, ['sessionId', 'workflowRevision']);
+  assert.deepEqual(COMMAND_CONTEXT.REOPEN_HALLI_IDEA, ['sessionId']);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.REOPEN_HALLI_IDEA, {
+    context: { sessionId: 's1' }, payload: {}
+  })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
     context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);

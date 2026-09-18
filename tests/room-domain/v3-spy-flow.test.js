@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
+const { reduceCommand } = require('@cardboard/room-domain');
 
 async function seedSpy(playerCount = 3) {
   const h = createHarness({ wordPairPicker: () => ({ id: 'fixed', civilianWord: '苹果', civilianBlurb: '水果', spyWord: '梨', spyBlurb: '另一种水果' }) });
@@ -102,6 +103,70 @@ test('Spy 全员弃票产生无淘汰轮结果，并可开始下一轮', async (
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.publicModeState.roundNo, 2);
   assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
+});
+
+test('Spy 无人淘汰时下一轮使用新的随机发言顺序', async () => {
+  const { h, sessionId, gameId } = await seedSpy(4);
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  for (const userId of ['host', 'u2', 'u3', 'u4']) {
+    await h.command(userId, 'SUBMIT_SPY_VOTE', {
+      context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+    });
+  }
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
+  const members = snapshot.view.room.members;
+  const expectedOrder = [members[1].memberId, members[2].memberId, members[3].memberId, members[0].memberId];
+  const domain = reduceCommand({
+    aggregate: h.repo.rooms.get('12345678'),
+    actorUserId: 'u2',
+    command: {
+      type: 'START_NEXT_SPY_ROUND',
+      context: { sessionId, gameId, roundNo: 1 },
+      payload: {}
+    },
+    deps: {
+      now: 5000,
+      idFactory: (prefix) => `${prefix}-next-round`,
+      // Fisher-Yates 在四人队列上连续取 0，预期顺序是 2、3、4、1号位。
+      random: () => 0
+    }
+  });
+  assert.equal(domain.ok, true);
+  assert.deepEqual(domain.aggregate.currentSession.modeState.spy.speakOrder, expectedOrder);
+});
+
+test('Spy 有人淘汰时保留上轮随机顺序并从淘汰者之后继续', async () => {
+  const { h, sessionId, gameId } = await seedSpy(4);
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const previousOrder = snapshot.view.session.publicModeState.speakOrder.slice();
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const users = ['host', 'u2', 'u3', 'u4'];
+  const cards = {};
+  for (const userId of users) cards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;
+  const targetUser = users.find((userId) => cards[userId].role === 'civilian');
+  const targetMemberId = (await h.snapshot(targetUser)).view.actor.memberId;
+  for (const userId of users) {
+    await h.command(userId, 'SUBMIT_SPY_VOTE', {
+      context: { sessionId, gameId, voteSessionId },
+      payload: userId === targetUser ? { abstain: true } : { targetMemberId }
+    });
+  }
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
+  const eliminatedIndex = previousOrder.indexOf(targetMemberId);
+  const expectedOrder = [];
+  for (let offset = 1; offset <= previousOrder.length; offset += 1) {
+    const memberId = previousOrder[(eliminatedIndex + offset) % previousOrder.length];
+    if (memberId !== targetMemberId) expectedOrder.push(memberId);
+  }
+  await h.command('u2', 'START_NEXT_SPY_ROUND', {
+    context: { sessionId, gameId, roundNo: snapshot.view.session.publicModeState.roundNo }
+  });
+  snapshot = await h.snapshot('host');
+  assert.deepEqual(snapshot.view.session.publicModeState.speakOrder, expectedOrder);
 });
 
 test('Spy 平票加时只能投首轮并列成员', async () => {

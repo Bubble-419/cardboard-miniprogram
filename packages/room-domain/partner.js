@@ -102,15 +102,22 @@ function beginNextPartnerTurn(aggregate, deps) {
   const valid = new Set(activeParticipantIds(session));
   partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => valid.has(id));
   if (!partner.roundRemainingMemberIds.length) {
-    partner.roundNo += 1;
-    const firstMemberId = valid.has(partner.firstMemberId)
-      ? partner.firstMemberId
-      : (activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId);
-    partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
-    partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
+    beginNextPartnerRound(aggregate);
   }
   const nextMemberId = partner.roundRemainingMemberIds[0];
   return nextMemberId ? startPartnerTurn(aggregate, nextMemberId, deps, true) : null;
+}
+
+function beginNextPartnerRound(aggregate) {
+  const partner = partnerState(aggregate);
+  const valid = new Set(activeParticipantIds(aggregate.currentSession));
+  partner.roundNo += 1;
+  const firstMemberId = valid.has(partner.firstMemberId)
+    ? partner.firstMemberId
+    : (activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId);
+  partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
+  partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
+  return partner.roundRemainingMemberIds;
 }
 
 function assertPartnerSession(aggregate, context, steps) {
@@ -229,6 +236,15 @@ function resolveClosing(aggregate, deps) {
   const dirty = summary ? [{ kind: 'turns', id: summary.turnId }] : [];
   if (question) {
     closing.stage = 'QUESTIONED';
+    // 若整轮已结束且首位玩家被质疑，这次回答就是新轮的首个行动。
+    // 否则回答完成后再从首位开始新轮，会让同一成员连续行动两次。
+    if (!partner.roundRemainingMemberIds.length) {
+      const nextRoundOrder = orderedParticipantIds(aggregate,
+        activeParticipantIds(session).includes(partner.firstMemberId)
+          ? partner.firstMemberId
+          : (activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId));
+      if (nextRoundOrder[0] === question.memberId) beginNextPartnerRound(aggregate);
+    }
     let countsForRound = partner.roundRemainingMemberIds.includes(question.memberId);
     if (countsForRound) {
       partner.roundRemainingMemberIds = [question.memberId].concat(partner.roundRemainingMemberIds.filter((id) => id !== question.memberId));

@@ -35,6 +35,80 @@ test('Halli 从情境、首位、线下活动、全员创意到汇总和完成',
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.status, 'COMPLETED');
   assert.equal(snapshot.view.session.result.ideaCount, 3);
+  assert.equal(snapshot.view.actor.capabilities.REOPEN_HALLI_IDEA.allowed, false);
+  const reopenCompleted = await h.command('host', 'REOPEN_HALLI_IDEA', {
+    context: { sessionId }
+  });
+  assert.equal(reopenCompleted.errCode, 'INVALID_TRANSITION');
+});
+
+test('Halli 已提交成员可在收集期和汇总期返回修改自己的创意', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'HALLI_GALLI' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  snapshot = await h.snapshot('host');
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
+    payload: { memberId: snapshot.view.actor.memberId }
+  });
+  await h.command('host', 'END_HALLI_ACTIVITY', { context: { sessionId } });
+  await h.command('host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '初稿' }
+  });
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.route.name, 'creativeSummary');
+  assert.equal(snapshot.view.actor.capabilities.REOPEN_HALLI_IDEA.allowed, true);
+  let result = await h.command('host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
+  assert.equal(result.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.route.name, 'creativeInput');
+  assert.equal(snapshot.view.actor.contributionStatus.text, '初稿');
+  assert.equal(snapshot.view.actor.capabilities.SUBMIT_HALLI_IDEA.allowed, true);
+
+  result = await h.command('host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '收集期修改稿' }
+  });
+  assert.equal(result.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.route.name, 'creativeSummary');
+  assert.equal(snapshot.view.session.publicModeState.ideas
+    .find((item) => item.memberId === snapshot.view.actor.memberId).text, '收集期修改稿');
+
+  await h.command('u2', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意二' }
+  });
+  await h.command('u3', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意三' }
+  });
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'HALLI_SUMMARY');
+
+  result = await h.command('host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
+  assert.equal(result.ok, true);
+  assert.equal((await h.snapshot('host')).view.route.name, 'creativeInput');
+  assert.equal((await h.snapshot('u2')).view.route.name, 'creativeSummary',
+    '一名成员修改时不应改变其他成员的汇总页');
+  const prematureComplete = await h.command('host', 'COMPLETE_HALLI_SESSION', {
+    context: { sessionId }
+  });
+  assert.equal(prematureComplete.errCode, 'INVALID_TRANSITION',
+    '尚有未保存的修改时不能完成场次');
+
+  result = await h.command('host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '汇总期修改稿' }
+  });
+  assert.equal(result.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'HALLI_SUMMARY');
+  assert.equal(snapshot.view.route.name, 'creativeSummary');
+  assert.equal(snapshot.view.session.publicModeState.ideas
+    .find((item) => item.memberId === snapshot.view.actor.memberId).text, '汇总期修改稿');
 });
 
 test('已完成场次保持不可变，当前人数不足时拒绝重开', async () => {

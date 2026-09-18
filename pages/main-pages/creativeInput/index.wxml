@@ -24,10 +24,10 @@
     />
 
     <view class="action-row">
-      <button class="submit-btn" bindtap="handleSubmit">提交</button>
+      <button class="submit-btn" bindtap="handleSubmit">{{editing ? '保存修改' : '提交'}}</button>
     </view>
 
-    <view class="wait-tip" wx:if="{{!isHost && submitted}}">
+    <view class="wait-tip" wx:if="{{!isHost && submitted && !editing}}">
       <text>已提交，等待主屏查看汇总...</text>
     </view>
   </view>

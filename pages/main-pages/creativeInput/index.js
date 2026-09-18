@@ -22,6 +22,7 @@ Page(withPageInteractionLock({
     myAvatar: '',
     ideaText: '',
     submitted: false,
+    editing: false,
     submittedCount: 0,
     canViewSummary: false
   },
@@ -73,10 +74,14 @@ Page(withPageInteractionLock({
       const session = result.view && result.view.session;
       const progress = session && session.progress && session.progress.contributionProgress || {};
       const contribution = result.view && result.view.actor && result.view.actor.contributionStatus;
+      const capabilities = result.view && result.view.actor && result.view.actor.capabilities || {};
+      const canSubmit = !!(capabilities.SUBMIT_HALLI_IDEA
+        && capabilities.SUBMIT_HALLI_IDEA.allowed);
       const submittedCount = progress.submittedCount || 0;
       this.setData({
         submittedCount,
         submitted: !!(contribution && contribution.submitted),
+        editing: !!(contribution && contribution.submitted && canSubmit),
         ideaText: contribution && contribution.submitted ? (contribution.text || '') : this.data.ideaText
       });
       const memberCount = progress.requiredCount || members.length;

@@ -301,6 +301,19 @@ test('Sync 不得把旧 View Schema 的 Event 包装成当前版本', async () =
   assert.equal(batch.events, undefined);
 });
 
+test('Sync 不得把旧 Event Schema 的 Event 包装成当前版本', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const events = h.repo.events.get('12345678');
+
+  assert.equal(events.every((event) => event.eventSchemaVersion === EVENT_SCHEMA_VERSION), true);
+  events[0].eventSchemaVersion = EVENT_SCHEMA_VERSION - 1;
+
+  const batch = await h.app.sync('12345678', 0, { userId: 'host' });
+  assert.equal(batch.delivery, 'SNAPSHOT');
+  assert.equal(batch.events, undefined);
+});
+
 test('Sync 积压超过 25 条时在同一响应内返回最新 Snapshot', async () => {
   const h = createHarness();
   await h.seedMembers(2);

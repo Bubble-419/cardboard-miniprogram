@@ -262,6 +262,69 @@ test('Partner 多人同时 question 时按冻结座次选择下一位，而不�
   assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
 });
 
+test('Partner 整轮末首位玩家被 question 时，回答行动计入新轮且不会连续行动', async () => {
+  const { h, sessionId, turnId, hostMemberId, u2MemberId, u3MemberId } = await seedPartner();
+
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
+
+  let snapshot = await h.snapshot('host');
+  const secondTurnId = snapshot.view.session.activeTurn.turnId;
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
+  await h.command('host', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: secondTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: secondTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId: secondTurnId }, payload: { statementResult: 'allPass' }
+  });
+
+  snapshot = await h.snapshot('host');
+  const lastTurnId = snapshot.view.session.activeTurn.turnId;
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u3MemberId);
+  await h.command('u3', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId: lastTurnId }, payload: { kind: 'CLOSING' }
+  });
+  const closingVoteSessionId = (await h.snapshot('host'))
+    .view.session.publicModeState.closing.closingVoteSessionId;
+  await h.command('host', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId }, payload: { vote: 'question' }
+  });
+  await h.command('u2', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId }, payload: { vote: 'pass' }
+  });
+
+  snapshot = await h.snapshot('host');
+  const questionedTurnId = snapshot.view.session.activeTurn.turnId;
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, hostMemberId);
+  assert.equal(snapshot.view.session.activeTurn.roundNo, 2,
+    '整轮末首位玩家的回答行动应直接计入新轮');
+
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { statementResult: 'allPass' }
+  });
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId,
+    '回答完成后应轮到新轮的下一位，不能再次轮到首位玩家');
+  assert.equal(snapshot.view.session.activeTurn.roundNo, 2);
+});
+
 test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const left = await h.command('u2', 'LEAVE_ROOM');

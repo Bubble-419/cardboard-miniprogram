@@ -29,7 +29,7 @@ flowchart LR
 `packages/room-*` 或任一 `cloudfunctions/*/src` 后，也要重新构建并部署相关云函数。
 客户端与云函数版本不一致时，不属于受支持的运行方式。
 
-当前事件格式为 `eventSchemaVersion = 3`，Patch 包含 `set/remove/splice`，每个 Event Group 还
+当前 Event Schema 版本以 `packages/room-contracts/index.js` 为准；Patch 包含 `set/remove/splice`，每个 Event Group 还
 记录生成补丁时的 `viewSchemaVersion`。本次不迁移旧数据，必须在空的 V3 集合上将客户端与
 全部 V3 云函数作为同一发布单元部署，不能混用不同 View/持久化 Schema 的云函数。
 

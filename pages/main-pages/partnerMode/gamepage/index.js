@@ -332,8 +332,6 @@ Page(withPageInteractionLock({
     this._appliedRoomRevision = 0;
     this._roomDataReady = false;
     this._cloudAvatarResolving = false;
-    // 仅用于“服务端缺字段时的临时兜底”；新页面实例必须从空开始，避免带入旧会话纪要
-    this._lastRawRoundSummaries = [];
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -2076,16 +2074,10 @@ Page(withPageInteractionLock({
       ? roomState.partnerExpressMessages
       : [];
     this._expressMessagesAll = expressMessages;
-    // 服务端 partnerRoundSummaries 缺失时可短暂兜底，但新会话必须清缓存，防止旧纪要串入新局
-    if (sessionChanged && !Array.isArray(roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = [];
-    }
-    if (Array.isArray(roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
-    }
+    // Member View 必须完整携带纪要；缺失时不用旧 View 伪造当前状态。
     const rawRoundSummaries = Array.isArray(roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
-      : (sessionChanged ? [] : (this._lastRawRoundSummaries || []));
+      : [];
     let normalizedRawRoundSummaries = Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [];
     // 新局首回合保护：第1轮玩家1出牌时不应出现任何历史纪要，强制忽略旧缓存/旧会话残留
     if (
@@ -2096,7 +2088,6 @@ Page(withPageInteractionLock({
       && normalizedRawRoundSummaries.length > 0
     ) {
       normalizedRawRoundSummaries = [];
-      this._lastRawRoundSummaries = [];
     }
     const roundSummaries = normalizedRawRoundSummaries
       .slice()

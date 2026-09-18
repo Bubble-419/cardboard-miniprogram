@@ -225,11 +225,12 @@ modeState.partner
 ```text
 setup.proposedFirstMemberId
 progress.contributionProgress
+modeState.halli.revisingMemberIds
 facts.contributions[HALLI_IDEA]
 result.ideaCount
 ```
 
-创意是公共协作事实；每次 `SUBMIT_HALLI_IDEA` 都会将已提交内容增量投影给全员。`HALLI_SUMMARY` 表示全员提交完成，不是内容首次解封点。
+创意是公共协作事实；每次 `SUBMIT_HALLI_IDEA` 都会将已提交内容增量投影给全员。`HALLI_SUMMARY` 表示全员提交完成，不是内容首次解封点。`revisingMemberIds` 是权威修改意图：本人 Actor View 由此恢复输入页，Public View 只投影 `revisingCount`，不公开修改者身份。修改未保存时不允许完成场次。
 
 ### Spy
 

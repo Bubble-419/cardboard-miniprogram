@@ -23,13 +23,14 @@
     </scroll-view>
   </view>
 
-  <view class="footer" wx:if="{{isHost}}">
-    <view class="footer-actions" wx:if="{{canRestartRound}}">
+  <view class="footer" wx:if="{{isHost || canEditIdea}}">
+    <button class="edit-btn" wx:if="{{canEditIdea}}" bindtap="handleEditIdea">修改我的创意</button>
+    <view class="footer-actions" wx:if="{{isHost && canRestartRound}}">
       <button class="room-btn" bindtap="handleGoRoom">返回房间</button>
       <button class="finish-btn" bindtap="handleFinish">再来一轮</button>
     </view>
     <button
-      wx:else
+      wx:elif="{{isHost}}"
       class="finish-btn finish-btn-disabled"
       disabled
     >再来一轮</button>

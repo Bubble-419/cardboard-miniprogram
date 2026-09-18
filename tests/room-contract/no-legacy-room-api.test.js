@@ -122,6 +122,18 @@ test('历史回看按 sessionId 读取归档 View，不使用当前房间快照'
   assert.match(game, /getRoomSessionPageSnapshot\(roomId, sessionId\)/);
 });
 
+test('Partner 页面不缓存上一份服务端 View 来掩盖投影缺失', () => {
+  const pages = [
+    'pages/main-pages/partnerMode/gamepage/index.js',
+    'pages/main-pages/partnerMode/specialMove/index.js'
+  ];
+  pages.forEach((relativePath) => {
+    const source = fs.readFileSync(path.join(root, relativePath), 'utf8');
+    assert.doesNotMatch(source, /_lastRawRoundSummaries/,
+      `${relativePath} 必须只消费当前完整 Member View`);
+  });
+});
+
 test('扫码路径只在尚未加入时携带 fromScan，房间号主动加入后不重复提交', () => {
   const home = fs.readFileSync(path.join(root, 'pages/main-pages/aaa/index.js'), 'utf8');
   assert.match(home, /async _handleMiniProgramPathScan[\s\S]*?await this\._goToScanJoinRoom\(roomId\)/);

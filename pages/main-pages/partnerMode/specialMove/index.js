@@ -601,10 +601,7 @@ Page(withPageInteractionLock({
       : Number(this.data.currentRound || 1);
     const raw = Array.isArray(roomState && roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
-      : (this._lastRawRoundSummaries || []);
-    if (Array.isArray(roomState && roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
-    }
+      : [];
     const filtered = raw.filter((item) => {
       const rd = Number(item && item.round);
       if (!Number.isFinite(rd) || rd <= 0) return false;

@@ -480,14 +480,20 @@ stateDiagram-v2
   CHOOSE_SCENARIO --> SELECT_FIRST_PLAYER: SET_SCENARIO
   SELECT_FIRST_PLAYER --> HALLI_ACTIVITY: SELECT_FIRST_PLAYER
   HALLI_ACTIVITY --> HALLI_CREATIVE: END_HALLI_ACTIVITY
-  HALLI_CREATIVE --> HALLI_CREATIVE: 成员提交/更新自己的创意
+  HALLI_CREATIVE --> HALLI_CREATIVE: 提交 / REOPEN / 保存自己的创意
   HALLI_CREATIVE --> HALLI_SUMMARY: 所有有效参与者已提交
-  HALLI_SUMMARY --> COMPLETED: COMPLETE_HALLI_SESSION
+  HALLI_SUMMARY --> HALLI_SUMMARY: REOPEN / 保存自己的创意
+  HALLI_SUMMARY --> COMPLETED: 无修改中成员 + COMPLETE_HALLI_SESSION
 ```
 
 成员离开会在同一事务内缩减 `requiredMemberIds`；若剩余提交已经齐全，立即进入汇总。
 已提交的 Halli 创意在 `HALLI_CREATIVE` 阶段就进入公共 View，每次提交产生的
 Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
+`REOPEN_HALLI_IDEA` 把修改意图写入 Session，只将修改者的 Actor Route 投影为
+`creativeInput`；断线恢复后仍可从 Snapshot 还原编辑页和已提交文本。
+
+Spy 的 `START_NEXT_SPY_ROUND` 在无淘汰时重新洗牌；有淘汰时则保留上轮发言顺序，
+移除淘汰者并从其后一位开始。
 
 ## 8. Spy 状态机与秘密边界
 
@@ -533,7 +539,7 @@ flowchart LR
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` |
 | `HALLI_CREATIVE` 未提交 | `creativeInput` | `creativeInput` |
-| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary` |
+| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary`；本人修改中为 `creativeInput` |
 | `SPY_INTRO / SPEAK / VOTE / RESULT / SETTLED` | 对应 Spy 页面 | 对应 Spy 页面 |
 
 ## 10. 成员变化的原子副作用

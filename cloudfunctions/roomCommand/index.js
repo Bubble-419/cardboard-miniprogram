@@ -24,9 +24,9 @@ var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
     var PROTOCOL_VERSION = 3;
-    var SCHEMA_VERSION = 5;
-    var VIEW_SCHEMA_VERSION = 6;
-    var EVENT_SCHEMA_VERSION = 3;
+    var SCHEMA_VERSION = 6;
+    var VIEW_SCHEMA_VERSION = 7;
+    var EVENT_SCHEMA_VERSION = 4;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
     var MAX_SESSION_MESSAGES = 500;
@@ -117,6 +117,7 @@ var require_room_contracts = __commonJS({
       ADVANCE_PARTNER_CLOSING: "ADVANCE_PARTNER_CLOSING",
       COMPLETE_PARTNER_SESSION: "COMPLETE_PARTNER_SESSION",
       END_HALLI_ACTIVITY: "END_HALLI_ACTIVITY",
+      REOPEN_HALLI_IDEA: "REOPEN_HALLI_IDEA",
       SUBMIT_HALLI_IDEA: "SUBMIT_HALLI_IDEA",
       COMPLETE_HALLI_SESSION: "COMPLETE_HALLI_SESSION",
       START_SPY_GAME: "START_SPY_GAME",
@@ -178,6 +179,7 @@ var require_room_contracts = __commonJS({
       "ARTIFACT_REMOVED",
       "PARTNER_MESSAGE_POSTED",
       "HALLI_CREATIVE_STARTED",
+      "HALLI_IDEA_REOPENED",
       "HALLI_IDEA_SUBMITTED",
       "HALLI_SUMMARY_READY",
       "SPY_ROLES_ASSIGNED",
@@ -269,6 +271,7 @@ var require_room_contracts = __commonJS({
       ADVANCE_PARTNER_CLOSING: ["sessionId"],
       COMPLETE_PARTNER_SESSION: ["sessionId"],
       END_HALLI_ACTIVITY: ["sessionId"],
+      REOPEN_HALLI_IDEA: ["sessionId"],
       SUBMIT_HALLI_IDEA: ["sessionId"],
       COMPLETE_HALLI_SESSION: ["sessionId"],
       START_SPY_GAME: ["sessionId"],
@@ -314,6 +317,7 @@ var require_room_contracts = __commonJS({
       ADVANCE_PARTNER_CLOSING: [],
       COMPLETE_PARTNER_SESSION: [],
       END_HALLI_ACTIVITY: [],
+      REOPEN_HALLI_IDEA: [],
       SUBMIT_HALLI_IDEA: ["text"],
       COMPLETE_HALLI_SESSION: [],
       START_SPY_GAME: [],
@@ -1148,13 +1152,19 @@ var require_partner = __commonJS({
       const valid = new Set(activeParticipantIds(session));
       partner.roundRemainingMemberIds = partner.roundRemainingMemberIds.filter((id) => valid.has(id));
       if (!partner.roundRemainingMemberIds.length) {
-        partner.roundNo += 1;
-        const firstMemberId = valid.has(partner.firstMemberId) ? partner.firstMemberId : activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId;
-        partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
-        partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
+        beginNextPartnerRound(aggregate);
       }
       const nextMemberId = partner.roundRemainingMemberIds[0];
       return nextMemberId ? startPartnerTurn(aggregate, nextMemberId, deps, true) : null;
+    }
+    function beginNextPartnerRound(aggregate) {
+      const partner = partnerState(aggregate);
+      const valid = new Set(activeParticipantIds(aggregate.currentSession));
+      partner.roundNo += 1;
+      const firstMemberId = valid.has(partner.firstMemberId) ? partner.firstMemberId : activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId;
+      partner.firstMemberId = firstMemberId || partner.firstMemberId || null;
+      partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, partner.firstMemberId);
+      return partner.roundRemainingMemberIds;
     }
     function assertPartnerSession(aggregate, context, steps) {
       return assertSession(aggregate, context, { mode: MODE.PARTNER, steps });
@@ -1286,6 +1296,13 @@ var require_partner = __commonJS({
       const dirty = summary ? [{ kind: "turns", id: summary.turnId }] : [];
       if (question) {
         closing.stage = "QUESTIONED";
+        if (!partner.roundRemainingMemberIds.length) {
+          const nextRoundOrder = orderedParticipantIds(
+            aggregate,
+            activeParticipantIds(session).includes(partner.firstMemberId) ? partner.firstMemberId : activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId
+          );
+          if (nextRoundOrder[0] === question.memberId) beginNextPartnerRound(aggregate);
+        }
         let countsForRound = partner.roundRemainingMemberIds.includes(question.memberId);
         if (countsForRound) {
           partner.roundRemainingMemberIds = [question.memberId].concat(partner.roundRemainingMemberIds.filter((id) => id !== question.memberId));
@@ -1648,16 +1665,47 @@ var require_halli = __commonJS({
           turnId: null
         });
         check.session.progress.contributionProgress = { requiredMemberIds: activeParticipantIds(check.session), submittedMemberIds: [] };
+        check.session.modeState.halli = { revisingMemberIds: [] };
         return domainOk(aggregate, [event(EVENT_TYPES.HALLI_CREATIVE_STARTED, { sessionId: check.session.sessionId })]);
+      }
+      if (command.type === COMMAND_TYPES.REOPEN_HALLI_IDEA) {
+        const actor = assertParticipant(aggregate, actorUserId);
+        if (!actor.ok) return actor;
+        const check = assertSession(aggregate, command.context, {
+          mode: MODE.HALLI_GALLI,
+          steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
+        });
+        if (!check.ok) return check;
+        if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
+        const key = `${check.session.sessionId}:HALLI_IDEA:${actor.member.memberId}`;
+        if (!ensureFacts(aggregate).contributions[key]) {
+          return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u63D0\u4EA4\u521B\u610F");
+        }
+        const halli = check.session.modeState.halli || (check.session.modeState.halli = { revisingMemberIds: [] });
+        if (halli.revisingMemberIds.includes(actor.member.memberId)) return fail(ERR.INVALID_TRANSITION);
+        halli.revisingMemberIds.push(actor.member.memberId);
+        return domainOk(aggregate, [event(
+          EVENT_TYPES.HALLI_IDEA_REOPENED,
+          { memberId: actor.member.memberId }
+        )]);
       }
       if (command.type === COMMAND_TYPES.SUBMIT_HALLI_IDEA) {
         const actor = assertParticipant(aggregate, actorUserId);
         if (!actor.ok) return actor;
-        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_CREATIVE] });
+        const check = assertSession(aggregate, command.context, {
+          mode: MODE.HALLI_GALLI,
+          steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
+        });
         if (!check.ok) return check;
+        if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
         const facts = ensureFacts(aggregate);
         const key = `${check.session.sessionId}:HALLI_IDEA:${actor.member.memberId}`;
         const previous = facts.contributions[key];
+        const halli = check.session.modeState.halli || (check.session.modeState.halli = { revisingMemberIds: [] });
+        const revising = halli.revisingMemberIds.includes(actor.member.memberId);
+        if (previous && !revising || !previous && check.session.workflow.step !== WORKFLOW_STEP.HALLI_CREATIVE) {
+          return fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u4E0D\u80FD\u63D0\u4EA4\u6216\u4FEE\u6539\u521B\u610F");
+        }
         facts.contributions[key] = {
           contributionId: previous ? previous.contributionId : idOf(deps, "idea"),
           sessionId: check.session.sessionId,
@@ -1668,6 +1716,7 @@ var require_halli = __commonJS({
           createdAt: previous ? previous.createdAt : nowOf(deps),
           updatedAt: nowOf(deps)
         };
+        halli.revisingMemberIds = halli.revisingMemberIds.filter((memberId) => memberId !== actor.member.memberId);
         const progress = check.session.progress.contributionProgress;
         if (!progress.submittedMemberIds.includes(actor.member.memberId)) progress.submittedMemberIds.push(actor.member.memberId);
         const events = [event(EVENT_TYPES.HALLI_IDEA_SUBMITTED, {
@@ -1675,7 +1724,7 @@ var require_halli = __commonJS({
           submittedCount: progress.submittedMemberIds.length,
           requiredCount: progress.requiredMemberIds.length
         })];
-        if (progressComplete(progress)) {
+        if (check.session.workflow.step === WORKFLOW_STEP.HALLI_CREATIVE && progressComplete(progress)) {
           transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_SUMMARY, deps, {
             activeMemberId: null,
             turnId: null
@@ -1694,6 +1743,8 @@ var require_halli = __commonJS({
         if (!host.ok) return host;
         const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_SUMMARY] });
         if (!check.ok) return check;
+        const revisingMemberIds = check.session.modeState.halli && check.session.modeState.halli.revisingMemberIds || [];
+        if (revisingMemberIds.length) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u7B49\u5F85\u6210\u5458\u5B8C\u6210\u521B\u610F\u4FEE\u6539");
         const ideas = Object.values(ensureFacts(aggregate).contributions).filter((item) => item.sessionId === check.session.sessionId && item.kind === "HALLI_IDEA");
         check.session.status = SESSION_STATUS.COMPLETED;
         check.session.completedAt = nowOf(deps);
@@ -1723,6 +1774,9 @@ var require_halli = __commonJS({
         }));
       }
       const progress = session.progress && session.progress.contributionProgress;
+      if (session.modeState.halli && Array.isArray(session.modeState.halli.revisingMemberIds)) {
+        session.modeState.halli.revisingMemberIds = session.modeState.halli.revisingMemberIds.filter((id) => id !== memberId);
+      }
       if (progress) {
         progress.requiredMemberIds = progress.requiredMemberIds.filter((id) => id !== memberId);
         progress.submittedMemberIds = progress.submittedMemberIds.filter((id) => id !== memberId);
@@ -2206,11 +2260,20 @@ var require_spy = __commonJS({
         check.spy.lastResult = null;
         check.spy.voteProgress = null;
         check.spy.tieBreak = false;
-        let order = alive.slice().sort((a, b) => a.seatNoAtStart - b.seatNoAtStart).map((player) => player.memberId);
+        const aliveMemberIds = alive.map((player) => player.memberId);
+        let order = shuffle(aliveMemberIds, randomOf(deps));
         const eliminated = check.spy.players.find((player) => !player.alive && previousResult && player.memberId === previousResult.eliminatedMemberId);
         if (eliminated) {
-          const index = order.findIndex((memberId) => playerByMemberId(check.spy, memberId).seatNoAtStart > eliminated.seatNoAtStart);
-          if (index > 0) order = order.slice(index).concat(order.slice(0, index));
+          const aliveSet = new Set(aliveMemberIds);
+          const eliminatedIndex = check.spy.speakOrder.indexOf(eliminated.memberId);
+          if (eliminatedIndex >= 0) {
+            const rotated = [];
+            for (let offset = 1; offset <= check.spy.speakOrder.length; offset += 1) {
+              const memberId = check.spy.speakOrder[(eliminatedIndex + offset) % check.spy.speakOrder.length];
+              if (aliveSet.has(memberId)) rotated.push(memberId);
+            }
+            if (rotated.length === aliveMemberIds.length) order = rotated;
+          }
         }
         const events = [event(EVENT_TYPES.SPY_ROUND_STARTED, { roundNo: check.spy.roundNo }), startSpeaker(aggregate, order, deps, false)];
         return domainOk(aggregate, events);
@@ -2373,6 +2436,7 @@ var require_room_domain = __commonJS({
     ]);
     var HALLI_COMMANDS = /* @__PURE__ */ new Set([
       COMMAND_TYPES.END_HALLI_ACTIVITY,
+      COMMAND_TYPES.REOPEN_HALLI_IDEA,
       COMMAND_TYPES.SUBMIT_HALLI_IDEA,
       COMMAND_TYPES.COMPLETE_HALLI_SESSION
     ]);
@@ -3032,6 +3096,9 @@ var require_room_projection = __commonJS({
     function currentSpy(aggregate) {
       return aggregate.currentSession && aggregate.currentSession.modeState ? aggregate.currentSession.modeState.spy || null : null;
     }
+    function currentHalli(aggregate) {
+      return aggregate.currentSession && aggregate.currentSession.modeState ? aggregate.currentSession.modeState.halli || null : null;
+    }
     function projectPublicView(aggregate) {
       if (!aggregate || !aggregate.room) return null;
       const room = aggregate.room;
@@ -3209,9 +3276,11 @@ var require_room_projection = __commonJS({
         }));
       } else if (session.mode === MODE.HALLI_GALLI) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
+        const halli = currentHalli(aggregate) || {};
         view.publicModeState = {
           firstMemberId: session.setup.proposedFirstMemberId || null,
           submittedMemberIds: ideas.map((item) => item.memberId),
+          revisingCount: (halli.revisingMemberIds || []).length,
           // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
           ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
         };
@@ -3257,6 +3326,8 @@ var require_room_projection = __commonJS({
       const partner = currentPartner(aggregate);
       const turn = partner && partner.activeTurn;
       const facts = aggregate.facts || {};
+      const halliContribution = session && actor ? Object.values(facts.contributions || {}).find((item) => item.sessionId === session.sessionId && item.kind === "HALLI_IDEA" && item.memberId === actor.memberId) : null;
+      const halliRevising = !!(session && actor && currentHalli(aggregate) && (currentHalli(aggregate).revisingMemberIds || []).includes(actor.memberId));
       const canAppendArtifact = Object.keys(facts.artifacts || {}).length < MAX_SESSION_ARTIFACTS;
       const canPostMessage = (facts.messages || []).length < MAX_SESSION_MESSAGES;
       const isActorTurn = !!(turn && actor && turn.activeMemberId === actor.memberId);
@@ -3331,8 +3402,19 @@ var require_room_projection = __commonJS({
       caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.COMPLETE_PARTNER_SESSION] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.END_HALLI_ACTIVITY] = capability(isHost && step === WORKFLOW_STEP.HALLI_ACTIVITY, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.SUBMIT_HALLI_IDEA] = capability(isParticipant && step === WORKFLOW_STEP.HALLI_CREATIVE, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.COMPLETE_HALLI_SESSION] = capability(isHost && step === WORKFLOW_STEP.HALLI_SUMMARY, "INVALID_TRANSITION");
+      const activeHalli = !!(session && session.status === SESSION_STATUS.RUNNING);
+      caps[COMMAND_TYPES.REOPEN_HALLI_IDEA] = capability(
+        activeHalli && isParticipant && !!halliContribution && !halliRevising && [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY].includes(step),
+        "INVALID_TRANSITION"
+      );
+      caps[COMMAND_TYPES.SUBMIT_HALLI_IDEA] = capability(
+        activeHalli && isParticipant && (step === WORKFLOW_STEP.HALLI_CREATIVE && !halliContribution || halliRevising && [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY].includes(step)),
+        "INVALID_TRANSITION"
+      );
+      caps[COMMAND_TYPES.COMPLETE_HALLI_SESSION] = capability(
+        isHost && step === WORKFLOW_STEP.HALLI_SUMMARY && !(currentHalli(aggregate) && (currentHalli(aggregate).revisingMemberIds || []).length),
+        "INVALID_TRANSITION"
+      );
       const spy = currentSpy(aggregate);
       const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
       caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, "INVALID_TRANSITION");
@@ -3385,6 +3467,8 @@ var require_room_projection = __commonJS({
         if (session.mode === MODE.HALLI_GALLI) return { name: "creativeSummary", params: {} };
         return { name: "spySettle", params: {} };
       }
+      const revisingHalliIdea = session.mode === MODE.HALLI_GALLI && actorView.contributionStatus.submitted && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA] && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
+      if (revisingHalliIdea) return { name: "creativeInput", params: {} };
       if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
         return { name: "creativeSummary", params: {} };
       }

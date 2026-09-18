@@ -100,14 +100,8 @@ flowchart LR
 
 ## 版本与运行参数
 
-版本值必须从 [`packages/room-contracts/index.js`](../packages/room-contracts/index.js) 核对：
-
-```text
-protocolVersion = 3
-schemaVersion = 3
-viewSchemaVersion = 1
-eventSchemaVersion = 3
-```
+协议、持久化、View 与 Event Schema 的当前版本值只从
+[`packages/room-contracts/index.js`](../packages/room-contracts/index.js) 核对，文档不复制第二份可能过期的数字。
 
 ```text
 RoomClient 最小轮询间隔 = 2000ms
