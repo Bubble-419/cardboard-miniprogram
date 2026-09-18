@@ -866,12 +866,20 @@ Page(withPageInteractionLock({
                 }
                 wx.openSetting({
                   success: (settingRes) => {
-                    resolve(!!(settingRes.authSetting && settingRes.authSetting['scope.record']));
+                    const granted = !!(settingRes.authSetting && settingRes.authSetting['scope.record']);
+                    if (!granted) this._silentRecordDenied = true;
+                    resolve(granted);
                   },
-                  fail: () => resolve(false)
+                  fail: () => {
+                    this._silentRecordDenied = true;
+                    resolve(false);
+                  }
                 });
               },
-              fail: () => resolve(false)
+              fail: () => {
+                this._silentRecordDenied = true;
+                resolve(false);
+              }
             });
             return;
           }
@@ -884,7 +892,10 @@ Page(withPageInteractionLock({
             }
           });
         },
-        fail: () => resolve(false)
+        fail: () => {
+          this._silentRecordDenied = true;
+          resolve(false);
+        }
       });
     });
   },

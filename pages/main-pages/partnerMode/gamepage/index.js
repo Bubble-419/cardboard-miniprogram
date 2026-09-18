@@ -5028,14 +5028,9 @@ Page(withPageInteractionLock({
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-
-    // 先切到疑问讨论页，避免等 Command 回来才跳。
     this.setData({
-      statementSwitching: false,
-      canStartStatement: false,
-      gamepagePhase: PHASE_DISCUSSION
-    }, () => {
-      this._syncRoundSpeech();
+      statementSwitching: true,
+      statementSwitchAction: STATEMENT_ALL_QUESTION
     });
 
     try {
@@ -5043,25 +5038,24 @@ Page(withPageInteractionLock({
         statementResult: STATEMENT_ALL_QUESTION
       });
       if (!cmd || cmd.ok !== true) {
-        this.setData({
-          gamepagePhase: PHASE_PLAY,
-          canStartStatement: true
-        });
         wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
-        this._startStatePolling();
         return;
       }
-      this._startStatePolling();
+      // Command 成功后只消费 RoomClient 投影的完整 Member View，不在页面猜测阶段。
+      this.setData({ statementSwitching: false, statementSwitchAction: '' });
+      const session = this._boundRoomSession || getActiveRoomSession();
+      const snapshot = session && session.getSnapshot && session.getSnapshot();
+      if (snapshot) this._applyRoomContext(snapshot, { resetTurnUi: true, force: true });
     } catch (err) {
       console.warn('handleStartStatement', err);
-      this.setData({
-        gamepagePhase: PHASE_PLAY,
-        canStartStatement: true
-      });
       wx.showToast({ title: '开始讨论失败', icon: 'none' });
-      this._startStatePolling();
     } finally {
       this._startingStatement = false;
+      if (this.data.statementSwitching) {
+        this.setData({ statementSwitching: false, statementSwitchAction: '' });
+      }
+      this._syncRoundSpeech();
+      this._startStatePolling();
     }
   },
 

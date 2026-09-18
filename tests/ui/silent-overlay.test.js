@@ -30,6 +30,8 @@ test('静默模式其他成员叠入 specialMove，全员本机采麦测 40dB', 
   assert.doesNotMatch(sampling[0], /if \(!this\.data\.isHost\) return;/);
   assert.match(sampling[0], /_ensureRecordAuth/);
   assert.match(sampling[0], /if \(this\.data\.isHost\) this\._broadcastSilentSoundLevel\(smooth\)/);
+  assert.match(special, /const granted = !!\(settingRes\.authSetting[\s\S]*?if \(!granted\) this\._silentRecordDenied = true;/,
+    '设置页仍未授权时应记住本页拒绝，避免轮询重复弹窗');
   assert.match(appJson, /"scope\.record"/);
   assert.match(special, /_canEndSilent\(\) \{\s*return this\.data\.isCurrentPlayer === true;/);
   assert.match(fs.readFileSync(

@@ -61,7 +61,7 @@ function makePage(definition) {
   return { page, commands };
 }
 
-test('开始表态直接进入疑问讨论页，不弹出三态选择器', async () => {
+test('开始表态发送指令并由 Member View 进入讨论页，不本地猜测状态', async () => {
   const wxml = fs.readFileSync(path.resolve(
     __dirname, '../../pages/main-pages/partnerMode/gamepage/index.wxml'
   ), 'utf8');
@@ -77,7 +77,7 @@ test('开始表态直接进入疑问讨论页，不弹出三态选择器', async
   try {
     const { page, commands } = makePage(loadPageDefinition());
     await page.handleStartStatement();
-    assert.equal(page.data.gamepagePhase, 'discussion');
+    assert.equal(page.data.gamepagePhase, 'play', '测试未投影新 View 时不应乐观切换业务阶段');
     assert.deepEqual(commands, [{
       type: 'START_PARTNER_STATEMENT',
       payload: { statementResult: 'allQuestion' }
