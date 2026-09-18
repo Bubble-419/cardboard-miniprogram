@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const {
   sceneFromWorkflowStep,
   sceneFromMemberView,
-  getSceneUI
+  getSceneUI,
+  resolveSubScreenNavigation
 } = require('../../utils/subAwaitRoutes');
 
 test('subAwait 按 workflow.step 映射等待场景', () => {
@@ -33,4 +34,23 @@ test('subAwait 优先使用 view.route.params.scene，其次 phase/step', () => 
     route: { name: 'subAwait', params: {} },
     session: { workflow: { step: 'SELECT_DESIGN_PROBLEM' } }
   }, 'bg'), 'selectProblem');
+  assert.equal(sceneFromMemberView({
+    route: { name: 'subAwait', params: { scene: 'confirmFirstPlayer', phase: 'CONFIRM_FIRST_PLAYER' } },
+    session: { workflow: { step: 'CONFIRM_FIRST_PLAYER' } }
+  }), 'confirmFirstPlayer');
+});
+
+test('确认首位时非房主走 subAwait，房主才进入 confirmFirstPlayer 页', () => {
+  const previousGetApp = global.getApp;
+  global.getApp = () => ({ globalData: {} });
+  try {
+    const guest = resolveSubScreenNavigation('confirmFirstPlayer', {}, '12345678', { isHost: false });
+    assert.equal(guest.action, 'await');
+    assert.equal(guest.scene, 'confirmFirstPlayer');
+    const host = resolveSubScreenNavigation('confirmFirstPlayer', {}, '12345678', { isHost: true });
+    assert.equal(host.action, 'redirect');
+    assert.match(host.url, /confirmFirstPlayer/);
+  } finally {
+    global.getApp = previousGetApp;
+  }
 });

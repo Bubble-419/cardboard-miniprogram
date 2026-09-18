@@ -509,7 +509,7 @@ flowchart LR
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait?scene=selectProblem` |
 | `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
-| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `confirmFirstPlayer` |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer` |
 | `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame` | `partnerGame` |
 | `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` |
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |

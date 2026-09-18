@@ -144,6 +144,9 @@ Page(withPageInteractionLock({
     reviewCardAnim: '',
     reviewStarMotion: 'none',
     reviewFocusAnim: false,
+    /** 回顾横滑/竖滑互斥：竖滑纪要时锁 swiper，横滑切卡时锁内部 scroll-y */
+    reviewInnerScrolling: false,
+    reviewCardScrollY: true,
     cardIndex: 0,
     playImages: [],
     discussionImages: [],
@@ -485,6 +488,47 @@ Page(withPageInteractionLock({
         this.setData({ innerScrollLocked: false });
       }
     }, 80);
+  },
+
+  _reviewTouchPoint(e) {
+    return (e && e.touches && e.touches[0])
+      || (e && e.changedTouches && e.changedTouches[0])
+      || null;
+  },
+
+  onReviewCardTouchStart(e) {
+    if (!this._isHistoryReviewMode()) return;
+    const point = this._reviewTouchPoint(e);
+    if (!point) return;
+    this._reviewTouch = { x: point.clientX, y: point.clientY, axis: '' };
+  },
+
+  onReviewCardTouchMove(e) {
+    if (!this._isHistoryReviewMode() || !this._reviewTouch || this._reviewTouch.axis) return;
+    const point = this._reviewTouchPoint(e);
+    if (!point) return;
+    const dx = Math.abs(point.clientX - this._reviewTouch.x);
+    const dy = Math.abs(point.clientY - this._reviewTouch.y);
+    if (dx < 10 && dy < 10) return;
+    if (dx > dy) {
+      this._reviewTouch.axis = 'x';
+      if (this.data.reviewCardScrollY !== false || this.data.reviewInnerScrolling) {
+        this.setData({ reviewCardScrollY: false, reviewInnerScrolling: false });
+      }
+      return;
+    }
+    this._reviewTouch.axis = 'y';
+    if (!this.data.reviewInnerScrolling || this.data.reviewCardScrollY !== true) {
+      this.setData({ reviewCardScrollY: true, reviewInnerScrolling: true });
+    }
+  },
+
+  onReviewCardTouchEnd() {
+    if (!this._isHistoryReviewMode()) return;
+    this._reviewTouch = null;
+    if (this.data.reviewInnerScrolling || this.data.reviewCardScrollY === false) {
+      this.setData({ reviewInnerScrolling: false, reviewCardScrollY: true });
+    }
   },
 
   /** iOS：scroll-into-view 若一直停在目标 id，原生列表会锁死无法手势滚动 */
@@ -887,8 +931,14 @@ Page(withPageInteractionLock({
   _finalizeHistoryReviewUi(selectedProblemText) {
     this._roomLoaded = true;
     this._roomDataReady = true;
-    const summaryCount = (this.data.displayRoundSummaries || []).length;
+    const summaries = this.data.displayRoundSummaries || [];
+    const summaryCount = summaries.length;
     const cardCount = Math.max(1, summaryCount);
+    const cardIndex = Math.min(
+      Math.max(0, Number(this.data.cardIndex) || 0),
+      cardCount - 1
+    );
+    const current = summaries[cardIndex] || summaries[0];
     this.setData({
       isHost: false,
       isCurrentPlayer: false,
@@ -902,19 +952,17 @@ Page(withPageInteractionLock({
       roundTimerReady: false,
       partnerRoundStartedAt: null,
       avatarRoundStartedAt: null,
-      cardIndex: 0,
+      cardIndex,
       cardCount,
       showCurrentActionCard: false,
       starRatingCollapsed: true,
       scoreSwipeLocked: false,
       innerScrollLocked: false,
-      paginationDots: buildPaginationDots(0, cardCount),
-      indicatorPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
-        ? this.data.displayRoundSummaries[0].playerIndex
-        : 0,
-      selectedPlayerIndex: summaryCount && this.data.displayRoundSummaries[0]
-        ? this.data.displayRoundSummaries[0].playerIndex
-        : 0
+      reviewInnerScrolling: false,
+      reviewCardScrollY: true,
+      paginationDots: buildPaginationDots(cardIndex, cardCount),
+      indicatorPlayerIndex: current && current.playerIndex != null ? current.playerIndex : 0,
+      selectedPlayerIndex: current && current.playerIndex != null ? current.playerIndex : 0
     }, () => {
       this._checkProblemTextOverflow();
       // 等页面首帧渲染完成再播星星动效，避免与进页 setData 叠加导致真机闪退
@@ -1967,6 +2015,9 @@ Page(withPageInteractionLock({
     let roomPhase = normalizePartnerGamePhase(
       roomState.partnerGamePhase || this.data.gamepagePhase
     );
+    if (this._isHistoryReviewMode()) {
+      roomPhase = PHASE_PLAY;
+    }
     const switchingDiscussion = this.data.statementSwitching || this._startingStatement
       || this.data.discussionSwitching || this._endingDiscussion;
     if (switchingDiscussion) {
@@ -2164,7 +2215,8 @@ Page(withPageInteractionLock({
           ? undefined
           : this.data.cardIndex),
       roomId: this.data.roomId,
-      sessionId
+      sessionId,
+      historyReview: this._isHistoryReviewMode()
     });
 
     const patch = {
@@ -2311,12 +2363,17 @@ Page(withPageInteractionLock({
         this._playerFilterIndex = null;
       }
       if (!isClosingPhase(roomPhase) && (roundChanged || sessionChanged || options.resetTurnUi)) {
+        const isReview = this._isHistoryReviewMode();
         const resetCardState = this._buildDisplayCardState({
           roundSummaries,
           members,
           filteredPlayerIndex: null,
           isPlayerFilterActive: false,
-          currentPlayerIndex: player.currentPlayerIndex
+          currentPlayerIndex: player.currentPlayerIndex,
+          preferredCardIndex: isReview ? 0 : undefined,
+          historyReview: isReview,
+          roomId: this.data.roomId,
+          sessionId
         });
         patch.displayRoundSummaries = resetCardState.displayRoundSummaries;
         patch.cardCount = resetCardState.cardCount;
@@ -2539,6 +2596,9 @@ Page(withPageInteractionLock({
         patch.displayRoundSummaries,
         patch.closingCreativeBlocks
       );
+      if (typeof options.onApplied === 'function') {
+        options.onApplied();
+      }
       if (this.data.isHistoryReview) return;
       this._persistHistoryReviewSnapshot(false);
       if (!isClosingPhase(roomPhase) && patch.partnerRoundStartedAt) {
@@ -2627,9 +2687,9 @@ Page(withPageInteractionLock({
           }
           this._applyRoomContext(fake, {
             fallbackPlayerIndex: 0,
-            resetTurnUi: true
+            resetTurnUi: true,
+            onApplied: () => this._finalizeHistoryReviewUi(selectedProblemText)
           });
-          this._finalizeHistoryReviewUi(selectedProblemText);
           return;
         }
         const meta = getHistoryWorkshopByRoomId(roomId);
@@ -2652,13 +2712,15 @@ Page(withPageInteractionLock({
 
       this._applyRoomContext(result, {
         fallbackPlayerIndex: this.data.currentPlayerIndex,
-        resetTurnUi: true
+        resetTurnUi: true,
+        onApplied: isHistoryReview
+          ? () => this._finalizeHistoryReviewUi(selectedProblemText)
+          : null
       });
 
       if (isHistoryReview) {
         this._reviewOpenedAsHost = result.isHost === true;
         this._lastHistorySnapshotAt = 0;
-        this._finalizeHistoryReviewUi(selectedProblemText);
         wx.nextTick(() => {
           try {
             const snapshot = buildReviewSnapshot({
@@ -2710,8 +2772,11 @@ Page(withPageInteractionLock({
         const snap = getReviewSnapshot(roomId);
         const fake = this._buildFakeRoomResultFromSnapshot(snap);
         if (fake) {
-          this._applyRoomContext(fake, { fallbackPlayerIndex: 0, resetTurnUi: true });
-          this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '');
+          this._applyRoomContext(fake, {
+            fallbackPlayerIndex: 0,
+            resetTurnUi: true,
+            onApplied: () => this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '')
+          });
           return;
         }
       }
@@ -6174,6 +6239,9 @@ Page(withPageInteractionLock({
   'onExpressInput',
   'onInnerScrollTouchEnd',
   'onInnerScrollTouchStart',
+  'onReviewCardTouchEnd',
+  'onReviewCardTouchMove',
+  'onReviewCardTouchStart',
   'onInspirationActionTap',
   'onInspirationBlur',
   'onInspirationFocus',

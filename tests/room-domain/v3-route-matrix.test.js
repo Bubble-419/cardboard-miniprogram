@@ -196,7 +196,8 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await runCommand(h, 'host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
   });
-  await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'confirmFirstPlayer', u3: 'confirmFirstPlayer' }, '确认首位');
+  await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'subAwait', u3: 'subAwait' }, '确认首位');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'confirmFirstPlayer');
   assertBack(await h.snapshot('host'), 'RESET_FIRST_PLAYER');
   assertBack(await h.snapshot('u2'), null);
 
@@ -208,7 +209,8 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await runCommand(h, 'host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
   });
-  await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'confirmFirstPlayer', u3: 'confirmFirstPlayer' }, '再次确认首位');
+  await assertRoutes(h, { host: 'confirmFirstPlayer', u2: 'subAwait', u3: 'subAwait' }, '再次确认首位');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'confirmFirstPlayer');
 
   await runCommand(h, 'host', 'CONFIRM_FIRST_PLAYER', {
     context: { sessionId }, payload: { memberId: hostMemberId }

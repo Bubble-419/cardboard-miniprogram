@@ -61,11 +61,11 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
-| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 设计问题 / 首位玩家 |
+| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 设计问题 / 首位玩家 / 确认首位 |
 | `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题 |
 | `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | Host 选择设计问题 |
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
-| `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | 全员确认 Partner 首位玩家 |
+| `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | Host 确认 Partner 首位玩家 |
 | `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
 | `closingStatement` | `/pages/main-pages/partnerMode/closingStatement/index` | `closingStatement` | Partner 收尾表态 |
 | `leaderboard` | `/pages/leaderboard/index` | `leaderboard` | Partner 已完成排行榜；Host 带 `from=closingEnd`，Player 另带 `isSubScreen=1` |
@@ -88,7 +88,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` | Player `params.scene=selectProblem` |
 | `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | Player `params.scene=player` |
-| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `confirmFirstPlayer` | — |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait` | Player `params.scene=confirmFirstPlayer` |
 | `PARTNER_TURN` | `partnerGame` | `partnerGame` | 当前行动者、Host、其他玩家能力不同 |
 | `PARTNER_STATEMENT` | `partnerGame` | `partnerGame` | — |
 | `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` | 发起者自动通过，其余玩家可投票 |
@@ -273,7 +273,8 @@ flowchart TD
   SELECT_PROBLEM_P[Player: subAwait]
   SELECT_FIRST_H[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
   SELECT_FIRST_P[Player: subAwait]
-  CONFIRM[CONFIRM_FIRST_PLAYER<br/>全员: confirmFirstPlayer]
+  CONFIRM_H[CONFIRM_FIRST_PLAYER<br/>Host: confirmFirstPlayer]
+  CONFIRM_P[Player: subAwait]
   PARTNER[PARTNER_TURN<br/>全员: partnerGame]
   HALLI[HALLI_ACTIVITY<br/>全员: halliGame]
   SPY[SPY_INTRO<br/>全员: spyIntro]
@@ -293,9 +294,11 @@ flowchart TD
   SELECT_PROBLEM_P -. Event / Snapshot .-> SELECT_FIRST_P
   CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
   CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
-  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM
-  CONFIRM -->|RESET_FIRST_PLAYER| SELECT_FIRST_H
-  CONFIRM -->|CONFIRM_FIRST_PLAYER| PARTNER
+  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM_H
+  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM_P
+  CONFIRM_H -->|RESET_FIRST_PLAYER| SELECT_FIRST_H
+  CONFIRM_H -->|CONFIRM_FIRST_PLAYER| PARTNER
+  CONFIRM_P -. Event / Snapshot .-> PARTNER
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli| HALLI
 ```
 

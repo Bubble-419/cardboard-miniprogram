@@ -15,7 +15,7 @@
           style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
           bindtap="handleGoBack"
         >
-          <image class="room-entry-icon" src="/assets/partnerMode/icon-special-back.svg" mode="aspectFit" />
+          <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
         </view>
         <view
           wx:else
@@ -300,7 +300,7 @@
       <swiper
         class="card-swiper"
         current="{{cardIndex}}"
-        disable-touch="{{!isHistoryReview && (scoreSwipeLocked || innerScrollLocked || starRatingGesturing || starRatingChipSwiping || chipTouchActive || (!starRatingCollapsed && !isCurrentPlayer))}}"
+        disable-touch="{{isHistoryReview ? reviewInnerScrolling : (scoreSwipeLocked || innerScrollLocked || starRatingGesturing || starRatingChipSwiping || chipTouchActive || (!starRatingCollapsed && !isCurrentPlayer))}}"
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
@@ -340,7 +340,16 @@
                 motion="{{reviewStarMotion}}"
               />
             </view>
-            <scroll-view class="card-scroll" scroll-y enhanced="{{!isHistoryReview}}" show-scrollbar="{{true}}">
+            <scroll-view
+              class="card-scroll"
+              scroll-y="{{!isHistoryReview || reviewCardScrollY}}"
+              enhanced="{{!isHistoryReview}}"
+              show-scrollbar="{{true}}"
+              bindtouchstart="onReviewCardTouchStart"
+              bindtouchmove="onReviewCardTouchMove"
+              bindtouchend="onReviewCardTouchEnd"
+              bindtouchcancel="onReviewCardTouchEnd"
+            >
               <view class="card-scroll-inner">
               <text class="card-section-title">出牌解释</text>
               <view class="card-section-flow">

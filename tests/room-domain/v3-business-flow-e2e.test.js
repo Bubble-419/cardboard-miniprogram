@@ -167,6 +167,9 @@ test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与
     payload: { memberId: hostMemberId }
   });
   assertScreen(state.snapshot, 'CONFIRM_FIRST_PLAYER', 'confirmFirstPlayer');
+  const waitingPlayer = await h.snapshot('u2');
+  assert.equal(waitingPlayer.view.route.name, 'subAwait');
+  assert.equal(waitingPlayer.view.route.params.scene, 'confirmFirstPlayer');
 
   state = await executeAndReduce(h, 'host', 'CONFIRM_FIRST_PLAYER', {
     context: { sessionId }, payload: { memberId: hostMemberId }
