@@ -287,9 +287,13 @@ function projectPageSnapshot(view, clientState) {
   }
   const editingSignal = state.ephemeral && state.ephemeral.signals
     && state.ephemeral.signals.DESIGN_PROBLEM_EDITING;
+  const projectedNow = Number(state.serverNow);
+  const editingNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
   if (session && session.workflow && session.workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM
-    && editingSignal && editingSignal.sessionId === session.sessionId
-    && String(editingSignal.value || '')) {
+    && editingSignal
+    && (!editingSignal.sessionId || editingSignal.sessionId === session.sessionId)
+    && String(editingSignal.value || '')
+    && !(Number(editingSignal.expiresAt) > 0 && Number(editingSignal.expiresAt) <= editingNow)) {
     roomState.editingProblemId = String(editingSignal.value);
   }
   const result = {

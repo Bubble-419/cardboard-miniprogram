@@ -53,6 +53,7 @@
                 selection-end="{{editingCursor}}"
                 catchtap="stopPropagation"
                 bindinput="onProblemInput"
+                bindfocus="onProblemFocus"
                 bindblur="onProblemBlur"
               />
             </block>

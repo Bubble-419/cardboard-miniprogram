@@ -776,7 +776,9 @@ var require_model = __commonJS({
       }
       const id = String(contributionId || "").trim();
       if (!id) return null;
-      const found = Object.values(facts && facts.contributions || {}).some((item) => item && item.sessionId === session.sessionId && item.kind === "DESIGN_PROBLEM" && item.contributionId === id);
+      const contributions = Object.values(facts && facts.contributions || {});
+      if (!contributions.length) return null;
+      const found = contributions.some((item) => item && item.kind === "DESIGN_PROBLEM" && item.contributionId === id && (!item.sessionId || !session.sessionId || item.sessionId === session.sessionId));
       if (!found) return { errCode: ERR.STALE_CONTEXT, errMsg: "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728" };
       return null;
     }

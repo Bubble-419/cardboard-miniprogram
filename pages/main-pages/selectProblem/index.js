@@ -19,6 +19,7 @@ const {
   executeProjectedBack,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
+  getActiveRoomSession,
   getRoomRequestContext,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
@@ -153,7 +154,10 @@ Page(withPageInteractionLock({
 
   async _applyRoomSnapshot(result) {
       if (!result || result.ok !== true) return;
+      const applyGen = (this._snapshotApplyGen || 0) + 1;
+      this._snapshotApplyGen = applyGen;
       const avatarList = await buildAvatarListAsync(result.members || [], this._prevMembersForAvatar);
+      if (!this._pageAlive || this._snapshotApplyGen !== applyGen) return;
       this._prevMembersForAvatar = result.members || [];
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
@@ -168,9 +172,7 @@ Page(withPageInteractionLock({
         isHost,
         sessionId: session && session.sessionId || this.data.sessionId || ''
       };
-      const remoteId = !isHost && result.roomState && result.roomState.editingProblemId
-        ? String(result.roomState.editingProblemId)
-        : '';
+      const remoteId = this._remoteEditingProblemIdFromSnapshot(result, isHost, session);
       if (remoteId !== (this.data.remoteEditingProblemId || '')) {
         patch.remoteEditingProblemId = remoteId;
       }
@@ -183,6 +185,19 @@ Page(withPageInteractionLock({
       }
       this.setData(patch);
       this._applyProblemsFromSnapshot(result);
+  },
+
+  _remoteEditingProblemIdFromSnapshot(result, isHost, session) {
+    if (isHost) return '';
+    const fromState = result && result.roomState && result.roomState.editingProblemId;
+    if (fromState) return String(fromState);
+    const signal = result && result.ephemeral && result.ephemeral.signals
+      && result.ephemeral.signals.DESIGN_PROBLEM_EDITING;
+    const sessionId = session && session.sessionId || this.data.sessionId || '';
+    if (signal && signal.value && (!signal.sessionId || !sessionId || signal.sessionId === sessionId)) {
+      return String(signal.value);
+    }
+    return '';
   },
 
   _startStatePolling() {
@@ -362,31 +377,49 @@ Page(withPageInteractionLock({
     const problem = this.data.problems.find((p) => p.id === problemId);
     if (!problem) return;
 
-    // 进入编辑前先测量展示态文字高度，确保 textarea 与原文同高
+    // 进入编辑前先测量展示态文字高度，确保 textarea 与原文同高。
+    // 真机上 boundingClientRect 的节点回调可能不触发，必须以 exec 结果为准。
     wx.createSelectorQuery()
       .in(this)
       .select(`#problem-text-${problemId}`)
-      .boundingClientRect((rect) => {
+      .boundingClientRect()
+      .exec((res) => {
+        const rect = res && res[0];
         const fallback = this._getTextLineHeight();
         const height = rect && rect.height > 0 ? Math.ceil(rect.height) : fallback;
+        this._editingGuardUntil = Date.now() + 800;
         this.setData({
           editingProblemId: problemId,
           editingCursor: (problem.text || '').length,
           [`textareaHeights.${problemId}`]: height,
+        }, () => {
+          this._editingGuardUntil = Date.now() + 800;
+          this._syncEditingProblemId(problemId, { notify: true });
+          this._startEditingHeartbeat();
         });
-        this._syncEditingProblemId(problemId);
-        this._startEditingHeartbeat();
-      })
-      .exec();
+      });
   },
 
-  async _syncEditingProblemId(problemId) {
+  _resolveEditingSessionId() {
+    if (this.data.sessionId) return this.data.sessionId;
+    const session = getActiveRoomSession();
+    const view = session && typeof session.getView === 'function' ? session.getView() : null;
+    return view && view.session && view.session.sessionId || '';
+  },
+
+  async _syncEditingProblemId(problemId, options = {}) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    const sessionId = this.data.sessionId || '';
-    if (!roomId || !sessionId || !this.data.isHost) return problemId;
+    const sessionId = this._resolveEditingSessionId();
+    if (!this.data.isHost) return problemId;
+    if (!roomId || !sessionId) {
+      if (options.notify === true) {
+        wx.showToast({ title: '编辑态同步失败', icon: 'none' });
+      }
+      return problemId;
+    }
     const contributionId = problemId == null ? '' : String(problemId);
     try {
-      await wx.cloud.callFunction({
+      const response = await wx.cloud.callFunction({
         name: 'roomSignal',
         data: {
           roomId,
@@ -396,8 +429,20 @@ Page(withPageInteractionLock({
           clientContext: getRoomRequestContext()
         }
       });
+      const result = response && Object.prototype.hasOwnProperty.call(response, 'result')
+        ? response.result
+        : response;
+      if (!result || result.ok !== true) {
+        console.warn('sync editingProblemId', result);
+        if (options.notify === true) {
+          wx.showToast({ title: (result && result.errMsg) || '编辑态同步失败', icon: 'none' });
+        }
+      }
     } catch (e) {
       console.warn('sync editingProblemId', e);
+      if (options.notify === true) {
+        wx.showToast({ title: '编辑态同步失败', icon: 'none' });
+      }
     }
     return problemId;
   },
@@ -453,9 +498,24 @@ Page(withPageInteractionLock({
     this.setData({ problems });
   },
 
-  async onProblemBlur(e) {
+  onProblemFocus(e) {
     if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this._editingGuardUntil = Date.now() + 800;
+    if (this.data.editingProblemId !== id) {
+      this.setData({ editingProblemId: id });
+    }
+    this._syncEditingProblemId(id);
+    this._startEditingHeartbeat();
+  },
+
+  async onProblemBlur(e) {
+    if (!this.data.isHost) return;
+    // 真机 textarea 刚 focus 时常立刻误发 blur，不能据此清掉「房主编辑中」。
+    if (Date.now() < (this._editingGuardUntil || 0)) return;
+    const id = e.currentTarget.dataset.id;
+    if (!id || this.data.editingProblemId !== id) return;
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
     const text = (e.detail.value || '').trim();
@@ -547,8 +607,8 @@ Page(withPageInteractionLock({
   }
 }, [
   'handleViewContext', 'selectProblem', 'stopPropagation', 'onSaveEdit',
-  'onEditProblem', 'onProblemInput', 'onProblemBlur', 'confirmSelection',
+  'onEditProblem', 'onProblemInput', 'onProblemFocus', 'onProblemBlur', 'confirmSelection',
   'goBack', 'handleGoRoom'
 ], {
-  passthroughMethods: ['onProblemBlur']
+  passthroughMethods: ['onProblemFocus', 'onProblemBlur']
 }));

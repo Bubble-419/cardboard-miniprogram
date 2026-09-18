@@ -540,6 +540,50 @@ test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async (
   assert.equal(documents.get(`${COLLECTIONS.signals}:${editingId}`).expiresAt, 5002);
 });
 
+test('CloudBase Session 未带齐 facts 时仍允许房主广播编辑中', async () => {
+  const { SIGNAL_TYPES } = require('@cardboard/room-contracts');
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN',
+      currentSessionId: 'session-1', hostMemberId: 'member-host',
+      members: [{ userId: 'host', memberId: 'member-host' }]
+    }],
+    [`${COLLECTIONS.sessions}:session-1`, {
+      roomId: '12345678',
+      sessionId: 'session-1',
+      workflow: { step: 'SELECT_DESIGN_PROBLEM' },
+      participants: [{ memberId: 'member-host', status: 'ACTIVE' }]
+    }]
+  ]);
+  const store = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) {
+                throw Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+              }
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { documents.set(key, data); }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({
+    db: { runTransaction: (callback) => callback(store), collection: (name) => store.collection(name) }
+  });
+  const written = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5000
+  });
+  assert.equal(written.ok, true);
+  assert.equal(written.signal.value, 'problem-1');
+});
+
 test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃索引', async () => {
   const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
   const documents = new Map([

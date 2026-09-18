@@ -85,10 +85,13 @@ function designProblemEditingDeniedReason(session, hostMemberId, memberId, contr
   }
   const id = String(contributionId || '').trim();
   if (!id) return null;
-  const found = Object.values((facts && facts.contributions) || {}).some((item) => item
-    && item.sessionId === session.sessionId
+  const contributions = Object.values((facts && facts.contributions) || {});
+  // Signal 事务只点读 Session；facts 偶发未带齐时仍允许房主广播编辑中，避免成员端一直空白。
+  if (!contributions.length) return null;
+  const found = contributions.some((item) => item
     && item.kind === 'DESIGN_PROBLEM'
-    && item.contributionId === id);
+    && item.contributionId === id
+    && (!item.sessionId || !session.sessionId || item.sessionId === session.sessionId));
   if (!found) return { errCode: ERR.STALE_CONTEXT, errMsg: '设计问题不存在' };
   return null;
 }

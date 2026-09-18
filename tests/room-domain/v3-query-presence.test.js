@@ -618,6 +618,12 @@ test('房主可广播设计问题编辑态，非房主能看到且不推进业�
   assert.equal(after.view.route.name, 'selectProblem');
   assert.equal(page.roomState.editingProblemId, problemId);
   assert.equal(page.roomState.currentPage, 'selectProblem');
+
+  const idle = await h.app.sync('12345678', after.seq, { userId: 'u2' });
+  assert.equal(idle.ok, true);
+  assert.equal(idle.delivery, 'EVENTS');
+  assert.equal(idle.events.length, 0);
+  assert.equal(idle.ephemeral.signals.DESIGN_PROBLEM_EDITING.value, problemId);
 });
 
 test('结束编辑或过期后不再投影编辑态，离开选题步骤后不能再写', async () => {
