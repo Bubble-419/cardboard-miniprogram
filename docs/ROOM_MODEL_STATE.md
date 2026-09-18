@@ -382,7 +382,7 @@ erDiagram
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
 | `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
-| `roomV3Signals` | 可丢失瞬时信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`）；确定性 `_id=hash(roomId:signalType)` 点读 | ephemeral 投影 |
+| `roomV3Signals` | 可丢失瞬时信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`）按 `hash(roomId:signalType)` 点读；催促的成员级冷却凭证按 Session + Member 点写且不投影 | ephemeral 投影与服务端限流 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid

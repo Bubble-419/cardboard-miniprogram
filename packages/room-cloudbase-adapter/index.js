@@ -345,17 +345,14 @@ function createCloudBaseRoomRepository(deps) {
         }
         const denied = designProblemNudgeDeniedReason(session, member.memberId);
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const cooldownId = docId(`${input.roomId}:${input.sessionId}:${input.signalType}:cooldown:${member.memberId}`);
+        const cooldown = await safeGet(transaction, COLLECTIONS.signals, cooldownId);
+        if (cooldown
+          && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
+          && cooldown.signal) {
+          return { ok: true, signal: cooldown.signal };
+        }
         const signalId = docId(`${input.roomId}:${input.signalType}`);
-        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-        if (existing && existing.sessionId === input.sessionId
-          && Number(existing.updatedAt) >= Number(input.now)) {
-          return { ok: true, signal: existing };
-        }
-        if (existing && existing.sessionId === input.sessionId
-          && existing.memberId === member.memberId
-          && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
-          return { ok: true, signal: existing };
-        }
         const row = {
           roomId: input.roomId,
           signalType: input.signalType,
@@ -367,6 +364,17 @@ function createCloudBaseRoomRepository(deps) {
           expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
         };
         await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        // 最新广播只有一篇；限流凭证按 Session + Member 隔离，且不会被 listSignals 投影给客户端。
+        await transaction.collection(COLLECTIONS.signals).doc(cooldownId).set({ data: {
+          recordType: 'MEMBER_SIGNAL_COOLDOWN',
+          roomId: input.roomId,
+          sessionId: input.sessionId,
+          signalType: input.signalType,
+          memberId: member.memberId,
+          updatedAt: input.now,
+          expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+          signal: row
+        } });
         return { ok: true, signal: row };
       }
       return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };

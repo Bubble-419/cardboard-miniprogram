@@ -4540,14 +4540,12 @@ var require_room_cloudbase_adapter = __commonJS({
             }
             const denied = designProblemNudgeDeniedReason(session, member.memberId);
             if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+            const cooldownId = docId2(`${input.roomId}:${input.sessionId}:${input.signalType}:cooldown:${member.memberId}`);
+            const cooldown = await safeGet2(transaction, COLLECTIONS2.signals, cooldownId);
+            if (cooldown && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS && cooldown.signal) {
+              return { ok: true, signal: cooldown.signal };
+            }
             const signalId = docId2(`${input.roomId}:${input.signalType}`);
-            const existing = await safeGet2(transaction, COLLECTIONS2.signals, signalId);
-            if (existing && existing.sessionId === input.sessionId && Number(existing.updatedAt) >= Number(input.now)) {
-              return { ok: true, signal: existing };
-            }
-            if (existing && existing.sessionId === input.sessionId && existing.memberId === member.memberId && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
-              return { ok: true, signal: existing };
-            }
             const row = {
               roomId: input.roomId,
               signalType: input.signalType,
@@ -4559,6 +4557,16 @@ var require_room_cloudbase_adapter = __commonJS({
               expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
             };
             await transaction.collection(COLLECTIONS2.signals).doc(signalId).set({ data: row });
+            await transaction.collection(COLLECTIONS2.signals).doc(cooldownId).set({ data: {
+              recordType: "MEMBER_SIGNAL_COOLDOWN",
+              roomId: input.roomId,
+              sessionId: input.sessionId,
+              signalType: input.signalType,
+              memberId: member.memberId,
+              updatedAt: input.now,
+              expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+              signal: row
+            } });
             return { ok: true, signal: row };
           }
           return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7" };

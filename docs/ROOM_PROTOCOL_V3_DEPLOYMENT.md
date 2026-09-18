@@ -85,8 +85,10 @@ flowchart TB
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 
-`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 和
-`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 两点读，不需要组合索引。其余读取
+`roomV3Signals` 的公开信号按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 和
+`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 两点读；设计问题催促另按
+`hash(roomId:sessionId:DESIGN_PROBLEM_NUDGE:cooldown:memberId)` 点写成员冷却凭证，
+该凭证不投影给客户端。两类文档都不需要组合索引。其余读取
 使用确定性 `_id`，不需要额外业务索引。
 
 ## 4. 权限边界

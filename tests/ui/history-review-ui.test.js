@@ -90,6 +90,70 @@ test('全局回顾展示全部纪要卡、允许横滑，并返回排行榜', ()
   assert.match(js, /_finalizeHistoryReviewUi/);
 });
 
+test('收尾全局回顾绑定当前 Session，不猜测最近的历史场次', async () => {
+  const js = read('pages/main-pages/partnerMode/gamepage/index.js');
+  assert.doesNotMatch(js, /getRoomHistory/);
+  assert.doesNotMatch(js, /getReviewSnapshot/);
+
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+  const page = makePage(definition, { roomId: '12345678', sessionId: 'session-current' });
+  page._persistHistoryReviewSnapshot = () => {};
+  page._prepareLeavePage = () => {};
+
+  const originalWx = global.wx;
+  let targetUrl = '';
+  global.wx = {
+    showToast() {},
+    navigateTo(options) {
+      targetUrl = options.url;
+      options.success({});
+    }
+  };
+  try {
+    await page.handleGlobalReview();
+  } finally {
+    global.wx = originalWx;
+  }
+
+  assert.match(targetUrl, /roomId=12345678/);
+  assert.match(targetUrl, /sessionId=session-current/);
+  assert.match(targetUrl, /mode=review/);
+  assert.match(targetUrl, /from=closing/);
+});
+
+test('收尾全局回顾返回路由仍携带当前 Session', async () => {
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+  const page = makePage(definition, {
+    roomId: '12345678',
+    sessionId: 'session-current',
+    currentPlayerIndex: 2
+  });
+  page._reviewReturnUrl = '';
+  page._prepareLeavePage = () => {};
+
+  const originalWx = global.wx;
+  const originalGetCurrentPages = global.getCurrentPages;
+  let targetUrl = '';
+  global.getCurrentPages = () => [];
+  global.wx = {
+    showToast() {},
+    redirectTo(options) {
+      targetUrl = options.url;
+      options.success({});
+    }
+  };
+  try {
+    await page.handleReviewBack();
+  } finally {
+    global.wx = originalWx;
+    global.getCurrentPages = originalGetCurrentPages;
+  }
+
+  assert.match(targetUrl, /phase=closing/);
+  assert.match(targetUrl, /closingStep=review/);
+  assert.match(targetUrl, /sessionId=session-current/);
+});
+
 test('全局回顾 _buildDisplayCardState 保留全部纪要卡并可横滑', () => {
   withPageWx(() => {
     const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');

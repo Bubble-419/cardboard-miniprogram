@@ -21,7 +21,7 @@ const {
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
-const { buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
+const { buildGamepageUrl, buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
@@ -29,7 +29,6 @@ const {
   dispatchRoomCommand,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
-  getRoomHistory,
   getRoomSessionPageSnapshot
 } = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
@@ -101,9 +100,7 @@ const {
 } = require('../../../../utils/partnerScoreProgress');
 const {
   buildReviewSnapshot,
-  saveReviewSnapshot,
-  getReviewSnapshot,
-  getHistoryWorkshopByRoomId
+  saveReviewSnapshot
 } = require('../../../../utils/historyWorkshops');
 const {
   runPageInteraction,
@@ -368,7 +365,8 @@ Page(withPageInteractionLock({
           phase: 'closing',
           closingStep: CLOSING_STEP_REVIEW,
           currentRound: prevData.currentRound,
-          brainstormSessionSeq: prevData.brainstormSessionSeq
+          brainstormSessionSeq: prevData.brainstormSessionSeq,
+          sessionId: String(options && options.sessionId || prevData.sessionId || '')
         }
       );
     }
@@ -921,32 +919,6 @@ Page(withPageInteractionLock({
     } catch (e) {
       console.warn('persist history review snapshot', e);
     }
-  },
-
-  _buildFakeRoomResultFromSnapshot(snapshot) {
-    if (!snapshot) return null;
-    const members = Array.isArray(snapshot.members) ? snapshot.members.slice() : [];
-    if (!members.length) return null;
-    this._captureReviewMyPlayerIndex(members);
-    // 回顾态头像不强调「我是谁」，但累计星星聚焦仍使用上面记下的座位
-    const normalizedMembers = members.map((m) => ({
-      ...m,
-      isMe: false
-    }));
-    const roomState = Object.assign({}, snapshot.roomState || {}, {
-      partnerGamePhase: PHASE_PLAY,
-      currentPlayerIndex: 0
-    });
-    return {
-      ok: true,
-      members: assignAvatarImages(normalizedMembers),
-      isHost: false,
-      selectedDesignProblem: snapshot.selectedDesignProblem
-        || (snapshot.selectedProblemText
-          ? { id: '', text: snapshot.selectedProblemText }
-          : null),
-      roomState
-    };
   },
 
   _finalizeHistoryReviewUi(selectedProblemText, displaySummaries) {
@@ -2691,18 +2663,10 @@ Page(withPageInteractionLock({
 
     try {
       if (isHistoryReview) {
-        let sessionId = this.data.sessionId || '';
-        if (!sessionId) {
-          // 兼容升级前未记录 sessionId 的本地历史卡片：只选最近完成的搭档场次。
-          const history = await getRoomHistory(roomId, { limit: 20 });
-          const latestPartner = history && history.ok === true
-            ? (history.sessions || []).find((item) => item.mode === 'PARTNER' && item.status === 'COMPLETED')
-            : null;
-          sessionId = latestPartner && latestPartner.sessionId || '';
-        }
+        const sessionId = this.data.sessionId || '';
         result = sessionId
           ? await getRoomSessionPageSnapshot(roomId, sessionId)
-          : { ok: false, errCode: 'SESSION_NOT_FOUND', errMsg: '暂无可回看的搭档场次' };
+          : { ok: false, errCode: 'SESSION_NOT_FOUND', errMsg: '缺少回顾场次信息' };
       } else {
         result = await getRoomPageSnapshot(roomId, { refresh: true });
       }
@@ -2713,32 +2677,8 @@ Page(withPageInteractionLock({
 
     if (!result || result.ok !== true || !result.members || !result.members.length) {
       if (isHistoryReview) {
-        const snap = getReviewSnapshot(roomId);
-        const fake = this._buildFakeRoomResultFromSnapshot(snap);
-        if (fake) {
-          const app = getApp();
-          const selectedProblem = resolveSelectedDesignProblem(app, fake)
-            || (snap && snap.selectedDesignProblem)
-            || null;
-          const selectedProblemText = (selectedProblem && selectedProblem.text)
-            || (snap && snap.selectedProblemText)
-            || '';
-          if (selectedProblem && app.globalData) {
-            app.globalData.selectedProblem = {
-              id: selectedProblem.id || '',
-              text: selectedProblem.text
-            };
-          }
-          await this._awaitRoomContext(fake, {
-            fallbackPlayerIndex: 0,
-            resetTurnUi: true,
-            onApplied: () => this._finalizeHistoryReviewUi(selectedProblemText)
-          });
-          return;
-        }
-        const meta = getHistoryWorkshopByRoomId(roomId);
         wx.showToast({
-          title: (result && result.errMsg) || (meta ? '暂无纪要快照' : '加载失败'),
+          title: (result && result.errMsg) || '加载失败',
           icon: 'none'
         });
         return;
@@ -2812,18 +2752,6 @@ Page(withPageInteractionLock({
       this.refreshScoreStatus();
     } catch (e) {
       console.error('partner gamepage loadRoomData apply', e);
-      if (isHistoryReview) {
-        const snap = getReviewSnapshot(roomId);
-        const fake = this._buildFakeRoomResultFromSnapshot(snap);
-        if (fake) {
-          await this._awaitRoomContext(fake, {
-            fallbackPlayerIndex: 0,
-            resetTurnUi: true,
-            onApplied: () => this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '')
-          });
-          return;
-        }
-      }
       wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
@@ -5633,7 +5561,8 @@ Page(withPageInteractionLock({
   handleGlobalReview() {
     return runPageNavigation(this, async () => {
       const roomId = this.data.roomId || '';
-      if (!roomId) {
+      const sessionId = this.data.sessionId || '';
+      if (!roomId || !sessionId) {
         wx.showToast({ title: '房间信息缺失', icon: 'none' });
         return null;
       }
@@ -5641,7 +5570,7 @@ Page(withPageInteractionLock({
       this._prepareLeavePage();
       return {
         method: 'navigateTo',
-        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review&from=closing`,
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&sessionId=${encodeURIComponent(sessionId)}&mode=review&from=closing`,
         fail: () => {
           this._pageVisible = true;
           this._startStatePolling();
@@ -6220,7 +6149,8 @@ Page(withPageInteractionLock({
       const fallbackUrl = this._reviewReturnUrl || (this.data.roomId
         ? buildGamepageUrl(this.data.roomId, this.data.currentPlayerIndex || 1, 'partner', {
           phase: 'closing',
-          closingStep: CLOSING_STEP_REVIEW
+          closingStep: CLOSING_STEP_REVIEW,
+          sessionId: this.data.sessionId || ''
         })
         : '');
       const pages = getCurrentPages();

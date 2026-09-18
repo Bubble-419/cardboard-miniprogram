@@ -392,7 +392,8 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
       currentSessionId: 'session-1',
       members: [
         { userId: 'host', memberId: 'member-host' },
-        { userId: 'u2', memberId: 'member-2' }
+        { userId: 'u2', memberId: 'member-2' },
+        { userId: 'u3', memberId: 'member-3' }
       ]
     }],
     [`${COLLECTIONS.sessions}:session-1`, {
@@ -401,12 +402,13 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
       workflow: { step: 'COLLECT_DESIGN_PROBLEMS' },
       participants: [
         { memberId: 'member-host', status: 'ACTIVE' },
-        { memberId: 'member-2', status: 'ACTIVE' }
+        { memberId: 'member-2', status: 'ACTIVE' },
+        { memberId: 'member-3', status: 'ACTIVE' }
       ],
       progress: {
         contributionProgress: {
-          requiredMemberIds: ['member-host', 'member-2'],
-          submittedMemberIds: ['member-host']
+          requiredMemberIds: ['member-host', 'member-2', 'member-3'],
+          submittedMemberIds: ['member-host', 'member-2']
         }
       }
     }],
@@ -445,9 +447,17 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
     roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5000
   });
-  const rejected = await repo.upsertSignal({
+  const other = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'u2', sessionId: 'session-1',
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5001
+  });
+  const replayAfterOther = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5002
+  });
+  const rejected = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'u3', sessionId: 'session-1',
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5003
   });
   const listedAfter = await repo.listSignals('12345678');
 
@@ -455,10 +465,15 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
   assert.equal(listed[0].signalType, SIGNAL_TYPES.PARTNER_SILENT_SOUND);
   assert.equal(written.ok, true);
   assert.equal(written.signal.signalType, SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE);
+  assert.equal(other.ok, true);
+  assert.equal(other.signal.memberId, 'member-2');
+  assert.equal(replayAfterOther.ok, true);
+  assert.equal(replayAfterOther.signal.memberId, 'member-host');
+  assert.equal(replayAfterOther.signal.updatedAt, written.signal.updatedAt);
   assert.equal(rejected.ok, false);
   assert.equal(rejected.errCode, 'INVALID_TRANSITION');
   assert.equal(listedAfter.length, 2);
-  assert.equal(documents.get(`${COLLECTIONS.signals}:${nudgeId}`).value, 1);
+  assert.equal(documents.get(`${COLLECTIONS.signals}:${nudgeId}`).memberId, 'member-2');
 });
 
 test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃索引', async () => {

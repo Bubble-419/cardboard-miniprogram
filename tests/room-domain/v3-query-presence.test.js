@@ -519,7 +519,7 @@ test('已提交者可广播催促未提交者，且不推进业务水位', async
   assert.equal(batch.ephemeral.signals.DESIGN_PROBLEM_NUDGE.updatedAt, written.signal.updatedAt);
 });
 
-test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催促', async () => {
+test('同一成员催促冷却期内幂等，不会被其他成员的催促覆盖', async () => {
   const h = createHarness();
   const sessionId = await startCollectingDesignProblems(h, 3);
   await h.command('host', 'SUBMIT_DESIGN_PROBLEM', {
@@ -538,6 +538,14 @@ test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催�
   const other = await h.app.writeSignal({
     roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
   }, { userId: 'u2' });
+  const replayAfterOther = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  const projected = await h.snapshot('u3');
+  h.advanceTime(DESIGN_PROBLEM_NUDGE_COOLDOWN_MS);
+  const afterCooldown = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
 
   assert.equal(first.ok, true);
   assert.equal(replay.ok, true);
@@ -545,6 +553,13 @@ test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催�
   assert.equal(other.ok, true);
   assert.equal(other.signal.updatedAt > first.signal.updatedAt, true);
   assert.equal(other.signal.memberId !== first.signal.memberId, true);
+  assert.equal(replayAfterOther.ok, true);
+  assert.equal(replayAfterOther.signal.updatedAt, first.signal.updatedAt);
+  assert.equal(replayAfterOther.signal.memberId, first.signal.memberId);
+  assert.equal(projected.ephemeral.signals.DESIGN_PROBLEM_NUDGE.memberId, other.signal.memberId);
+  assert.equal(afterCooldown.ok, true);
+  assert.equal(afterCooldown.signal.updatedAt > other.signal.updatedAt, true);
+  assert.equal(afterCooldown.signal.memberId, first.signal.memberId);
 });
 
 test('催促信号过期后不再投影，离开收集问题步骤后不能再写', async () => {
