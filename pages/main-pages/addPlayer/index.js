@@ -653,10 +653,15 @@ Page(withPageInteractionLock({
         }
         if (!silent) {
           this.setData({
-            qrcodeStatus: 'load_error',
-            qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试',
             ...this._degradedLobbyFooter()
           });
+          await this._fillQrcodeIfNeeded(roomId);
+          if (!(this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl)) {
+            this.setData({
+              qrcodeStatus: 'load_error',
+              qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试'
+            });
+          }
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         }
         return null;
@@ -729,58 +734,13 @@ Page(withPageInteractionLock({
           }
           this.setData(patch);
         }
+        this._fillQrcodeIfNeeded(roomId);
         return result;
       }
 
       const members = this._expandMembersToSlots(withAvatars);
       const memberSlots = this.buildMemberSlots(members);
-
-      let qrcodeFileID = forceRegenQr ? null : result.qrcodeFileID;
-      let qrResolved = {
-        qrcodeUrl: (!forceRegenQr && result.qrcodeUrl) || '',
-        qrcodeStatus: (!forceRegenQr && result.qrcodeUrl) ? 'success' : 'no_qr',
-        qrcodeErrorHint: ''
-      };
-
-      if (!qrResolved.qrcodeUrl) {
-        if (!qrcodeFileID) {
-          const regen = await this._regenerateRoomQrcode(roomId, forceRegenQr);
-          qrcodeFileID = regen.qrcodeFileID;
-          if (regen.qrcodeUrl) {
-            qrResolved = {
-              qrcodeUrl: regen.qrcodeUrl,
-              qrcodeStatus: 'success',
-              qrcodeErrorHint: ''
-            };
-          } else if (regen.errMsg) {
-            qrResolved = {
-              qrcodeUrl: '',
-              qrcodeStatus: 'error',
-              qrcodeErrorHint: regen.errMsg
-            };
-          }
-        }
-
-        if (!qrResolved.qrcodeUrl && qrcodeFileID) {
-          qrResolved = await this._resolveQrcodeUrl(roomId, qrcodeFileID);
-        }
-
-        // 已有 fileID 但临时链接失效时，强制补生成一次
-        if (qrResolved.qrcodeStatus === 'error' && !forceRegenQr) {
-          const regen = await this._regenerateRoomQrcode(roomId, true);
-          if (regen.qrcodeUrl) {
-            qrResolved = {
-              qrcodeUrl: regen.qrcodeUrl,
-              qrcodeStatus: 'success',
-              qrcodeErrorHint: ''
-            };
-          } else if (regen.qrcodeFileID) {
-            qrResolved = await this._resolveQrcodeUrl(roomId, regen.qrcodeFileID);
-          } else if (regen.errMsg) {
-            qrResolved.qrcodeErrorHint = regen.errMsg;
-          }
-        }
-      }
+      const qrResolved = await this._fetchRoomQrcode(roomId, forceRegenQr);
 
       this._triggerCountBounceIfNeeded(roomMeta.memberCount);
       this.setData({
@@ -808,14 +768,91 @@ Page(withPageInteractionLock({
           ? '云函数执行失败，请重新上传部署 roomQuery'
           : errMsg;
         this.setData({
-          qrcodeStatus: 'load_error',
-          qrcodeErrorHint: hint,
           ...this._degradedLobbyFooter()
         });
+        await this._fillQrcodeIfNeeded(roomId);
+        if (!(this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl)) {
+          this.setData({
+            qrcodeStatus: 'load_error',
+            qrcodeErrorHint: hint
+          });
+        }
         wx.showToast({ title: '加载失败', icon: 'none' });
       }
       return null;
     }
+  },
+
+  async _fetchRoomQrcode(roomId, force = false) {
+    const regen = await this._regenerateRoomQrcode(roomId, force);
+    if (regen.qrcodeUrl) {
+      return {
+        qrcodeUrl: regen.qrcodeUrl,
+        qrcodeStatus: 'success',
+        qrcodeErrorHint: ''
+      };
+    }
+    if (regen.qrcodeFileID) {
+      const resolved = await this._resolveQrcodeUrl(roomId, regen.qrcodeFileID);
+      if (resolved.qrcodeStatus === 'success' && resolved.qrcodeUrl) return resolved;
+      if (!force) {
+        const retry = await this._regenerateRoomQrcode(roomId, true);
+        if (retry.qrcodeUrl) {
+          return {
+            qrcodeUrl: retry.qrcodeUrl,
+            qrcodeStatus: 'success',
+            qrcodeErrorHint: ''
+          };
+        }
+        if (retry.qrcodeFileID) return this._resolveQrcodeUrl(roomId, retry.qrcodeFileID);
+        return {
+          qrcodeUrl: '',
+          qrcodeStatus: 'error',
+          qrcodeErrorHint: retry.errMsg || resolved.qrcodeErrorHint || '生成二维码失败'
+        };
+      }
+      return resolved;
+    }
+    return {
+      qrcodeUrl: '',
+      qrcodeStatus: regen.errMsg ? 'error' : 'no_qr',
+      qrcodeErrorHint: regen.errMsg || ''
+    };
+  },
+
+  _fillQrcodeIfNeeded(roomId, opts = {}) {
+    if (!this._pageAlive || !roomId) return Promise.resolve();
+    if (!opts.force) {
+      if (this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl) {
+        return Promise.resolve();
+      }
+      // 已有明确失败时交给「重试」，避免成员轮询反复打 roomMedia
+      if (['error', 'no_qr', 'load_error'].includes(this.data.qrcodeStatus)) {
+        return Promise.resolve();
+      }
+    }
+    if (this._qrcodeInFlight) return this._qrcodeInFlight;
+    this._qrcodeInFlight = this._fetchRoomQrcode(roomId, opts.force === true)
+      .then((qr) => {
+        if (!this._pageAlive) return qr;
+        this.setData({
+          qrcodeUrl: qr.qrcodeUrl,
+          qrcodeStatus: qr.qrcodeStatus,
+          qrcodeErrorHint: qr.qrcodeErrorHint || ''
+        });
+        return qr;
+      })
+      .catch((e) => {
+        if (!this._pageAlive) return;
+        this.setData({
+          qrcodeStatus: 'error',
+          qrcodeErrorHint: (e && (e.errMsg || e.message)) || '生成二维码失败'
+        });
+      })
+      .finally(() => {
+        this._qrcodeInFlight = null;
+      });
+    return this._qrcodeInFlight;
   },
 
   async _regenerateRoomQrcode(roomId, force = false) {

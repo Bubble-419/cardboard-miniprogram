@@ -9,7 +9,6 @@ const {
   unbindPageFromRoomSession,
   getRoomPageSnapshot
 } = require('../../../modules/room-session/index');
-const { WAIT_HERO_SRC } = require('../../../utils/staticCdn');
 
 Page({
   data: {
@@ -24,8 +23,7 @@ Page({
     subTextLine2: '',
     statusText: '正在等待中...',
     multiLine: false,
-    useHeroLayout: true,
-    waitHeroSrc: WAIT_HERO_SRC
+    useHeroLayout: true
   },
 
   onLoad(options) {

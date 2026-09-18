@@ -115,3 +115,15 @@ test('解散房间不依赖已成功安装的 isHost 快照', () => {
     '快照失败时房主仍需能解散'
   );
 });
+
+test('静默刷新成功后仍会补拉二维码，快照失败也会尝试 roomMedia', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/addPlayer/index.js'),
+    'utf8'
+  );
+  assert.match(source, /this\._fillQrcodeIfNeeded\(roomId\)/);
+  assert.match(source, /async _fetchRoomQrcode\(roomId, force = false\)/);
+  assert.match(source, /name: 'roomMedia'/);
+  const silentBlock = source.split('if (silent) {')[1] || '';
+  assert.match(silentBlock.slice(0, 1800), /_fillQrcodeIfNeeded\(roomId\)/);
+});
