@@ -250,6 +250,8 @@ sequenceDiagram
   C-->>U: 发布新 View
 ```
 
+`roomCommand` 在 `exports.main` 内才加载 `wx-server-sdk` 并创建 Application。依赖缺失、`database()` 初始化失败或事务抛错都会返回结构化 `{ ok: false, errCode, errMsg }`，避免平台把未捕获异常显示成 `cloud.callFunction:fail errCode: -504002`。数据库 `TransactionBusy`（`-501001`）标记为 `retryable`。
+
 对会跨步骤复用同一 `turnId` 的写操作，Envelope 额外冻结 `workflowStep`：
 
 ```mermaid

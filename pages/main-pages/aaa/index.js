@@ -34,6 +34,7 @@ const {
 const {
   getHistoryWorkshops,
   upsertHistoryWorkshop,
+  removeHistoryWorkshops,
   formatTime: formatHistoryTime
 } = require('../../../utils/historyWorkshops');
 const {
@@ -50,6 +51,25 @@ const { EMPTY_HISTORY_SRC } = require('../../../utils/staticCdn');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
+
+function describeRoomCloudError(error, fallback) {
+  const errCode = error && (error.errCode != null ? error.errCode : error.code);
+  const errMsg = String((error && (error.errMsg || error.message)) || '');
+  const blob = `${errCode || ''} ${errMsg}`;
+  if (/-504002|functions execute fail|SyntaxError|Cannot find module|MODULE_NOT_FOUND|CloudBase transaction database required/i.test(blob)) {
+    return '云函数执行失败，请重新部署';
+  }
+  if (/-504003|timed out after/i.test(blob)) {
+    return '服务响应超时，请稍后重试';
+  }
+  if (/-501005|function not exist/i.test(blob)) {
+    return '云函数未部署';
+  }
+  if (errMsg && !/cloud\.callFunction:fail|errCode\s*:/i.test(errMsg)) {
+    return errMsg;
+  }
+  return fallback || '操作失败，请重试';
+}
 
 function _hasCompleteLocalProfile(stored) {
   if (!stored) return false;
@@ -75,6 +95,10 @@ Page(withPageInteractionLock({
     loading: false,
     debugRoomIdInput: '',
     historyWorkshops: [],
+    historyManageMode: false,
+    selectedHistoryIds: {},
+    selectedHistoryCount: 0,
+    historyAllSelected: false,
     showProfileAuth: false,
     authDraftNick: '',
     authDraftAvatar: DEFAULT_AVATAR,
@@ -112,14 +136,81 @@ Page(withPageInteractionLock({
     this._loadHistoryWorkshops();
   },
 
+  _decorateHistoryWorkshops(list, selectedIds) {
+    const selected = selectedIds || {};
+    return (Array.isArray(list) ? list : []).map((item) => ({
+      ...item,
+      selected: !!(item && item.roomId && selected[item.roomId])
+    }));
+  },
+
+  _syncHistorySelection(list, selectedIds, manageMode) {
+    const source = Array.isArray(list) ? list : [];
+    const prevSelected = selectedIds || {};
+    const nextSelected = {};
+    let count = 0;
+    if (manageMode) {
+      source.forEach((item) => {
+        const roomId = item && item.roomId;
+        if (roomId && prevSelected[roomId]) {
+          nextSelected[roomId] = true;
+          count += 1;
+        }
+      });
+    }
+    return {
+      historyWorkshops: this._decorateHistoryWorkshops(source, nextSelected),
+      selectedHistoryIds: nextSelected,
+      selectedHistoryCount: count,
+      historyAllSelected: manageMode && source.length > 0 && count === source.length,
+      historyManageMode: manageMode && source.length > 0
+    };
+  },
+
   _loadHistoryWorkshops() {
-    this.setData({ historyWorkshops: getHistoryWorkshops() });
+    const list = getHistoryWorkshops();
+    this.setData(this._syncHistorySelection(
+      list,
+      this.data.selectedHistoryIds,
+      this.data.historyManageMode === true
+    ));
+  },
+
+  onTapHistoryManage() {
+    if (!(this.data.historyWorkshops || []).length) return;
+    this.setData(this._syncHistorySelection(this.data.historyWorkshops, {}, true));
+  },
+
+  onTapHistoryCancelManage() {
+    this.setData(this._syncHistorySelection(this.data.historyWorkshops, {}, false));
+  },
+
+  onTapHistorySelectAll() {
+    if (!this.data.historyManageMode) return;
+    const list = this.data.historyWorkshops || [];
+    if (!list.length) return;
+    if (this.data.historyAllSelected) {
+      this.setData(this._syncHistorySelection(list, {}, true));
+      return;
+    }
+    const selected = {};
+    list.forEach((item) => {
+      if (item && item.roomId) selected[item.roomId] = true;
+    });
+    this.setData(this._syncHistorySelection(list, selected, true));
   },
 
   onTapHistoryCard(e) {
     const roomId = e.currentTarget.dataset.roomId;
     const sessionId = e.currentTarget.dataset.sessionId || '';
     if (!roomId) return;
+    if (this.data.historyManageMode) {
+      const selected = { ...(this.data.selectedHistoryIds || {}) };
+      if (selected[roomId]) delete selected[roomId];
+      else selected[roomId] = true;
+      this.setData(this._syncHistorySelection(this.data.historyWorkshops, selected, true));
+      return;
+    }
     return runPageNavigation(this, async () => {
       getApp().globalData.roomId = roomId;
       const sessionQuery = sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : '';
@@ -128,6 +219,34 @@ Page(withPageInteractionLock({
         url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review${sessionQuery}`
       };
     }, { loadingText: '正在打开历史…' });
+  },
+
+  onTapHistoryDelete() {
+    const count = this.data.selectedHistoryCount || 0;
+    if (!this.data.historyManageMode || count < 1) {
+      wx.showToast({ title: '请先选择要删除的记录', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '删除历史工作坊',
+      content: count === 1
+        ? '删除后将无法从首页再次打开该场次回顾，确定删除？'
+        : `确定删除已选的 ${count} 条记录？删除后将无法从首页再次打开。`,
+      confirmText: '删除',
+      confirmColor: '#dc2626',
+      success: (res) => {
+        if (res.confirm) this._deleteSelectedHistory();
+      }
+    });
+  },
+
+  _deleteSelectedHistory() {
+    const selected = this.data.selectedHistoryIds || {};
+    const roomIds = Object.keys(selected).filter((id) => selected[id]);
+    if (!roomIds.length) return;
+    const next = removeHistoryWorkshops(roomIds);
+    this.setData(this._syncHistorySelection(next, {}, false));
+    wx.showToast({ title: '已删除', icon: 'success' });
   },
 
   handleViewRoom() {
@@ -502,6 +621,19 @@ Page(withPageInteractionLock({
     );
   },
 
+  async _recoverExistingRoom() {
+    try {
+      const current = await getRoomPageSnapshot('', { refresh: true });
+      if (current && current.ok === true && current.roomId) {
+        await this._goToRoomPage(current.roomId);
+        return true;
+      }
+    } catch (error) {
+      console.warn('recover existing room fail', error);
+    }
+    return false;
+  },
+
   async _handleCreateRoom() {
     if (this.data.loading) return;
 
@@ -514,17 +646,11 @@ Page(withPageInteractionLock({
       const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {
-        if (result && result.errCode === 'ALREADY_IN_ROOM') {
-          // 服务端成员资格是事实源。本地缓存丢失或多端登录时，直接恢复原房间。
-          const current = await getRoomPageSnapshot('', { refresh: true });
-          if (current && current.ok === true && current.roomId) {
-            await this._goToRoomPage(current.roomId);
-            return;
-          }
-        }
+        // 创建超时或账号已有开放房间时，都以服务端当前房间为准，避免卡在首页。
+        if (await this._recoverExistingRoom()) return;
         console.error('roomCreate error', result);
         wx.showToast({
-          title: result.errMsg || '创建失败，请重试',
+          title: describeRoomCloudError(result, (result && result.errMsg) || '创建失败，请重试'),
           icon: 'none'
         });
         return;
@@ -539,8 +665,9 @@ Page(withPageInteractionLock({
       await this._goToRoomPage(roomId);
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
+      if (await this._recoverExistingRoom()) return;
       wx.showToast({
-        title: err.errMsg || '创建失败，请重试',
+        title: describeRoomCloudError(err, '创建失败，请重试'),
         icon: 'none'
       });
     } finally {
@@ -913,7 +1040,9 @@ Page(withPageInteractionLock({
   }
   /* DEV_TEST_END */
 }, [
-  'onTapHistoryCard', 'handleViewRoom', 'onProfileAuthAvatarTap',
+  'onTapHistoryCard', 'onTapHistoryManage', 'onTapHistoryCancelManage',
+  'onTapHistorySelectAll', 'onTapHistoryDelete',
+  'handleViewRoom', 'onProfileAuthAvatarTap',
   'onProfileAuthChooseAvatar', 'onProfileAuthNickInput', 'onConfirmProfileAuth',
   'onSkipProfileAuth', 'onAvatarAuthTap', 'onChooseAvatar', 'onNickNameInput',
   'handleCreateRoom', 'onDebugRoomIdInput', 'handleJoinByRoomId', 'handleScanJoin',

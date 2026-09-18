@@ -1,3 +1,41 @@
+<template name="historyCard">
+  <view
+    class="history-card {{item.selected ? 'is-selected' : ''}} {{manageMode ? 'is-manage' : ''}}"
+    data-room-id="{{item.roomId}}"
+    data-session-id="{{item.sessionId}}"
+    bindtap="onTapHistoryCard"
+  >
+    <view class="history-select-mark" wx:if="{{manageMode}}">
+      <view class="history-select-dot {{item.selected ? 'is-on' : ''}}">
+        <text wx:if="{{item.selected}}" class="history-select-check">✓</text>
+      </view>
+    </view>
+    <view class="history-card-header">
+      <view class="history-card-title-wrap">
+        <text class="history-card-name">{{item.name}}</text>
+      </view>
+      <view class="history-card-meta">
+        <text class="history-card-creator">{{item.creator}}</text>
+        <text class="history-card-time">{{item.time}}</text>
+      </view>
+    </view>
+    <view class="history-card-body">
+      <view class="ai-summary-label">
+        <!-- AI_TEMP_DISABLED: 原「AI总结」+ sparkle；恢复 AI 后改回 -->
+        <text class="ai-summary-text">总结</text>
+        <!-- <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" /> -->
+      </view>
+      <text class="ai-summary-content">{{item.summary}}</text>
+    </view>
+    <image
+      wx:if="{{item.hasCover}}"
+      class="history-card-cover"
+      src="{{item.cover}}"
+      mode="aspectFill"
+    />
+  </view>
+</template>
+
 <view class="page">
   <!-- 顶部用户信息 -->
   <view class="main-header" style="padding-top: {{headerPaddingTop}}px">
@@ -112,12 +150,20 @@
     </view>
 
     <!-- 历史工作坊 -->
-    <view class="history-section">
+    <view class="history-section {{historyManageMode ? 'history-section-manage' : ''}}">
       <view class="history-header">
         <text class="history-title">历史工作坊</text>
-        <view class="history-sort" wx:if="{{historyWorkshops.length > 0}}">
-          <text class="history-sort-text">时间</text>
-          <image class="history-sort-icon" src="/assets/home/icon-sort-time.svg" mode="aspectFit" />
+        <view class="history-header-actions" wx:if="{{historyWorkshops.length > 0}}">
+          <view class="history-sort" wx:if="{{!historyManageMode}}">
+            <text class="history-sort-text">时间</text>
+            <image class="history-sort-icon" src="/assets/home/icon-sort-time.svg" mode="aspectFit" />
+          </view>
+          <text
+            class="history-manage-btn"
+            wx:if="{{!historyManageMode}}"
+            bindtap="onTapHistoryManage"
+          >管理</text>
+          <text class="history-manage-btn" wx:else bindtap="onTapHistoryCancelManage">取消</text>
         </view>
       </view>
 
@@ -132,71 +178,38 @@
       <view class="history-grid" wx:else>
         <view class="history-column">
           <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 0}}">
-            <view class="history-card" data-room-id="{{item.roomId}}" data-session-id="{{item.sessionId}}" bindtap="onTapHistoryCard">
-              <view class="history-card-header">
-                <view class="history-card-title-wrap">
-                  <text class="history-card-name">{{item.name}}</text>
-                </view>
-                <view class="history-card-meta">
-                  <text class="history-card-creator">{{item.creator}}</text>
-                  <text class="history-card-time">{{item.time}}</text>
-                </view>
-              </view>
-              <view class="history-card-body">
-                <view class="ai-summary-label">
-                  <!-- AI_TEMP_DISABLED: 原「AI总结」+ sparkle；恢复 AI 后改回 -->
-                  <text class="ai-summary-text">总结</text>
-                  <!-- <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" /> -->
-                </view>
-                <text class="ai-summary-content">{{item.summary}}</text>
-              </view>
-              <image
-                wx:if="{{item.hasCover}}"
-                class="history-card-cover"
-                src="{{item.cover}}"
-                mode="aspectFill"
-              />
-            </view>
+            <template is="historyCard" data="{{item: item, manageMode: historyManageMode}}" />
           </block>
         </view>
         <view class="history-column">
           <block wx:for="{{historyWorkshops}}" wx:key="id" wx:for-index="idx" wx:if="{{idx % 2 === 1}}">
-            <view class="history-card" data-room-id="{{item.roomId}}" data-session-id="{{item.sessionId}}" bindtap="onTapHistoryCard">
-              <view class="history-card-header">
-                <view class="history-card-title-wrap">
-                  <text class="history-card-name">{{item.name}}</text>
-                </view>
-                <view class="history-card-meta">
-                  <text class="history-card-creator">{{item.creator}}</text>
-                  <text class="history-card-time">{{item.time}}</text>
-                </view>
-              </view>
-              <view class="history-card-body">
-                <view class="ai-summary-label">
-                  <!-- AI_TEMP_DISABLED: 原「AI总结」+ sparkle；恢复 AI 后改回 -->
-                  <text class="ai-summary-text">总结</text>
-                  <!-- <image class="ai-sparkle-icon" src="/assets/home/icon-ai-sparkle.svg" mode="aspectFit" /> -->
-                </view>
-                <text class="ai-summary-content">{{item.summary}}</text>
-              </view>
-              <image
-                wx:if="{{item.hasCover}}"
-                class="history-card-cover"
-                src="{{item.cover}}"
-                mode="aspectFill"
-              />
-            </view>
+            <template is="historyCard" data="{{item: item, manageMode: historyManageMode}}" />
           </block>
         </view>
       </view>
 
-      <view class="history-footer" wx:if="{{historyWorkshops.length > 0}}">
+      <view class="history-footer" wx:if="{{historyWorkshops.length > 0 && !historyManageMode}}">
         <view class="footer-divider" />
         <text class="footer-text">没有更多了</text>
         <view class="footer-divider" />
       </view>
     </view>
   </scroll-view>
+
+  <view class="history-manage-bar" wx:if="{{historyManageMode}}" catchtouchmove="true">
+    <view class="history-manage-all" bindtap="onTapHistorySelectAll">
+      <view class="history-select-dot {{historyAllSelected ? 'is-on' : ''}}">
+        <text wx:if="{{historyAllSelected}}" class="history-select-check">✓</text>
+      </view>
+      <text class="history-manage-all-text">全选</text>
+    </view>
+    <view
+      class="history-manage-delete {{selectedHistoryCount > 0 ? '' : 'is-disabled'}}"
+      bindtap="onTapHistoryDelete"
+    >
+      <text class="history-manage-delete-text">{{selectedHistoryCount > 0 ? '删除 (' + selectedHistoryCount + ')' : '删除'}}</text>
+    </view>
+  </view>
 
   <!-- 首次进入：授权头像 + 用户名 -->
   <view class="profile-auth-mask" wx:if="{{showProfileAuth}}" catchtouchmove="true">
