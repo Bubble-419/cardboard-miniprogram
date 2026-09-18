@@ -44,13 +44,13 @@ test('三个灵感/复盘输入入口只使用系统 adjust-position，不叠加
   assert.equal(gameInspirationInputs.length, 2);
   gameInspirationInputs.forEach((markup) => {
     assert.match(markup, /adjust-position="\{\{true\}\}"/);
-    assert.match(markup, /cursor-spacing="120"/);
+    assert.match(markup, /cursor-spacing="24"/);
   });
 
   const inspirationTextarea = inspirationWxml.match(/<textarea[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/);
   assert.ok(inspirationTextarea);
   assert.match(inspirationTextarea[0], /adjust-position="\{\{true\}\}"/);
-  assert.match(inspirationTextarea[0], /cursor-spacing="120"/);
+  assert.match(inspirationTextarea[0], /cursor-spacing="24"/);
   assert.match(
     inspirationWxml,
     /inspirationInputFocused \|\| inspirationKeyboardHeight > 0/,

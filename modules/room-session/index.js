@@ -119,6 +119,7 @@ function createFacade(client) {
     sessionSnapshot: (sessionId, roomId) => client.sessionSnapshot(sessionId, roomId),
     messages: (sessionId, query, roomId) => client.messages(sessionId, query, roomId),
     leaderboard: (sessionId, roomId) => client.leaderboard(sessionId, roomId),
+    cancelScheduledPoll: () => client.cancelScheduledPoll(),
     pause: () => client.pause(),
     resume: () => client.resume(),
     dispose: () => client.close(),

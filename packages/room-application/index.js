@@ -134,6 +134,52 @@ function projectEventGroupForMember(eventGroup, memberId) {
   };
 }
 
+function attachCommandSyncFromEvents(input) {
+  const events = input && input.events;
+  const roomId = input && input.roomId;
+  const currentSeq = input && input.currentSeq;
+  const knownSeq = input && input.knownSeq;
+  const memberId = input && input.memberId;
+  if (!isRoomId(roomId) || !isOpaqueId(memberId) || !Array.isArray(events) || !events.length) return null;
+  if (!Number.isInteger(knownSeq) || knownSeq < 0 || !Number.isInteger(currentSeq) || knownSeq > currentSeq) {
+    return null;
+  }
+  if (currentSeq - knownSeq > MAX_INCREMENTAL_SYNC_EVENTS) return null;
+  const available = events.filter((item) => item && item.seq > knownSeq && item.seq <= currentSeq)
+    .sort((a, b) => a.seq - b.seq);
+  if (currentSeq > knownSeq && (!available.length || available[0].seq !== knownSeq + 1)) return null;
+  for (let i = 1; i < available.length; i += 1) {
+    if (available[i].seq !== available[i - 1].seq + 1) return null;
+  }
+  if (available.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) return null;
+  const selected = [];
+  let eventBytes = 0;
+  const eventByteBudget = MAX_SYNC_RESPONSE_BYTES - (16 * 1024);
+  for (const eventGroup of available) {
+    const projected = projectEventGroupForMember(eventGroup, memberId);
+    const projectedBytes = Buffer.byteLength(stableStringify(projected), 'utf8');
+    if (eventBytes + projectedBytes > eventByteBudget) return null;
+    selected.push(projected);
+    eventBytes += projectedBytes;
+  }
+  const throughSeq = selected.length ? selected[selected.length - 1].seq : knownSeq;
+  if (throughSeq !== currentSeq) return null;
+  return okResult({
+    protocolVersion: PROTOCOL_VERSION,
+    viewSchemaVersion: VIEW_SCHEMA_VERSION,
+    eventSchemaVersion: EVENT_SCHEMA_VERSION,
+    afterSeq: knownSeq,
+    throughSeq,
+    roomCurrentSeq: currentSeq,
+    hasMore: false,
+    delivery: 'EVENTS',
+    events: selected,
+    // 事务内没有 Presence/Signal；标 stale 让客户端保留上次瞬时值，而不是空集合清掉在线态。
+    ephemeral: { stale: { presence: true, signals: true } },
+    serverTime: input.serverTime
+  });
+}
+
 /** 应用层只编排事务、投影与同步；所有业务裁决留在领域 Reducer。 */
 function createRoomApplication(repo, options) {
   if (!repo || typeof repo.transactCommand !== 'function') throw new Error('RoomRepository required');
@@ -617,7 +663,15 @@ function createRoomApplication(repo, options) {
     if (![COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM,
       COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
       try {
-        response.sync = await sync(outcome.roomId, envelope.knownSeq,
+        const attached = !transaction.replayed && attachCommandSyncFromEvents({
+          events: transaction.events,
+          roomId: outcome.roomId,
+          currentSeq: outcome.committedThroughSeq,
+          knownSeq: envelope.knownSeq,
+          memberId: receipt.memberId,
+          serverTime: now()
+        });
+        response.sync = attached || await sync(outcome.roomId, envelope.knownSeq,
           { ...actorContext, touchPresence: false });
       } catch (syncError) {
         // Command 已原子提交；附带同步失败不能把成功伪装成写失败，客户端按下一轮正常同步恢复。

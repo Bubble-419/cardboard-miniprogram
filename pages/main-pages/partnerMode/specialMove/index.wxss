@@ -568,30 +568,56 @@
   min-width: 0;
 }
 
-.reverse-title {
-  display: block;
+.special-action-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8rpx;
   width: 100%;
-  font-size: 52rpx;
-  font-weight: 700;
-  color: #5ec159;
-  text-align: center;
-  line-height: 1.3;
-  letter-spacing: -0.06em;
-  margin-bottom: 34rpx;
+  min-width: 0;
+  margin-bottom: 14rpx;
+  box-sizing: border-box;
 }
 
-.reverse-desc {
-  display: block;
-  width: 100%;
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.4);
-  text-align: center;
-  line-height: 1.3;
+.special-mode-badge {
+  flex-shrink: 0;
+  height: 56rpx;
+  padding: 0 16rpx;
+  background: #5ec159;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #fff;
   letter-spacing: -0.06em;
+  line-height: 56rpx;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.special-action-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #5ec159;
+  text-align: left;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reverse-card-inner .special-action-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .reverse-divider {
-  margin: 34rpx 0 16rpx;
+  margin: 20rpx 0 16rpx;
 }
 
 /* Figma #5938:9042：2×2 步骤，gap 11px 8px */
@@ -683,53 +709,12 @@
   min-width: 0;
 }
 
-/* Figma #5938:8707：徽章 + 标题同一行 */
-.silent-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 16rpx;
-  width: 100%;
-  min-width: 0;
-  margin-bottom: 34rpx;
-  box-sizing: border-box;
-}
-
-.silent-badge {
-  flex-shrink: 0;
-  height: 56rpx;
-  padding: 0 18rpx;
-  background: #5ec159;
-  border-radius: 16rpx;
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #fff;
-  letter-spacing: -0.06em;
-  line-height: 56rpx;
-  text-align: center;
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-
-.silent-main-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 48rpx;
-  font-weight: 700;
-  color: #5ec159;
-  text-align: center;
-  line-height: 1.3;
-  letter-spacing: -0.06em;
-  white-space: nowrap;
-}
-
 .silent-desc {
   display: block;
   width: 100%;
   font-size: 26rpx;
   color: rgba(0, 0, 0, 0.4);
-  text-align: center;
+  text-align: left;
   line-height: 1.3;
   letter-spacing: -0.06em;
 }

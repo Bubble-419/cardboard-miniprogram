@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { clone } = require('@cardboard/room-projection');
 const { emptyFacts, designProblemNudgeDeniedReason, designProblemEditingDeniedReason } = require('@cardboard/room-domain');
 const {
-  PROTOCOL_VERSION, SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify,
+  PROTOCOL_VERSION, SCHEMA_VERSION, COMMAND_TYPES, MAX_INCREMENTAL_SYNC_EVENTS, stableStringify,
   SIGNAL_TYPES, SIGNAL_TTL_MS, DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
 } = require('@cardboard/room-contracts');
 
@@ -90,6 +90,33 @@ function sameDocument(left, right) {
   return stableStringify(left) === stableStringify(right);
 }
 
+function isSafeFactKey(id) {
+  return typeof id === 'string' && id.length > 0 && id.length <= 128
+    && !id.includes('.') && !id.includes('$');
+}
+
+function scoreSessionPatch(inputType, decision, afterSession) {
+  if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+    return null;
+  }
+  const dirty = decision.dirtyFacts || [];
+  if (!dirty.length || dirty.some((item) => !item || item.kind !== 'scores' || item.remove)) return null;
+  const scores = afterSession.facts && afterSession.facts.scores || {};
+  const activeTurn = afterSession.modeState && afterSession.modeState.partner
+    && afterSession.modeState.partner.activeTurn;
+  const progress = afterSession.progress && afterSession.progress.scoreProgress;
+  if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
+  const data = {
+    'modeState.partner.activeTurn.scoreProgress': clone(activeTurn.scoreProgress),
+    'progress.scoreProgress': clone(progress)
+  };
+  for (const item of dirty) {
+    if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
+    data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+  }
+  return data;
+}
+
 function createCloudBaseRoomRepository(deps) {
   const db = deps && deps.db;
   if (!db || typeof db.runTransaction !== 'function') throw new Error('CloudBase transaction database required');
@@ -163,8 +190,13 @@ function createCloudBaseRoomRepository(deps) {
         await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
         const beforeSession = beforeSessionSnapshot;
         const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-        // 房间资料、座位等命令不改变当前场次时，不重写体积更大的 Session/Facts 文档。
-        if (afterSession && !sameDocument(beforeSession, afterSession)) {
+        const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
+        // 评分只改 scores 与 scoreProgress：点更新避免把消息/素材整文档再写一遍。
+        if (sessionPatch) {
+          await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId)
+            .update({ data: sessionPatch });
+        } else if (afterSession && !sameDocument(beforeSession, afterSession)) {
+          // 房间资料、座位等命令不改变当前场次时，不重写体积更大的 Session/Facts 文档。
           await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId)
             .set({ data: afterSession });
         }
@@ -211,7 +243,7 @@ function createCloudBaseRoomRepository(deps) {
         await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
       }
       await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
-      return { replayed: false, receipt };
+      return { replayed: false, receipt, events: (decision.events || []).map((item) => cleanDoc(item)) };
     });
   }
 

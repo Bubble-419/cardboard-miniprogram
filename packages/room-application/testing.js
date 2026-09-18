@@ -105,7 +105,7 @@ function createInMemoryRoomRepository(options) {
         afterUsers.forEach((item) => activeRooms.set(item.userId, item.roomId));
       }
       actions.set(key, copy(receipt));
-      return { replayed: false, receipt: copy(receipt) };
+      return { replayed: false, receipt: copy(receipt), events: copy(decision.events || []) };
     },
     async findActiveRoom(userId) {
       const roomId = activeRooms.get(userId);

@@ -453,7 +453,7 @@
   box-sizing: border-box;
 }
 
-.master-mode-badge {
+.special-mode-badge {
   flex-shrink: 0;
   width: auto;
   min-width: 0;
@@ -498,13 +498,13 @@
   box-sizing: border-box;
 }
 
-/* Figma #5933:8003 — MASTER：徽章+标题同行，与说明间距 7px */
-.action-header-master {
+/* 特殊行动：徽章+标题同行，与说明间距 7px */
+.action-header-special {
   gap: 8rpx;
   align-items: stretch;
 }
 
-.action-header-master .action-title-block {
+.action-header-special .action-title-block {
   gap: 14rpx;
   align-items: stretch;
 }
@@ -520,7 +520,7 @@
   letter-spacing: -0.06em;
 }
 
-.action-title-master {
+.action-title-special {
   flex: 1;
   min-width: 0;
   width: auto;
@@ -548,7 +548,7 @@
   text-overflow: ellipsis;
 }
 
-.action-header-master .action-desc {
+.action-header-special .action-desc {
   font-size: 24rpx;
   text-align: left;
 }
@@ -731,9 +731,10 @@
 .spectator-express-slot-flow {
   position: relative;
   flex: 0 0 auto;
+  align-self: stretch;
   z-index: 6;
   width: auto;
-  height: auto;
+  height: var(--star-hit-height);
   padding: 0;
   display: flex;
   align-items: center;
@@ -756,8 +757,9 @@
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
+  align-self: stretch;
   width: auto;
-  height: var(--spectator-fab-size);
+  height: var(--star-hit-height);
   line-height: 0;
 }
 
@@ -877,9 +879,12 @@
   box-sizing: border-box;
 }
 
-/* 宿主高度需与组件内 96rpx 星轨一致，否则 overflow 会裁掉星尖 */
+/* 宿主与热区同高，内部 60rpx 星轨垂直居中，避免星比表态钮偏上 */
 .star-rating-row > star-rating {
-  display: block;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;
@@ -892,16 +897,6 @@
 .spectator-express-form {
   width: 100%;
   display: block;
-}
-
-.express-form-submit-hidden {
-  position: absolute;
-  width: 0;
-  height: 0;
-  padding: 0;
-  margin: 0;
-  overflow: hidden;
-  opacity: 0;
 }
 
 .score-sheet-spacer {
@@ -1014,6 +1009,28 @@
   color: #5ec159;
   line-height: 1.3;
   letter-spacing: -0.06em;
+}
+
+.spectator-card-head-special {
+  gap: 14rpx;
+}
+
+.spectator-card-head-special .spectator-card-desc {
+  text-align: left;
+}
+
+.spectator-card-title-special {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  font-size: 36rpx;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
 }
 
 .spectator-card-desc {
@@ -1255,36 +1272,42 @@
 }
 
 .spectator-express-send-btn {
-  flex: 0 0 60rpx;
-  width: 60rpx !important;
-  min-width: 60rpx !important;
-  max-width: 60rpx !important;
-  height: 60rpx;
-  padding: 0 !important;
+  flex: 0 0 auto;
+  width: auto !important;
+  min-width: 112rpx !important;
+  max-width: none !important;
+  height: 62rpx;
+  padding: 0 22rpx !important;
   margin: 0;
-  line-height: 0;
-  background: transparent;
+  line-height: 62rpx;
+  background: #5ec159;
   border: none;
-  border-radius: 16rpx;
+  border-radius: 8rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #ffffff;
 }
 
 .spectator-express-send-btn::after {
   border: none;
 }
 
-.spectator-express-send-disabled {
-  opacity: 0.45;
+.spectator-express-send-hover {
+  opacity: 0.88;
 }
 
-.spectator-express-send-icon {
-  width: 60rpx;
-  height: 60rpx;
-  pointer-events: none;
-  display: block;
+.spectator-express-send-disabled {
+  background: #e5e5e5;
+  color: #b1b1b1;
+}
+
+.spectator-express-send-disabled.spectator-express-send-hover,
+.spectator-express-send-disabled:active {
+  opacity: 1;
 }
 
 .score-panel {

@@ -3722,6 +3722,50 @@ var require_room_application = __commonJS({
         occurredAt: eventGroup.occurredAt
       };
     }
+    function attachCommandSyncFromEvents(input) {
+      const events = input && input.events;
+      const roomId = input && input.roomId;
+      const currentSeq = input && input.currentSeq;
+      const knownSeq = input && input.knownSeq;
+      const memberId = input && input.memberId;
+      if (!isRoomId(roomId) || !isOpaqueId(memberId) || !Array.isArray(events) || !events.length) return null;
+      if (!Number.isInteger(knownSeq) || knownSeq < 0 || !Number.isInteger(currentSeq) || knownSeq > currentSeq) {
+        return null;
+      }
+      if (currentSeq - knownSeq > MAX_INCREMENTAL_SYNC_EVENTS) return null;
+      const available = events.filter((item) => item && item.seq > knownSeq && item.seq <= currentSeq).sort((a, b) => a.seq - b.seq);
+      if (currentSeq > knownSeq && (!available.length || available[0].seq !== knownSeq + 1)) return null;
+      for (let i = 1; i < available.length; i += 1) {
+        if (available[i].seq !== available[i - 1].seq + 1) return null;
+      }
+      if (available.some((eventGroup) => eventGroup.roomId !== roomId || !validEventGroup(eventGroup))) return null;
+      const selected = [];
+      let eventBytes = 0;
+      const eventByteBudget = MAX_SYNC_RESPONSE_BYTES - 16 * 1024;
+      for (const eventGroup of available) {
+        const projected = projectEventGroupForMember(eventGroup, memberId);
+        const projectedBytes = Buffer.byteLength(stableStringify(projected), "utf8");
+        if (eventBytes + projectedBytes > eventByteBudget) return null;
+        selected.push(projected);
+        eventBytes += projectedBytes;
+      }
+      const throughSeq = selected.length ? selected[selected.length - 1].seq : knownSeq;
+      if (throughSeq !== currentSeq) return null;
+      return okResult({
+        protocolVersion: PROTOCOL_VERSION,
+        viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        eventSchemaVersion: EVENT_SCHEMA_VERSION,
+        afterSeq: knownSeq,
+        throughSeq,
+        roomCurrentSeq: currentSeq,
+        hasMore: false,
+        delivery: "EVENTS",
+        events: selected,
+        // 事务内没有 Presence/Signal；标 stale 让客户端保留上次瞬时值，而不是空集合清掉在线态。
+        ephemeral: { stale: { presence: true, signals: true } },
+        serverTime: input.serverTime
+      });
+    }
     function createRoomApplication(repo, options) {
       if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
       const appOptions = options || {};
@@ -4257,7 +4301,15 @@ var require_room_application = __commonJS({
           COMMAND_TYPES.DISSOLVE_ROOM
         ].includes(envelope.type)) {
           try {
-            response.sync = await sync(
+            const attached = !transaction.replayed && attachCommandSyncFromEvents({
+              events: transaction.events,
+              roomId: outcome.roomId,
+              currentSeq: outcome.committedThroughSeq,
+              knownSeq: envelope.knownSeq,
+              memberId: receipt.memberId,
+              serverTime: now()
+            });
+            response.sync = attached || await sync(
               outcome.roomId,
               envelope.knownSeq,
               { ...actorContext, touchPresence: false }
@@ -4301,6 +4353,7 @@ var require_room_cloudbase_adapter = __commonJS({
     var {
       PROTOCOL_VERSION,
       SCHEMA_VERSION,
+      COMMAND_TYPES,
       MAX_INCREMENTAL_SYNC_EVENTS,
       stableStringify,
       SIGNAL_TYPES,
@@ -4388,6 +4441,29 @@ var require_room_cloudbase_adapter = __commonJS({
     function sameDocument(left, right) {
       return stableStringify(left) === stableStringify(right);
     }
+    function isSafeFactKey(id) {
+      return typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes(".") && !id.includes("$");
+    }
+    function scoreSessionPatch(inputType, decision, afterSession) {
+      if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+        return null;
+      }
+      const dirty = decision.dirtyFacts || [];
+      if (!dirty.length || dirty.some((item) => !item || item.kind !== "scores" || item.remove)) return null;
+      const scores = afterSession.facts && afterSession.facts.scores || {};
+      const activeTurn = afterSession.modeState && afterSession.modeState.partner && afterSession.modeState.partner.activeTurn;
+      const progress = afterSession.progress && afterSession.progress.scoreProgress;
+      if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
+      const data = {
+        "modeState.partner.activeTurn.scoreProgress": clone(activeTurn.scoreProgress),
+        "progress.scoreProgress": clone(progress)
+      };
+      for (const item of dirty) {
+        if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
+        data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+      }
+      return data;
+    }
     function createCloudBaseRoomRepository(deps) {
       const db = deps && deps.db;
       if (!db || typeof db.runTransaction !== "function") throw new Error("CloudBase transaction database required");
@@ -4460,7 +4536,10 @@ var require_room_cloudbase_adapter = __commonJS({
             await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
             const beforeSession = beforeSessionSnapshot;
             const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-            if (afterSession && !sameDocument(beforeSession, afterSession)) {
+            const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
+            if (sessionPatch) {
+              await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId).update({ data: sessionPatch });
+            } else if (afterSession && !sameDocument(beforeSession, afterSession)) {
               await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId).set({ data: afterSession });
             }
             if (decision.archivedSession) {
@@ -4504,7 +4583,7 @@ var require_room_cloudbase_adapter = __commonJS({
             await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
           }
           await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
-          return { replayed: false, receipt };
+          return { replayed: false, receipt, events: (decision.events || []).map((item) => cleanDoc(item)) };
         });
       }
       async function readAggregate(roomId) {

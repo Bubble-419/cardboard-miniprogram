@@ -704,3 +704,89 @@ test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', asy
   assert.equal(stored.facts.scores.score1.scoreHalfSteps, 7);
   assert.equal(documents.has(`${COLLECTIONS.events}:12345678_000000000002`), true);
 });
+
+test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档 set Session', async () => {
+  const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+  const scoreId = 'turn_1:member-u2';
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', ...CURRENT_ROOM_VERSION,
+      lifecycle: 'OPEN', currentSessionId: 'session-1', eventSeq: 1,
+      members: [{ userId: 'u2', memberId: 'member-u2' }]
+    }],
+    [`${COLLECTIONS.sessions}:session-1`, {
+      roomId: '12345678', sessionId: 'session-1', status: 'RUNNING',
+      modeState: { partner: { activeTurn: { turnId: 'turn_1', scoreProgress: {
+        requiredMemberIds: ['member-u2'], submittedMemberIds: []
+      } } } },
+      progress: { scoreProgress: { requiredMemberIds: ['member-u2'], submittedMemberIds: [] } },
+      facts: {
+        turns: {}, scores: {}, votes: {}, contributions: {}, artifacts: {},
+        messages: [{ messageId: 'm1', text: '保留' }], secrets: {}
+      }
+    }]
+  ]);
+  const writes = [];
+  const transaction = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) throw missing();
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { writes.push([name, 'set']); documents.set(key, data); },
+            async update({ data }) {
+              writes.push([name, 'update', data]);
+              const current = documents.get(key) || {};
+              const next = JSON.parse(JSON.stringify(current));
+              for (const [path, value] of Object.entries(data)) {
+                const parts = path.split('.');
+                let cursor = next;
+                for (let i = 0; i < parts.length - 1; i += 1) {
+                  const part = parts[i];
+                  if (!cursor[part] || typeof cursor[part] !== 'object') cursor[part] = {};
+                  cursor = cursor[part];
+                }
+                cursor[parts[parts.length - 1]] = value;
+              }
+              documents.set(key, next);
+            },
+            async remove() { writes.push([name, 'remove']); documents.delete(key); }
+          };
+        }
+      };
+    }
+  };
+  const repo = createCloudBaseRoomRepository({ db: { runTransaction: (callback) => callback(transaction) } });
+  const committed = await repo.transactCommand({
+    scopeKey: '12345678', commandId: 'score-1', actorUserId: 'u2', roomId: '12345678',
+    type: 'SUBMIT_PARTNER_SCORE', requestHash: 'hash', createdAt: 2
+  }, ({ aggregate }) => {
+    aggregate.room.eventSeq = 2;
+    const progress = { requiredMemberIds: ['member-u2'], submittedMemberIds: ['member-u2'] };
+    aggregate.currentSession.modeState.partner.activeTurn.scoreProgress = progress;
+    aggregate.currentSession.progress.scoreProgress = progress;
+    aggregate.facts.scores[scoreId] = {
+      sessionId: 'session-1', turnId: 'turn_1', memberId: 'member-u2',
+      scoreHalfSteps: 7, commitSeq: 2
+    };
+    return {
+      accepted: true, aggregate, dirtyFacts: [{ kind: 'scores', id: scoreId }],
+      events: [{ roomId: '12345678', seq: 2 }],
+      outcome: { kind: 'ACCEPTED', committedThroughSeq: 2 }
+    };
+  });
+
+  const sessionWrites = writes.filter((item) => item[0] === COLLECTIONS.sessions);
+  assert.equal(sessionWrites.length, 1);
+  assert.equal(sessionWrites[0][1], 'update');
+  assert.equal(sessionWrites[0][2][`facts.scores.${scoreId}`].scoreHalfSteps, 7);
+  const stored = documents.get(`${COLLECTIONS.sessions}:session-1`);
+  assert.equal(stored.facts.messages[0].messageId, 'm1');
+  assert.equal(stored.facts.scores[scoreId].scoreHalfSteps, 7);
+  assert.deepEqual(stored.progress.scoreProgress.submittedMemberIds, ['member-u2']);
+  assert.equal(committed.events.length, 1);
+});

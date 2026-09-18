@@ -508,6 +508,37 @@ test('从后台恢复时立即重新读取 Snapshot', async () => {
   assert.equal(client.getView().room.workshopName, '快照2');
 });
 
+test('cancelScheduledPoll 只取消预约轮询，不暂停客户端', async () => {
+  let syncCalls = 0;
+  const view = makeStableView('12345678', '房间');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({
+      ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {}
+    }),
+    sync: async () => {
+      syncCalls += 1;
+      return {
+        ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        eventSchemaVersion: EVENT_SCHEMA_VERSION,
+        afterSeq: 1, throughSeq: 1, roomCurrentSeq: 1, hasMore: false,
+        delivery: 'EVENTS', events: [], ephemeral: {}
+      };
+    },
+    dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' } })
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+  await client.open();
+  client.cancelScheduledPoll();
+  await timers.run();
+  assert.equal(syncCalls, 0);
+  assert.equal(client.getState().status, 'READY');
+  await client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
+  assert.equal(client.getState().status, 'READY');
+});
+
 test('Sync 内联 Snapshot 可直接替换 View，不再追加一次 Snapshot 请求', async () => {
   let snapshotCalls = 0;
   const initialView = makeStableView('12345678', '初始状态');
