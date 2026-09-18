@@ -69,19 +69,67 @@ test('Partner 完整评分、内容、表态、换轮并按整轮递增', async 
   assert.equal(snapshot.view.session.recentMessages[0].text, '换个角度试试');
   assert.equal(JSON.stringify(snapshot.view.session.recentMessages).includes('authorMemberId'), false);
 
-  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId }, payload: { statementResult: 'partialPass' }
+  });
   const staleArtifact = await h.command('host', 'APPEND_ARTIFACT', {
     context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
     payload: { operationId: 'late-play-op', text: '不应落入讨论阶段' }
   });
   assert.equal(staleArtifact.errCode, 'STALE_CONTEXT');
-  await h.command('host', 'ADVANCE_PARTNER_TURN', { context: { sessionId, turnId }, payload: { statementResult: 'allPass' } });
+  await h.command('host', 'ADVANCE_PARTNER_TURN', { context: { sessionId, turnId } });
   snapshot = await h.snapshot('host');
   assert.notEqual(snapshot.view.session.activeTurn.turnId, turnId);
   assert.equal(snapshot.view.session.activeTurn.roundNo, 1);
   const summary = h.repo.rooms.get('12345678').facts.turns[turnId];
   assert.equal(summary.totalStars, 7.5);
   assert.equal(summary.activeMemberId, snapshot.view.room.hostMemberId);
+});
+
+test('Partner 全部通过会在提交表态结果时直接归档并换轮', async () => {
+  const { h, sessionId, turnId } = await seedPartner();
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+  });
+
+  const result = await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
+  assert.equal(result.ok, true);
+  const snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'PARTNER_TURN');
+  assert.notEqual(snapshot.view.session.activeTurn.turnId, turnId);
+  assert.equal(h.repo.rooms.get('12345678').facts.turns[turnId].statementResult, 'allPass');
+});
+
+test('Partner 部分通过和全部疑问会保留结果进入讨论，结束后再换轮', async () => {
+  for (const statementResult of ['partialPass', 'allQuestion']) {
+    const { h, sessionId, turnId } = await seedPartner();
+    await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+      context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
+    });
+    await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+      context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+    });
+
+    const submitted = await h.command('host', 'START_PARTNER_STATEMENT', {
+      context: { sessionId, turnId }, payload: { statementResult }
+    });
+    assert.equal(submitted.ok, true);
+    assert.equal((await h.snapshot('host')).view.session.workflow.step, 'PARTNER_STATEMENT');
+    assert.equal(h.repo.rooms.get('12345678').currentSession.modeState.partner.activeTurn.statementResult,
+      statementResult);
+
+    const advanced = await h.command('host', 'ADVANCE_PARTNER_TURN', {
+      context: { sessionId, turnId }
+    });
+    assert.equal(advanced.ok, true);
+    assert.equal((await h.snapshot('host')).view.session.workflow.step, 'PARTNER_TURN');
+    assert.equal(h.repo.rooms.get('12345678').facts.turns[turnId].statementResult, statementResult);
+  }
 });
 
 test('Partner Artifact 的 operationId 只可重放同一业务操作', async () => {
@@ -111,8 +159,7 @@ test('Partner 讨论阶段只有房主可以新增共享素材', async () => {
   await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
     context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
   });
-  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+  await h.command('host', 'START_PARTNER_STATEMENT', {
     context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
   });
   const second = await h.snapshot('host');
@@ -124,7 +171,7 @@ test('Partner 讨论阶段只有房主可以新增共享素材', async () => {
     context: { sessionId, turnId: secondTurnId }, payload: { scoreHalfSteps: 8 }
   });
   await h.command('host', 'START_PARTNER_STATEMENT', {
-    context: { sessionId, turnId: secondTurnId }
+    context: { sessionId, turnId: secondTurnId }, payload: { statementResult: 'partialPass' }
   });
 
   const actorAppend = await h.command('u2', 'APPEND_ARTIFACT', {
@@ -194,6 +241,27 @@ test('Partner 收尾 question 回到新 Turn；全 pass 进入 Rune/Review 并�
   assert.equal(leaderboard.leaderboard.length, 3);
 });
 
+test('Partner 多人同时 question 时按冻结座次选择下一位，而不是按提交先后', async () => {
+  const { h, sessionId, turnId, u2MemberId } = await seedPartner();
+  await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'CLOSING' }
+  });
+  const closing = (await h.snapshot('host')).view.session.publicModeState.closing;
+
+  await h.command('u3', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'question' }
+  });
+  await h.command('u2', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'question' }
+  });
+
+  const snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'PARTNER_TURN');
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
+});
+
 test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const left = await h.command('u2', 'LEAVE_ROOM');
@@ -202,8 +270,7 @@ test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async 
   // 首位仍是 host，离开非行动者只缩减必需评分集合。
   assert.equal(aggregate.currentSession.modeState.partner.activeTurn.scoreProgress.requiredMemberIds.length, 1);
   await h.command('u3', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 6 } });
-  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+  await h.command('host', 'START_PARTNER_STATEMENT', {
     context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
   });
   const next = await h.snapshot('host');
@@ -232,11 +299,12 @@ test('已评分成员离开后从进度集合移除，不会提前开始表态',
   await h.command('u2', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 } });
   await h.command('u2', 'LEAVE_ROOM');
   await h.command('u3', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 } });
-  const early = await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
+  const early = await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
   assert.equal(early.errCode, 'INVALID_TRANSITION');
   await h.command('u4', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 6 } });
-  assert.equal((await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } })).ok, true);
-  assert.equal((await h.command('host', 'ADVANCE_PARTNER_TURN', {
+  assert.equal((await h.command('host', 'START_PARTNER_STATEMENT', {
     context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
   })).ok, true);
   const archived = h.repo.rooms.get('12345678').facts.turns[turnId];
@@ -337,8 +405,7 @@ async function finishActiveTurn(h, sessionId) {
       context: { sessionId, turnId: turn.turnId }, payload: { scoreHalfSteps: 6 }
     });
   }
-  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId: turn.turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+  await h.command('host', 'START_PARTNER_STATEMENT', {
     context: { sessionId, turnId: turn.turnId }, payload: { statementResult: 'allPass' }
   });
 }

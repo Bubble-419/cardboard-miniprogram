@@ -24,8 +24,8 @@ var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
     var PROTOCOL_VERSION = 3;
-    var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 4;
+    var SCHEMA_VERSION = 5;
+    var VIEW_SCHEMA_VERSION = 6;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -306,8 +306,8 @@ var require_room_contracts = __commonJS({
       REMOVE_ARTIFACT: ["operationId"],
       SUBMIT_PARTNER_SCORE: ["scoreHalfSteps"],
       POST_PARTNER_MESSAGE: ["text"],
-      START_PARTNER_STATEMENT: [],
-      ADVANCE_PARTNER_TURN: ["statementResult"],
+      START_PARTNER_STATEMENT: ["statementResult"],
+      ADVANCE_PARTNER_TURN: [],
       USE_PARTNER_SPECIAL: ["kind"],
       END_PARTNER_SILENT: [],
       SUBMIT_PARTNER_CLOSING_VOTE: ["vote"],
@@ -450,7 +450,7 @@ var require_room_contracts = __commonJS({
           return fail(ERR.LIMIT_EXCEEDED, "\u7D20\u6750\u5F15\u7528\u8D85\u8FC7\u4E0A\u9650");
         }
       }
-      if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
+      if (type === COMMAND_TYPES.START_PARTNER_STATEMENT && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
         return fail(ERR.INVALID_ARGUMENT, "statementResult \u4E0D\u5408\u6CD5");
       }
       if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM, COMMAND_TYPES.UPDATE_MEMBER_PROFILE].includes(type) && payload.nickName != null) {
@@ -588,6 +588,9 @@ var require_room_contracts = __commonJS({
     function validProjectedParticipant(participant) {
       return isRecord(participant) && isNonEmptyString(participant.memberId) && Number.isInteger(participant.seatNoAtStart) && participant.seatNoAtStart >= 1 && participant.seatNoAtStart <= MAX_SEATS && ["ACTIVE", "LEFT"].includes(participant.status) && isNonEmptyString(participant.nickName) && validNullableString(participant.avatarRef) && (participant.avatarIndex == null || Number.isInteger(participant.avatarIndex) && participant.avatarIndex >= 0) && typeof participant.color === "string";
     }
+    function validProjectedDesignProblem(problem) {
+      return isRecord(problem) && isNonEmptyString(problem.contributionId) && isNonEmptyString(problem.memberId) && typeof problem.text === "string" && Number.isInteger(problem.entityVersion) && problem.entityVersion >= 1 && Number.isFinite(problem.createdAt);
+    }
     function validActorStatus(status) {
       return isRecord(status) && typeof status.submitted === "boolean";
     }
@@ -628,7 +631,7 @@ var require_room_contracts = __commonJS({
       if (!validProjectedBack(back)) return false;
       if (view.session == null) return true;
       const session = view.session;
-      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1 || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
+      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !session.setup.designProblems.every(validProjectedDesignProblem) || !(session.setup.selectedProblem == null || validProjectedDesignProblem(session.setup.selectedProblem)) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1 || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
       const participantIds = session.participants.map((participant) => participant.memberId);
       const participantSeats = session.participants.map((participant) => participant.seatNoAtStart);
       return new Set(participantIds).size === participantIds.length && new Set(participantSeats).size === participantSeats.length;
@@ -778,9 +781,12 @@ var require_model = __commonJS({
       }
       return null;
     }
-    function designProblemEditingDeniedReason(session, hostMemberId, memberId, contributionId, facts) {
+    function designProblemEditingDeniedReason(session, hostMemberId, memberId, contributionId, facts, workflowRevision) {
       if (!session || !session.workflow || session.workflow.step !== WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) {
         return { errCode: ERR.INVALID_TRANSITION, errMsg: "\u5F53\u524D\u4E0D\u80FD\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
+      }
+      if (Number(workflowRevision) !== Number(session.workflow.revision)) {
+        return { errCode: ERR.STALE_CONTEXT, errMsg: "\u5DE5\u4F5C\u6D41\u9636\u6BB5\u5DF2\u7ECF\u53D8\u5316" };
       }
       if (!hostMemberId || hostMemberId !== memberId) {
         return { errCode: ERR.HOST_REQUIRED, errMsg: "\u4EC5\u623F\u4E3B\u53EF\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
@@ -790,9 +796,7 @@ var require_model = __commonJS({
       }
       const id = String(contributionId || "").trim();
       if (!id) return null;
-      const contributions = Object.values(facts && facts.contributions || {});
-      if (!contributions.length) return null;
-      const found = contributions.some((item) => item && item.kind === "DESIGN_PROBLEM" && item.contributionId === id && (!item.sessionId || !session.sessionId || item.sessionId === session.sessionId));
+      const found = Object.values(facts && facts.contributions || {}).some((item) => item && item.sessionId === session.sessionId && item.kind === "DESIGN_PROBLEM" && item.contributionId === id);
       if (!found) return { errCode: ERR.STALE_CONTEXT, errMsg: "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728" };
       return null;
     }
@@ -1276,7 +1280,8 @@ var require_partner = __commonJS({
       const facts = ensureFacts(aggregate);
       const requiredVoters = new Set(closing.requiredMemberIds);
       const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId && requiredVoters.has(row.memberId));
-      const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === "question");
+      const seats = new Map((session.participants || []).map((item) => [item.memberId, item.seatNoAtStart]));
+      const question = rows.filter((row) => row.vote === "question").sort((a, b) => (seats.get(a.memberId) || Number.MAX_SAFE_INTEGER) - (seats.get(b.memberId) || Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt)[0];
       const summary = archiveActiveTurn(aggregate, question ? "CLOSING_QUESTIONED" : "CLOSING_ACCEPTED", null, deps);
       const dirty = summary ? [{ kind: "turns", id: summary.turnId }] : [];
       if (question) {
@@ -1380,7 +1385,22 @@ var require_partner = __commonJS({
         if (check.turn.ordinal >= MAX_PARTNER_TURNS) {
           return fail(ERR.LIMIT_EXCEEDED, `\u5F53\u524D\u573A\u6B21\u5DF2\u8FBE\u5230 ${MAX_PARTNER_TURNS} \u4E2A\u884C\u52A8\u8F6E\uFF0C\u8BF7\u4F7F\u7528\u6536\u5C3E\u884C\u52A8`);
         }
+        if (command.payload.statementResult === "allPass") {
+          const summary = archiveActiveTurn(aggregate, "COMPLETED", "allPass", deps);
+          const turn = beginNextPartnerTurn(aggregate, deps);
+          if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
+          return domainOk(
+            aggregate,
+            [
+              event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),
+              event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: turn.activeMemberId, roundNo: turn.roundNo })
+            ],
+            { kind: "ACCEPTED", turnId: turn.turnId },
+            [{ kind: "turns", id: summary.turnId }]
+          );
+        }
         check.turn.phase = "STATEMENT";
+        check.turn.statementResult = command.payload.statementResult;
         check.turn.phaseStartedAt = nowOf(deps);
         check.turn.masterMode = false;
         check.turn.silentStartedAt = null;
@@ -1397,7 +1417,7 @@ var require_partner = __commonJS({
         if (!host.ok) return host;
         const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]);
         if (!check.ok) return check;
-        const summary = archiveActiveTurn(aggregate, "COMPLETED", command.payload.statementResult || null, deps);
+        const summary = archiveActiveTurn(aggregate, "COMPLETED", check.turn.statementResult, deps);
         const turn = beginNextPartnerTurn(aggregate, deps);
         if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
         return domainOk(
@@ -3081,14 +3101,16 @@ var require_room_projection = __commonJS({
             contributionId: selectedProblem.contributionId,
             memberId: selectedProblem.memberId,
             text: selectedProblem.text,
-            entityVersion: selectedProblem.entityVersion
+            entityVersion: selectedProblem.entityVersion,
+            createdAt: selectedProblem.createdAt
           } : null,
           // 问题在收集完成前互不可见；进入选择阶段后持续投影，确保配置页返回时可完整还原。
-          designProblems: problemRevealSteps.includes(session.workflow.step) ? contributions.filter((item) => item.kind === "DESIGN_PROBLEM").map((item) => ({
+          designProblems: problemRevealSteps.includes(session.workflow.step) ? contributions.filter((item) => item.kind === "DESIGN_PROBLEM").sort((a, b) => a.createdAt - b.createdAt || String(a.contributionId).localeCompare(String(b.contributionId))).map((item) => ({
             contributionId: item.contributionId,
             memberId: item.memberId,
             text: item.text,
-            entityVersion: item.entityVersion
+            entityVersion: item.entityVersion,
+            createdAt: item.createdAt
           })) : []
         },
         workflow: clone(session.workflow),
@@ -3187,11 +3209,11 @@ var require_room_projection = __commonJS({
         }));
       } else if (session.mode === MODE.HALLI_GALLI) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
-        const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
         view.publicModeState = {
           firstMemberId: session.setup.proposedFirstMemberId || null,
           submittedMemberIds: ideas.map((item) => item.memberId),
-          ideas: reveal ? ideas.map((item) => ({ memberId: item.memberId, text: item.text })) : []
+          // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
+          ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
         };
       } else if (session.mode === MODE.SPY) {
         const spy = currentSpy(aggregate) || {};
@@ -3844,6 +3866,7 @@ var require_room_application = __commonJS({
               memberId: row.memberId,
               sessionId: row.sessionId,
               turnId: row.turnId,
+              workflowRevision: row.workflowRevision,
               updatedAt: row.updatedAt,
               expiresAt: row.expiresAt
             };
@@ -3907,6 +3930,7 @@ var require_room_application = __commonJS({
         const sessionId = String(input && input.sessionId || "");
         const turnId = String(input && input.turnId || "");
         const signalType = String(input && input.signalType || "");
+        const workflowRevision = input && input.workflowRevision;
         const rawValue = input && input.value;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
@@ -3921,7 +3945,7 @@ var require_room_application = __commonJS({
             return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
           }
         } else if (designEditing) {
-          if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+          if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !Number.isInteger(workflowRevision) || workflowRevision < 1) {
             return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
           }
           if (rawValue != null && rawValue !== "" && typeof rawValue !== "string") {
@@ -3940,6 +3964,7 @@ var require_room_application = __commonJS({
           sessionId,
           turnId: silentSound ? turnId : "",
           signalType,
+          workflowRevision: designEditing ? workflowRevision : void 0,
           value: silentSound ? Math.min(1, Math.max(0, rawValue)) : designEditing ? String(rawValue || "").trim() : 1,
           now: now()
         });
@@ -4419,8 +4444,8 @@ var require_room_cloudbase_adapter = __commonJS({
     function isSafeFactKey(id) {
       return typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes(".") && !id.includes("$");
     }
-    function scoreSessionPatch(inputType, decision, afterSession) {
-      if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+    function scoreSessionPatch(inputType, decision, beforeSession, afterSession) {
+      if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !beforeSession || !afterSession || decision.archivedSession) {
         return null;
       }
       const dirty = decision.dirtyFacts || [];
@@ -4430,13 +4455,20 @@ var require_room_cloudbase_adapter = __commonJS({
       const progress = afterSession.progress && afterSession.progress.scoreProgress;
       if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
       const data = {
+        updatedAt: afterSession.updatedAt,
         "modeState.partner.activeTurn.scoreProgress": clone(activeTurn.scoreProgress),
         "progress.scoreProgress": clone(progress)
       };
+      const patched = clone(beforeSession);
+      patched.updatedAt = afterSession.updatedAt;
+      patched.modeState.partner.activeTurn.scoreProgress = clone(activeTurn.scoreProgress);
+      patched.progress.scoreProgress = clone(progress);
       for (const item of dirty) {
         if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
         data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+        patched.facts.scores[item.id] = clone(scores[item.id]);
       }
+      if (!sameDocument(patched, afterSession)) return null;
       return data;
     }
     function createCloudBaseRoomRepository(deps) {
@@ -4511,7 +4543,7 @@ var require_room_cloudbase_adapter = __commonJS({
             await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
             const beforeSession = beforeSessionSnapshot;
             const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-            const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
+            const sessionPatch = scoreSessionPatch(input.type, decision, beforeSession, afterSession);
             if (sessionPatch) {
               await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId).update({ data: sessionPatch });
             } else if (afterSession && !sameDocument(beforeSession, afterSession)) {
@@ -4670,14 +4702,12 @@ var require_room_cloudbase_adapter = __commonJS({
             }
             const denied = designProblemNudgeDeniedReason(session, member.memberId);
             if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+            const cooldownId = docId(`${input.roomId}:${input.sessionId}:${input.signalType}:cooldown:${member.memberId}`);
+            const cooldown = await safeGet(transaction, COLLECTIONS.signals, cooldownId);
+            if (cooldown && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS && cooldown.signal) {
+              return { ok: true, signal: cooldown.signal };
+            }
             const signalId = docId(`${input.roomId}:${input.signalType}`);
-            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-            if (existing && existing.sessionId === input.sessionId && Number(existing.updatedAt) >= Number(input.now)) {
-              return { ok: true, signal: existing };
-            }
-            if (existing && existing.sessionId === input.sessionId && existing.memberId === member.memberId && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
-              return { ok: true, signal: existing };
-            }
             const row = {
               roomId: input.roomId,
               signalType: input.signalType,
@@ -4689,6 +4719,16 @@ var require_room_cloudbase_adapter = __commonJS({
               expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
             };
             await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            await transaction.collection(COLLECTIONS.signals).doc(cooldownId).set({ data: {
+              recordType: "MEMBER_SIGNAL_COOLDOWN",
+              roomId: input.roomId,
+              sessionId: input.sessionId,
+              signalType: input.signalType,
+              memberId: member.memberId,
+              updatedAt: input.now,
+              expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+              signal: row
+            } });
             return { ok: true, signal: row };
           }
           if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
@@ -4705,12 +4745,13 @@ var require_room_cloudbase_adapter = __commonJS({
               room.hostMemberId,
               member.memberId,
               contributionId,
-              session.facts
+              session.facts,
+              input.workflowRevision
             );
             if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
             const signalId = docId(`${input.roomId}:${input.signalType}`);
             const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-            if (existing && existing.sessionId === input.sessionId && String(existing.value || "") === contributionId && Number(existing.updatedAt) >= Number(input.now)) {
+            if (existing && existing.sessionId === input.sessionId && Number(existing.workflowRevision) === Number(input.workflowRevision) && String(existing.value || "") === contributionId && Number(existing.updatedAt) >= Number(input.now)) {
               return { ok: true, signal: existing };
             }
             const row = {
@@ -4720,6 +4761,7 @@ var require_room_cloudbase_adapter = __commonJS({
               memberId: member.memberId,
               sessionId: input.sessionId,
               turnId: "",
+              workflowRevision: input.workflowRevision,
               updatedAt: input.now,
               expiresAt: contributionId ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING] : input.now
             };

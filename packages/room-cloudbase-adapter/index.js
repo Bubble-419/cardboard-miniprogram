@@ -95,8 +95,9 @@ function isSafeFactKey(id) {
     && !id.includes('.') && !id.includes('$');
 }
 
-function scoreSessionPatch(inputType, decision, afterSession) {
-  if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+function scoreSessionPatch(inputType, decision, beforeSession, afterSession) {
+  if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !beforeSession
+    || !afterSession || decision.archivedSession) {
     return null;
   }
   const dirty = decision.dirtyFacts || [];
@@ -107,13 +108,21 @@ function scoreSessionPatch(inputType, decision, afterSession) {
   const progress = afterSession.progress && afterSession.progress.scoreProgress;
   if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
   const data = {
+    updatedAt: afterSession.updatedAt,
     'modeState.partner.activeTurn.scoreProgress': clone(activeTurn.scoreProgress),
     'progress.scoreProgress': clone(progress)
   };
+  const patched = clone(beforeSession);
+  patched.updatedAt = afterSession.updatedAt;
+  patched.modeState.partner.activeTurn.scoreProgress = clone(activeTurn.scoreProgress);
+  patched.progress.scoreProgress = clone(progress);
   for (const item of dirty) {
     if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
     data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+    patched.facts.scores[item.id] = clone(scores[item.id]);
   }
+  // 点更新只能用于确知没有其他字段变化的评分命令；领域模型扩展时自动退回整文档写入。
+  if (!sameDocument(patched, afterSession)) return null;
   return data;
 }
 
@@ -190,8 +199,8 @@ function createCloudBaseRoomRepository(deps) {
         await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
         const beforeSession = beforeSessionSnapshot;
         const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-        const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
-        // 评分只改 scores 与 scoreProgress：点更新避免把消息/素材整文档再写一遍。
+        const sessionPatch = scoreSessionPatch(input.type, decision, beforeSession, afterSession);
+        // 评分只改 scores、scoreProgress 与审计时间：点更新避免把消息/素材整文档再写一遍。
         if (sessionPatch) {
           await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId)
             .update({ data: sessionPatch });
@@ -377,17 +386,14 @@ function createCloudBaseRoomRepository(deps) {
         }
         const denied = designProblemNudgeDeniedReason(session, member.memberId);
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const cooldownId = docId(`${input.roomId}:${input.sessionId}:${input.signalType}:cooldown:${member.memberId}`);
+        const cooldown = await safeGet(transaction, COLLECTIONS.signals, cooldownId);
+        if (cooldown
+          && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
+          && cooldown.signal) {
+          return { ok: true, signal: cooldown.signal };
+        }
         const signalId = docId(`${input.roomId}:${input.signalType}`);
-        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-        if (existing && existing.sessionId === input.sessionId
-          && Number(existing.updatedAt) >= Number(input.now)) {
-          return { ok: true, signal: existing };
-        }
-        if (existing && existing.sessionId === input.sessionId
-          && existing.memberId === member.memberId
-          && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
-          return { ok: true, signal: existing };
-        }
         const row = {
           roomId: input.roomId,
           signalType: input.signalType,
@@ -399,6 +405,17 @@ function createCloudBaseRoomRepository(deps) {
           expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
         };
         await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        // 最新广播只有一篇；限流凭证按 Session + Member 隔离，且不会被 listSignals 投影给客户端。
+        await transaction.collection(COLLECTIONS.signals).doc(cooldownId).set({ data: {
+          recordType: 'MEMBER_SIGNAL_COOLDOWN',
+          roomId: input.roomId,
+          sessionId: input.sessionId,
+          signalType: input.signalType,
+          memberId: member.memberId,
+          updatedAt: input.now,
+          expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+          signal: row
+        } });
         return { ok: true, signal: row };
       }
       if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
@@ -411,12 +428,14 @@ function createCloudBaseRoomRepository(deps) {
         }
         const contributionId = String(input.value || '').trim();
         const denied = designProblemEditingDeniedReason(
-          session, room.hostMemberId, member.memberId, contributionId, session.facts
+          session, room.hostMemberId, member.memberId, contributionId, session.facts,
+          input.workflowRevision
         );
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
         const signalId = docId(`${input.roomId}:${input.signalType}`);
         const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
         if (existing && existing.sessionId === input.sessionId
+          && Number(existing.workflowRevision) === Number(input.workflowRevision)
           && String(existing.value || '') === contributionId
           && Number(existing.updatedAt) >= Number(input.now)) {
           return { ok: true, signal: existing };
@@ -428,6 +447,7 @@ function createCloudBaseRoomRepository(deps) {
           memberId: member.memberId,
           sessionId: input.sessionId,
           turnId: '',
+          workflowRevision: input.workflowRevision,
           updatedAt: input.now,
           expiresAt: contributionId
             ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]

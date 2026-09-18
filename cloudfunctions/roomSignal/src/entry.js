@@ -19,6 +19,7 @@ exports.main = async (event) => {
   const clientContext = event && event.clientContext || {};
   try {
     return await app.writeSignal({ roomId, signalType, sessionId, turnId,
+      workflowRevision: event && event.workflowRevision,
       value: event && event.value }, { userId,
       deviceSessionId: clientContext.deviceSessionId,
       touchPresence: clientContext.touchPresence === true });

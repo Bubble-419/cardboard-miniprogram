@@ -133,9 +133,21 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
+  onStepImgError(e) {
+    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
+    const fields = {
+      deal: 'stepImgDeal', flip: 'stepImgFlip', ring: 'stepImgRing',
+      play: 'stepImgPlay', vote: 'stepImgVote', judge: 'stepImgJudge'
+    };
+    const field = fields[key];
+    if (!field) return;
+    const fallback = `/assets/halliGalli/step-${key}.png`;
+    if (this.data[field] !== fallback) this.setData({ [field]: fallback });
+  },
+
   handleGoRoom() {
     return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
       loadingText: '正在返回房间…'
     });
   }
-}, ['handleEndGame', 'handleGoRoom']));
+}, ['handleEndGame', 'handleGoRoom', 'onStepImgError']));

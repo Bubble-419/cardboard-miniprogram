@@ -21,7 +21,7 @@ const {
 
 /** 匿名表达统一灰色默认头像（不区分玩家） */
 const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
-const { buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
+const { buildGamepageUrl, buildSpecialMoveUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
@@ -29,7 +29,6 @@ const {
   dispatchRoomCommand,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
-  getRoomHistory,
   getRoomSessionPageSnapshot
 } = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../utils/selectedDesignProblem');
@@ -43,6 +42,7 @@ const {
   isDiscussionPhase,
   isClosingPhase,
   STATEMENT_ALL_PASS,
+  STATEMENT_PARTIAL_PASS,
   STATEMENT_ALL_QUESTION
 } = require('../utils/partnerGamePhase');
 const {
@@ -101,9 +101,7 @@ const {
 } = require('../utils/partnerScoreProgress');
 const {
   buildReviewSnapshot,
-  saveReviewSnapshot,
-  getReviewSnapshot,
-  getHistoryWorkshopByRoomId
+  saveReviewSnapshot
 } = require('../../../../utils/historyWorkshops');
 const {
   runPageInteraction,
@@ -277,8 +275,10 @@ Page(withPageInteractionLock({
     hostStatementTipReady: false,
     hostStatementTipSpotStyle: '',
     hostStatementTipTextStyle: '',
-    /** 表态并讨论：同步中禁止连点，避免未写完房间态被轮询打回出牌页 */
+    /** 表态结果由房主根据实体表态卡选择，选择前不推进房间态。 */
+    statementPickerVisible: false,
     statementSwitching: false,
+    statementSwitchAction: '',
     discussionSwitching: false,
     discussionSwitchAction: ''
   },
@@ -369,7 +369,8 @@ Page(withPageInteractionLock({
           phase: 'closing',
           closingStep: CLOSING_STEP_REVIEW,
           currentRound: prevData.currentRound,
-          brainstormSessionSeq: prevData.brainstormSessionSeq
+          brainstormSessionSeq: prevData.brainstormSessionSeq,
+          sessionId: String(options && options.sessionId || prevData.sessionId || '')
         }
       );
     }
@@ -922,32 +923,6 @@ Page(withPageInteractionLock({
     } catch (e) {
       console.warn('persist history review snapshot', e);
     }
-  },
-
-  _buildFakeRoomResultFromSnapshot(snapshot) {
-    if (!snapshot) return null;
-    const members = Array.isArray(snapshot.members) ? snapshot.members.slice() : [];
-    if (!members.length) return null;
-    this._captureReviewMyPlayerIndex(members);
-    // 回顾态头像不强调「我是谁」，但累计星星聚焦仍使用上面记下的座位
-    const normalizedMembers = members.map((m) => ({
-      ...m,
-      isMe: false
-    }));
-    const roomState = Object.assign({}, snapshot.roomState || {}, {
-      partnerGamePhase: PHASE_PLAY,
-      currentPlayerIndex: 0
-    });
-    return {
-      ok: true,
-      members: assignAvatarImages(normalizedMembers),
-      isHost: false,
-      selectedDesignProblem: snapshot.selectedDesignProblem
-        || (snapshot.selectedProblemText
-          ? { id: '', text: snapshot.selectedProblemText }
-          : null),
-      roomState
-    };
   },
 
   _finalizeHistoryReviewUi(selectedProblemText, displaySummaries) {
@@ -1717,13 +1692,6 @@ Page(withPageInteractionLock({
     this.setData(narrow);
   },
 
-  _holdRoomPollForScore() {
-    const session = this._boundRoomSession || getActiveRoomSession();
-    if (session && typeof session.cancelScheduledPoll === 'function') {
-      session.cancelScheduledPoll();
-    }
-  },
-
   _markScoreUiBusy() {
     this._scoreUiBusy = true;
     if (this._scoreUiBusyTimer) {
@@ -1788,7 +1756,6 @@ Page(withPageInteractionLock({
     }
     const score = clampSelectableScore(rawScore);
     if (score == null) return;
-    this._holdRoomPollForScore();
     this._pendingScoreSubmit = score;
     this._pendingScore = score;
     this._starRatingPinnedOpen = true;
@@ -2059,7 +2026,7 @@ Page(withPageInteractionLock({
     if (this._isHistoryReviewMode()) {
       roomPhase = PHASE_PLAY;
     }
-    const switchingDiscussion = this.data.statementSwitching || this._startingStatement
+    const switchingDiscussion = this.data.statementSwitching
       || this.data.discussionSwitching || this._endingDiscussion;
     if (switchingDiscussion) {
       const localPhase = this.data.gamepagePhase;
@@ -2703,18 +2670,10 @@ Page(withPageInteractionLock({
 
     try {
       if (isHistoryReview) {
-        let sessionId = this.data.sessionId || '';
-        if (!sessionId) {
-          // 兼容升级前未记录 sessionId 的本地历史卡片：只选最近完成的搭档场次。
-          const history = await getRoomHistory(roomId, { limit: 20 });
-          const latestPartner = history && history.ok === true
-            ? (history.sessions || []).find((item) => item.mode === 'PARTNER' && item.status === 'COMPLETED')
-            : null;
-          sessionId = latestPartner && latestPartner.sessionId || '';
-        }
+        const sessionId = this.data.sessionId || '';
         result = sessionId
           ? await getRoomSessionPageSnapshot(roomId, sessionId)
-          : { ok: false, errCode: 'SESSION_NOT_FOUND', errMsg: '暂无可回看的搭档场次' };
+          : { ok: false, errCode: 'SESSION_NOT_FOUND', errMsg: '缺少回顾场次信息' };
       } else {
         result = await getRoomPageSnapshot(roomId, { refresh: true });
       }
@@ -2725,32 +2684,8 @@ Page(withPageInteractionLock({
 
     if (!result || result.ok !== true || !result.members || !result.members.length) {
       if (isHistoryReview) {
-        const snap = getReviewSnapshot(roomId);
-        const fake = this._buildFakeRoomResultFromSnapshot(snap);
-        if (fake) {
-          const app = getApp();
-          const selectedProblem = resolveSelectedDesignProblem(app, fake)
-            || (snap && snap.selectedDesignProblem)
-            || null;
-          const selectedProblemText = (selectedProblem && selectedProblem.text)
-            || (snap && snap.selectedProblemText)
-            || '';
-          if (selectedProblem && app.globalData) {
-            app.globalData.selectedProblem = {
-              id: selectedProblem.id || '',
-              text: selectedProblem.text
-            };
-          }
-          await this._awaitRoomContext(fake, {
-            fallbackPlayerIndex: 0,
-            resetTurnUi: true,
-            onApplied: () => this._finalizeHistoryReviewUi(selectedProblemText)
-          });
-          return;
-        }
-        const meta = getHistoryWorkshopByRoomId(roomId);
         wx.showToast({
-          title: (result && result.errMsg) || (meta ? '暂无纪要快照' : '加载失败'),
+          title: (result && result.errMsg) || '加载失败',
           icon: 'none'
         });
         return;
@@ -2824,18 +2759,6 @@ Page(withPageInteractionLock({
       this.refreshScoreStatus();
     } catch (e) {
       console.error('partner gamepage loadRoomData apply', e);
-      if (isHistoryReview) {
-        const snap = getReviewSnapshot(roomId);
-        const fake = this._buildFakeRoomResultFromSnapshot(snap);
-        if (fake) {
-          await this._awaitRoomContext(fake, {
-            fallbackPlayerIndex: 0,
-            resetTurnUi: true,
-            onApplied: () => this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '')
-          });
-          return;
-        }
-      }
       wx.showToast({ title: '加载失败', icon: 'none' });
     }
   },
@@ -4065,7 +3988,6 @@ Page(withPageInteractionLock({
 
   onStarGestureStart() {
     this._cancelStarPanelCollapse();
-    this._holdRoomPollForScore();
     this._markScoreUiBusy();
     if (!this.data.starRatingGesturing) {
       this.setData({ starRatingGesturing: true });
@@ -4457,7 +4379,6 @@ Page(withPageInteractionLock({
     if (score == null) return;
     if (this._scoreSubmitting) return;
     this._markScoreUiBusy();
-    this._holdRoomPollForScore();
 
     if (this.data.isCurrentPlayer) {
       this._releaseScoreUiBusy(120);
@@ -5105,51 +5026,62 @@ Page(withPageInteractionLock({
   },
 
   handleStartStatement() {
-    return runPageInteraction(this, () => this._startStatement(), {
-      loadingText: '正在开始讨论…'
+    if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
+    if (this.data.statementSwitching) return;
+    this.setData({ statementPickerVisible: true, statementSwitchAction: '' });
+  },
+
+  handleCloseStatementPicker() {
+    if (this.data.statementSwitching) return;
+    this.setData({ statementPickerVisible: false, statementSwitchAction: '' });
+  },
+
+  handleStatementResult(e) {
+    return runPageInteraction(this, () => this._submitStatementResult(e), {
+      loadingText: '正在提交表态…'
     });
   },
 
-  async _startStatement() {
-    if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
-    if (this.data.statementSwitching || this._startingStatement) return;
-    this._startingStatement = true;
-
+  async _submitStatementResult(e) {
+    if (!this.data.isHost || !this.data.statementPickerVisible || this.data.statementSwitching) return;
+    const statementResult = e && e.currentTarget && e.currentTarget.dataset
+      && e.currentTarget.dataset.result;
+    if (![STATEMENT_ALL_PASS, STATEMENT_PARTIAL_PASS, STATEMENT_ALL_QUESTION].includes(statementResult)) {
+      return;
+    }
+    this.setData({ statementSwitching: true, statementSwitchAction: statementResult });
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-
-    // 先切讨论页，避免等云函数期间一直停在「进入中」
-    this.setData({
-      statementSwitching: false,
-      canStartStatement: false,
-      gamepagePhase: PHASE_DISCUSSION
-    }, () => {
-      this._syncRoundSpeech();
-    });
-
     try {
-      const cmd = await this._dispatchPartnerCommand('START_PARTNER_STATEMENT', {});
+      const cmd = await this._dispatchPartnerCommand('START_PARTNER_STATEMENT', { statementResult });
       if (!cmd || cmd.ok !== true) {
         this.setData({
-          gamepagePhase: PHASE_PLAY,
-          canStartStatement: true
+          statementSwitching: false,
+          statementSwitchAction: ''
         });
         wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
         this._startStatePolling();
         return;
       }
-      this._startStatePolling();
-    } catch (err) {
-      console.warn('handleStartStatement', err);
       this.setData({
-        gamepagePhase: PHASE_PLAY,
-        canStartStatement: true
+        statementPickerVisible: false,
+        statementSwitching: false,
+        statementSwitchAction: ''
       });
-      wx.showToast({ title: '进入讨论失败', icon: 'none' });
-      this._startStatePolling();
+      const session = this._boundRoomSession || getActiveRoomSession();
+      const snapshot = session && session.getSnapshot && session.getSnapshot();
+      if (snapshot) this._applyRoomContext(snapshot, { resetTurnUi: true, force: true });
+    } catch (err) {
+      console.warn('handleStatementResult', err);
+      this.setData({
+        statementSwitching: false,
+        statementSwitchAction: ''
+      });
+      wx.showToast({ title: '表态提交失败', icon: 'none' });
     } finally {
-      this._startingStatement = false;
+      this._syncRoundSpeech();
+      this._startStatePolling();
     }
   },
 
@@ -5169,17 +5101,13 @@ Page(withPageInteractionLock({
     return prev;
   },
 
-  handleAllPassFromDiscussion() {
-    return this.handleEndDiscussion({ statementResult: STATEMENT_ALL_PASS });
-  },
-
-  handleEndDiscussion(options) {
-    return runPageInteraction(this, () => this._endDiscussion(options), {
+  handleEndDiscussion() {
+    return runPageInteraction(this, () => this._endDiscussion(), {
       loadingText: '正在结束讨论…'
     });
   },
 
-  async _endDiscussion(options) {
+  async _endDiscussion() {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
@@ -5187,17 +5115,15 @@ Page(withPageInteractionLock({
     if (this.data.discussionSwitching || this._endingDiscussion) return;
     this._endingDiscussion = true;
 
-    const statementResult = (options && options.statementResult) || STATEMENT_ALL_QUESTION;
-    const action = statementResult === STATEMENT_ALL_PASS ? 'allPass' : 'end';
     this.setData({
       discussionSwitching: true,
-      discussionSwitchAction: action
+      discussionSwitchAction: 'end'
     });
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
 
     try {
-      const cmd = await this._dispatchPartnerCommand('ADVANCE_PARTNER_TURN', { statementResult });
+      const cmd = await this._dispatchPartnerCommand('ADVANCE_PARTNER_TURN', {});
       if (!cmd || cmd.ok !== true) throw new Error(cmd && cmd.errMsg || '状态同步失败');
       this._starRatingPinnedOpen = false;
       this._starRatingDismissed = false;
@@ -5650,7 +5576,8 @@ Page(withPageInteractionLock({
   handleGlobalReview() {
     return runPageNavigation(this, async () => {
       const roomId = this.data.roomId || '';
-      if (!roomId) {
+      const sessionId = this.data.sessionId || '';
+      if (!roomId || !sessionId) {
         wx.showToast({ title: '房间信息缺失', icon: 'none' });
         return null;
       }
@@ -5658,7 +5585,7 @@ Page(withPageInteractionLock({
       this._prepareLeavePage();
       return {
         method: 'navigateTo',
-        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review&from=closing`,
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&sessionId=${encodeURIComponent(sessionId)}&mode=review&from=closing`,
         fail: () => {
           this._pageVisible = true;
           this._startStatePolling();
@@ -6237,7 +6164,8 @@ Page(withPageInteractionLock({
       const fallbackUrl = this._reviewReturnUrl || (this.data.roomId
         ? buildGamepageUrl(this.data.roomId, this.data.currentPlayerIndex || 1, 'partner', {
           phase: 'closing',
-          closingStep: CLOSING_STEP_REVIEW
+          closingStep: CLOSING_STEP_REVIEW,
+          sessionId: this.data.sessionId || ''
         })
         : '');
       const pages = getCurrentPages();
@@ -6294,7 +6222,6 @@ Page(withPageInteractionLock({
 }, [
   'closeExpressComposer',
   'dismissHostStatementTip',
-  'handleAllPassFromDiscussion',
   'handleAvatarTap',
   'handleClosingNextStep',
   'handleEndBrainstorm',
@@ -6305,6 +6232,8 @@ Page(withPageInteractionLock({
   'handleReviewBack',
   'handleGoRoom',
   'handleRoundTimerExpire',
+  'handleCloseStatementPicker',
+  'handleStatementResult',
   'handleStartStatement',
   'handleViewSituation',
   'onCardImagePreview',

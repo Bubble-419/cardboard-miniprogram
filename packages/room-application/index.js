@@ -275,13 +275,17 @@ function createRoomApplication(repo, options) {
         return !!(currentSessionId && row.sessionId === currentSessionId);
       }
       if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
-        return !!(currentSessionId && row.sessionId === currentSessionId && String(row.value || ''));
+        // 高频 Sync 只读 Room + Signal，不为瞬时编辑态额外重建 Session。
+        // raw signal 只做当前 Session 粗筛；workflow revision 由 Page Model 与 Member View 精确校验。
+        return !!(currentSessionId
+          && row.sessionId === currentSessionId
+          && String(row.value || ''));
       }
       return false;
     }).forEach((row) => {
       if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
         signals[row.signalType] = { value: clone(row.value), memberId: row.memberId,
-          sessionId: row.sessionId, turnId: row.turnId,
+          sessionId: row.sessionId, turnId: row.turnId, workflowRevision: row.workflowRevision,
           updatedAt: row.updatedAt, expiresAt: row.expiresAt };
       }
     });
@@ -341,6 +345,7 @@ function createRoomApplication(repo, options) {
     const sessionId = String(input && input.sessionId || '');
     const turnId = String(input && input.turnId || '');
     const signalType = String(input && input.signalType || '');
+    const workflowRevision = input && input.workflowRevision;
     const rawValue = input && input.value;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
@@ -356,7 +361,8 @@ function createRoomApplication(repo, options) {
         return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
       }
     } else if (designEditing) {
-      if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+      if (!isRoomId(roomId) || !isOpaqueId(sessionId)
+        || !Number.isInteger(workflowRevision) || workflowRevision < 1) {
         return fail(ERR.INVALID_ARGUMENT, '未知瞬时信号');
       }
       if (rawValue != null && rawValue !== '' && typeof rawValue !== 'string') {
@@ -375,6 +381,7 @@ function createRoomApplication(repo, options) {
       sessionId,
       turnId: silentSound ? turnId : '',
       signalType,
+      workflowRevision: designEditing ? workflowRevision : undefined,
       value: silentSound
         ? Math.min(1, Math.max(0, rawValue))
         : (designEditing ? String(rawValue || '').trim() : 1),

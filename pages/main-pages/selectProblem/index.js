@@ -36,6 +36,7 @@ Page(withPageInteractionLock({
     selectedProblemId: null,
     myPlayerIndex: null,
     sessionId: '',
+    workflowRevision: null,
     countdown: 5,
     editingProblemId: '',
     /** 他端同步的房主编辑中问题 id（只读展示） */
@@ -170,9 +171,12 @@ Page(withPageInteractionLock({
         currentUser: me ? me.id : null,
         myPlayerIndex: meMember ? meMember.playerIndex : null,
         isHost,
-        sessionId: session && session.sessionId || this.data.sessionId || ''
+        sessionId: session && session.sessionId || this.data.sessionId || '',
+        workflowRevision: session && session.workflow && session.workflow.revision || null
       };
-      const remoteId = this._remoteEditingProblemIdFromSnapshot(result, isHost, session);
+      const remoteId = !isHost && result.roomState && result.roomState.editingProblemId
+        ? String(result.roomState.editingProblemId)
+        : '';
       if (remoteId !== (this.data.remoteEditingProblemId || '')) {
         patch.remoteEditingProblemId = remoteId;
       }
@@ -185,19 +189,6 @@ Page(withPageInteractionLock({
       }
       this.setData(patch);
       this._applyProblemsFromSnapshot(result);
-  },
-
-  _remoteEditingProblemIdFromSnapshot(result, isHost, session) {
-    if (isHost) return '';
-    const fromState = result && result.roomState && result.roomState.editingProblemId;
-    if (fromState) return String(fromState);
-    const signal = result && result.ephemeral && result.ephemeral.signals
-      && result.ephemeral.signals.DESIGN_PROBLEM_EDITING;
-    const sessionId = session && session.sessionId || this.data.sessionId || '';
-    if (signal && signal.value && (!signal.sessionId || !sessionId || signal.sessionId === sessionId)) {
-      return String(signal.value);
-    }
-    return '';
   },
 
   _startStatePolling() {
@@ -308,7 +299,7 @@ Page(withPageInteractionLock({
       const member = members.find((row) => row.memberId === item.memberId) || {};
       return { id: item.contributionId, contributionId: item.contributionId, text: item.text,
         entityVersion: item.entityVersion, playerIndex: member.playerIndex,
-        nickName: member.nickName || '', createTime: 0, submitTime: 0 };
+        nickName: member.nickName || '', createTime: item.createdAt, submitTime: item.createdAt };
     });
     this._applyProblemList(problemList);
   },
@@ -387,64 +378,84 @@ Page(withPageInteractionLock({
         const rect = res && res[0];
         const fallback = this._getTextLineHeight();
         const height = rect && rect.height > 0 ? Math.ceil(rect.height) : fallback;
-        this._editingGuardUntil = Date.now() + 800;
+        // textarea 初次挂载在部分真机上会紧接着误发 blur。
+        // 只忽略一次「无输入」的初始 blur，不会吞掉用户已修改的内容。
+        this._ignoreInitialProblemBlurUntil = Date.now() + 800;
+        this._editingHasInput = false;
         this.setData({
           editingProblemId: problemId,
           editingCursor: (problem.text || '').length,
           [`textareaHeights.${problemId}`]: height,
         }, () => {
-          this._editingGuardUntil = Date.now() + 800;
           this._syncEditingProblemId(problemId, { notify: true });
           this._startEditingHeartbeat();
         });
       });
   },
 
-  _resolveEditingSessionId() {
-    if (this.data.sessionId) return this.data.sessionId;
-    const session = getActiveRoomSession();
-    const view = session && typeof session.getView === 'function' ? session.getView() : null;
-    return view && view.session && view.session.sessionId || '';
+  _resolveEditingScope() {
+    let sessionId = this.data.sessionId || '';
+    let workflowRevision = this.data.workflowRevision;
+    if (sessionId && Number.isInteger(workflowRevision)) {
+      return { sessionId, workflowRevision };
+    }
+    const roomSession = getActiveRoomSession();
+    const view = roomSession && typeof roomSession.getView === 'function' ? roomSession.getView() : null;
+    const currentSession = view && view.session;
+    sessionId = sessionId || currentSession && currentSession.sessionId || '';
+    if (!Number.isInteger(workflowRevision)) {
+      workflowRevision = currentSession && currentSession.workflow
+        ? currentSession.workflow.revision
+        : null;
+    }
+    return { sessionId, workflowRevision };
   },
 
   async _syncEditingProblemId(problemId, options = {}) {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    const sessionId = this._resolveEditingSessionId();
+    const { sessionId, workflowRevision } = this._resolveEditingScope();
     if (!this.data.isHost) return problemId;
-    if (!roomId || !sessionId) {
+    if (!roomId || !sessionId || !Number.isInteger(workflowRevision)) {
       if (options.notify === true) {
         wx.showToast({ title: '编辑态同步失败', icon: 'none' });
       }
       return problemId;
     }
     const contributionId = problemId == null ? '' : String(problemId);
-    try {
-      const response = await wx.cloud.callFunction({
-        name: 'roomSignal',
-        data: {
-          roomId,
-          sessionId,
-          signalType: 'DESIGN_PROBLEM_EDITING',
-          value: contributionId,
-          clientContext: getRoomRequestContext()
+    // 所有编辑心跳与清空操作串行发送，避免旧心跳晚到后覆盖清空状态。
+    const previous = this._editingSignalQueue || Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      try {
+        const response = await wx.cloud.callFunction({
+          name: 'roomSignal',
+          data: {
+            roomId,
+            sessionId,
+            workflowRevision,
+            signalType: 'DESIGN_PROBLEM_EDITING',
+            value: contributionId,
+            clientContext: getRoomRequestContext()
+          }
+        });
+        const result = response && Object.prototype.hasOwnProperty.call(response, 'result')
+          ? response.result
+          : response;
+        if (!result || result.ok !== true) {
+          console.warn('sync editingProblemId', result);
+          if (options.notify === true) {
+            wx.showToast({ title: result && result.errMsg || '编辑态同步失败', icon: 'none' });
+          }
         }
-      });
-      const result = response && Object.prototype.hasOwnProperty.call(response, 'result')
-        ? response.result
-        : response;
-      if (!result || result.ok !== true) {
-        console.warn('sync editingProblemId', result);
+      } catch (e) {
+        console.warn('sync editingProblemId', e);
         if (options.notify === true) {
-          wx.showToast({ title: (result && result.errMsg) || '编辑态同步失败', icon: 'none' });
+          wx.showToast({ title: '编辑态同步失败', icon: 'none' });
         }
       }
-    } catch (e) {
-      console.warn('sync editingProblemId', e);
-      if (options.notify === true) {
-        wx.showToast({ title: '编辑态同步失败', icon: 'none' });
-      }
-    }
-    return problemId;
+      return problemId;
+    });
+    this._editingSignalQueue = task.then(() => undefined, () => undefined);
+    return task;
   },
 
   _startEditingHeartbeat() {
@@ -476,7 +487,7 @@ Page(withPageInteractionLock({
     const text = ((problem && problem.text) || '').trim();
     this._stopEditingHeartbeat();
     this.setData({ editingProblemId: '' });
-    this._syncEditingProblemId('');
+    await this._syncEditingProblemId('');
 
     if (!text) return;
     return runPageInteraction(this, async () => {
@@ -495,6 +506,7 @@ Page(withPageInteractionLock({
     const problems = this.data.problems.map((item) => (
       item.id === id ? { ...item, text: value } : item
     ));
+    this._editingHasInput = true;
     this.setData({ problems });
   },
 
@@ -502,8 +514,9 @@ Page(withPageInteractionLock({
     if (!this.data.isHost) return;
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    this._editingGuardUntil = Date.now() + 800;
     if (this.data.editingProblemId !== id) {
+      this._ignoreInitialProblemBlurUntil = Date.now() + 800;
+      this._editingHasInput = false;
       this.setData({ editingProblemId: id });
     }
     this._syncEditingProblemId(id);
@@ -512,16 +525,20 @@ Page(withPageInteractionLock({
 
   async onProblemBlur(e) {
     if (!this.data.isHost) return;
-    // 真机 textarea 刚 focus 时常立刻误发 blur，不能据此清掉「房主编辑中」。
-    if (Date.now() < (this._editingGuardUntil || 0)) return;
     const id = e.currentTarget.dataset.id;
     if (!id || this.data.editingProblemId !== id) return;
+    if (Date.now() < (this._ignoreInitialProblemBlurUntil || 0) && !this._editingHasInput) {
+      this._ignoreInitialProblemBlurUntil = 0;
+      return;
+    }
+    this._ignoreInitialProblemBlurUntil = 0;
+    this._editingHasInput = false;
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
     const text = (e.detail.value || '').trim();
     this._stopEditingHeartbeat();
     this.setData({ editingProblemId: '' });
-    this._syncEditingProblemId('');
+    await this._syncEditingProblemId('');
     if (!id || !text) return;
 
     const problems = this.data.problems.map((item) => (
@@ -552,7 +569,7 @@ Page(withPageInteractionLock({
       if (this.data.editingProblemId) {
         this._stopEditingHeartbeat();
         this.setData({ editingProblemId: '' });
-        this._syncEditingProblemId('');
+        await this._syncEditingProblemId('');
       }
       const result = await dispatchRoomCommand('SELECT_DESIGN_PROBLEM', {
         contributionId: problem.id

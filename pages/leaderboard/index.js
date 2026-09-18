@@ -25,7 +25,9 @@ function buildLeaderboard(snapshot) {
       avatarUrl: member.avatarUrl || member.avatarRef || '',
       avatarColor: member.avatarColor || member.color || member.avatarColorHex || '#5EC159',
       totalStars: Number(row.totalStars) || 0,
-      scoreCount: turns.filter((turn) => turn.activeMemberId === row.memberId).length
+      scoreCount: turns
+        .filter((turn) => turn.activeMemberId === row.memberId)
+        .reduce((sum, turn) => sum + Math.max(0, Number(turn.scoredCount) || 0), 0)
     };
   }).sort((a, b) => b.totalStars - a.totalStars)
     .map((item, index) => ({ ...item, rank: index + 1 }));

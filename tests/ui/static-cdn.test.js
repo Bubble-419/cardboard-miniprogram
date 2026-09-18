@@ -71,3 +71,17 @@ test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大�
   assert.match(brainstormJs, /staticCdnUrl\('assets\/brainstormMode\/mode-cover-/);
   assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{key\}\.webp`\)/);
 });
+
+test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
+  const halliJs = read('pages/main-pages/halliGalli/gamepage/index.js');
+  const halliWxml = read('pages/main-pages/halliGalli/gamepage/index.wxml');
+  const config = JSON.parse(read('project.config.json'));
+  const ignore = (config.packOptions && config.packOptions.ignore) || [];
+
+  assert.match(halliJs, /onStepImgError\(e\)/);
+  assert.match(halliJs, /`\/assets\/halliGalli\/step-\$\{key\}\.png`/);
+  assert.equal((halliWxml.match(/binderror="onStepImgError"/g) || []).length, 6);
+  assert.equal((halliWxml.match(/data-key=/g) || []).length, 6);
+  assert.ok(!ignore.some((item) => item.value === 'assets/halliGalli/*.png'),
+    '随包 PNG 不能被 packOptions 排除');
+});

@@ -467,8 +467,7 @@ function createRoomClient(options) {
     }
   }
 
-  async function dispatchInternal(input) {
-    cancelTimer();
+  async function dispatchCommand(input) {
     const signature = stableStringify({ roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
       type: input.type, context: input.context || {}, payload: input.payload || {} });
     const uncertain = uncertainCommands.get(signature);
@@ -529,6 +528,16 @@ function createRoomClient(options) {
     return result;
   }
 
+  async function dispatchInternal(input) {
+    cancelTimer();
+    try {
+      return await dispatchCommand(input);
+    } finally {
+      // Command 的网络异常、空响应或无附带 Sync 的拒绝都不能让房间轮询永久停止。
+      if (roomId && !timer && !disposed && !paused) schedule(intervalMs);
+    }
+  }
+
   return {
     open: () => enqueue(openInternal),
     subscribe(listener, subscribeOptions) {
@@ -567,7 +576,6 @@ function createRoomClient(options) {
     getView() { return clone(view); },
     getState: state,
     getRequestContext,
-    cancelScheduledPoll() { cancelTimer(); },
     pause() { paused = true; cancelTimer(); },
     resume() { return enqueue(resumeInternal); },
     close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }

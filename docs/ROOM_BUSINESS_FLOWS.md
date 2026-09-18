@@ -304,7 +304,7 @@ flowchart TD
 | 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
 | 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
-| Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；value 为正在编辑的 `contributionId`，清空即结束。Player 靠 2 秒 idle Sync 的 ephemeral 在对应条目显示「房主编辑中…」，不依赖 Event |
+| Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 通过 2 秒 idle Sync 的 ephemeral 更新 Member View，并在对应条目显示「房主编辑中…」，不依赖 Event |
 | Host 保存问题正文 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
@@ -316,6 +316,7 @@ flowchart TD
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
+选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。
 
 ## 5. Partner
 
@@ -326,7 +327,8 @@ stateDiagram-v2
   [*] --> PARTNER_TURN
   PARTNER_TURN --> PARTNER_TURN: Score / Message / Artifact / HELP_LUCK / MASTER
   PARTNER_TURN --> PARTNER_TURN: SILENT 开始或结束
-  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT
+  PARTNER_TURN --> PARTNER_TURN: START_PARTNER_STATEMENT(allPass)
+  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT(partialPass/allQuestion)
   PARTNER_STATEMENT --> PARTNER_TURN: ADVANCE_PARTNER_TURN
   PARTNER_TURN --> PARTNER_CLOSING_VOTE: USE_PARTNER_SPECIAL(CLOSING)
   PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一 question
@@ -344,8 +346,10 @@ flowchart LR
   REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
   BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
 
-  TURN -->|全员评分后 Host“表态并讨论”| STATEMENT
-  STATEMENT -->|Host“没有疑问/结束讨论”| TURN
+  TURN --> PICK{全员评分后<br/>Host 选择实体表态卡结果}
+  PICK -->|全部通过| TURN
+  PICK -->|部分通过 / 全部疑问| STATEMENT
+  STATEMENT -->|Host“结束讨论”| TURN
   TURN -->|当前行动者“收尾行动”| VOTE
   VOTE -->|question| TURN
   VOTE -->|全部 pass| RUNE
@@ -358,15 +362,18 @@ flowchart LR
 | 非行动者星级评分 | `SUBMIT_PARTNER_SCORE` | 0～10 半星单位；同一 Turn 每人一次 |
 | 非行动者匿名表达 | `POST_PARTNER_MESSAGE` | 出牌阶段非行动者；讨论阶段所有参与者 |
 | 增删改文本/图片/语音 | `APPEND/UPDATE/REMOVE_ARTIFACT` | `operationId + entityVersion` 保证重试和并发正确 |
-| Host “表态并讨论” | `START_PARTNER_STATEMENT` | 当前 required 评分全部完成 |
-| Host “没有疑问/结束讨论” | `ADVANCE_PARTNER_TURN` | 归档当前 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`SILENT` 后其他成员叠入 `specialMove?silent=1`；全员本机采麦测 40dB。房主仍可写 `PARTNER_SILENT_SOUND`，给无麦端回退 |
+| Host “开始表态” | 暂不发 Command | 只打开本地三态选择器，不改变权威状态 |
+| Host 选“全部通过” | `START_PARTNER_STATEMENT(allPass)` | 原子归档当前 Turn 并创建下一 Turn，不进入讨论 |
+| Host 选“部分通过/全部疑问” | `START_PARTNER_STATEMENT(partialPass/allQuestion)` | 将结果保存在 Active Turn，进入 `PARTNER_STATEMENT` 讨论 |
+| Host “结束讨论” | `ADVANCE_PARTNER_TURN` | 使用服务端已保存的表态结果归档 Turn，创建下一 Turn |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员叠入 `specialMove?silent=1`；全员本机采麦测 40dB。房主仍可写 `PARTNER_SILENT_SOUND`，给无麦端回退 |
 | 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
 | Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。
+排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
@@ -393,6 +400,8 @@ flowchart TD
   RUNE -->|ADVANCE_PARTNER_CLOSING| REVIEW
   REVIEW -->|COMPLETE_PARTNER_SESSION| DONE
 ```
+
+多人同时选择 `question` 时，按本场冻结 Participant 座次升序选择下一位行动者；客户端提交先后和网络时延不参与裁决。
 
 ## 6. 德国心脏病（Halli Galli）
 
@@ -421,7 +430,7 @@ flowchart LR
 
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
-线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。本人提交后可以先看等待汇总页，但在最后一人提交前不公开其他人的创意正文。
+线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。
 
 ## 7. 谁是卧底（Spy）
 
@@ -502,7 +511,7 @@ flowchart TD
   MODE --> SPY --> EVENT
 ```
 
-离开的参与者历史事实保留用于归档回看，但不再计入当前 `required/submitted`、评分或投票裁决。
+离开的参与者历史事实保留用于归档回看，但不再出现在进行中页面的成员列表，也不再计入当前 `required/submitted`、评分或投票裁决。
 
 ## 9. 完成、返回大厅、重玩与历史
 
@@ -526,6 +535,8 @@ flowchart TD
 ```
 
 旧 Session 和 Facts 归档后不可变；新场次不复用旧 `sessionId/gameId/turnId/voteSessionId`。History 按 `ordinal` 分页，精确回看按 `sessionId` 获取独立 Snapshot，不切换当前 RoomClient 连接。
+
+首页「历史工作坊」是本地回看入口：普通态点卡片打开回看；管理态可单选、全选并删除本地索引与缓存 Snapshot。删除不会写入房间协议，也不会解散云端 Room 或删除归档 Session；本地存储失败时必须保留管理态和选中项。
 
 ## 10. View 正确性与端到端验收
 

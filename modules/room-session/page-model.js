@@ -43,8 +43,13 @@ function pageMembers(view, historical) {
   // 当前场次页面只能展示场次开始时冻结的 Participant；中途加入者在大厅仍看 Room Member。
   const useFrozenParticipants = !!(view.session && Array.isArray(view.session.participants)
     && (historical || (view.actor && view.actor.isParticipant)));
+  const includeDeparted = !!(historical || (view.session
+    && ['COMPLETED', 'CANCELLED'].includes(view.session.status)));
+  const participants = useFrozenParticipants
+    ? view.session.participants.filter((participant) => includeDeparted || participant.status === 'ACTIVE')
+    : [];
   const source = useFrozenParticipants
-    ? view.session.participants.map((participant) => ({
+    ? participants.map((participant) => ({
       memberId: participant.memberId,
       seatNo: participant.seatNoAtStart,
       nickName: participant.nickName,
@@ -55,7 +60,7 @@ function pageMembers(view, historical) {
       participantStatus: participant.status
     }))
     : view.room.members;
-  // 历史/结算页使用场次冻结资料；大厅和进行中页使用当前 Room Member。
+  // 历史/结算页保留全部冻结资料；进行中页只展示仍在场的 Participant，不能让离房者继续参与 UI 选择。
   return source.slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
     _id: member.memberId,
     memberId: member.memberId,
@@ -211,6 +216,8 @@ function projectPageSnapshot(view, clientState) {
   }
   const session = view.session;
   const clockOffsetMs = Number(state.serverClockOffsetMs) || 0;
+  const projectedNow = Number(state.serverNow);
+  const serverNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
   const members = pageMembers(view, state.historical);
   const roomState = {
     protocolVersion: PROTOCOL_VERSION,
@@ -242,8 +249,6 @@ function projectPageSnapshot(view, clientState) {
     roomState.partnerTurnStartedAt = turn && clientClockTimestamp(turn.turnStartedAt, clockOffsetMs);
     roomState.partnerRoundStartedAt = turn && clientClockTimestamp(turn.phaseStartedAt, clockOffsetMs);
     roomState.partnerMasterMode = !!(turn && turn.masterMode);
-    const projectedNow = Number(state.serverNow);
-    const serverNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
     roomState.partnerSilentMode = !!(turn && turn.silentDeadlineAt && turn.silentDeadlineAt > serverNow);
     roomState.partnerSilentStartedAt = turn && clientClockTimestamp(turn.silentStartedAt, clockOffsetMs);
     const silentSignal = state.ephemeral && state.ephemeral.signals
@@ -287,13 +292,11 @@ function projectPageSnapshot(view, clientState) {
   }
   const editingSignal = state.ephemeral && state.ephemeral.signals
     && state.ephemeral.signals.DESIGN_PROBLEM_EDITING;
-  const projectedNow = Number(state.serverNow);
-  const editingNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
   if (session && session.workflow && session.workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM
-    && editingSignal
-    && (!editingSignal.sessionId || editingSignal.sessionId === session.sessionId)
-    && String(editingSignal.value || '')
-    && !(Number(editingSignal.expiresAt) > 0 && Number(editingSignal.expiresAt) <= editingNow)) {
+    && editingSignal && editingSignal.sessionId === session.sessionId
+    && Number(editingSignal.workflowRevision) === Number(session.workflow.revision)
+    && Number(editingSignal.expiresAt) > serverNow
+    && String(editingSignal.value || '')) {
     roomState.editingProblemId = String(editingSignal.value);
   }
   const result = {

@@ -219,7 +219,12 @@ function resolveClosing(aggregate, deps) {
   const requiredVoters = new Set(closing.requiredMemberIds);
   const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId
     && requiredVoters.has(row.memberId));
-  const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === 'question');
+  const seats = new Map((session.participants || []).map((item) => [item.memberId, item.seatNoAtStart]));
+  // V2 约定多人质疑时由冻结座次最小者接棒，提交网络时序不能改变下一行动者。
+  const question = rows.filter((row) => row.vote === 'question').sort((a, b) =>
+    (seats.get(a.memberId) || Number.MAX_SAFE_INTEGER)
+      - (seats.get(b.memberId) || Number.MAX_SAFE_INTEGER)
+      || a.createdAt - b.createdAt)[0];
   const summary = archiveActiveTurn(aggregate, question ? 'CLOSING_QUESTIONED' : 'CLOSING_ACCEPTED', null, deps);
   const dirty = summary ? [{ kind: 'turns', id: summary.turnId }] : [];
   if (question) {
@@ -299,7 +304,16 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     if (check.turn.ordinal >= MAX_PARTNER_TURNS) {
       return fail(ERR.LIMIT_EXCEEDED, `当前场次已达到 ${MAX_PARTNER_TURNS} 个行动轮，请使用收尾行动`);
     }
-    check.turn.phase = 'STATEMENT'; check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
+    if (command.payload.statementResult === 'allPass') {
+      const summary = archiveActiveTurn(aggregate, 'COMPLETED', 'allPass', deps);
+      const turn = beginNextPartnerTurn(aggregate, deps);
+      if (!turn) return fail(ERR.INVALID_TRANSITION, '没有可用的下一位参与者');
+      return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),
+        event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: turn.activeMemberId, roundNo: turn.roundNo })],
+      { kind: 'ACCEPTED', turnId: turn.turnId }, [{ kind: 'turns', id: summary.turnId }]);
+    }
+    check.turn.phase = 'STATEMENT'; check.turn.statementResult = command.payload.statementResult;
+    check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
     check.turn.silentStartedAt = null; check.turn.silentDeadlineAt = null;
     transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_STATEMENT, deps, {
       roundNo: check.turn.roundNo,
@@ -312,7 +326,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
   if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]); if (!check.ok) return check;
-    const summary = archiveActiveTurn(aggregate, 'COMPLETED', command.payload.statementResult || null, deps);
+    const summary = archiveActiveTurn(aggregate, 'COMPLETED', check.turn.statementResult, deps);
     const turn = beginNextPartnerTurn(aggregate, deps);
     if (!turn) return fail(ERR.INVALID_TRANSITION, '没有可用的下一位参与者');
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),

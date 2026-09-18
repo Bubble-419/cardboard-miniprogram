@@ -13,6 +13,7 @@ function createInMemoryRoomRepository(options) {
   const activeRooms = new Map();
   const presence = new Map();
   const signals = new Map();
+  const signalCooldowns = new Map();
   const sessions = new Map();
   const sessionRooms = new Map();
   let seq = 10000000;
@@ -28,7 +29,7 @@ function createInMemoryRoomRepository(options) {
   };
 
   return {
-    rooms, actions, events, activeRooms, presence, signals, sessions,
+    rooms, actions, events, activeRooms, presence, signals, signalCooldowns, sessions,
     generateRoomId(commandId, actorUserId, attempt) {
       if (options && typeof options.generateRoomId === 'function') {
         return options.generateRoomId(commandId, actorUserId, attempt || 0);
@@ -211,16 +212,11 @@ function createInMemoryRoomRepository(options) {
         }
         const denied = designProblemNudgeDeniedReason(session, member.memberId);
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
-        const key = `${input.roomId}:${input.signalType}`;
-        const existing = signals.get(key);
-        if (existing && existing.sessionId === input.sessionId
-          && Number(existing.updatedAt) >= Number(input.now)) {
-          return { ok: true, signal: copy(existing) };
-        }
-        if (existing && existing.sessionId === input.sessionId
-          && existing.memberId === member.memberId
-          && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
-          return { ok: true, signal: copy(existing) };
+        const cooldownKey = `${input.roomId}:${input.sessionId}:${input.signalType}:${member.memberId}`;
+        const cooldown = signalCooldowns.get(cooldownKey);
+        if (cooldown
+          && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
+          return { ok: true, signal: copy(cooldown.signal) };
         }
         const row = {
           roomId: input.roomId,
@@ -232,7 +228,13 @@ function createInMemoryRoomRepository(options) {
           updatedAt: input.now,
           expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
         };
-        signals.set(key, copy(row));
+        signals.set(`${input.roomId}:${input.signalType}`, copy(row));
+        // 广播值按房间共享，冷却则必须按成员独立记录，避免 A→B→A 绕过限制。
+        signalCooldowns.set(cooldownKey, {
+          updatedAt: input.now,
+          expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
+          signal: copy(row)
+        });
         return { ok: true, signal: copy(row) };
       }
       if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
@@ -242,12 +244,14 @@ function createInMemoryRoomRepository(options) {
         }
         const contributionId = String(input.value || '').trim();
         const denied = designProblemEditingDeniedReason(
-          session, aggregate.room.hostMemberId, member.memberId, contributionId, aggregate.facts
+          session, aggregate.room.hostMemberId, member.memberId, contributionId, aggregate.facts,
+          input.workflowRevision
         );
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
         const key = `${input.roomId}:${input.signalType}`;
         const existing = signals.get(key);
         if (existing && existing.sessionId === input.sessionId
+          && Number(existing.workflowRevision) === Number(input.workflowRevision)
           && String(existing.value || '') === contributionId
           && Number(existing.updatedAt) >= Number(input.now)) {
           return { ok: true, signal: copy(existing) };
@@ -259,6 +263,7 @@ function createInMemoryRoomRepository(options) {
           memberId: member.memberId,
           sessionId: input.sessionId,
           turnId: '',
+          workflowRevision: input.workflowRevision,
           updatedAt: input.now,
           expiresAt: contributionId
             ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]

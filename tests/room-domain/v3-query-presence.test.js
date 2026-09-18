@@ -166,6 +166,37 @@ test('中途加入者留在大厅旁观，参玩者的游戏页只投影冻结 P
   assert.equal(observerSnapshot.view.actor.capabilities.SUBMIT_PARTNER_SCORE.allowed, false);
 });
 
+test('进行中页面排除已离房 Participant，但保留其冻结席位供历史回看', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  await h.command('u3', 'LEAVE_ROOM');
+
+  snapshot = await h.snapshot('host');
+  const livePage = projectPageSnapshot(snapshot.view, {
+    seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {}
+  });
+  const historyPage = projectPageSnapshot(snapshot.view, {
+    seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {}, historical: true
+  });
+  const completedPage = projectPageSnapshot({
+    ...snapshot.view,
+    session: { ...snapshot.view.session, status: 'COMPLETED' }
+  }, { seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {} });
+
+  assert.equal(snapshot.view.session.participants.length, 3, 'Member View 应保留冻结参与者历史');
+  assert.equal(snapshot.view.session.participants.find((item) => item.nickName === '玩家3').status, 'LEFT');
+  assert.deepEqual(livePage.members.map((item) => item.nickName), ['房主', '玩家2']);
+  assert.deepEqual(historyPage.members.map((item) => item.nickName), ['房主', '玩家2', '玩家3']);
+  assert.deepEqual(completedPage.members.map((item) => item.nickName), ['房主', '玩家2', '玩家3'],
+    '当前场次结算页也必须完整还原本场参与者');
+});
+
 test('Partner 匿名消息保持有界实时 View，并可通过游标完整分页读取', async () => {
   const h = createHarness();
   let snapshot = await h.seedMembers(3);
@@ -519,7 +550,7 @@ test('已提交者可广播催促未提交者，且不推进业务水位', async
   assert.equal(batch.ephemeral.signals.DESIGN_PROBLEM_NUDGE.updatedAt, written.signal.updatedAt);
 });
 
-test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催促', async () => {
+test('同一成员催促冷却期内幂等，不会被其他成员的催促覆盖', async () => {
   const h = createHarness();
   const sessionId = await startCollectingDesignProblems(h, 3);
   await h.command('host', 'SUBMIT_DESIGN_PROBLEM', {
@@ -538,6 +569,14 @@ test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催�
   const other = await h.app.writeSignal({
     roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
   }, { userId: 'u2' });
+  const replayAfterOther = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
+  const projected = await h.snapshot('u3');
+  h.advanceTime(DESIGN_PROBLEM_NUDGE_COOLDOWN_MS);
+  const afterCooldown = await h.app.writeSignal({
+    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE
+  }, { userId: 'host' });
 
   assert.equal(first.ok, true);
   assert.equal(replay.ok, true);
@@ -545,6 +584,13 @@ test('同一成员催促冷却期内幂等，其他已提交者仍可覆盖催�
   assert.equal(other.ok, true);
   assert.equal(other.signal.updatedAt > first.signal.updatedAt, true);
   assert.equal(other.signal.memberId !== first.signal.memberId, true);
+  assert.equal(replayAfterOther.ok, true);
+  assert.equal(replayAfterOther.signal.updatedAt, first.signal.updatedAt);
+  assert.equal(replayAfterOther.signal.memberId, first.signal.memberId);
+  assert.equal(projected.ephemeral.signals.DESIGN_PROBLEM_NUDGE.memberId, other.signal.memberId);
+  assert.equal(afterCooldown.ok, true);
+  assert.equal(afterCooldown.signal.updatedAt > other.signal.updatedAt, true);
+  assert.equal(afterCooldown.signal.memberId, first.signal.memberId);
 });
 
 test('催促信号过期后不再投影，离开收集问题步骤后不能再写', async () => {
@@ -588,18 +634,34 @@ async function startSelectingDesignProblems(h, memberCount) {
   return sessionId;
 }
 
+test('设计问题 Member View 保留服务端首次提交时间', async () => {
+  const h = createHarness();
+  await startSelectingDesignProblems(h, 3);
+  const problems = (await h.snapshot('host')).view.session.setup.designProblems;
+
+  assert.equal(problems.every((item) => Number.isFinite(item.createdAt)), true);
+  assert.deepEqual(problems.map((item) => item.text), [
+    '如何让协作更顺畅？', '如何降低沟通成本？', '如何快速达成共识？'
+  ]);
+  assert.equal(problems[0].createdAt < problems[1].createdAt, true);
+  assert.equal(problems[1].createdAt < problems[2].createdAt, true);
+});
+
 test('房主可广播设计问题编辑态，非房主能看到且不推进业务水位', async () => {
   const h = createHarness();
   const sessionId = await startSelectingDesignProblems(h, 3);
   const host = await h.snapshot('host');
   const problemId = host.view.session.setup.designProblems[0].contributionId;
+  const workflowRevision = host.view.session.workflow.revision;
   const before = await h.snapshot('u2');
 
   const denied = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
   }, { userId: 'u2' });
   const written = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
   }, { userId: 'host' });
   const after = await h.snapshot('u2');
   const page = projectPageSnapshot(after.view, {
@@ -619,6 +681,22 @@ test('房主可广播设计问题编辑态，非房主能看到且不推进业�
   assert.equal(page.roomState.editingProblemId, problemId);
   assert.equal(page.roomState.currentPage, 'selectProblem');
 
+  const currentSignal = after.ephemeral.signals.DESIGN_PROBLEM_EDITING;
+  const wrongRevisionPage = projectPageSnapshot(after.view, {
+    roomId: after.roomId, seq: after.seq, stateVersion: after.stateVersion,
+    serverNow: after.serverTime,
+    ephemeral: { signals: { DESIGN_PROBLEM_EDITING: {
+      ...currentSignal, workflowRevision: workflowRevision + 1
+    } } }
+  });
+  const expiredPage = projectPageSnapshot(after.view, {
+    roomId: after.roomId, seq: after.seq, stateVersion: after.stateVersion,
+    serverNow: currentSignal.expiresAt,
+    ephemeral: { signals: { DESIGN_PROBLEM_EDITING: currentSignal } }
+  });
+  assert.equal(wrongRevisionPage.roomState.editingProblemId, '');
+  assert.equal(expiredPage.roomState.editingProblemId, '');
+
   const idle = await h.app.sync('12345678', after.seq, { userId: 'u2' });
   assert.equal(idle.ok, true);
   assert.equal(idle.delivery, 'EVENTS');
@@ -631,20 +709,24 @@ test('结束编辑或过期后不再投影编辑态，离开选题步骤后不�
   const sessionId = await startSelectingDesignProblems(h, 3);
   const host = await h.snapshot('host');
   const problemId = host.view.session.setup.designProblems[0].contributionId;
+  const workflowRevision = host.view.session.workflow.revision;
   const written = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
   }, { userId: 'host' });
   assert.equal(written.ok, true);
 
   const cleared = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: ''
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: ''
   }, { userId: 'host' });
   const afterClear = await h.snapshot('u2');
   assert.equal(cleared.ok, true);
   assert.equal(afterClear.ephemeral.signals.DESIGN_PROBLEM_EDITING, undefined);
 
   const rewritten = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
   }, { userId: 'host' });
   assert.equal(rewritten.ok, true);
   h.advanceTime(SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING] + 1);
@@ -656,10 +738,40 @@ test('结束编辑或过期后不再投影编辑态，离开选题步骤后不�
     payload: { contributionId: problemId }
   });
   const stale = await h.app.writeSignal({
-    roomId: '12345678', sessionId, signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+    roomId: '12345678', sessionId, workflowRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
   }, { userId: 'host' });
   assert.equal(stale.ok, false);
   assert.equal(stale.errCode, 'INVALID_TRANSITION');
+});
+
+test('重新进入选题步骤后拒绝上一工作流世代的编辑心跳', async () => {
+  const h = createHarness();
+  const sessionId = await startSelectingDesignProblems(h, 3);
+  let host = await h.snapshot('host');
+  const problemId = host.view.session.setup.designProblems[0].contributionId;
+  const staleRevision = host.view.session.workflow.revision;
+
+  await h.command('host', 'SELECT_DESIGN_PROBLEM', {
+    context: { sessionId, workflowStep: 'SELECT_DESIGN_PROBLEM', workflowRevision: staleRevision },
+    payload: { contributionId: problemId }
+  });
+  host = await h.snapshot('host');
+  await h.command('host', 'RESET_DESIGN_PROBLEM', {
+    context: { sessionId, workflowRevision: host.view.session.workflow.revision }
+  });
+
+  const stale = await h.app.writeSignal({
+    roomId: '12345678', sessionId, workflowRevision: staleRevision,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: problemId
+  }, { userId: 'host' });
+  const current = await h.snapshot('host');
+
+  assert.equal(current.view.session.workflow.step, 'SELECT_DESIGN_PROBLEM');
+  assert.notEqual(current.view.session.workflow.revision, staleRevision);
+  assert.equal(stale.ok, false);
+  assert.equal(stale.errCode, 'STALE_CONTEXT');
+  assert.equal(current.ephemeral.signals.DESIGN_PROBLEM_EDITING, undefined);
 });
 
 test('完成场次可从历史分页发现，并在返回大厅后由 View 完整还原', async () => {

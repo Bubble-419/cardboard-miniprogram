@@ -108,9 +108,13 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
     context: { sessionId }, payload: { text: '创意 A' }
   });
   assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeSummary');
-  await executeAndReduce(h, 'u2', 'SUBMIT_HALLI_IDEA', {
+  assert.deepEqual(state.snapshot.view.session.publicModeState.ideas.map((item) => item.text), ['创意 A']);
+  state = await executeAndReduce(h, 'u2', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 B' }
   });
+  assert.deepEqual(state.snapshot.view.session.publicModeState.ideas.map((item) => item.text), [
+    '创意 A', '创意 B'
+  ]);
   state = await executeAndReduce(h, 'u3', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 C' }
   });
@@ -195,12 +199,12 @@ test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与
     context: { sessionId, turnId: firstTurnId }, payload: { scoreHalfSteps: 8 }
   });
   state = await executeAndReduce(h, 'host', 'START_PARTNER_STATEMENT', {
-    context: { sessionId, turnId: firstTurnId }
+    context: { sessionId, turnId: firstTurnId }, payload: { statementResult: 'partialPass' }
   });
   assertScreen(state.snapshot, 'PARTNER_STATEMENT', 'partnerGame');
 
   state = await executeAndReduce(h, 'host', 'ADVANCE_PARTNER_TURN', {
-    context: { sessionId, turnId: firstTurnId }, payload: { statementResult: 'allPass' }
+    context: { sessionId, turnId: firstTurnId }
   });
   assertScreen(state.snapshot, 'PARTNER_TURN', 'partnerGame');
   const closingTurnId = state.snapshot.view.session.activeTurn.turnId;

@@ -188,7 +188,7 @@ view
 ├── room { roomId, lifecycle, hostMemberId, workshopName, members[] }
 ├── session
 │   ├── { sessionId, ordinal, status, mode, participants[] }
-│   ├── setup { scenarioSource, scenario, selectedProblem, proposedFirstMemberId }
+│   ├── setup { scenarioSource, scenario, selectedProblem, designProblems[], proposedFirstMemberId }
 │   ├── workflow { step, revision, roundNo, activeMemberId, turnId, phaseStartedAt }
 │   ├── progress / publicModeState / activeTurn
 │   └── result / recentMessages / activeArtifacts / turnSummaries
@@ -441,7 +441,8 @@ stateDiagram-v2
   [*] --> PARTNER_TURN: 确认首位成员
   PARTNER_TURN --> PARTNER_TURN: 评分/表达/素材/HELP_LUCK/MASTER
   PARTNER_TURN --> PARTNER_TURN: SILENT 开启/结束
-  PARTNER_TURN --> PARTNER_STATEMENT: 全部有效评分完成
+  PARTNER_TURN --> PARTNER_TURN: START_PARTNER_STATEMENT(allPass)
+  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT(partialPass/allQuestion)
   PARTNER_STATEMENT --> PARTNER_TURN: 归档 Turn + 下一成员
   PARTNER_TURN --> PARTNER_CLOSING_VOTE: 当前行动者使用 CLOSING
   PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一 question
@@ -449,6 +450,15 @@ stateDiagram-v2
   PARTNER_CLOSING_RUNE --> PARTNER_CLOSING_REVIEW: 房主推进
   PARTNER_CLOSING_REVIEW --> COMPLETED: 房主完成
 ```
+
+表态选择器是 Host 本地 UI，打开时不产生 Command。`START_PARTNER_STATEMENT`
+必须携带 `statementResult`：`allPass` 在同一事务内归档当前 Turn 并开始下一
+Turn；`partialPass/allQuestion` 将结果保存在权威 Active Turn 后进入讨论。
+`ADVANCE_PARTNER_TURN` 不再接收表态结果，它只能从 `PARTNER_STATEMENT`
+使用已保存结果归档并换轮，断线恢复不依赖客户端草稿。
+
+`HELP_LUCK` 的反面随机拼先进入可返回的本地预览；只有用户选择“取消采用”
+或“采用卡组”时才发送 `USE_PARTNER_SPECIAL(HELP_LUCK)`，从预览返回转盘不消耗行动。
 
 ```mermaid
 flowchart LR
@@ -476,6 +486,8 @@ stateDiagram-v2
 ```
 
 成员离开会在同一事务内缩减 `requiredMemberIds`；若剩余提交已经齐全，立即进入汇总。
+已提交的 Halli 创意在 `HALLI_CREATIVE` 阶段就进入公共 View，每次提交产生的
+Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
 
 ## 8. Spy 状态机与秘密边界
 
@@ -540,6 +552,10 @@ flowchart TD
 ```
 
 已离房成员的事实仍用于审计和历史展示，但会同时移出 `required/submitted` 进度集合；Partner 收尾与 Spy 淘汰裁决只统计当前 `requiredMemberIds` 中的票。
+进行中的页面模型只把 `status=ACTIVE` 的冻结 Participant 投影为可见/可选成员；历史回看与已完成场次的结算页仍投影全部冻结 Participant。
+
+设计问题的公共投影保留服务端 `createdAt`。客户端必须按该字段稳定排序，不能使用随机
+`contributionId` 或本地接收顺序推断提交先后；该字段同时经 Snapshot 和 Event Patch 更新。
 
 ## 11. 辅助能力归属
 
@@ -547,8 +563,8 @@ flowchart TD
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
 | Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写。边框以各端本地麦克风为准，该 signal 只给无麦端回退 | 否 |
-| 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；同一成员 15 秒内幂等 | 否 |
-| 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。不推进 seq，成员端必须从 idle Sync 的 `ephemeral.signals`（以及 Page Model `editingProblemId`）读取，不能只等 Event | 否 |
+| 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；房间级最新信号供客户端投影，Session + Member 级冷却凭证保证同一成员 15 秒内幂等 | 否 |
+| 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；绑定精确 `sessionId + workflowRevision`，value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。它不推进 seq，每次 idle Sync 仍返回当前 ephemeral，Page Model 校验步骤、Session、workflow revision 和过期时间后投影 `roomState.editingProblemId`；页面不得直读 raw ephemeral | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
 | 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |

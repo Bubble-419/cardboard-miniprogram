@@ -104,9 +104,15 @@ test('校验嵌套情境、全量席位与语义枚举', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.REORDER_SEATS, {
     payload: { orderedMemberIds: ['m1', 'm1'] }
   })).ok, false);
-  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.ADVANCE_PARTNER_TURN, {
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_PARTNER_STATEMENT, {
     context: { sessionId: 's', turnId: 't' }, payload: { statementResult: 'unknown' }
   })).ok, false);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_PARTNER_STATEMENT, {
+    context: { sessionId: 's', turnId: 't' }, payload: { statementResult: 'partialPass' }
+  })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.ADVANCE_PARTNER_TURN, {
+    context: { sessionId: 's', turnId: 't' }, payload: {}
+  })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SET_SCENARIO, {
     context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO', workflowRevision: 1 },
     payload: { source: 'CUSTOM', scenario: { scene: '场景', user: '用户', function: '功能' } }
@@ -154,6 +160,17 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
     navigation: { back: { kind: 'NONE' } }
   };
   assert.equal(validateMemberView(view, '12345678'), true);
+
+  const withProblem = JSON.parse(JSON.stringify(view));
+  withProblem.session.setup.designProblems = [{
+    contributionId: 'problem-1', memberId: 'member-1', text: '设计问题',
+    entityVersion: 1, createdAt: 10
+  }];
+  withProblem.session.setup.selectedProblem = { ...withProblem.session.setup.designProblems[0] };
+  assert.equal(validateMemberView(withProblem, '12345678'), true);
+  delete withProblem.session.setup.designProblems[0].createdAt;
+  assert.equal(validateMemberView(withProblem, '12345678'), false,
+    '设计问题缺少首次提交时间时必须拒绝，避免客户端顺序漂移');
 
   const missingCases = [
     ['room.members', (copy) => { delete copy.room.members; }],

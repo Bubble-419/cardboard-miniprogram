@@ -86,7 +86,10 @@ flowchart TB
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 
 `roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)`、
-`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 和 `_id=hash(roomId:DESIGN_PROBLEM_EDITING)` 三点读，不需要组合索引。其余读取
+`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 和 `_id=hash(roomId:DESIGN_PROBLEM_EDITING)`
+三点读；设计问题催促另按
+`hash(roomId:sessionId:DESIGN_PROBLEM_NUDGE:cooldown:memberId)` 点写成员冷却凭证，
+该凭证不投影给客户端。两类文档都不需要组合索引。其余读取
 使用确定性 `_id`，不需要额外业务索引。
 
 ## 4. 权限边界
@@ -239,7 +242,10 @@ flowchart LR
 - `assets/subAwait/wait-hero-5a8ea5.webp`
 - `assets/home/empty-history-6f27f1.webp`
 - `assets/brainstormMode/mode-cover-*.jpg`
-- `assets/halliGalli/step-*.webp`（同源 PNG 也不打包）
+- `assets/halliGalli/step-*.webp`
+
+Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
+加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
 
 云存储前缀：`miniprogram-static/`，与仓库相对路径一致。HTTPS 形如：
 

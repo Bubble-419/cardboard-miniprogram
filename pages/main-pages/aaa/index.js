@@ -245,6 +245,12 @@ Page(withPageInteractionLock({
     const roomIds = Object.keys(selected).filter((id) => selected[id]);
     if (!roomIds.length) return;
     const next = removeHistoryWorkshops(roomIds);
+    const remainingIds = new Set((next || []).map((item) => item && item.roomId).filter(Boolean));
+    if (roomIds.some((roomId) => remainingIds.has(roomId))) {
+      this.setData(this._syncHistorySelection(next, selected, true));
+      wx.showToast({ title: '删除失败，请重试', icon: 'none' });
+      return;
+    }
     this.setData(this._syncHistorySelection(next, {}, false));
     wx.showToast({ title: '已删除', icon: 'success' });
   },

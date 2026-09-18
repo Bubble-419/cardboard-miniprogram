@@ -115,10 +115,6 @@
         "type": "glob"
       },
       {
-        "value": "assets/halliGalli/*.png",
-        "type": "glob"
-      },
-      {
         "value": "bg-card-demo.html",
         "type": "file"
       },

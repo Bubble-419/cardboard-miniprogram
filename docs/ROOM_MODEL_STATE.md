@@ -208,6 +208,7 @@ modeState.partner
 ├── roundRemainingMemberIds   # 本轮尚未开始的成员；开始 Turn 时立刻出队
 ├── activeTurn
 │   ├── turnId / activeMemberId / phase
+│   ├── statementResult          # 仅部分通过/全部疑问的讨论期保存
 │   ├── scoreProgress
 │   ├── specialUsed / masterMode
 │   └── silentStartedAt / silentDeadlineAt
@@ -217,7 +218,7 @@ modeState.partner
     └── stage
 ```
 
-完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。排行榜从归档 Turn 汇总，不由客户端提交。
+完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。“全部通过”在提交表态结果时直接归档；“部分通过/全部疑问”先把 `statementResult` 持久化到 Active Turn，讨论结束后再归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
 
 ### Halli Galli
 
@@ -228,7 +229,7 @@ facts.contributions[HALLI_IDEA]
 result.ideaCount
 ```
 
-创意在收集阶段只公开提交进度；进入 `HALLI_SUMMARY` 后才公开内容。
+创意是公共协作事实；每次 `SUBMIT_HALLI_IDEA` 都会将已提交内容增量投影给全员。`HALLI_SUMMARY` 表示全员提交完成，不是内容首次解封点。
 
 ### Spy
 
@@ -246,6 +247,21 @@ facts.votes[voteSessionId:memberId]
 ```
 
 密牌只存在权威 Facts 和对应成员的 Actor View。`reveal` 只有在最终结算后才进入公共模式状态。
+
+### 设计问题事实与投影
+
+```text
+facts.contributions[sessionId:DESIGN_PROBLEM:memberId]
+├── contributionId / sessionId / memberId / kind
+├── text / entityVersion
+└── createdAt / updatedAt
+
+MemberView.session.setup.designProblems[]
+├── contributionId / memberId / text / entityVersion
+└── createdAt                 # 首次提交时间，编辑时不改变
+```
+
+`createdAt` 是问题展示顺序的权威字段；`updatedAt` 只用于事实审计，不得因 Host 编辑而改变列表顺序。
 
 ## 5. Event Group
 
@@ -355,6 +371,9 @@ flowchart TB
 
 View 的两种更新路径属于同一个 Interface：Snapshot 直接提供完整 View；Event 只提供从旧 View 到新 View 的安全增量。页面永远只看到发布后的完整 View。
 
+进行中页面从冻结 `participants[]` 中只展示 `ACTIVE` 成员；`LEFT` 成员仍保留在 Member View
+供历史与审计使用，历史页面和已完成场次的结算页投影全部冻结成员。
+
 `capabilities` 是服务端投影的 UI 操作提示，不代替 Command 时的服务端授权。`route` 和
 `navigation` 都是成员级展示投影，不是业务事实。页面不得写回页面名，也不得根据物理页面栈
 拼后退目标；`navigation.back.context.workflowRevision` 用于阻止旧页面的 ABA 重放。
@@ -382,7 +401,7 @@ erDiagram
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
 | `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
-| `roomV3Signals` | 可丢失瞬时信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）；确定性 `_id=hash(roomId:signalType)` 点读。静默边框以各端本地麦克风为准，`PARTNER_SILENT_SOUND` 仅房主可写、给无麦端回退 | ephemeral 投影 |
+| `roomV3Signals` | 三种可丢失公开信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）按 `hash(roomId:signalType)` 点读；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默边框以各端本地麦克风为准，`PARTNER_SILENT_SOUND` 仅房主可写、给无麦端回退 | ephemeral 投影与服务端限流 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid
@@ -402,8 +421,9 @@ flowchart LR
 产生时扇出为 actor patch。`afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询；连续
 积压为 1～25 条时读取 Event；积压超过 25 条、缺口或版本不兼容时读取一次 Aggregate，并在同一
 响应内交付最新 Snapshot。房间资料等不改变 Session 的 Command 也不会重写 Session/Facts 或所有
-未变化的 `ActiveByUser` 索引。`SUBMIT_PARTNER_SCORE` 只点更新 `facts.scores.{id}` 与
-`scoreProgress`，不把消息、素材等其余 Facts 整文档再写一遍。
+未变化的 `ActiveByUser` 索引。`SUBMIT_PARTNER_SCORE` 在确认 Session 除评分字段外没有其他变化时，
+只点更新 `facts.scores.{id}`、`scoreProgress` 与 `updatedAt`；一旦出现其他字段变化就回退整文档写入，
+避免领域模型扩展后静默漏存，同时不为普通评分重复写入消息、素材等大体积 Facts。
 
 ## 8. 业务状态与瞬时状态
 

@@ -156,3 +156,30 @@ test('确认删除后从首页历史列表移除选中记录', () => {
     assert.equal(toasts.some((item) => item && item.title === '已删除'), true);
   });
 });
+
+test('本地存储写入失败时保留选中项并提示失败', () => {
+  const storage = new Map();
+  storage.set('historyWorkshops', [
+    { id: '11111111', roomId: '11111111', name: '场次一' },
+    { id: '22222222', roomId: '22222222', name: '场次二' }
+  ]);
+  const toasts = [];
+  withWx(storage, {
+    setStorageSync() { throw new Error('storage full'); },
+    showToast(opts) { toasts.push(opts); },
+    showModal(opts) { opts.success({ confirm: true }); }
+  }, () => {
+    const page = loadHomePage();
+    page._loadHistoryWorkshops();
+    page.onTapHistoryManage();
+    page.onTapHistoryCard({
+      currentTarget: { dataset: { roomId: '11111111', sessionId: '' } }
+    });
+    page.onTapHistoryDelete();
+
+    assert.equal(page.data.historyManageMode, true);
+    assert.equal(page.data.selectedHistoryCount, 1);
+    assert.equal(page.data.historyWorkshops.length, 2);
+    assert.equal(toasts.at(-1).title, '删除失败，请重试');
+  });
+});

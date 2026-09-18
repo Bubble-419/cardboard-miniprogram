@@ -115,16 +115,21 @@ function projectPublicView(aggregate) {
         contributionId: selectedProblem.contributionId,
         memberId: selectedProblem.memberId,
         text: selectedProblem.text,
-        entityVersion: selectedProblem.entityVersion
+        entityVersion: selectedProblem.entityVersion,
+        createdAt: selectedProblem.createdAt
       } : null,
       // 问题在收集完成前互不可见；进入选择阶段后持续投影，确保配置页返回时可完整还原。
       designProblems: problemRevealSteps.includes(session.workflow.step)
-        ? contributions.filter((item) => item.kind === 'DESIGN_PROBLEM').map((item) => ({
-          contributionId: item.contributionId,
-          memberId: item.memberId,
-          text: item.text,
-          entityVersion: item.entityVersion
-        }))
+        ? contributions.filter((item) => item.kind === 'DESIGN_PROBLEM')
+          .sort((a, b) => a.createdAt - b.createdAt
+            || String(a.contributionId).localeCompare(String(b.contributionId)))
+          .map((item) => ({
+            contributionId: item.contributionId,
+            memberId: item.memberId,
+            text: item.text,
+            entityVersion: item.entityVersion,
+            createdAt: item.createdAt
+          }))
         : []
     },
     workflow: clone(session.workflow),
@@ -217,11 +222,11 @@ function projectPublicView(aggregate) {
       }));
   } else if (session.mode === MODE.HALLI_GALLI) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
-    const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
     view.publicModeState = {
       firstMemberId: session.setup.proposedFirstMemberId || null,
       submittedMemberIds: ideas.map((item) => item.memberId),
-      ideas: reveal ? ideas.map((item) => ({ memberId: item.memberId, text: item.text })) : []
+      // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
+      ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
     };
   } else if (session.mode === MODE.SPY) {
     const spy = currentSpy(aggregate) || {};

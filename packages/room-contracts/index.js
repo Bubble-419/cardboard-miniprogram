@@ -1,8 +1,8 @@
 'use strict';
 
 const PROTOCOL_VERSION = 3;
-const SCHEMA_VERSION = 4;
-const VIEW_SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
+const VIEW_SCHEMA_VERSION = 6;
 const EVENT_SCHEMA_VERSION = 3;
 const MAX_INCREMENTAL_SYNC_EVENTS = 25;
 const MAX_SEATS = 6;
@@ -199,8 +199,8 @@ const COMMAND_PAYLOAD_KEYS = Object.freeze({
   REMOVE_ARTIFACT: ['operationId'],
   SUBMIT_PARTNER_SCORE: ['scoreHalfSteps'],
   POST_PARTNER_MESSAGE: ['text'],
-  START_PARTNER_STATEMENT: [],
-  ADVANCE_PARTNER_TURN: ['statementResult'],
+  START_PARTNER_STATEMENT: ['statementResult'],
+  ADVANCE_PARTNER_TURN: [],
   USE_PARTNER_SPECIAL: ['kind'],
   END_PARTNER_SILENT: [],
   SUBMIT_PARTNER_CLOSING_VOTE: ['vote'],
@@ -337,7 +337,7 @@ function validatePayload(type, payload) {
       return fail(ERR.LIMIT_EXCEEDED, '素材引用超过上限');
     }
   }
-  if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN
+  if (type === COMMAND_TYPES.START_PARTNER_STATEMENT
     && !['allPass', 'partialPass', 'allQuestion'].includes(payload.statementResult)) {
     return fail(ERR.INVALID_ARGUMENT, 'statementResult 不合法');
   }
@@ -521,6 +521,15 @@ function validProjectedParticipant(participant) {
     && typeof participant.color === 'string';
 }
 
+function validProjectedDesignProblem(problem) {
+  return isRecord(problem)
+    && isNonEmptyString(problem.contributionId)
+    && isNonEmptyString(problem.memberId)
+    && typeof problem.text === 'string'
+    && Number.isInteger(problem.entityVersion) && problem.entityVersion >= 1
+    && Number.isFinite(problem.createdAt);
+}
+
 function validActorStatus(status) {
   return isRecord(status) && typeof status.submitted === 'boolean';
 }
@@ -598,6 +607,9 @@ function validateMemberView(view, expectedRoomId) {
     || !hasOwn(session.setup, 'proposedFirstMemberId')
     || !hasOwn(session.setup, 'selectedProblem')
     || !Array.isArray(session.setup.designProblems)
+    || !session.setup.designProblems.every(validProjectedDesignProblem)
+    || !(session.setup.selectedProblem == null
+      || validProjectedDesignProblem(session.setup.selectedProblem))
     || !isRecord(session.workflow)
     || !Object.values(WORKFLOW_STEP).includes(session.workflow.step)
     || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1

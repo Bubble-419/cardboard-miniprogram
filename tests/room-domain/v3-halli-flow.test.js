@@ -25,7 +25,8 @@ test('Halli 从情境、首位、线下活动、全员创意到汇总和完成',
   await h.command('u2', 'SUBMIT_HALLI_IDEA', { context: { sessionId }, payload: { text: '创意二' } });
   snapshot = await h.snapshot('u2');
   assert.equal(snapshot.view.route.name, 'creativeSummary');
-  assert.equal(snapshot.view.session.publicModeState.ideas.length, 0);
+  assert.deepEqual(snapshot.view.session.publicModeState.ideas.map((item) => item.text), ['创意一', '创意二'],
+    '已提交的创意应当在收集阶段向全员渐进公开');
   await h.command('u3', 'SUBMIT_HALLI_IDEA', { context: { sessionId }, payload: { text: '创意三' } });
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.workflow.step, 'HALLI_SUMMARY');

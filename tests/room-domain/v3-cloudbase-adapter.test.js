@@ -382,7 +382,7 @@ test('CloudBase Presence 与 Signal 拒绝较旧请求覆盖较新时间戳', as
   assert.equal(documents.get(`${COLLECTIONS.signals}:${signalId}`).value, 0.9);
 });
 
-test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计问题催促', async () => {
+test('CloudBase Signal 按类型点读公开文档，已提交者可写入设计问题催促', async () => {
   const { SIGNAL_TYPES } = require('@cardboard/room-contracts');
   const soundId = docId('12345678:PARTNER_SILENT_SOUND');
   const nudgeId = docId('12345678:DESIGN_PROBLEM_NUDGE');
@@ -392,7 +392,8 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
       currentSessionId: 'session-1',
       members: [
         { userId: 'host', memberId: 'member-host' },
-        { userId: 'u2', memberId: 'member-2' }
+        { userId: 'u2', memberId: 'member-2' },
+        { userId: 'u3', memberId: 'member-3' }
       ]
     }],
     [`${COLLECTIONS.sessions}:session-1`, {
@@ -401,12 +402,13 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
       workflow: { step: 'COLLECT_DESIGN_PROBLEMS' },
       participants: [
         { memberId: 'member-host', status: 'ACTIVE' },
-        { memberId: 'member-2', status: 'ACTIVE' }
+        { memberId: 'member-2', status: 'ACTIVE' },
+        { memberId: 'member-3', status: 'ACTIVE' }
       ],
       progress: {
         contributionProgress: {
-          requiredMemberIds: ['member-host', 'member-2'],
-          submittedMemberIds: ['member-host']
+          requiredMemberIds: ['member-host', 'member-2', 'member-3'],
+          submittedMemberIds: ['member-host', 'member-2']
         }
       }
     }],
@@ -445,9 +447,17 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
     roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5000
   });
-  const rejected = await repo.upsertSignal({
+  const other = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'u2', sessionId: 'session-1',
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5001
+  });
+  const replayAfterOther = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5002
+  });
+  const rejected = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'u3', sessionId: 'session-1',
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE, now: 5003
   });
   const listedAfter = await repo.listSignals('12345678');
 
@@ -455,10 +465,15 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
   assert.equal(listed[0].signalType, SIGNAL_TYPES.PARTNER_SILENT_SOUND);
   assert.equal(written.ok, true);
   assert.equal(written.signal.signalType, SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE);
+  assert.equal(other.ok, true);
+  assert.equal(other.signal.memberId, 'member-2');
+  assert.equal(replayAfterOther.ok, true);
+  assert.equal(replayAfterOther.signal.memberId, 'member-host');
+  assert.equal(replayAfterOther.signal.updatedAt, written.signal.updatedAt);
   assert.equal(rejected.ok, false);
   assert.equal(rejected.errCode, 'INVALID_TRANSITION');
   assert.equal(listedAfter.length, 2);
-  assert.equal(documents.get(`${COLLECTIONS.signals}:${nudgeId}`).value, 1);
+  assert.equal(documents.get(`${COLLECTIONS.signals}:${nudgeId}`).memberId, 'member-2');
 });
 
 test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async () => {
@@ -476,7 +491,7 @@ test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async (
     [`${COLLECTIONS.sessions}:session-1`, {
       roomId: '12345678',
       sessionId: 'session-1',
-      workflow: { step: 'SELECT_DESIGN_PROBLEM' },
+      workflow: { step: 'SELECT_DESIGN_PROBLEM', revision: 7 },
       participants: [
         { memberId: 'member-host', status: 'ACTIVE' },
         { memberId: 'member-2', status: 'ACTIVE' }
@@ -520,19 +535,23 @@ test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async (
 
   const written = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    workflowRevision: 7,
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5000
   });
   const rejected = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'u2', sessionId: 'session-1',
+    workflowRevision: 7,
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5001
   });
   const cleared = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    workflowRevision: 7,
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: '', now: 5002
   });
 
   assert.equal(written.ok, true);
   assert.equal(written.signal.value, 'problem-1');
+  assert.equal(written.signal.workflowRevision, 7);
   assert.equal(rejected.ok, false);
   assert.equal(rejected.errCode, 'HOST_REQUIRED');
   assert.equal(cleared.ok, true);
@@ -540,7 +559,7 @@ test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async (
   assert.equal(documents.get(`${COLLECTIONS.signals}:${editingId}`).expiresAt, 5002);
 });
 
-test('CloudBase Session 未带齐 facts 时仍允许房主广播编辑中', async () => {
+test('CloudBase Session 缺少完整 facts 时拒绝广播不存在的设计问题', async () => {
   const { SIGNAL_TYPES } = require('@cardboard/room-contracts');
   const documents = new Map([
     [`${COLLECTIONS.rooms}:12345678`, {
@@ -551,7 +570,7 @@ test('CloudBase Session 未带齐 facts 时仍允许房主广播编辑中', asyn
     [`${COLLECTIONS.sessions}:session-1`, {
       roomId: '12345678',
       sessionId: 'session-1',
-      workflow: { step: 'SELECT_DESIGN_PROBLEM' },
+      workflow: { step: 'SELECT_DESIGN_PROBLEM', revision: 7 },
       participants: [{ memberId: 'member-host', status: 'ACTIVE' }]
     }]
   ]);
@@ -578,10 +597,11 @@ test('CloudBase Session 未带齐 facts 时仍允许房主广播编辑中', asyn
   });
   const written = await repo.upsertSignal({
     roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    workflowRevision: 7,
     signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5000
   });
-  assert.equal(written.ok, true);
-  assert.equal(written.signal.value, 'problem-1');
+  assert.equal(written.ok, false);
+  assert.equal(written.errCode, 'STALE_CONTEXT');
 });
 
 test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃索引', async () => {
@@ -685,7 +705,7 @@ test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', asy
   assert.equal(documents.has(`${COLLECTIONS.events}:12345678_000000000002`), true);
 });
 
-test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档 set Session', async () => {
+test('CloudBase 评分命令只点更新 scores、scoreProgress 与 updatedAt', async () => {
   const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
   const scoreId = 'turn_1:member-u2';
   const documents = new Map([
@@ -749,6 +769,7 @@ test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档
     const progress = { requiredMemberIds: ['member-u2'], submittedMemberIds: ['member-u2'] };
     aggregate.currentSession.modeState.partner.activeTurn.scoreProgress = progress;
     aggregate.currentSession.progress.scoreProgress = progress;
+    aggregate.currentSession.updatedAt = 2;
     aggregate.facts.scores[scoreId] = {
       sessionId: 'session-1', turnId: 'turn_1', memberId: 'member-u2',
       scoreHalfSteps: 7, commitSeq: 2
@@ -763,10 +784,12 @@ test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档
   const sessionWrites = writes.filter((item) => item[0] === COLLECTIONS.sessions);
   assert.equal(sessionWrites.length, 1);
   assert.equal(sessionWrites[0][1], 'update');
+  assert.equal(sessionWrites[0][2].updatedAt, 2);
   assert.equal(sessionWrites[0][2][`facts.scores.${scoreId}`].scoreHalfSteps, 7);
   const stored = documents.get(`${COLLECTIONS.sessions}:session-1`);
   assert.equal(stored.facts.messages[0].messageId, 'm1');
   assert.equal(stored.facts.scores[scoreId].scoreHalfSteps, 7);
   assert.deepEqual(stored.progress.scoreProgress.submittedMemberIds, ['member-u2']);
+  assert.equal(stored.updatedAt, 2);
   assert.equal(committed.events.length, 1);
 });
