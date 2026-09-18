@@ -252,8 +252,10 @@
             <view class="game-card game-card-active" wx:elif="{{item.slideType === 'reverse'}}">
               <scroll-view class="reverse-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
                 <view class="reverse-card-inner">
-                  <text class="reverse-title">反面随机拼</text>
-                  <text class="reverse-desc">请根据以下操作提示，进行反面随机拼</text>
+                  <view class="special-action-header">
+                    <view class="special-mode-badge">反面随机拼</view>
+                    <text class="special-action-title">请根据以下操作提示，进行反面随机拼</text>
+                  </view>
                   <view class="action-divider reverse-divider"></view>
                   <view class="reverse-step-grid">
                     <view class="reverse-step-cell" wx:for="{{reverseSteps}}" wx:key="label">
@@ -277,9 +279,9 @@
             >
               <scroll-view class="silent-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
                 <view class="silent-card-inner">
-                  <view class="silent-header">
-                    <view class="silent-badge">静默模式</view>
-                    <text class="silent-main-title">保持分贝低于40dB</text>
+                  <view class="special-action-header">
+                    <view class="special-mode-badge">静默模式</view>
+                    <text class="special-action-title">保持分贝低于40dB</text>
                   </view>
                   <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
                   <view class="action-divider silent-divider"></view>
@@ -339,7 +341,7 @@
               bindblur="onInspirationBlur"
               bindkeyboardheightchange="onInspirationKeyboardHeightChange"
               confirm-type="done"
-              cursor-spacing="120"
+              cursor-spacing="24"
             />
             <view class="inspiration-action" catchtap="onInspirationActionTap">
               <image

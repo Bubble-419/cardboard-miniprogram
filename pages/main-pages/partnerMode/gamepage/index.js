@@ -118,7 +118,7 @@ const STAR_CHIP_LONG_PRESS_MS = 380;
 const STAR_CHIP_MOVE_CANCEL_PX = 12;
 const STAR_CHIP_SCORE_MIN_TRAVEL_PX = 24;
 /** 星星面板离手后自动收起并提交前的宽限期；此期间再次操作会重置计时 */
-const STAR_PANEL_COLLAPSE_DELAY_MS = 360;
+const STAR_PANEL_COLLAPSE_DELAY_MS = 120;
 
 Page(withPageInteractionLock({
   data: {
@@ -177,6 +177,7 @@ Page(withPageInteractionLock({
     scoreTurnKey: '',
     isMasterMode: false,
     isSilentMode: false,
+    specialActionBadge: '',
     /** default | rainbow | sound — 特殊行动卡片外框，全员同步 */
     cardBorderVariant: '',
     silentSoundLevel: 0,
@@ -1716,6 +1717,13 @@ Page(withPageInteractionLock({
     this.setData(narrow);
   },
 
+  _holdRoomPollForScore() {
+    const session = this._boundRoomSession || getActiveRoomSession();
+    if (session && typeof session.cancelScheduledPoll === 'function') {
+      session.cancelScheduledPoll();
+    }
+  },
+
   _markScoreUiBusy() {
     this._scoreUiBusy = true;
     if (this._scoreUiBusyTimer) {
@@ -1728,7 +1736,7 @@ Page(withPageInteractionLock({
   },
 
   _releaseScoreUiBusy(delayMs) {
-    const delay = delayMs != null ? delayMs : 360;
+    const delay = delayMs != null ? delayMs : STAR_PANEL_COLLAPSE_DELAY_MS;
     if (this._scoreUiBusyTimer) clearTimeout(this._scoreUiBusyTimer);
     this._scoreUiBusyTimer = setTimeout(() => {
       this._scoreUiBusyTimer = null;
@@ -1772,7 +1780,7 @@ Page(withPageInteractionLock({
     return false;
   },
 
-  /** 星星面板：仅本地暂存分数，离手后延时收起，收起时再同步服务端 */
+  /** 星星面板：仅本地暂存分数，离手后短延时收起，收起时再同步服务端 */
   _stageStarPanelScore(rawScore) {
     if (this.data.isCurrentPlayer) {
       wx.showToast({ title: '当前出牌玩家无需打分', icon: 'none' });
@@ -1780,6 +1788,7 @@ Page(withPageInteractionLock({
     }
     const score = clampSelectableScore(rawScore);
     if (score == null) return;
+    this._holdRoomPollForScore();
     this._pendingScoreSubmit = score;
     this._pendingScore = score;
     this._starRatingPinnedOpen = true;
@@ -2269,6 +2278,9 @@ Page(withPageInteractionLock({
       expressCanSend: this._computeExpressCanSend(player.isCurrentPlayer, roomPhase),
       isMasterMode: roomState.partnerMasterMode === true,
       isSilentMode: roomState.partnerSilentMode === true,
+      specialActionBadge: roomState.partnerMasterMode === true
+        ? 'Master模式'
+        : (roomState.partnerSilentMode === true ? '静默模式' : ''),
       cardBorderVariant: roomState.partnerMasterMode === true
         ? 'rainbow'
         : (roomState.partnerSilentMode === true ? 'sound' : ''),
@@ -4053,6 +4065,7 @@ Page(withPageInteractionLock({
 
   onStarGestureStart() {
     this._cancelStarPanelCollapse();
+    this._holdRoomPollForScore();
     this._markScoreUiBusy();
     if (!this.data.starRatingGesturing) {
       this.setData({ starRatingGesturing: true });
@@ -4444,6 +4457,7 @@ Page(withPageInteractionLock({
     if (score == null) return;
     if (this._scoreSubmitting) return;
     this._markScoreUiBusy();
+    this._holdRoomPollForScore();
 
     if (this.data.isCurrentPlayer) {
       this._releaseScoreUiBusy(120);
@@ -4724,12 +4738,15 @@ Page(withPageInteractionLock({
 
   onExpressSendTap(e) {
     if (this._expressSubmitLock || this.data.expressSending) return;
-    this._expressComposerIgnoreBlurUntil = Date.now() + 800;
-    if (this._expressBlurTimer) {
-      clearTimeout(this._expressBlurTimer);
-      this._expressBlurTimer = null;
+    const draft = (this._expressDraftText || this.data.expressDraftText || '').trim();
+    if (!draft) {
+      wx.showToast({ title: '请输入内容', icon: 'none' });
+      return;
     }
-    this.submitExpress(e);
+    this._beginExpressSubmitGuard();
+    return runPageInteraction(this, () => this.submitExpress(e), {
+      loadingText: '正在发送…'
+    });
   },
 
   async submitExpress(e) {
@@ -6312,6 +6329,7 @@ Page(withPageInteractionLock({
   'onExpressConfirm',
   'onExpressFormSubmit',
   'onExpressInput',
+  'onExpressSendTap',
   'onInnerScrollTouchEnd',
   'onInnerScrollTouchStart',
   'onReviewCardTouchEnd',

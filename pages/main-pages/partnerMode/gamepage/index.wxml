@@ -270,7 +270,7 @@
               maxlength="2000"
               confirm-type="done"
               adjust-position="{{true}}"
-              cursor-spacing="120"
+              cursor-spacing="24"
             />
             <view
               class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
@@ -654,10 +654,10 @@
                       bindblur="onExpressComposerBlur"
                     />
                     <button
-                      class="express-form-submit-hidden"
-                      form-type="submit"
-                      hover-class="none"
-                    ></button>
+                      class="spectator-express-send-btn {{expressHasText ? '' : 'spectator-express-send-disabled'}}"
+                      hover-class="spectator-express-send-hover"
+                      catchtap="onExpressSendTap"
+                    >发送</button>
                   </view>
                 </form>
                 <view
@@ -693,12 +693,12 @@
                 wx:if="{{isCurrentPlayer}}"
               >
                 <view class="action-card-inner {{expressChatPanelVisible ? 'action-card-inner-express' : ''}}">
-                  <view class="action-header {{isMasterMode ? 'action-header-master' : ''}}">
+                  <view class="action-header {{specialActionBadge ? 'action-header-special' : ''}}">
                     <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
                     <view class="action-title-block">
-                      <view class="action-title-row" wx:if="{{isMasterMode}}">
-                        <view class="master-mode-badge">MASTER模式</view>
-                        <text class="action-title action-title-master">请进行卡牌行动并解释</text>
+                      <view class="action-title-row" wx:if="{{specialActionBadge}}">
+                        <view class="special-mode-badge">{{specialActionBadge}}</view>
+                        <text class="action-title action-title-special">{{isMasterMode ? '请进行卡牌行动并解释' : '出牌并解释'}}</text>
                       </view>
                       <text class="action-title" wx:else>出牌并解释</text>
                       <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
@@ -774,9 +774,13 @@
                   class="express-dismiss-mask"
                   catchtap="closeExpressComposer"
                 ></view>
-                <view class="spectator-card-head">
+                <view class="spectator-card-head {{specialActionBadge ? 'spectator-card-head-special' : ''}}">
                   <text class="card-player-round">{{currentPlayerName}} · 第{{currentRound}}轮</text>
-                  <text class="spectator-card-title">玩家正在出牌</text>
+                  <view class="action-title-row" wx:if="{{specialActionBadge}}">
+                    <view class="special-mode-badge">{{specialActionBadge}}</view>
+                    <text class="spectator-card-title spectator-card-title-special">玩家正在出牌</text>
+                  </view>
+                  <text class="spectator-card-title" wx:else>玩家正在出牌</text>
                   <text class="spectator-card-desc">您可以对该玩家的出牌进行表达或打分</text>
                 </view>
                 <view class="action-divider"></view>
@@ -858,7 +862,7 @@
                           name="expressText"
                           value="{{expressDraftText}}"
                           maxlength="40"
-                          confirm-type="done"
+                          confirm-type="send"
                           hold-keyboard="{{true}}"
                           adjust-position="{{true}}"
                           cursor-spacing="24"
@@ -871,10 +875,10 @@
                           bindblur="onExpressComposerBlur"
                         />
                         <button
-                          class="express-form-submit-hidden"
-                          form-type="submit"
-                          hover-class="none"
-                        ></button>
+                          class="spectator-express-send-btn {{expressHasText ? '' : 'spectator-express-send-disabled'}}"
+                          hover-class="spectator-express-send-hover"
+                          catchtap="onExpressSendTap"
+                        >发送</button>
                       </view>
                     </form>
                     <view
@@ -993,7 +997,7 @@
             maxlength="2000"
             confirm-type="done"
             adjust-position="{{true}}"
-            cursor-spacing="120"
+            cursor-spacing="24"
           />
           <view
             class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

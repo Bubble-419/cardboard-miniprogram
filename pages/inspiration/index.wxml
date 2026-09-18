@@ -139,7 +139,7 @@
           auto-height
           show-confirm-bar="{{false}}"
           adjust-position="{{true}}"
-          cursor-spacing="120"
+          cursor-spacing="24"
         />
         <view
           class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"

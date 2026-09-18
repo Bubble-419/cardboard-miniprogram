@@ -468,6 +468,7 @@ function createRoomClient(options) {
   }
 
   async function dispatchInternal(input) {
+    cancelTimer();
     const signature = stableStringify({ roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
       type: input.type, context: input.context || {}, payload: input.payload || {} });
     const uncertain = uncertainCommands.get(signature);
@@ -566,6 +567,7 @@ function createRoomClient(options) {
     getView() { return clone(view); },
     getState: state,
     getRequestContext,
+    cancelScheduledPoll() { cancelTimer(); },
     pause() { paused = true; cancelTimer(); },
     resume() { return enqueue(resumeInternal); },
     close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }

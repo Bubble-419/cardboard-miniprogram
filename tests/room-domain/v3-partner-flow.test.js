@@ -28,6 +28,27 @@ async function seedPartner() {
     u3MemberId: (await h.snapshot('u3')).view.actor.memberId };
 }
 
+test('水位已跟上时评分 Command 内联 Sync，不二次读取 Event', async () => {
+  const { h, sessionId, turnId } = await seedPartner();
+  let syncReads = 0;
+  const original = h.repo.readSyncState.bind(h.repo);
+  h.repo.readSyncState = async (...args) => {
+    syncReads += 1;
+    return original(...args);
+  };
+  const before = await h.snapshot('u2');
+  const scored = await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    knownSeq: before.seq,
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
+  });
+  assert.equal(scored.ok, true);
+  assert.equal(syncReads, 0);
+  assert.equal(scored.sync.delivery, 'EVENTS');
+  assert.equal(scored.sync.events.length, 1);
+  assert.equal(scored.sync.ephemeral.stale.presence, true);
+  assert.equal((await h.snapshot('u2')).view.session.activeTurn.scoredCount, 1);
+});
+
 test('Partner 完整评分、内容、表态、换轮并按整轮递增', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const self = await h.command('host', 'SUBMIT_PARTNER_SCORE', { context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 } });

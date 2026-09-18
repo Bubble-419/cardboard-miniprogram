@@ -244,7 +244,7 @@ sequenceDiagram
   T->>P: Before/After Public View + Actor View
   P-->>T: publicPatch + 每成员 actorPatch
   T->>T: Room + Session/Facts + Event Group + Receipt
-  T-->>A: 原子提交结果
+  T-->>A: 原子提交结果 + 事务内 Event
   A-->>C: Outcome + SyncBatch
   C->>C: 顺序应用 publicPatch + 本人 actorPatch
   C-->>U: 发布新 View
@@ -385,8 +385,12 @@ Command 的传输结果丢失时，客户端不能生成新 `commandId` 猜测�
 `roomId + type + context + payload` 视为同一未确认意图，在收到明确成功或失败前复用原
 `commandId`；服务端 Receipt 负责把重复提交收敛为一次结果。
 
-State/Event/Receipt 已经提交后，如果附带 Sync 查询失败，`roomCommand` 仍返回 Command 成功并省略
-附带 Sync。客户端在下一轮正常同步恢复，而不是把已提交写入伪装成失败。
+客户端 `knownSeq` 已经覆盖到本次提交前一号时，`roomCommand` 直接用事务内 Event Group 投影附带
+Sync，不再二次读取 Room/Event/Presence/Signal。瞬时态标记 `ephemeral.stale`，客户端保留上次
+Presence/Signal。水位落后、Event 不连续或内联失败时，仍走完整 Sync。State/Event/Receipt 已经
+提交后，如果附带 Sync 查询失败，`roomCommand` 仍返回 Command 成功并省略附带 Sync。客户端在下一轮
+正常同步恢复，而不是把已提交写入伪装成失败。
+
 业务动作需要切页时，以 Outcome 的 `committedThroughSeq` 检查本地 View；未追平则先刷新
 Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协调器合并，后发调用等待在途
 导航结束，不能硬编码猜测下一页面或提前释放交互锁。

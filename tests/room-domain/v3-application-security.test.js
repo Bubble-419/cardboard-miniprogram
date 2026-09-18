@@ -76,7 +76,7 @@ test('Command 已提交后附带 Sync 失败仍返回成功且不伪造同步结
   failSync = true;
 
   const updated = await app.executeCommand({
-    protocolVersion: PROTOCOL_VERSION, commandId: 'accepted-with-sync-failure', roomId: '12345678', knownSeq: 1,
+    protocolVersion: PROTOCOL_VERSION, commandId: 'accepted-with-sync-failure', roomId: '12345678', knownSeq: 0,
     type: 'UPDATE_ROOM_PROFILE', context: {}, payload: { workshopName: '已提交' }
   }, { userId: 'host' });
 
@@ -84,4 +84,44 @@ test('Command 已提交后附带 Sync 失败仍返回成功且不伪造同步结
   assert.equal(updated.commandId, 'accepted-with-sync-failure');
   assert.equal(updated.sync, undefined);
   assert.equal(base.rooms.get('12345678').room.workshopName, '已提交');
+});
+
+test('水位已跟上时 Command 用事务内 Event 内联 Sync，不再二次读库', async () => {
+  const h = createHarness();
+  await h.seedMembers(1);
+  let syncReads = 0;
+  const original = h.repo.readSyncState.bind(h.repo);
+  h.repo.readSyncState = async (...args) => {
+    syncReads += 1;
+    return original(...args);
+  };
+  const renamed = await h.command('host', 'UPDATE_ROOM_PROFILE', {
+    payload: { workshopName: '内联同步' }
+  });
+  assert.equal(renamed.ok, true);
+  assert.equal(syncReads, 0);
+  assert.equal(renamed.sync.delivery, 'EVENTS');
+  assert.equal(renamed.sync.hasMore, false);
+  assert.equal(renamed.sync.events.length, 1);
+  assert.equal(renamed.sync.ephemeral.stale.presence, true);
+  assert.equal(renamed.sync.ephemeral.stale.signals, true);
+  assert.equal((await h.snapshot('host')).view.room.workshopName, '内联同步');
+});
+
+test('客户端水位落后时 Command 仍走完整 Sync', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  let syncReads = 0;
+  const original = h.repo.readSyncState.bind(h.repo);
+  h.repo.readSyncState = async (...args) => {
+    syncReads += 1;
+    return original(...args);
+  };
+  const renamed = await h.command('host', 'UPDATE_ROOM_PROFILE', {
+    knownSeq: 0,
+    payload: { workshopName: '补齐同步' }
+  });
+  assert.equal(renamed.ok, true);
+  assert.ok(syncReads >= 1);
+  assert.equal(renamed.sync.delivery, 'EVENTS');
 });
