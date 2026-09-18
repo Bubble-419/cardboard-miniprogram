@@ -1,367 +1,560 @@
 'use strict';
 
-/**
- * 将 legacy getAddPlayerData 结果规整为 RoomViewSnapshot
- */
-function normalizeLegacyResult(result, roomId) {
-  if (!result || result.ok !== true) {
-    return {
-      ok: false,
-      roomId,
-      errCode: (result && result.errCode) || 'LEGACY_POLL_ERROR',
-      errMsg: (result && result.errMsg) || '同步失败',
-      raw: result || null
-    };
-  }
-  const roomState = result.roomState || {};
-  const protocolVersion = result.protocolVersion != null
-    ? Number(result.protocolVersion)
-    : (roomState.protocolVersion != null ? Number(roomState.protocolVersion) : 1);
-  // 无 revision 时不要用 Date.now()：每次轮询都会被当成「更新」而 emit，
-  // 游戏页高频 setData 会打爆 scroll-view 横向布局。
-  const revision = result.revision != null
-    ? Number(result.revision)
-    : (roomState.revision != null ? Number(roomState.revision) : 0);
+const {
+  PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR,
+  stableStringify, validatePublicViewPatch, validateActorViewPatch, validateMemberView
+} = require('../room-contracts/index');
+const { clone, applyProjectedEvent } = require('../room-projection/index');
 
+// RoomClient 的统一轮询下限；页面不能再通过局部配置发起更高频的请求。
+const ROOM_POLL_INTERVAL_MS = 2000;
+const PRESENCE_TOUCH_INTERVAL_MS = 5000;
+
+function defaultCommandId() {
+  return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function unwrapCloudResult(response) {
+  return response && Object.prototype.hasOwnProperty.call(response, 'result') ? response.result : response;
+}
+
+function isRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** 将 wx.cloud.callFunction 收敛为 RoomClient 唯一传输端口。 */
+function createCloudRoomGateway(options) {
+  const callFunction = options && options.callFunction;
+  if (typeof callFunction !== 'function') throw new Error('callFunction required');
+  const call = async (name, data) => unwrapCloudResult(await callFunction({ name, data }));
+  const withContext = (data, clientContext) => clientContext ? { ...data, clientContext } : data;
   return {
-    ok: true,
-    roomId: roomId || result.roomId,
-    protocolVersion,
-    revision,
-    isHost: result.isHost === true,
-    members: result.members || [],
-    memberCount: result.memberCount != null ? result.memberCount : (result.members || []).length,
-    roomState,
-    workshopName: result.workshopName,
-    selectedModeId: result.selectedModeId != null ? result.selectedModeId : roomState.selectedModeId,
-    hasSelectedMode: result.hasSelectedMode === true,
-    selectedBG: result.selectedBG || null,
-    selectedDesignProblem: result.selectedDesignProblem || roomState.selectedDesignProblem || null,
-    qrcodeFileID: result.qrcodeFileID || null,
-    qrcodeUrl: result.qrcodeUrl || null,
-    lastEvent: result.lastEvent || null,
-    role: result.role || null,
-    raw: result,
-    syncedAt: Date.now()
+    currentRoom: (clientContext) => call('roomQuery', withContext({ action: 'current' }, clientContext)),
+    snapshot: (roomId, clientContext) => call('roomQuery', withContext({ action: 'snapshot', roomId }, clientContext)),
+    sync: (roomId, afterSeq, limit, clientContext) => call('roomQuery', withContext({
+      action: 'sync', roomId, afterSeq, limit
+    }, clientContext)),
+    history: (roomId, query, clientContext) => call('roomQuery', withContext({
+      action: 'history', roomId, ...(query || {})
+    }, clientContext)),
+    session: (roomId, sessionId, clientContext) => call('roomQuery', withContext({
+      action: 'session', roomId, sessionId
+    }, clientContext)),
+    messages: (roomId, sessionId, query, clientContext) => call('roomQuery', withContext({
+      action: 'messages', roomId, sessionId, ...(query || {})
+    }, clientContext)),
+    leaderboard: (roomId, sessionId, clientContext) => call('roomQuery', withContext({
+      action: 'leaderboard', roomId, sessionId
+    }, clientContext)),
+    // Command 放在独立传输字段中，避免 CloudBase 注入的 tcbContext 污染严格协议对象。
+    dispatch: (envelope, clientContext) => call('roomCommand', withContext({ command: envelope }, clientContext))
   };
 }
 
-function shouldApplySnapshot(prev, next) {
-  if (!next || next.ok !== true) return false;
-  if (!prev || prev.ok !== true) return true;
-  const prevRev = Number(prev.revision) || 0;
-  const nextRev = Number(next.revision) || 0;
-  // 已建立正 revision 水位后，禁止 revision=0 的未知/旧快照回写（否则会把 play 打回 discussion）
-  if (prevRev > 0 && nextRev === 0) return false;
-  if (prevRev > 0 && nextRev > 0 && nextRev < prevRev) return false;
-  return true;
-}
+function createRoomClient(options) {
+  const gateway = options && options.gateway;
+  if (!gateway) throw new Error('RoomGateway required');
+  const requestedIntervalMs = Number(options.intervalMs);
+  const intervalMs = requestedIntervalMs > 0
+    ? Math.max(ROOM_POLL_INTERVAL_MS, requestedIntervalMs)
+    : ROOM_POLL_INTERVAL_MS;
+  const syncLimit = Math.min(100, Math.max(1, Number(options.syncLimit) || 100));
+  const setTimeoutFn = options.setTimeoutFn || setTimeout;
+  const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
+  const makeCommandId = options.commandIdFactory || defaultCommandId;
+  const deviceSessionId = options.deviceSessionId || `device_${defaultCommandId()}`;
 
-/**
- * 用命令结果乐观补丁本地快照（含 raw.roomState），避免只抬 revision、roomState 仍是旧 phase。
- */
-function patchSnapshotFromCommand(prev, result) {
-  if (!result || result.ok !== true) return prev;
-  const effects = result.effects || {};
-  const rev = Number(result.appliedRevision);
-  const base = prev && prev.ok === true
-    ? prev
-    : {
-      ok: true,
-      roomId: result.roomId || '',
-      revision: 0,
-      roomState: {},
-      raw: { ok: true, roomState: {} },
-      members: [],
-      memberCount: 0
-    };
-
-  const nextRev = Number.isFinite(rev) && rev > 0
-    ? Math.max(Number(base.revision) || 0, rev)
-    : Number(base.revision) || 0;
-  const roomState = { ...(base.roomState || {}) };
-  const raw = base.raw && typeof base.raw === 'object' ? { ...base.raw } : { ok: true };
-  const rawRoomState = { ...(raw.roomState || {}) };
-
-  if (effects.advancedTurn === true || (effects.activeSeatNo != null && effects.legacyPage === 'gamepage')) {
-    roomState.partnerGamePhase = 'play';
-    rawRoomState.partnerGamePhase = 'play';
-    roomState.partnerMasterMode = false;
-    rawRoomState.partnerMasterMode = false;
-    roomState.partnerSilentMode = false;
-    rawRoomState.partnerSilentMode = false;
-    roomState.partnerSilentStartedAt = null;
-    rawRoomState.partnerSilentStartedAt = null;
-    roomState.partnerSilentSoundLevel = 0;
-    rawRoomState.partnerSilentSoundLevel = 0;
-    if (effects.activeSeatNo != null) {
-      roomState.currentPlayerIndex = effects.activeSeatNo;
-      rawRoomState.currentPlayerIndex = effects.activeSeatNo;
-    }
-    if (effects.roundNo != null) {
-      roomState.currentRound = effects.roundNo;
-      rawRoomState.currentRound = effects.roundNo;
-    }
-    roomState.currentPage = 'gamepage';
-    rawRoomState.currentPage = 'gamepage';
-    // 换轮必须清零评分快照，否则 emit 瞬间仍带上一回合满分 → 误亮「开始表态」
-    const seat = effects.activeSeatNo != null
-      ? effects.activeSeatNo
-      : roomState.currentPlayerIndex;
-    const round = effects.roundNo != null
-      ? effects.roundNo
-      : roomState.currentRound;
-    const freshProgress = {
-      scoredCount: 0,
-      requiredScoreCount: 0,
-      votedCount: 0,
-      requiredVoteCount: 0,
-      turnId: (effects.turnId
-        || (seat != null && round != null ? `turn_r${round}_s${seat}` : null))
-    };
-    roomState.scoredCount = 0;
-    roomState.totalRequired = 0;
-    roomState.progress = freshProgress;
-    rawRoomState.scoredCount = 0;
-    rawRoomState.totalRequired = 0;
-    rawRoomState.progress = { ...freshProgress };
-  }
-
-  if (effects.startedStatement === true) {
-    roomState.partnerGamePhase = 'discussion';
-    rawRoomState.partnerGamePhase = 'discussion';
-    roomState.partnerMasterMode = false;
-    rawRoomState.partnerMasterMode = false;
-    roomState.partnerSilentMode = false;
-    rawRoomState.partnerSilentMode = false;
-    roomState.currentPage = 'gamepage';
-    rawRoomState.currentPage = 'gamepage';
-  }
-
-  if (nextRev > 0) {
-    roomState.revision = nextRev;
-    rawRoomState.revision = nextRev;
-  }
-
-  raw.roomState = rawRoomState;
-  if (nextRev > 0) raw.revision = nextRev;
-
-  return {
-    ...base,
-    revision: nextRev,
-    roomState,
-    raw,
-    syncedAt: Date.now()
-  };
-}
-
-/**
- * @param {object} options
- * @param {string} options.roomId
- * @param {{ fetchSnapshot: (ctx) => Promise<object>, dispatchCommand?: Function }} options.transport
- * @param {number} [options.intervalMs]
- * @param {(ms: number, fn: Function) => any} [options.setIntervalFn]
- * @param {(id: any) => void} [options.clearIntervalFn]
- */
-function createRoomSession(options) {
-  const roomId = options.roomId;
-  let transport = options.transport;
-  let intervalMs = options.intervalMs != null ? options.intervalMs : 2000;
-  const setIntervalFn = options.setIntervalFn || setInterval;
-  const clearIntervalFn = options.clearIntervalFn || clearInterval;
-
-  let snapshot = null;
-  let appliedRevision = 0;
-  let pollTimer = null;
-  let inFlight = false;
-  let seq = 0;
+  let roomId = null;
+  let view = null;
+  let ephemeral = {};
   let appliedSeq = 0;
-  let paused = false;
+  let appliedStateVersion = 0;
+  let stagingView = null;
+  let stagingSeq = 0;
+  let stagingStateVersion = 0;
+  let status = 'IDLE';
+  let error = null;
+  let timer = null;
   let disposed = false;
-  let subscriberSeq = 0;
-  const subscribers = new Map();
+  let paused = false;
+  let lastPresenceTouchAt = 0;
+  let consecutiveSyncFailures = 0;
+  let serverClockOffsetMs = 0;
+  let listenerSeq = 0;
+  let queue = Promise.resolve();
+  const listeners = new Map();
+  const uncertainCommands = new Map();
 
-  function emit() {
-    subscribers.forEach((listener) => {
-      try {
-        listener(snapshot);
-      } catch (e) {
-        console.warn('RoomSession subscriber error', e);
-      }
+  function state() {
+    return {
+      roomId, view: clone(view), ephemeral: clone(ephemeral), seq: appliedSeq,
+      stateVersion: appliedStateVersion, status, error: clone(error),
+      serverClockOffsetMs, serverNow: Date.now() + serverClockOffsetMs
+    };
+  }
+
+  function observeServerTime(serverTime, requestedAt) {
+    const receivedAt = Date.now();
+    const serverAt = Number(serverTime);
+    if (!Number.isFinite(serverAt)) return;
+    // 以请求往返中点估算时钟偏差，供倒计时展示使用；服务端仍是截止时间的唯一裁决者。
+    const midpoint = Number.isFinite(requestedAt) ? (requestedAt + receivedAt) / 2 : receivedAt;
+    serverClockOffsetMs = Math.round(serverAt - midpoint);
+  }
+
+  function publish() {
+    const current = state();
+    listeners.forEach((listener) => {
+      try { listener(current.view, current); } catch (listenerError) { console.warn('RoomClient listener', listenerError); }
     });
   }
 
-  async function pullOnce(opts) {
-    const force = !!(opts && opts.force);
-    if (disposed || paused || !transport || typeof transport.fetchSnapshot !== 'function') {
-      return snapshot;
+  function cancelTimer() {
+    if (timer) clearTimeoutFn(timer);
+    timer = null;
+  }
+
+  function getRequestContext() {
+    const requestedAt = Date.now();
+    const touchPresence = requestedAt - lastPresenceTouchAt >= PRESENCE_TOUCH_INTERVAL_MS;
+    if (touchPresence) lastPresenceTouchAt = requestedAt;
+    return { deviceSessionId, touchPresence };
+  }
+
+  function schedule(delay) {
+    cancelTimer();
+    if (disposed || paused || (!roomId && status !== 'DEGRADED')) return;
+    timer = setTimeoutFn(() => {
+      // 只有持有可信 View 才能消费增量事件；Snapshot 失败后不得退化成 sync(0)。
+      const operation = roomId ? (view || stagingView ? syncUntilCurrent : resumeInternal) : openInternal;
+      return enqueue(operation).catch((syncError) => console.warn('RoomClient sync', syncError));
+    }, delay == null ? intervalMs : delay);
+  }
+
+  function enqueue(operation) {
+    // Promise.then 会把上一任务的返回值作为参数传入；syncUntilCurrent 的首参有协议语义，必须显式隔离。
+    const run = queue.then(() => operation(), () => operation());
+    queue = run.catch(() => undefined);
+    return run;
+  }
+
+  function resetConnection(nextStatus) {
+    cancelTimer();
+    roomId = null;
+    view = null;
+    ephemeral = {};
+    appliedSeq = 0;
+    appliedStateVersion = 0;
+    stagingView = null;
+    stagingSeq = 0;
+    stagingStateVersion = 0;
+    consecutiveSyncFailures = 0;
+    serverClockOffsetMs = 0;
+    lastPresenceTouchAt = 0;
+    status = nextStatus || 'IDLE';
+    error = null;
+  }
+
+  /** 切换房间时先清空所有房间绑定状态，避免新房恢复失败后继续展示旧房数据。 */
+  function resetRoomBoundState(nextRoomId) {
+    cancelTimer();
+    roomId = nextRoomId || null;
+    view = null;
+    ephemeral = {};
+    appliedSeq = 0;
+    appliedStateVersion = 0;
+    stagingView = null;
+    stagingSeq = 0;
+    stagingStateVersion = 0;
+    consecutiveSyncFailures = 0;
+    serverClockOffsetMs = 0;
+    lastPresenceTouchAt = 0;
+  }
+
+  function isTerminalRoomError(connectionError) {
+    return [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND]
+      .includes(connectionError && connectionError.code);
+  }
+
+  function disconnectFromError(connectionError) {
+    const disconnectedRoomId = roomId;
+    resetConnection('DISCONNECTED');
+    error = { errCode: connectionError.code, errMsg: connectionError.message,
+      roomId: disconnectedRoomId };
+    publish();
+  }
+
+  function validateSnapshot(snapshot, targetRoomId) {
+    return snapshot && snapshot.ok === true
+      && snapshot.protocolVersion === PROTOCOL_VERSION
+      && snapshot.viewSchemaVersion === VIEW_SCHEMA_VERSION
+      && Number.isInteger(snapshot.seq)
+      && Number.isInteger(snapshot.stateVersion)
+      && snapshot.roomId === targetRoomId
+      && validateMemberView(snapshot.view, targetRoomId);
+  }
+
+  function mergeEphemeral(previous, incoming) {
+    const before = previous || {};
+    const next = incoming || {};
+    const stale = next.stale || {};
+    return {
+      presenceByMemberId: clone(stale.presence
+        ? (before.presenceByMemberId || {}) : (next.presenceByMemberId || {})),
+      signals: clone(stale.signals ? (before.signals || {}) : (next.signals || {})),
+      stale: { presence: stale.presence === true, signals: stale.signals === true }
+    };
+  }
+
+  function installSnapshot(snapshot, targetRoomId, requestedAt) {
+    if (!validateSnapshot(snapshot, targetRoomId)) {
+      const invalid = new Error((snapshot && snapshot.errMsg) || '无效的房间快照');
+      invalid.code = (snapshot && snapshot.errCode) || ERR.SNAPSHOT_REQUIRED;
+      throw invalid;
     }
-    if (inFlight) {
-      if (!force) return snapshot;
-      // 等待当前请求结束后再强制拉一次，避免 dispatch 后读到旧 revision
-      await new Promise((resolve) => {
-        const started = Date.now();
-        const tick = () => {
-          if (!inFlight || disposed || Date.now() - started > 4000) {
-            resolve();
-            return;
-          }
-          setTimeout(tick, 24);
-        };
-        tick();
-      });
-      if (disposed || paused) return snapshot;
-      if (inFlight) return snapshot;
+    const sameRoom = roomId === targetRoomId;
+    roomId = targetRoomId;
+    view = clone(snapshot.view);
+    // 换房后的瞬时态必须从空状态开始，不能把上一房间的在线状态或信号带过来。
+    ephemeral = mergeEphemeral(sameRoom ? ephemeral : {}, snapshot.ephemeral);
+    appliedSeq = snapshot.seq;
+    appliedStateVersion = snapshot.stateVersion;
+    stagingView = null;
+    stagingSeq = 0;
+    stagingStateVersion = 0;
+    status = 'READY';
+    error = null;
+    consecutiveSyncFailures = 0;
+    observeServerTime(snapshot.serverTime, requestedAt);
+    publish();
+    return view;
+  }
+
+  async function replaceFromSnapshot(targetRoomId) {
+    const requestedAt = Date.now();
+    const snapshot = await gateway.snapshot(targetRoomId, getRequestContext());
+    return installSnapshot(snapshot, targetRoomId, requestedAt);
+  }
+
+  function consumeBatch(batch, requestedAt) {
+    if (!batch || batch.ok !== true) {
+      const failure = new Error((batch && batch.errMsg) || '同步失败');
+      failure.code = batch && batch.errCode;
+      throw failure;
     }
-    inFlight = true;
-    const mySeq = ++seq;
-    try {
-      const raw = await transport.fetchSnapshot({
-        roomId,
-        appliedRevision,
-        full: false
-      });
-      if (disposed || mySeq < appliedSeq) return snapshot;
-      const next = normalizeLegacyResult(raw, roomId);
-      if (next.ok && shouldApplySnapshot(snapshot, next)) {
-        snapshot = next;
-        appliedRevision = next.revision;
-        appliedSeq = mySeq;
-        emit();
-      } else if (!next.ok) {
-        snapshot = next;
-        appliedSeq = mySeq;
-        emit();
+    if (batch.protocolVersion !== PROTOCOL_VERSION
+      || batch.viewSchemaVersion !== VIEW_SCHEMA_VERSION
+      || batch.eventSchemaVersion !== EVENT_SCHEMA_VERSION) {
+      throw Object.assign(new Error('同步协议版本不兼容'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    if (batch.delivery === 'SNAPSHOT') {
+      installSnapshot(batch.snapshot, roomId, requestedAt);
+      return { snapshotApplied: true, hasMore: false };
+    }
+    if (batch.delivery !== 'EVENTS') {
+      throw Object.assign(new Error('未知同步交付类型'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    const baseSeq = stagingView ? stagingSeq : appliedSeq;
+    const baseStateVersion = stagingView ? stagingStateVersion : appliedStateVersion;
+    if (Number(batch.afterSeq) !== baseSeq) throw Object.assign(new Error('同步水位不匹配'), { code: ERR.SNAPSHOT_REQUIRED });
+    const roomCurrentSeq = Number(batch.roomCurrentSeq);
+    if (!Number.isInteger(roomCurrentSeq) || roomCurrentSeq < baseSeq || typeof batch.hasMore !== 'boolean') {
+      throw Object.assign(new Error('房间同步上限不可信'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    const events = Array.isArray(batch.events) ? batch.events : null;
+    if (!events) throw Object.assign(new Error('事件列表不合法'), { code: ERR.SNAPSHOT_REQUIRED });
+    if (batch.hasMore && events.length === 0) {
+      throw Object.assign(new Error('同步未推进水位'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    const knownTypes = new Set(Object.values(EVENT_TYPES));
+    if (events.some((item) => item.eventSchemaVersion !== EVENT_SCHEMA_VERSION
+      || item.viewSchemaVersion !== VIEW_SCHEMA_VERSION
+      || item.roomId !== roomId
+      || typeof item.commandId !== 'string' || !item.commandId
+      || !Array.isArray(item.publicEvents) || item.publicEvents.length === 0 || item.publicEvents.length > 32
+      || item.publicEvents.some((publicEvent) => !isRecord(publicEvent)
+        || Object.keys(publicEvent).length !== 1 || !knownTypes.has(publicEvent.type))
+      || !validatePublicViewPatch(item.publicPatch)
+      || (item.actorPatch != null && !validateActorViewPatch(item.actorPatch)))) {
+      throw Object.assign(new Error('事件版本或类型不兼容'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    if (events.length && events[0].seq !== baseSeq + 1) throw Object.assign(new Error('事件不连续'), { code: ERR.SNAPSHOT_REQUIRED });
+    for (let index = 1; index < events.length; index += 1) {
+      if (events[index].seq !== events[index - 1].seq + 1) throw Object.assign(new Error('事件不连续'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    let candidate = clone(stagingView || view);
+    let candidateStateVersion = baseStateVersion;
+    events.forEach((event) => {
+      if (!Number.isInteger(event.stateVersion) || event.stateVersion !== candidateStateVersion + 1) {
+        throw Object.assign(new Error('事件状态版本不连续'), { code: ERR.SNAPSHOT_REQUIRED });
       }
-      return snapshot;
+      candidate = applyProjectedEvent(candidate, event);
+      candidateStateVersion = event.stateVersion;
+    });
+    const throughSeq = Number(batch.throughSeq);
+    if (throughSeq !== (events.length ? events[events.length - 1].seq : baseSeq)) {
+      throw Object.assign(new Error('throughSeq 不可信'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    if (throughSeq > roomCurrentSeq
+      || (batch.hasMore && throughSeq >= roomCurrentSeq)
+      || (!batch.hasMore && throughSeq !== roomCurrentSeq)) {
+      throw Object.assign(new Error('同步完成水位不可信'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    if (batch.hasMore) {
+      stagingView = candidate;
+      stagingSeq = throughSeq;
+      stagingStateVersion = candidateStateVersion;
+      return { hasMore: true };
+    }
+    if (!validateMemberView(candidate, roomId)) {
+      throw Object.assign(new Error('事件投影房间不可信'), { code: ERR.SNAPSHOT_REQUIRED });
+    }
+    view = candidate;
+    appliedSeq = throughSeq;
+    appliedStateVersion = candidateStateVersion;
+    ephemeral = mergeEphemeral(ephemeral, batch.ephemeral);
+    stagingView = null;
+    stagingSeq = 0;
+    stagingStateVersion = 0;
+    status = 'READY';
+    error = null;
+    consecutiveSyncFailures = 0;
+    observeServerTime(batch.serverTime, requestedAt);
+    publish();
+    return { hasMore: false };
+  }
+
+  async function syncUntilCurrent(initialBatch) {
+    if (disposed || paused || !roomId) return view;
+    cancelTimer();
+    status = stagingView ? 'CATCHING_UP' : 'SYNCING';
+    try {
+      let requestedAt = Date.now();
+      let batch = initialBatch || await gateway.sync(roomId, stagingView ? stagingSeq : appliedSeq,
+        syncLimit, getRequestContext());
+      while (true) {
+        const consumed = consumeBatch(batch, initialBatch ? undefined : requestedAt);
+        if (consumed.snapshotApplied) break;
+        if (!consumed.hasMore) break;
+        requestedAt = Date.now();
+        batch = await gateway.sync(roomId, stagingSeq, syncLimit, getRequestContext());
+      }
+      return view;
+    } catch (syncError) {
+      if (isTerminalRoomError(syncError)) {
+        disconnectFromError(syncError);
+        return null;
+      }
+      if (syncError.code === ERR.SNAPSHOT_REQUIRED) {
+        stagingView = null;
+        stagingSeq = 0;
+        stagingStateVersion = 0;
+        try {
+          return await replaceFromSnapshot(roomId);
+        } catch (snapshotError) {
+          if (isTerminalRoomError(snapshotError)) {
+            disconnectFromError(snapshotError);
+            return null;
+          }
+          syncError = snapshotError;
+        }
+      }
+      status = 'DEGRADED';
+      consecutiveSyncFailures += 1;
+      error = { errCode: syncError.code || ERR.DEPENDENCY_UNAVAILABLE, errMsg: syncError.message || '同步失败' };
+      publish();
+      return view;
     } finally {
-      inFlight = false;
+      const retryDelay = status === 'DEGRADED'
+        ? Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4)))
+        : intervalMs;
+      schedule(retryDelay);
     }
   }
 
-  function startPolling() {
-    if (disposed || pollTimer) return;
-    pollTimer = setIntervalFn(() => {
-      pullOnce().catch((e) => console.warn('RoomSession poll', e));
-    }, intervalMs);
+  async function openInternal() {
+    disposed = false;
+    paused = false;
+    status = 'OPENING';
+    error = null;
+    let current;
+    try {
+      current = await gateway.currentRoom(getRequestContext());
+    } catch (openError) {
+      status = 'DEGRADED';
+      consecutiveSyncFailures += 1;
+      error = { errCode: openError.code || ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: openError.message || '查询当前房间失败' };
+      publish();
+      schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
+      return null;
+    }
+    if (!current || current.ok !== true) {
+      status = 'DEGRADED';
+      consecutiveSyncFailures += 1;
+      error = { errCode: current && current.errCode, errMsg: current && current.errMsg };
+      publish();
+      schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
+      return null;
+    }
+    if (!current.roomId) {
+      resetConnection('READY');
+      publish();
+      return null;
+    }
+    try {
+      if (roomId !== current.roomId) resetRoomBoundState(current.roomId);
+      await replaceFromSnapshot(current.roomId);
+      schedule(0);
+      return view;
+    } catch (snapshotError) {
+      if (isTerminalRoomError(snapshotError)) {
+        disconnectFromError(snapshotError);
+        return null;
+      }
+      roomId = current.roomId;
+      status = 'DEGRADED';
+      error = { errCode: snapshotError.code || ERR.DEPENDENCY_UNAVAILABLE,
+        errMsg: snapshotError.message || '打开房间失败' };
+      publish();
+      schedule(intervalMs);
+      return null;
+    }
   }
 
-  function stopPolling() {
-    if (pollTimer) {
-      clearIntervalFn(pollTimer);
-      pollTimer = null;
+  async function resumeInternal() {
+    if (disposed) return null;
+    paused = false;
+    if (!roomId) return openInternal();
+    cancelTimer();
+    status = 'RECOVERING';
+    error = null;
+    try {
+      return await replaceFromSnapshot(roomId);
+    } catch (resumeError) {
+      if (isTerminalRoomError(resumeError)) {
+        disconnectFromError(resumeError);
+      } else {
+        status = 'DEGRADED';
+        consecutiveSyncFailures += 1;
+        error = { errCode: resumeError.code || ERR.DEPENDENCY_UNAVAILABLE,
+          errMsg: resumeError.message || '恢复房间失败' };
+      }
+      if (!isTerminalRoomError(resumeError)) publish();
+      return view;
+    } finally {
+      const retryDelay = status === 'DEGRADED'
+        ? Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4)))
+        : intervalMs;
+      schedule(retryDelay);
     }
+  }
+
+  async function dispatchInternal(input) {
+    const signature = stableStringify({ roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
+      type: input.type, context: input.context || {}, payload: input.payload || {} });
+    const uncertain = uncertainCommands.get(signature);
+    const commandId = input.commandId || (uncertain && uncertain.commandId) || makeCommandId();
+    const envelope = { protocolVersion: PROTOCOL_VERSION, commandId,
+      roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
+      knownSeq: appliedSeq, type: input.type,
+      context: clone(input.context || {}), payload: clone(input.payload || {}), clientSentAt: Date.now() };
+    let result;
+    let attempts = 0;
+    do {
+      try { result = await gateway.dispatch(envelope, getRequestContext()); } catch (dispatchError) {
+        attempts += 1;
+        if (attempts >= 2) {
+          // 响应丢失时不能判定服务端是否已提交；下次相同意图必须复用同一 ID。
+          uncertainCommands.set(signature, { commandId });
+          throw dispatchError;
+        }
+        continue;
+      }
+      if (!(result && result.retryable) || attempts >= 1) break;
+      attempts += 1;
+    } while (true);
+    if (!result) {
+      // 空响应与网络异常一样无法判断服务端是否已经提交，后续重试必须沿用 commandId。
+      uncertainCommands.set(signature, { commandId });
+      return { ok: false, errCode: ERR.DEPENDENCY_UNAVAILABLE, errMsg: '命令无响应', retryable: true };
+    }
+    if (result.retryable === true) uncertainCommands.set(signature, { commandId });
+    else uncertainCommands.delete(signature);
+    const outcome = result.outcome || {};
+    if (result.ok && ['ROOM_CREATED', 'ROOM_JOINED'].includes(outcome.kind)) {
+      if (roomId !== outcome.roomId) resetRoomBoundState(outcome.roomId);
+      try {
+        await replaceFromSnapshot(outcome.roomId);
+        schedule(0);
+      } catch (snapshotError) {
+        // 写入结果已经明确成功；首次 Snapshot 失败只影响读模型恢复，不能把 Command 伪装成失败。
+        roomId = outcome.roomId;
+        status = 'DEGRADED';
+        consecutiveSyncFailures += 1;
+        error = { errCode: snapshotError.code || ERR.DEPENDENCY_UNAVAILABLE,
+          errMsg: snapshotError.message || '房间已加入，正在恢复状态' };
+        publish();
+        schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
+      }
+    } else if (result.ok && ['LEFT_ROOM', 'ROOM_DISSOLVED'].includes(outcome.kind)) {
+      resetConnection('READY');
+      publish();
+    } else if (roomId && result.ok !== true
+      && [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND].includes(result.errCode)) {
+      const terminalError = new Error(result.errMsg || '房间连接已经失效');
+      terminalError.code = result.errCode;
+      disconnectFromError(terminalError);
+    } else if (result.sync && result.sync.ok === true) {
+      await syncUntilCurrent(result.sync);
+    }
+    return result;
   }
 
   return {
-    roomId,
-    async open() {
-      disposed = false;
-      paused = false;
-      await pullOnce();
-      startPolling();
-      return snapshot;
+    open: () => enqueue(openInternal),
+    subscribe(listener, subscribeOptions) {
+      const id = ++listenerSeq;
+      listeners.set(id, listener);
+      if (!subscribeOptions || subscribeOptions.emitCurrent !== false) listener(clone(view), state());
+      return () => listeners.delete(id);
     },
-    /**
-     * @param {Function} listener
-     * @param {{ emitCurrent?: boolean }} [subOpts] emitCurrent 默认 true；
-     *   gamepage 应传 false，避免进页同步 setData 打坏 scroll-view 横向头像
-     */
-    subscribe(listener, subOpts) {
-      const id = ++subscriberSeq;
-      subscribers.set(id, listener);
-      const emitCurrent = !subOpts || subOpts.emitCurrent !== false;
-      if (emitCurrent && snapshot) {
-        try {
-          listener(snapshot);
-        } catch (e) {
-          // ignore
-        }
-      }
-      return () => {
-        subscribers.delete(id);
-      };
+    dispatch(input) { return enqueue(() => dispatchInternal(input || {})); },
+    // refresh 与前后台 resume 共享同一恢复语义：终态错误会断开，可恢复错误会进入退避重试。
+    refresh() { return enqueue(resumeInternal); },
+    history(query, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.history === 'function'
+        ? gateway.history(queryRoomId, query || {}, getRequestContext())
+        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    getSnapshot() {
-      return snapshot;
+    sessionSnapshot(sessionId, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.session === 'function'
+        ? gateway.session(queryRoomId, sessionId, getRequestContext())
+        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    getAppliedRevision() {
-      return appliedRevision;
+    messages(sessionId, query, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.messages === 'function'
+        ? gateway.messages(queryRoomId, sessionId, query || {}, getRequestContext())
+        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    async refresh(opts) {
-      return pullOnce(opts);
+    leaderboard(sessionId, targetRoomId) {
+      const queryRoomId = targetRoomId || roomId;
+      return queryRoomId && typeof gateway.leaderboard === 'function'
+        ? gateway.leaderboard(queryRoomId, sessionId, getRequestContext())
+        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
     },
-    /**
-     * 同房间内升级轮询参数（不 dispose），避免 gamepage 进页重建会话触发布局抖动
-     */
-    reconfigure(next) {
-      if (disposed) return;
-      if (next && next.transport) {
-        transport = next.transport;
-      }
-      if (next && next.intervalMs != null && next.intervalMs !== intervalMs) {
-        intervalMs = next.intervalMs;
-        const wasPolling = !!pollTimer && !paused;
-        stopPolling();
-        if (wasPolling) startPolling();
-      }
-    },
-    pause() {
-      paused = true;
-      stopPolling();
-    },
-    resume() {
-      if (disposed) return;
-      paused = false;
-      // 恢复时立即校准一次，再进入周期轮询
-      pullOnce().catch((e) => console.warn('RoomSession resume', e));
-      startPolling();
-    },
-    async dispatch(command, opts) {
-      if (!transport || typeof transport.dispatchCommand !== 'function') {
-        return { ok: false, errCode: 'NOT_SUPPORTED', errMsg: 'transport 不支持命令' };
-      }
-      const result = await transport.dispatchCommand(command);
-      if (result && result.ok === true) {
-        // 先按 effects 补丁 roomState/raw（含 phase），再抬水位并 emit，最后强制拉齐
-        snapshot = patchSnapshotFromCommand(snapshot, result);
-        appliedRevision = Math.max(
-          appliedRevision,
-          Number(snapshot && snapshot.revision) || 0,
-          Number(result.appliedRevision) || 0
-        );
-        emit();
-        const pullPromise = pullOnce({ force: true });
-        if (opts && opts.deferPull === true) {
-          pullPromise.catch((e) => console.warn('RoomSession dispatch pull', e));
-        } else {
-          await pullPromise;
-        }
-      }
-      return result;
-    },
-    dispose() {
-      disposed = true;
-      stopPolling();
-      subscribers.clear();
-      snapshot = null;
-    },
-    /** @private test helpers */
-    _isPolling() {
-      return !!pollTimer;
-    },
-    _isPaused() {
-      return paused;
-    },
-    _getIntervalMs() {
-      return intervalMs;
-    }
+    getView() { return clone(view); },
+    getState: state,
+    getRequestContext,
+    pause() { paused = true; cancelTimer(); },
+    resume() { return enqueue(resumeInternal); },
+    close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }
   };
 }
 
 module.exports = {
-  createRoomSession,
-  normalizeLegacyResult,
-  shouldApplySnapshot,
-  patchSnapshotFromCommand
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway, defaultCommandId
 };

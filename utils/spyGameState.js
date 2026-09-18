@@ -1,29 +1,21 @@
-/** 谁是卧底：相位、时长、卧底数与胜负判定 */
+/** 谁是卧底：相位、成员过滤与文案。业务时长/胜负只消费服务端锚点。 */
 
 const SPY_PHASE = {
   INTRO: 'intro',
-  ASSIGN: 'assign',
   SPEAK: 'speak',
   VOTE: 'vote',
   RESULT: 'result',
-  NEXT_ROUND: 'nextRound',
   SETTLE: 'settle'
 };
 
 const SPY_PAGE = {
   intro: 'spymodeindex',
-  assign: 'spyassign',
   speak: 'spyspeak',
   vote: 'spyvote',
   result: 'spyresult',
-  nextRound: 'spynextround',
   settle: 'spysettle'
 };
 
-const SPEAK_ROUND_MS = 5 * 60 * 1000;
-/** 每位玩家单次发言时长 */
-const SPEAK_TURN_MS = 60 * 1000;
-const VOTE_ROUND_MS = 2 * 60 * 1000;
 const MIN_PLAYERS = 3;
 
 function getDefaultSpyCount(playerCount) {
@@ -43,19 +35,6 @@ function formatCountdown(msLeft) {
 function computeMsLeft(startedAt, durationMs, now = Date.now()) {
   if (!startedAt) return durationMs;
   return Math.max(0, durationMs - (now - Number(startedAt)));
-}
-
-/**
- * @param {Array<{role:string,alive:boolean}>} players
- * @returns {'civilian'|'spy'|null}
- */
-function resolveWinnerSide(players) {
-  const alive = (players || []).filter((p) => p && p.alive !== false);
-  const spies = alive.filter((p) => p.role === 'spy');
-  const civilians = alive.filter((p) => p.role === 'civilian');
-  if (spies.length === 0) return 'civilian';
-  if (spies.length >= civilians.length) return 'spy';
-  return null;
 }
 
 function roleLabel(role) {
@@ -78,11 +57,9 @@ function phaseForPage(page) {
   const p = (page || '').toLowerCase();
   const map = {
     spymodeindex: SPY_PHASE.INTRO,
-    spyassign: SPY_PHASE.ASSIGN,
     spyspeak: SPY_PHASE.SPEAK,
     spyvote: SPY_PHASE.VOTE,
     spyresult: SPY_PHASE.RESULT,
-    spynextround: SPY_PHASE.NEXT_ROUND,
     spysettle: SPY_PHASE.SETTLE
   };
   return map[p] || null;
@@ -91,14 +68,10 @@ function phaseForPage(page) {
 module.exports = {
   SPY_PHASE,
   SPY_PAGE,
-  SPEAK_ROUND_MS,
-  SPEAK_TURN_MS,
-  VOTE_ROUND_MS,
   MIN_PLAYERS,
   getDefaultSpyCount,
   formatCountdown,
   computeMsLeft,
-  resolveWinnerSide,
   roleLabel,
   winnerLabel,
   pageForPhase,

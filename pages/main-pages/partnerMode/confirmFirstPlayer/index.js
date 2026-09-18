@@ -4,14 +4,14 @@ const {
   dedupeMembersById,
   buildMemberSlots
 } = require('../../../../utils/circleMemberLayout');
-const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
-const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
 const {
   bindPageToRoomSession,
+  dispatchRoomCommand,
+  executeProjectedBack,
+  followRoomRouteAfterCommand,
+  getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
-const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -25,7 +25,8 @@ Page(withPageInteractionLock({
     members: [],
     selectedPlayerIndex: null,
     selectedPlayerName: '',
-    isHost: true,
+    hostReady: false,
+    isHost: false,
     isWaiting: false,
     canConfirm: false,
     workshopName: '',
@@ -45,22 +46,16 @@ Page(withPageInteractionLock({
       isWaiting: !!isWaiting,
       selectedPlayerIndex: null,
       selectedPlayerName: '',
-      canConfirm: false
+      canConfirm: false,
+      hostReady: false,
+      isHost: false
     });
-
-    if (isWaiting) {
-      this.setData({ isHost: false });
-      this._startStatePolling();
-      return;
-    }
 
     this._fetchHostStatus();
   },
 
   onShow() {
-    if (this.data.isWaiting || this.data.isHost === false) {
-      this._startStatePolling();
-    }
+    this._startStatePolling();
   },
 
   onHide() {
@@ -74,25 +69,17 @@ Page(withPageInteractionLock({
   async _fetchHostStatus() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
-      this.setData({ isHost: true });
+      this.setData({ isHost: false, hostReady: true });
       this.loadRoomData();
       return;
     }
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         const isHost = result.isHost === true;
-        this.setData({ isHost, roomId });
-        if (isHost) {
-          await this.loadRoomData(result);
-          this._updateRoomState('confirmFirstPlayer');
-        } else {
-          this._startStatePolling();
-        }
+        this.setData({ isHost, hostReady: true, roomId });
+        await this.loadRoomData(result);
+        this._startStatePolling();
       } else {
         this.loadRoomData();
       }
@@ -109,11 +96,7 @@ Page(withPageInteractionLock({
     try {
       let result = cachedResult;
       if (!result) {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        result = (res && res.result) || {};
+        result = await getRoomPageSnapshot(roomId, { refresh: true });
       }
       if (result.ok !== true) return;
 
@@ -125,55 +108,31 @@ Page(withPageInteractionLock({
 
       const memberCount = result.memberCount != null ? result.memberCount : deduped.length;
       const workshopName = result.workshopName || '';
+      const proposedMemberId = result.view && result.view.session
+        && result.view.session.setup.proposedFirstMemberId;
+      this._proposedMemberId = proposedMemberId || null;
 
-      this.setData({
+      const patch = {
         members,
         memberSlots,
         memberCount,
-        workshopName
-      });
+        workshopName,
+        hostReady: true,
+        isHost: result.isHost === true
+      };
+      this.setData(patch);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const data = { roomId, currentPage, skipArchive: true };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
-    }
-  },
-
   _startStatePolling() {
     this._stopStatePolling();
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      intervalMs: 2000,
       followNavigation: true,
-      beforeNavigate(pollResult, page) {
-        if (page === 'gamepage') {
-          const idx = pollResult.roomState.currentPlayerIndex != null
-            ? pollResult.roomState.currentPlayerIndex
-            : 1;
-          wx.redirectTo({
-            url: buildGamepageUrl(roomId, idx, 'partner')
-          });
-          return true;
-        }
-        return false;
+      onSnapshot(snapshot) {
+        this.loadRoomData(snapshot);
       }
     }).catch((e) => console.warn('confirmFirstPlayer roomSession', e));
   },
@@ -207,7 +166,7 @@ Page(withPageInteractionLock({
     if (!this.data.isHost || !this.data.canConfirm) return;
     if (this._confirmPending) return;
 
-    const { roomId, selectedPlayerIndex, selectedPlayerName } = this.data;
+    const { selectedPlayerIndex } = this.data;
     if (selectedPlayerIndex == null) {
       wx.showToast({ title: '请选择首位出牌玩家', icon: 'none' });
       return;
@@ -216,18 +175,32 @@ Page(withPageInteractionLock({
     return runPageNavigation(this, async () => {
       this._confirmPending = true;
       try {
-        const ok = await this._updateRoomState('gamepage', selectedPlayerIndex, selectedPlayerName);
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        const selected = (this.data.members || []).find((item) => item.playerIndex === selectedPlayerIndex);
+        if (!selected) {
+          wx.showToast({ title: '所选成员已经离开', icon: 'none' });
           return;
         }
-        return {
-          method: 'redirectTo',
-          url: buildGamepageUrl(roomId, selectedPlayerIndex, 'partner')
-        };
+        if (selected.memberId !== this._proposedMemberId) {
+          const selectedResult = await dispatchRoomCommand('SELECT_FIRST_PLAYER', {
+            memberId: selected.memberId
+          });
+          if (!selectedResult || selectedResult.ok !== true) {
+            wx.showToast({ title: selectedResult && selectedResult.errMsg || '同步房间失败，请重试', icon: 'none' });
+            return;
+          }
+          this._proposedMemberId = selected.memberId;
+        }
+        const result = await dispatchRoomCommand('CONFIRM_FIRST_PLAYER', {
+          memberId: this._proposedMemberId
+        });
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '同步房间失败，请重试', icon: 'none' });
+          return;
+        }
+        await followRoomRouteAfterCommand(result, this.data.roomId);
+        return null;
       } catch (e) {
         wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });
-        return;
       } finally {
         this._confirmPending = false;
       }
@@ -236,14 +209,14 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/selectPlayer/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-        : '/pages/main-pages/selectPlayer/index?modeId=partner';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/selectPlayer/index',
-        fallbackUrl
-      });
+      if (!this.data.isHost) {
+        wx.showToast({ title: '请等待房主确认', icon: 'none' });
+        return;
+      }
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      }
     }, { loadingText: '正在返回…' });
   }
 }, ['onSlotTap', 'handleConfirm', 'handleGoBack']));

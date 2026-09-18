@@ -99,15 +99,11 @@ async function prepareProfileForRoom(localProfile) {
 
 async function syncRoomMemberProfile(roomId, profile) {
   if (!roomId || !profile) return null;
-  const data = { roomId };
-  if (profile.avatarUrl) data.avatarUrl = profile.avatarUrl;
+  const { dispatchRoomCommand } = require('../modules/room-session/index');
+  const data = {};
+  if (profile.avatarUrl) data.avatarRef = profile.avatarUrl;
   if (profile.nickName) data.nickName = profile.nickName;
-
-  const res = await wx.cloud.callFunction({
-    name: 'updateRoomMemberProfile',
-    data
-  });
-  return (res && res.result) || {};
+  return dispatchRoomCommand('UPDATE_MEMBER_PROFILE', data, {}, { roomId });
 }
 
 function applyChooseAvatarEvent(detail) {
@@ -135,10 +131,10 @@ async function getOptionalProfileForRoom() {
   }
 }
 
-function buildRoomJoinPayload(profile, extra = {}) {
-  const data = { ...extra };
+function buildRoomJoinPayload(profile) {
+  const data = {};
   if (profile && profile.avatarUrl) {
-    data.avatarUrl = profile.avatarUrl;
+    data.avatarRef = profile.avatarUrl;
     if (profile.nickName) data.nickName = profile.nickName;
   }
   return data;

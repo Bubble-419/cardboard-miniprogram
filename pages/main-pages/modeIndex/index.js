@@ -5,16 +5,17 @@
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
-const { navigateByRoomState } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
 const {
   bindPageToRoomSession,
-  unbindPageFromRoomSession
+  unbindPageFromRoomSession,
+  getRoomPageSnapshot,
+  dispatchRoomCommand,
+  executeProjectedBack,
+  followRoomRouteAfterCommand
 } = require('../../../modules/room-session/index');
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   isPageInteractionLocked,
   runPageInteraction,
@@ -122,11 +123,7 @@ Page({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return null;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         await this._syncMembersFromResult(result);
       }
@@ -151,37 +148,17 @@ Page({
       if (result && result.ok === true) {
         const isHost = result.isHost === true;
         this.setData({ isHost, roomId });
-        if (isHost) {
-          this._updateRoomState('auth');
-          this._loadScenarios();
-        } else {
-          this._startStatePolling();
-        }
+        if (isHost) this._loadScenarios();
+        this._startStatePolling();
       } else {
         this.setData({ isHost: true });
         this._loadScenarios();
+        this._startStatePolling();
       }
     } catch (e) {
       this.setData({ isHost: true });
       this._loadScenarios();
-    }
-  },
-
-  async _updateRoomState(currentPage, selectedBG) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const data = { roomId, currentPage };
-      if (selectedBG) data.selectedBG = selectedBG;
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
+      this._startStatePolling();
     }
   },
 
@@ -189,11 +166,10 @@ Page({
     this._stopStatePolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      intervalMs: 2000,
       followNavigation: true,
       onSnapshot(snapshot) {
-        if (snapshot && snapshot.ok && snapshot.raw) {
-          this._syncMembersFromResult(snapshot.raw);
+        if (snapshot && snapshot.ok) {
+          this._syncMembersFromResult(snapshot);
         }
       }
     }).catch((e) => console.warn('modeIndex roomSession', e));
@@ -222,7 +198,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (!id) return;
     this.setData({ selectedScenarioId: id, actionMode: 'select' });
-    this._confirmSelectedScenario();
+    return this._confirmSelectedScenario();
   },
 
   /** 新增情境入口 */
@@ -236,10 +212,9 @@ Page({
     if (isPageInteractionLocked(this)) return;
     if (!this.data.isHost) return;
     if (this.data.actionMode === 'select' && this.data.selectedScenarioId) {
-      this._confirmSelectedScenario();
-      return;
+      return this._confirmSelectedScenario();
     }
-    this._goAddScenario();
+    return this._goAddScenario();
   },
 
   async _goAddScenario() {
@@ -248,13 +223,6 @@ Page({
       const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
       getApp().globalData.gameMode = mode;
       getApp().globalData.selectedBGSource = 'custom';
-      if (roomId) {
-        const ok = await this._updateRoomState('selectBG');
-        if (!ok) {
-          wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-          return;
-        }
-      }
       const query = roomId
         ? `?mode=${mode}&roomId=${encodeURIComponent(roomId)}`
         : `?mode=${mode}`;
@@ -294,15 +262,13 @@ Page({
         if (scenario.isOffline || scenario.id === 'offline') {
           const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
           app.globalData.gameMode = offlineMode;
-          const ok = await this._updateRoomState('selectPlayer');
-          if (!ok) {
+          const result = await dispatchRoomCommand('SET_SCENARIO', { source: 'OFFLINE' });
+          if (!result || result.ok !== true) {
             wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
             return;
           }
-          return {
-            method: 'redirectTo',
-            url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-          };
+          await followRoomRouteAfterCommand(result, roomId);
+          return null;
         }
 
         if (!scenario.bg) {
@@ -314,11 +280,6 @@ Page({
         if (this.data.modeId === 'partner') {
           app.globalData.selectedBG = { ...scenario.bg };
           app.globalData.gameMode = 'partner';
-          const ok = await this._updateRoomState('confirmBG', app.globalData.selectedBG);
-          if (!ok) {
-            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
-            return;
-          }
           return {
             method: 'navigateTo',
             url: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`
@@ -332,15 +293,14 @@ Page({
         }
         app.globalData.selectedBG = bg;
         app.globalData.gameMode = this.data.modeId;
-        const ok = await this._updateRoomState('selectPlayer', bg);
-        if (!ok) {
+        const source = String(scenario.type || 'CASE').toUpperCase();
+        const result = await dispatchRoomCommand('SET_SCENARIO', { source, scenario: bg });
+        if (!result || result.ok !== true) {
           wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
           return;
         }
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&from=modeIndex`
-        };
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._navPending = false;
       }
@@ -352,21 +312,31 @@ Page({
   handleGoBack() {
     if (isPageInteractionLocked(this)) return;
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/brainstormMode/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/brainstormMode/index',
-        fallbackUrl
-      });
+      this._stopStatePolling();
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+        this._startStatePolling();
+      }
     }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
     if (isPageInteractionLocked(this)) return;
-    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+    return runPageInteraction(this, async () => {
+      await this._cancelConfiguringSession();
+      await goRoomPage(this.data.roomId);
+    }, {
       loadingText: '正在返回房间…'
     });
+  },
+
+  async _cancelConfiguringSession() {
+    if (!this.data.isHost) return;
+    const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: false });
+    const session = snapshot && snapshot.view && snapshot.view.session;
+    if (!session || session.status !== 'CONFIGURING') return;
+    const result = await dispatchRoomCommand('CANCEL_WORKSHOP_SESSION', {}, { sessionId: session.sessionId });
+    if (!result || result.ok !== true) throw new Error(result && result.errMsg || '取消场次失败');
   }
 });

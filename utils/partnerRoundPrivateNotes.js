@@ -4,9 +4,8 @@ const {
   deriveListsFromBlocks
 } = require('./partnerRoundContent');
 
-function storageKey(roomId, sessionSeq) {
-  const seq = sessionSeq != null ? sessionSeq : 0;
-  return `${STORAGE_PREFIX}${roomId}_${seq}`;
+function storageKey(roomId, sessionId) {
+  return `${STORAGE_PREFIX}${roomId}_${String(sessionId || '')}`;
 }
 
 function normalizeNote(raw) {
@@ -37,7 +36,7 @@ function normalizeNote(raw) {
     // 当前轮出牌/讨论卡插入：仅本机可见
     playHistory: playDerived.texts.length ? playDerived.texts : playHistory,
     discussionNotes: discussionDerived.texts.length ? discussionDerived.texts : discussionNotes,
-    // 兼容旧数据：未分阶段的 images 归入出牌解释
+    // 未分阶段的 images 归入出牌解释。
     playImages: playDerived.images.length ? playDerived.images : resolvedPlayImages,
     discussionImages: discussionDerived.images.length
       ? discussionDerived.images
@@ -49,10 +48,10 @@ function normalizeNote(raw) {
   };
 }
 
-function loadAllPrivateNotes(roomId, sessionSeq) {
+function loadAllPrivateNotes(roomId, sessionId) {
   if (!roomId) return {};
   try {
-    const raw = wx.getStorageSync(storageKey(roomId, sessionSeq));
+    const raw = wx.getStorageSync(storageKey(roomId, sessionId));
     if (!raw || typeof raw !== 'object') return {};
     const map = {};
     Object.keys(raw).forEach((roundKey) => {
@@ -65,15 +64,15 @@ function loadAllPrivateNotes(roomId, sessionSeq) {
   }
 }
 
-function loadPrivateRoundNote(roomId, sessionSeq, round) {
-  const all = loadAllPrivateNotes(roomId, sessionSeq);
+function loadPrivateRoundNote(roomId, sessionId, round) {
+  const all = loadAllPrivateNotes(roomId, sessionId);
   return normalizeNote(all[String(round)]);
 }
 
-function savePrivateRoundNote(roomId, sessionSeq, round, note) {
+function savePrivateRoundNote(roomId, sessionId, round, note) {
   if (!roomId || round == null) return false;
-  const key = storageKey(roomId, sessionSeq);
-  const all = loadAllPrivateNotes(roomId, sessionSeq);
+  const key = storageKey(roomId, sessionId);
+  const all = loadAllPrivateNotes(roomId, sessionId);
   const next = normalizeNote(note);
   next.updatedAt = Date.now();
   all[String(round)] = next;
@@ -86,21 +85,21 @@ function savePrivateRoundNote(roomId, sessionSeq, round, note) {
   }
 }
 
-function clearPrivateNotesForRoom(roomId, sessionSeq) {
+function clearPrivateNotesForRoom(roomId, sessionId) {
   if (!roomId) return;
   try {
-    wx.removeStorageSync(storageKey(roomId, sessionSeq));
+    wx.removeStorageSync(storageKey(roomId, sessionId));
   } catch (e) {
     console.warn('clearPrivateNotesForRoom', e);
   }
 }
 
-function attachPrivateNotesToSummaries(summaries, roomId, sessionSeq) {
-  const all = loadAllPrivateNotes(roomId, sessionSeq);
+function attachPrivateNotesToSummaries(summaries, roomId, sessionId) {
+  const all = loadAllPrivateNotes(roomId, sessionId);
   return (summaries || []).map((item) => {
     const round = item && item.round != null ? item.round : 0;
-    const legacy = normalizeNote(all[String(round)]);
-    // 优先使用房间归档的共享纪要；无共享数据时回退本机旧私有笔记
+    const privateNote = normalizeNote(all[String(round)]);
+    // 优先使用房间归档的共享纪要；无共享数据时使用本机场次笔记。
     const sharedPlay = Array.isArray(item.playHistory) ? item.playHistory : [];
     const sharedDiscussion = Array.isArray(item.discussionNotes) ? item.discussionNotes : [];
     const sharedPlayImages = Array.isArray(item.playImages)
@@ -140,7 +139,7 @@ function attachPrivateNotesToSummaries(summaries, roomId, sessionSeq) {
           images: sharedPlayImages,
           updatedAt: 0
         }
-        : legacy
+        : privateNote
     };
   });
 }

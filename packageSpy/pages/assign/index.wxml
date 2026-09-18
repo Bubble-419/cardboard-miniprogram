@@ -1,6 +1,0 @@
-<view class="container" style="padding-top: 80rpx">
-  <view class="section">
-    <view class="section-title">正在进入发言…</view>
-    <view class="section-body">词语已分配，即将开始</view>
-  </view>
-</view>

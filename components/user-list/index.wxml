@@ -143,7 +143,7 @@
         </view>
       </view>
       <view class="add-btn" wx:if="{{enableAdd}}" bindtap="onAddTap">
-        <image class="add-icon" src="/assets/icons/add-icon.png" mode="aspectFit"></image>
+        <image class="add-icon" src="/assets/icons/icon-add-member.svg" mode="aspectFit"></image>
       </view>
     </view>
   </scroll-view>

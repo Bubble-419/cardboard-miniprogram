@@ -30,6 +30,14 @@ function splitRecordSegments(raw) {
     .filter((line) => line.length > 0);
 }
 
+function imageFileRef(block) {
+  if (!block || typeof block !== 'object') return '';
+  if (typeof block.fileRef === 'string' && block.fileRef) return block.fileRef;
+  if (typeof block.fileID === 'string' && block.fileID) return block.fileID;
+  if (typeof block.url === 'string' && block.url.indexOf('cloud://') === 0) return block.url;
+  return '';
+}
+
 function normalizeContentBlocks(rawBlocks, legacyTexts, legacyImages) {
   if (Array.isArray(rawBlocks) && rawBlocks.length) {
     const normalized = [];
@@ -52,10 +60,13 @@ function normalizeContentBlocks(rawBlocks, legacyTexts, legacyImages) {
       }
       if (b.type === 'image') {
         const url = typeof b.url === 'string' ? b.url : (typeof b.value === 'string' ? b.value : '');
-        if (!url) return;
+        const fileRef = imageFileRef(b) || (url.indexOf('cloud://') === 0 ? url : '');
+        if (!url && !fileRef) return;
         normalized.push({
           type: 'image',
-          url,
+          url: url || fileRef,
+          fileRef: fileRef || undefined,
+          fileID: typeof b.fileID === 'string' && b.fileID ? b.fileID : (fileRef || undefined),
           key: typeof b.key === 'string' && b.key ? b.key : `i_${i}`
         });
       }
@@ -152,7 +163,14 @@ function appendImageBlocks(blocks, urls) {
   const list = Array.isArray(blocks) ? blocks.slice() : [];
   (Array.isArray(urls) ? urls : []).forEach((url) => {
     if (typeof url === 'string' && url) {
-      list.push({ type: 'image', url, key: makeBlockKey('i') });
+      const fileRef = url.indexOf('cloud://') === 0 ? url : '';
+      list.push({
+        type: 'image',
+        url,
+        fileRef: fileRef || undefined,
+        fileID: fileRef || undefined,
+        key: makeBlockKey('i')
+      });
     }
   });
   return list;
@@ -186,6 +204,7 @@ module.exports = {
   normalizePartnerRoundContent,
   normalizeContentBlocks,
   deriveListsFromBlocks,
+  imageFileRef,
   splitRecordSegments,
   appendTextBlock,
   appendTextSegments,

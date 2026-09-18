@@ -1,12 +1,16 @@
 const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } = require('../../../../utils/partnerScenarios');
-const { clearRoomProblems } = require('../../../../utils/roomDesignProblems');
-const { navigateByRoomState, safeOpenUrl } = require('../../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
+const {
+  bindPageToRoomSession,
+  dispatchRoomCommand,
+  followRoomRouteAfterCommand,
+  getRoomPageSnapshot,
+  unbindPageFromRoomSession
+} = require('../../../../modules/room-session/index');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -135,11 +139,8 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      await this._syncAvatarListFromResult((res && res.result) || {});
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      await this._syncAvatarListFromResult(result);
     } catch (e) {
       console.warn('confirmBG syncAvatarList', e);
     }
@@ -161,14 +162,16 @@ Page(withPageInteractionLock({
     const fromGameView = this._fromGameView === true;
     let bg = getApp().globalData.selectedBG;
     let roomResult = null;
-    if (!isValidPartnerBG(bg, { requirePlatform: true })) {
+    if (fromGameView) {
       roomResult = await this._fetchRoomFull(roomId);
       bg = (roomResult && roomResult.selectedBG) || null;
       if (bg) {
         getApp().globalData.selectedBG = bg;
       }
-    } else if (fromGameView) {
+    } else if (!isValidPartnerBG(bg, { requirePlatform: true })) {
       roomResult = await this._fetchRoomFull(roomId);
+      bg = (roomResult && roomResult.selectedBG) || null;
+      if (bg) getApp().globalData.selectedBG = bg;
     }
 
     if (!isValidPartnerBG(bg, { requirePlatform: true })) {
@@ -231,11 +234,7 @@ Page(withPageInteractionLock({
   async _fetchRoomFull(roomId) {
     if (!roomId) return null;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId, full: true }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) return result;
     } catch (e) {
       console.warn('confirmBG fetchRoomFull', e);
@@ -264,19 +263,12 @@ Page(withPageInteractionLock({
       return;
     }
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
         const isHost = result.isHost === true;
         this._syncAvatarListFromResult(result);
         this.setData({ isHost, roomId });
-        if (isHost) {
-          const bg = getApp().globalData.selectedBG;
-          this._updateRoomState('confirmBG', bg);
-        } else {
+        if (!isHost) {
           this._startStatePolling();
         }
       }
@@ -285,61 +277,20 @@ Page(withPageInteractionLock({
     }
   },
 
-  async _updateRoomState(currentPage, selectedBG) {
-    const roomId = this.data.roomId || getApp().globalData.roomId || '';
-    if (!roomId) return;
-    try {
-      const data = { roomId, currentPage };
-      if (selectedBG) data.selectedBG = selectedBG;
-      await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data
-      });
-    } catch (e) {
-      console.warn('updateRoomState', e);
-    }
-  },
-
   _startStatePolling() {
     if (this._fromGameView) return;
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: { roomId }
-        });
-        const result = (res && res.result) || {};
-        this._syncAvatarListFromResult(result);
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            const roomIdEnc = encodeURIComponent(roomId);
-            if (page === 'submitproblem') {
-              safeOpenUrl(`/pages/main-pages/submitProblem/index?roomId=${roomIdEnc}`);
-              return true;
-            }
-            if (page === 'selectproblem') {
-              safeOpenUrl(`/pages/main-pages/selectProblem/index?roomId=${roomIdEnc}`);
-              return true;
-            }
-            return false;
-          }
-        });
-      } catch (e) {
-        console.warn('confirmBG state poll', e);
-      }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    if (!roomId) return;
+    bindPageToRoomSession(this, {
+      getRoomId: () => roomId,
+      followNavigation: true,
+      onSnapshot: (result) => this._syncAvatarListFromResult(result)
+    }).catch((e) => console.warn('confirmBG bind room', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   /** 按来源页返回：game → 对局；submit/select → 设计问题流程页 */
@@ -407,29 +358,16 @@ Page(withPageInteractionLock({
     }
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: {
-          roomId,
-          currentPage: 'submitProblem',
-          resetDesignProblems: true,
-          selectedBG: bg
-        }
+      const result = await dispatchRoomCommand('SET_SCENARIO', {
+        source: String(bgSource || 'CUSTOM').toUpperCase(),
+        scenario: bg
       });
-      const result = (res && res.result) || {};
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
       }
-      try {
-        await clearRoomProblems(roomId);
-      } catch (clearErr) {
-        console.warn('clearRoomProblems', clearErr);
-      }
-      return {
-        method: 'redirectTo',
-        url: `/pages/main-pages/submitProblem/index?roomId=${encodeURIComponent(roomId)}`
-      };
+      await followRoomRouteAfterCommand(result, roomId);
+      return null;
     } catch (e) {
       console.error('handleConfirm', e);
       wx.showToast({ title: e.errMsg || '操作失败', icon: 'none' });

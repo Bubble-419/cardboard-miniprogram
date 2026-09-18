@@ -282,6 +282,18 @@
   box-sizing: border-box;
 }
 
+.bottom-action .page-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.action-hint {
+  color: #64748b;
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .primary-btn {
   width: 100%;
   height: 90rpx;

@@ -1,9 +1,14 @@
 const {
   getSceneUI,
-  resolveSubScreenNavigation,
-  shouldSkipStaleSubScreenRedirect
+  sceneFromWorkflowStep,
+  sceneFromMemberView,
+  resolveSubScreenNavigation
 } = require('../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../utils/subScreenRoomPoll');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  getRoomPageSnapshot
+} = require('../../../modules/room-session/index');
 
 Page({
   data: {
@@ -27,12 +32,11 @@ Page({
       getApp().globalData.roomId = roomId;
     }
 
-    const initialScene = (options && options.scene) || 'bg';
+    const initialScene = (options && options.scene)
+      || sceneFromWorkflowStep(options && options.phase)
+      || 'bg';
     this.applyScene(initialScene);
     this.setData({ roomId });
-    if (!this.data.useHeroLayout) {
-      this.startCountdown();
-    }
     this.startStateCheck();
   },
 
@@ -41,8 +45,7 @@ Page({
   },
 
   onUnload() {
-    if (this.countdownTimer) clearInterval(this.countdownTimer);
-    if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
+    unbindPageFromRoomSession(this);
   },
 
   applyScene(scene) {
@@ -64,47 +67,38 @@ Page({
       subTextLine2: ui.subTextLine2 || '',
       statusText: ui.statusText || '正在等待中...',
       multiLine: ui.multiLine,
-      useHeroLayout: ui.useHeroLayout === true
+      useHeroLayout: true
     });
   },
 
-  startCountdown() {
-    if (this.data.useHeroLayout) return;
-    this.countdownTimer = setInterval(() => {
-      const count = this.data.countdown > 0 ? this.data.countdown - 1 : 5;
-      this.setData({ countdown: count || 5 });
-    }, 1000);
-  },
-
-  checkRoomState() {
+  async checkRoomState() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
 
-    wx.cloud.callFunction({
-      name: 'getAddPlayerData',
-      data: { roomId }
-    }).then((res) => {
-      const result = (res && res.result) || {};
-      followSubScreenRoomPoll(result, roomId, {
-        beforeNavigate: (pollResult, page) => {
-          const nav = resolveSubScreenNavigation(page, pollResult.roomState, roomId);
-          if (!nav) return true;
-          if (nav.action === 'await') {
-            this.applyScene(nav.scene);
-            return true;
-          }
-          if (nav.action === 'redirect' && shouldSkipStaleSubScreenRedirect(page)) {
-            return true;
-          }
-          return false;
-        }
-      });
-    }).catch((e) => console.warn('subAwait checkRoomState', e));
+    try {
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
+      const page = result && result.roomState && result.roomState.currentPage;
+      const nav = resolveSubScreenNavigation(page, result && result.roomState, roomId);
+      const scene = sceneFromMemberView(result && result.view)
+        || ((nav && nav.action === 'await' && nav.scene) || '');
+      if (scene) this.applyScene(scene);
+    } catch (e) {
+      console.warn('subAwait checkRoomState', e);
+    }
   },
 
   startStateCheck() {
-    if (this.stateCheckTimer) clearInterval(this.stateCheckTimer);
-    this.checkRoomState();
-    this.stateCheckTimer = setInterval(() => this.checkRoomState(), 1500);
+    unbindPageFromRoomSession(this);
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
+      followNavigation: true,
+      onSnapshot(snapshot) {
+        const page = snapshot && snapshot.roomState && snapshot.roomState.currentPage;
+        const nav = resolveSubScreenNavigation(page, snapshot && snapshot.roomState, this.data.roomId);
+        const scene = sceneFromMemberView(snapshot && snapshot.view)
+          || ((nav && nav.action === 'await' && nav.scene) || '');
+        if (scene) this.applyScene(scene);
+      }
+    }).catch((e) => console.warn('subAwait roomSession', e));
   }
 });

@@ -20,6 +20,18 @@ importers:
       '@cardboard/room-domain':
         specifier: workspace:*
         version: link:../room-domain
+      '@cardboard/room-projection':
+        specifier: workspace:*
+        version: link:../room-projection
+
+  packages/room-client:
+    dependencies:
+      '@cardboard/room-contracts':
+        specifier: workspace:*
+        version: link:../room-contracts
+      '@cardboard/room-projection':
+        specifier: workspace:*
+        version: link:../room-projection
 
   packages/room-cloudbase-adapter:
     dependencies:
@@ -32,10 +44,19 @@ importers:
       '@cardboard/room-domain':
         specifier: workspace:*
         version: link:../room-domain
+      '@cardboard/room-projection':
+        specifier: workspace:*
+        version: link:../room-projection
 
   packages/room-contracts: {}
 
   packages/room-domain:
+    dependencies:
+      '@cardboard/room-contracts':
+        specifier: workspace:*
+        version: link:../room-contracts
+
+  packages/room-projection:
     dependencies:
       '@cardboard/room-contracts':
         specifier: workspace:*

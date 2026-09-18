@@ -18,6 +18,7 @@
     <page-footer
       extClass="footer"
       showPrimary="{{false}}"
+      showPrev="{{isHost}}"
       bind:prev="handleGoBack"
     ></page-footer>
   </block>

@@ -7,6 +7,7 @@
   "dependencies": {
     "@cardboard/room-contracts": "workspace:*",
     "@cardboard/room-domain": "workspace:*",
-    "@cardboard/room-application": "workspace:*"
+    "@cardboard/room-application": "workspace:*",
+    "@cardboard/room-projection": "workspace:*"
   }
 }

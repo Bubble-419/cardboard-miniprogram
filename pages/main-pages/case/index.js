@@ -1,5 +1,6 @@
 const { buildAvatarList } = require('../../../utils/avatars');
 const { goRoomPage } = require('../../../utils/goRoomPage');
+const { getRoomPageSnapshot } = require('../../../modules/room-session/index');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -70,11 +71,7 @@ Page(withPageInteractionLock({
 
   async _loadRoomMembers(roomId) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       const avatarList = buildAvatarList(result.members || []);
       const me = avatarList.find((item) => item.isMe);
       this.setData({

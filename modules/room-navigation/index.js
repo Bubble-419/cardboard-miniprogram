@@ -1,144 +1,149 @@
 'use strict';
 
-/**
- * 流程步骤 / legacy currentPage → 路由描述
- * 第一阶段仍消费 currentPage；后续改为 workflow.step。
- */
+const ROUTES = Object.freeze({
+  addPlayer: { path: '/pages/main-pages/addPlayer/index', mode: 'reLaunch', pageKey: 'addplayer' },
+  modeIndex: { path: '/pages/main-pages/modeIndex/index', mode: 'redirectTo', pageKey: 'modeindex' },
+  subAwait: { path: '/pages/sub-pages/subAwait/index', mode: 'redirectTo', pageKey: 'subawait' },
+  submitProblem: { path: '/pages/main-pages/submitProblem/index', mode: 'redirectTo', pageKey: 'submitproblem' },
+  selectProblem: { path: '/pages/main-pages/selectProblem/index', mode: 'redirectTo', pageKey: 'selectproblem' },
+  selectPlayer: { path: '/pages/main-pages/selectPlayer/index', mode: 'redirectTo', pageKey: 'selectplayer' },
+  confirmFirstPlayer: { path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index', mode: 'redirectTo', pageKey: 'confirmfirstplayer' },
+  partnerGame: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
+  closingStatement: { path: '/pages/main-pages/partnerMode/closingStatement/index', mode: 'redirectTo', pageKey: 'closingstatement' },
+  leaderboard: { path: '/pages/leaderboard/index', mode: 'redirectTo', pageKey: 'leaderboard' },
+  halliGame: { path: '/pages/main-pages/halliGalli/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
+  creativeInput: { path: '/pages/main-pages/creativeInput/index', mode: 'redirectTo', pageKey: 'creativeinput' },
+  creativeSummary: { path: '/pages/main-pages/creativeSummary/index', mode: 'redirectTo', pageKey: 'creativesummary' },
+  spyIntro: { path: '/packageSpy/pages/modeIndex/index', mode: 'redirectTo', pageKey: 'spymodeindex' },
+  spySpeak: { path: '/packageSpy/pages/speak/index', mode: 'redirectTo', pageKey: 'spyspeak' },
+  spyVote: { path: '/packageSpy/pages/vote/index', mode: 'redirectTo', pageKey: 'spyvote' },
+  spyResult: { path: '/packageSpy/pages/result/index', mode: 'redirectTo', pageKey: 'spyresult' },
+  spySettle: { path: '/packageSpy/pages/settle/index', mode: 'redirectTo', pageKey: 'spysettle' }
+});
 
-const PAGE_TO_ROUTE = {
-  addplayer: {
-    path: '/pages/main-pages/addPlayer/index',
-    mode: 'redirect'
-  },
-  brainstormmode: {
-    path: '/pages/main-pages/brainstormMode/index',
-    mode: 'redirect'
-  },
-  modeindex: {
-    path: '/pages/main-pages/modeIndex/index',
-    mode: 'redirect'
-  },
-  selectbg: {
-    path: '/pages/main-pages/selectBG/index',
-    mode: 'navigate'
-  },
-  confirmbg: {
-    path: '/pages/main-pages/partnerMode/confirmBG/index',
-    mode: 'redirect'
-  },
-  selectplayer: {
-    path: '/pages/main-pages/selectPlayer/index',
-    mode: 'redirect'
-  },
-  confirmfirstplayer: {
-    path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index',
-    mode: 'redirect'
-  },
-  submitproblem: {
-    path: '/pages/main-pages/submitProblem/index',
-    mode: 'redirect'
-  },
-  selectproblem: {
-    path: '/pages/main-pages/selectProblem/index',
-    mode: 'redirect'
-  },
-  gamepage: {
-    path: '/pages/main-pages/partnerMode/gamepage/index',
-    mode: 'redirect'
-  },
-  statement: {
-    path: '/pages/main-pages/partnerMode/gamepage/index',
-    mode: 'redirect'
-  },
-  closingstatement: {
-    path: '/pages/main-pages/partnerMode/closingStatement/index',
-    mode: 'redirect'
-  },
-  closingend: {
-    path: '/pages/main-pages/partnerMode/closingEnd/index',
-    mode: 'redirect'
-  }
-};
+/** 叠层归属：只在明确所属的权威 route 上保留，route 变化后必须立即跟随。 */
+const OVERLAY_OWNERS = Object.freeze({
+  'pages/inspiration/index': ['partnerGame'],
+  'pages/main-pages/case/index': ['submitProblem'],
+  'pages/main-pages/partnerMode/imageCrop/index': ['partnerGame'],
+  'pages/main-pages/partnerMode/specialMove/index': ['partnerGame'],
+  'packageSpy/pages/cardLibrary/index': ['spyIntro'],
+  'pages/main-pages/brainstormMode/index': ['addPlayer'],
+  'pages/main-pages/selectBG/index': ['modeIndex']
+});
 
-function projectRoute({ workflow, mode, actorRole, legacyPage }) {
-  const pageKey = String(
-    (workflow && workflow.step) || legacyPage || ''
-  ).toLowerCase();
-
-  const base = PAGE_TO_ROUTE[pageKey] || null;
-  if (!base) {
-    return {
-      pageKey,
-      path: null,
-      mode: 'none',
-      actorRole: actorRole || 'PLAYER',
-      reason: 'UNKNOWN_PAGE'
-    };
-  }
-
-  return {
-    pageKey,
-    path: base.path,
-    mode: base.mode,
-    actorRole: actorRole || 'PLAYER',
-    gameMode: mode || null,
-    reason: null
-  };
+function currentPage() {
+  if (typeof getCurrentPages !== 'function') return null;
+  const pages = getCurrentPages();
+  return pages.length ? pages[pages.length - 1] : null;
 }
 
-/**
- * 导航协调：按 revision 串行，避免旧状态回跳
- */
+function confirmOverlayOwner(page) {
+  if (!page || page.route !== 'pages/main-pages/partnerMode/confirmBG/index') return '';
+  const data = page.data || {};
+  if (page._fromGameView || data.fromGameView || String(data.from || '') === 'game') return 'partnerGame';
+  if (String(data.from || '') === 'select') return 'selectProblem';
+  if (String(data.from || '') === 'submit') return 'submitProblem';
+  return 'modeIndex';
+}
+
+function isLocalOverlay(current, routeName) {
+  const page = currentPage();
+  const confirmOwner = confirmOverlayOwner(page);
+  if (confirmOwner) return confirmOwner === routeName;
+  const owners = OVERLAY_OWNERS[current];
+  if (!owners) return false;
+  return owners.includes(routeName);
+}
+
+function queryString(params) {
+  return Object.entries(params || {}).filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
+}
+
+function describeRoute(route, roomId) {
+  if (!route || !ROUTES[route.name]) return null;
+  const config = ROUTES[route.name];
+  const query = queryString({ roomId, ...(route.params || {}) });
+  return { ...config, name: route.name, url: `${config.path}${query ? `?${query}` : ''}` };
+}
+
+function currentPath() {
+  if (typeof getCurrentPages !== 'function') return '';
+  const pages = getCurrentPages();
+  return pages.length ? pages[pages.length - 1].route : '';
+}
+
 function createNavigationCoordinator(options) {
-  const openUrl = options && options.openUrl;
-  let lastRevision = 0;
-  let inFlight = false;
+  const open = options && options.open;
+  let lastSeq = 0;
+  let lastRoomId = '';
+  let active = false;
   let pending = null;
 
-  async function reconcile(routeDescriptor, revision) {
-    const rev = revision != null ? Number(revision) : 0;
-    if (rev < lastRevision) {
-      return { ok: false, skipped: true, reason: 'STALE_REVISION' };
-    }
-    if (!routeDescriptor || !routeDescriptor.path || routeDescriptor.mode === 'none') {
-      return { ok: false, skipped: true, reason: 'NO_ROUTE' };
-    }
-    if (typeof openUrl !== 'function') {
-      return { ok: false, skipped: true, reason: 'NO_OPENER' };
-    }
+  function resolvePendingAsSuperseded() {
+    if (!pending) return;
+    const previous = pending;
+    pending = null;
+    previous.waiters.forEach(({ resolve }) => resolve({
+      ok: false,
+      skipped: true,
+      reason: 'SUPERSEDED'
+    }));
+  }
 
-    if (inFlight) {
-      pending = { routeDescriptor, revision: rev };
-      return { ok: false, skipped: true, reason: 'IN_FLIGHT' };
+  async function reconcile(route, seq, context) {
+    const nextSeq = Number(seq) || 0;
+    const nextRoomId = String(context && context.roomId || '');
+    if (nextRoomId !== lastRoomId) {
+      // Event seq 只在单个 Room 内单调；跨房后必须重置导航水位。
+      lastRoomId = nextRoomId;
+      lastSeq = 0;
+      resolvePendingAsSuperseded();
     }
-
-    inFlight = true;
+    if (nextSeq < lastSeq) return { ok: false, skipped: true, reason: 'STALE_SEQ' };
+    const descriptor = describeRoute(route, context && context.roomId);
+    if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
+    const current = currentPath();
+    if (current === descriptor.path.slice(1)) { lastSeq = nextSeq; return { ok: true, skipped: true, reason: 'SAME_ROUTE' }; }
+    // 灵感/裁剪/选模式/填情境等叠层：仍属于当前 route 时不拆；route 变化后跟随。
+    if (current && isLocalOverlay(current, route.name)) {
+      return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
+    }
+    if (context && typeof context.beforeNavigate === 'function'
+      && context.beforeNavigate(context.pageSnapshot, descriptor.pageKey) === true) {
+      lastSeq = nextSeq;
+      return { ok: true, skipped: true, reason: 'HANDLED' };
+    }
+    if (active) {
+      // 订阅与用户动作可能同时请求同一条权威 route。后发调用必须等待在途导航，
+      // 否则页面交互锁会提前释放，甚至再次提交同一个操作。
+      return new Promise((resolve, reject) => {
+        const waiters = pending ? pending.waiters : [];
+        waiters.push({ resolve, reject });
+        pending = { route, seq: nextSeq, context, waiters };
+      });
+    }
+    active = true;
     try {
-      lastRevision = rev;
-      await Promise.resolve(openUrl(routeDescriptor));
+      lastSeq = nextSeq;
+      if (typeof open === 'function') await open(descriptor);
+      else if (typeof wx !== 'undefined' && typeof wx[descriptor.mode] === 'function') {
+        await new Promise((resolve) => wx[descriptor.mode]({ url: descriptor.url, complete: resolve }));
+      }
       return { ok: true };
     } finally {
-      inFlight = false;
+      active = false;
       if (pending) {
-        const next = pending;
-        pending = null;
-        if (next.revision >= lastRevision) {
-          reconcile(next.routeDescriptor, next.revision);
-        }
+        const next = pending; pending = null;
+        reconcile(next.route, next.seq, next.context)
+          .then((result) => next.waiters.forEach(({ resolve }) => resolve(result)))
+          .catch((error) => next.waiters.forEach(({ reject }) => reject(error)));
       }
     }
   }
 
-  return {
-    reconcile,
-    getLastRevision() {
-      return lastRevision;
-    }
-  };
+  return { reconcile, getLastSeq: () => lastSeq, getLastRoomId: () => lastRoomId };
 }
 
-module.exports = {
-  PAGE_TO_ROUTE,
-  projectRoute,
-  createNavigationCoordinator
-};
+module.exports = { ROUTES, describeRoute, createNavigationCoordinator };

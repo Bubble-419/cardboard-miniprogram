@@ -1,23 +1,22 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
   filterPlayerMembers,
   buildSpyPageUrl,
   getDefaultSpyCount,
   MIN_PLAYERS,
-  openUrl,
   withSpyRefreshGuard,
   safePageSetData,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const { getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../../utils/spyGameState');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
+const { executeProjectedBack } = require('../../../modules/room-session/index');
 const {
   runPageInteraction,
   runPageNavigation,
@@ -109,11 +108,6 @@ Page(withPageInteractionLock({
           : await fetchRoomDataOrExit(roomId);
         if (this._pageAlive === false || !result || result.ok !== true) return;
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spymodeindex',
-          allowHost: true
-        });
-
         if (this._pageAlive === false) return;
 
         const members = result.members || [];
@@ -123,6 +117,9 @@ Page(withPageInteractionLock({
         const isHost = result.isHost === true;
         const canStart = isHost && playerCount >= MIN_PLAYERS;
         const spyGame = result.roomState && result.roomState.spyGame;
+        const nextCommandContext = spyGame && spyGame.phase === 'intro'
+          ? captureSpyCommandContext(result)
+          : null;
         let statusText = '等待更多玩家加入…';
         let waitFooterText = '等待更多玩家加入…';
         if (playerCount >= MIN_PLAYERS) {
@@ -141,6 +138,8 @@ Page(withPageInteractionLock({
           statusText,
           waitFooterText,
           showLibraryEntry: shouldShowLibrary(spyGame)
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
       } catch (e) {
         console.warn('spy modeIndex refresh', e);
@@ -150,7 +149,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 1000,
       onPollResult: (result) => this.refreshRoom(result)
     });
   },
@@ -221,20 +219,16 @@ Page(withPageInteractionLock({
     if (!this.data.canStart || this.data.starting) return;
     this.setData({ starting: true, showLibraryEntry: false });
     try {
-      const result = await callSpyAction('startAssign', { roomId: this.data.roomId });
+      const result = await callSpyAction('startAssign', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '开始失败', icon: 'none' });
         this.setData({ starting: false, showLibraryEntry: true });
         return;
       }
-      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
       bumpSpyRoomSession();
-      if (!navigated && this._pageAlive) {
-        this.setData({ starting: false });
-      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '开始失败', icon: 'none' });
       if (this._pageAlive) this.setData({ starting: false, showLibraryEntry: true });
@@ -243,14 +237,14 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/brainstormMode/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/brainstormMode/index',
-        fallbackUrl
-      });
+      // 先解绑权威路由订阅：取消场次会把 route 切回 addPlayer；若订阅先执行
+      // reLaunch，紧随其后的模式选择 redirectTo 会被微信运行时拒绝。
+      this.stopPolling();
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+        this.startPolling();
+      }
     }, { loadingText: '正在返回…' });
   },
 

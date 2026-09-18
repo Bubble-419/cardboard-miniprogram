@@ -13,13 +13,12 @@
 ## 部署
 
 ```bash
-cd cloudfunctions/speechToText
-npm install
+pnpm --dir cloudfunctions/speechToText install
 ```
 
-然后在微信开发者工具中右键上传并部署 `speechToText`、`finalizePartnerTurnRecord`，以及更新后的 `updateRoomState`、`getAddPlayerData`。
+先在仓库根目录执行 `pnpm build:cloud`，再在微信开发者工具中上传并部署 `speechToText`。该函数只鉴权和转写；转写结果由客户端通过 `APPEND_ARTIFACT` 写入 V3 房间事务。
 
-> 公共参考副本放在仓库根目录 `cloud-common/`（不在 `cloudfunctions/` 下，避免被当成云函数上传）。各云函数目录内仍保留独立的 `partnerRoundContent.js` 供部署打包。
+> `index.js` 是构建产物，不要直接编辑；源文件位于 `src/entry.js`。
 
 ## 依赖
 

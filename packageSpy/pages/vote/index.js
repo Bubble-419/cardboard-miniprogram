@@ -1,10 +1,10 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildSpyPageUrl,
   openUrl,
-  VOTE_ROUND_MS,
   startSpyCountdownTicker,
   withSpyRefreshGuard,
   samePlayerIndex,
@@ -14,7 +14,6 @@ const {
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
 const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   buildTiedNames,
   isTieReturnPending,
@@ -93,7 +92,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 800,
       onPollResult: (result) => this.refresh(result)
     });
   },
@@ -111,7 +109,7 @@ Page(withPageInteractionLock({
 
   ensureTicker(startedAt, durationMs) {
     this._voteStartedAt = startedAt;
-    this._voteDuration = durationMs || VOTE_ROUND_MS;
+    this._voteDuration = Number(durationMs) > 0 ? Number(durationMs) : 0;
     if (this._tickTimer) return;
     this._tickTimer = startSpyCountdownTicker(
       this,
@@ -148,10 +146,6 @@ Page(withPageInteractionLock({
           return;
         }
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyvote',
-          allowHost: true
-        });
         const membersWithAvatar = assignAvatarImages(members);
         const memberByIndex = {};
         membersWithAvatar.forEach((m) => {
@@ -175,7 +169,15 @@ Page(withPageInteractionLock({
         const voteStatus = spyGame.voteStatus || {};
         const voted = voteStatus.votedPlayerIndexes || [];
         const serverHasVoted = playerIndexIncludes(voted, myIndex);
-        const hasVoted = this.data.hasVoted || serverHasVoted;
+        const nextCommandContext = spyGame.phase === 'vote'
+          ? captureSpyCommandContext(result)
+          : null;
+        const previousVoteSessionId = this._spyCommandContext
+          && this._spyCommandContext.voteSessionId;
+        const voteSessionChanged = !!(nextCommandContext
+          && previousVoteSessionId
+          && previousVoteSessionId !== nextCommandContext.voteSessionId);
+        const hasVoted = voteSessionChanged ? serverHasVoted : (this.data.hasVoted || serverHasVoted);
         const last = spyGame.lastResult || {};
         const tiedIndexes = Array.isArray(last.tiedIndexes) ? last.tiedIndexes : [];
         const tiedIndexSet = new Set(tiedIndexes.map((idx) => Number(idx)));
@@ -185,6 +187,7 @@ Page(withPageInteractionLock({
 
         this.setData({
           avatarList: buildAvatarList(members),
+          selectedIndex: voteSessionChanged ? null : this.data.selectedIndex,
           hasVoted,
           eliminated,
           tieBreak: spyGame.tieBreak === true,
@@ -198,9 +201,16 @@ Page(withPageInteractionLock({
           totalVoters: voteStatus.totalVoters != null
             ? voteStatus.totalVoters
             : players.filter((p) => p.alive !== false && p.leftRoom !== true).length
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
 
-        this.ensureTicker(spyGame.voteStartedAt, spyGame.voteDeadlineMs || VOTE_ROUND_MS);
+        const durationMs = spyGame.voteDeadlineAt && spyGame.voteStartedAt
+          ? spyGame.voteDeadlineAt - spyGame.voteStartedAt
+          : spyGame.voteDeadlineMs;
+        if (spyGame.voteStartedAt && Number(durationMs) > 0) {
+          this.ensureTicker(spyGame.voteStartedAt, durationMs);
+        }
       } catch (e) {
         console.warn('spy vote refresh', e);
       }
@@ -253,6 +263,10 @@ Page(withPageInteractionLock({
       wx.showToast({ title: '不能投自己', icon: 'none' });
       return;
     }
+    if (this.data.tieBreak && !slot.isTied) {
+      wx.showToast({ title: '加时只能投并列玩家', icon: 'none' });
+      return;
+    }
     this.setData({ selectedIndex: index });
   },
 
@@ -279,6 +293,7 @@ Page(withPageInteractionLock({
     try {
       const result = await callSpyAction('submitVote', {
         roomId: this.data.roomId,
+        context: this._spyCommandContext,
         abstain,
         targetPlayerIndex: abstain ? undefined : this.data.selectedIndex
       });
@@ -289,30 +304,6 @@ Page(withPageInteractionLock({
       if (!this._pageAlive) return;
       this.setData({ hasVoted: true });
       bumpSpyRoomSession();
-      if (result.settled) {
-        openUrl(buildSpyPageUrl('settle', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-        return;
-      }
-      if (result.tied) {
-        const spyGame = Object.assign(
-          { phase: 'speak', tieBreak: true },
-          result.spyGame || {}
-        );
-        if (!this._holdVoteForTieSpeak(spyGame)) {
-          this._goSpeakAfterTie();
-        }
-        return;
-      }
-      if (result.currentPage === 'spyresult' || (result.spyGame && result.spyGame.phase === 'result')) {
-        openUrl(buildSpyPageUrl('result', this.data.roomId), {
-          immediate: true,
-          noReLaunch: true
-        });
-        return;
-      }
       wx.showToast({ title: abstain ? '已弃票，等待其他人' : '已提交，等待其他人', icon: 'success' });
       await this.refresh();
     } catch (e) {

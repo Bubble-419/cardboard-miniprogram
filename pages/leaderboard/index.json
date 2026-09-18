@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "排行榜",
+  "navigationStyle": "custom",
+  "disableSwipeBack": true,
+  "usingComponents": {}
+}

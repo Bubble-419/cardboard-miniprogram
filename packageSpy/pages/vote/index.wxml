@@ -31,7 +31,7 @@
     <view class="deco-ring deco-ring-3"></view>
     <view class="deco-ring deco-ring-inner"></view>
     <view
-      class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}} {{item.isTied ? 'is-tied' : ''}}"
+      class="avatar-slot {{selectedIndex === item.playerIndex ? 'selected' : ''}} {{item.isMe ? 'is-me' : ''}} {{item.isTied ? 'is-tied' : ''}} {{tieBreak && !item.isTied ? 'is-disabled' : ''}}"
       wx:for="{{circleSlots}}"
       wx:key="playerIndex"
       style="left: {{item.left}}%; top: {{item.top}}%;"

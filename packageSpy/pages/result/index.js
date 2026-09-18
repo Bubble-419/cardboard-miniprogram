@@ -1,17 +1,15 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  buildSpyPageUrl,
-  openUrl,
   roleLabel,
   withSpyRefreshGuard,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -58,7 +56,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 1000,
       onPollResult: (result) => this.refresh(result)
     });
   },
@@ -77,12 +74,10 @@ Page(withPageInteractionLock({
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyresult',
-          allowHost: true
-        });
-
         const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const nextCommandContext = spyGame.phase === 'result'
+          ? captureSpyCommandContext(result)
+          : null;
         const last = spyGame.lastResult || {};
         const eliminatedIndex = last.eliminatedIndex;
         const players = spyGame.players || [];
@@ -112,6 +107,8 @@ Page(withPageInteractionLock({
           tallyList,
           // 出局玩家仍需看到在场玩家列表，不做隐藏
           alivePlayers: players.filter((p) => p.alive !== false)
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
         this._maybeShowTieModal(tied);
       } catch (e) {
@@ -146,20 +143,16 @@ Page(withPageInteractionLock({
     if (this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('nextRound', { roomId: this.data.roomId });
+      const result = await callSpyAction('nextRound', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         this.setData({ acting: false });
         return;
       }
-      const navigated = openUrl(buildSpyPageUrl('speak', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
       bumpSpyRoomSession();
-      if (!navigated && this._pageAlive) {
-        this.setData({ acting: false });
-      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
       this.setData({ acting: false });

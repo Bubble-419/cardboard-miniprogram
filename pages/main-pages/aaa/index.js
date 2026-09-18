@@ -10,6 +10,11 @@ const {
   getOptionalProfileForRoom,
   buildRoomJoinPayload
 } = require('../../../utils/wxUserAvatar');
+const {
+  isCloudFileId,
+  sanitizeImageSrc,
+  resolveCloudDisplayUrl
+} = require('../../../utils/cloudDisplayUrl');
 const { AVATAR_IMAGES } = require('../../../utils/avatars');
 const {
   handleRoomGoneFromResult,
@@ -36,6 +41,11 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const {
+  dispatchRoomCommand,
+  getCurrentRoomPageSnapshot,
+  getRoomPageSnapshot
+} = require('../../../modules/room-session/index');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
@@ -106,12 +116,14 @@ Page(withPageInteractionLock({
 
   onTapHistoryCard(e) {
     const roomId = e.currentTarget.dataset.roomId;
+    const sessionId = e.currentTarget.dataset.sessionId || '';
     if (!roomId) return;
     return runPageNavigation(this, async () => {
       getApp().globalData.roomId = roomId;
+      const sessionQuery = sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : '';
       return {
         method: 'navigateTo',
-        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review${sessionQuery}`
       };
     }, { loadingText: '正在打开历史…' });
   },
@@ -144,39 +156,48 @@ Page(withPageInteractionLock({
     if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
     const gen = (this._joinedStateGen || 0) + 1;
     this._joinedStateGen = gen;
-
-    const roomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
+    const storedRoomId = wx.getStorageSync(JOINED_ROOM_STORAGE_KEY)
       || getApp().globalData.roomId
       || '';
 
-    if (!roomId) {
+    let result = null;
+    try {
+      result = await getCurrentRoomPageSnapshot();
+    } catch (error) {
+      console.warn('discover current room fail', error);
+    }
+    if (gen !== this._joinedStateGen) return;
+    if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
+
+    if (result && result.ok === true && !result.roomId) {
+      if (storedRoomId) this._clearJoinedRoom(storedRoomId);
+      else this._setNotJoinedState();
+      return;
+    }
+
+    if (!result || result.ok !== true) {
+      if (isRoomDissolvedResult(result) || ['NOT_IN_ROOM', 'NOT_MEMBER'].includes(result && result.errCode)) {
+        const goneId = (result && result.roomId) || storedRoomId;
+        const handled = handleRoomGoneFromResult(result, goneId, {
+          allowToastOnHome: true,
+          title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
+        });
+        if (!handled) this._clearJoinedRoom(goneId);
+        else this._setNotJoinedState();
+        return;
+      }
+      if (storedRoomId) {
+        this._setJoinedFallbackState(storedRoomId);
+        return;
+      }
       this._setNotJoinedState();
       return;
     }
 
+    const roomId = result.roomId;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId }
-      });
       if (gen !== this._joinedStateGen) return;
       if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
-      const result = (res && res.result) || {};
-
-      if (result.ok !== true) {
-        // 断线重连：房间已解散/不存在 → 清状态并提示，勿恢复进房
-        if (isRoomDissolvedResult(result) || result.errCode === 'NOT_IN_ROOM') {
-          handleRoomGoneFromResult(result, roomId, {
-            allowToastOnHome: true,
-            title: isRoomDissolvedResult(result) ? '房间已解散' : '您已不在该房间'
-          });
-          this._setNotJoinedState();
-          return;
-        }
-        this._clearJoinedRoom(roomId);
-        this._setNotJoinedState();
-        return;
-      }
 
       const isMember = (result.members || []).some(m => m.isMe);
       if (!isMember) {
@@ -215,19 +236,11 @@ Page(withPageInteractionLock({
         timeLabel: isHost ? '创建时间' : '加入时间',
         ...userPatch
       });
+      this._hydrateCloudAvatar(me && (me.avatarFileID || me.avatarUrl), ['userAvatarUrl']);
     } catch (err) {
       console.error('loadJoinedRoomState fail', err);
       if (roomId) {
-        this.setData({
-          isJoinedRoom: true,
-          role: 'member',
-          roleLabel: '成员',
-          roomId,
-          roomName: '脑暴工作坊',
-          roomDesc: DEFAULT_ROOM_DESC,
-          roomTimeText: '',
-          timeLabel: '加入时间'
-        });
+        this._setJoinedFallbackState(roomId);
       } else {
         this._setNotJoinedState();
       }
@@ -247,7 +260,31 @@ Page(withPageInteractionLock({
       timeLabel: '创建/加入时间',
       // 保留微信授权头像昵称，不因离开房间回到默认态
       userNickName: (stored && stored.nickName) || this.data.userNickName || '微信用户',
-      userAvatarUrl: (stored && stored.avatarUrl) || this.data.userAvatarUrl || DEFAULT_AVATAR
+      userAvatarUrl: sanitizeImageSrc(
+        stored && (stored.avatarFileID || stored.avatarUrl),
+        this.data.userAvatarUrl || DEFAULT_AVATAR
+      ) || DEFAULT_AVATAR
+    });
+    this._hydrateCloudAvatar(stored && (stored.avatarFileID || stored.avatarUrl), ['userAvatarUrl']);
+  },
+
+  _setJoinedFallbackState(roomId) {
+    if (!roomId) {
+      this._setNotJoinedState();
+      return;
+    }
+    getApp().globalData.roomId = roomId;
+    wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
+    const hasKnownRole = this.data.role === 'host' || this.data.role === 'member';
+    this.setData({
+      isJoinedRoom: true,
+      role: hasKnownRole ? this.data.role : 'member',
+      roleLabel: hasKnownRole ? this.data.roleLabel : '成员',
+      roomId,
+      roomName: this.data.roomName || '脑暴工作坊',
+      roomDesc: this.data.roomDesc || DEFAULT_ROOM_DESC,
+      roomTimeText: this.data.roomTimeText || '',
+      timeLabel: this.data.timeLabel === '创建/加入时间' ? '加入时间' : this.data.timeLabel
     });
   },
 
@@ -258,7 +295,8 @@ Page(withPageInteractionLock({
         userAvatarUrl: DEFAULT_AVATAR
       };
     }
-    let avatarUrl = member.avatarUrl || '';
+    const raw = member.avatarFileID || member.avatarUrl || '';
+    let avatarUrl = sanitizeImageSrc(raw, '');
     if (!avatarUrl && member.avatarIndex != null) {
       avatarUrl = AVATAR_IMAGES[member.avatarIndex % AVATAR_IMAGES.length] || '';
     }
@@ -268,13 +306,30 @@ Page(withPageInteractionLock({
     };
   },
 
+  _hydrateCloudAvatar(fileID, fields) {
+    if (!isCloudFileId(fileID)) return;
+    const keys = Array.isArray(fields) ? fields : [fields || 'userAvatarUrl'];
+    resolveCloudDisplayUrl(fileID).then((display) => {
+      if (!display) return;
+      const patch = {};
+      keys.forEach((field) => {
+        patch[field] = display;
+      });
+      this.setData(patch);
+    }).catch((e) => {
+      console.warn('hydrateCloudAvatar fail', e);
+    });
+  },
+
   _restoreUserProfile() {
     const stored = getStoredProfile();
     if (!stored) return;
+    const raw = stored.avatarFileID || stored.avatarUrl || '';
     this.setData({
-      userAvatarUrl: stored.avatarUrl || this.data.userAvatarUrl || DEFAULT_AVATAR,
+      userAvatarUrl: sanitizeImageSrc(raw, this.data.userAvatarUrl || DEFAULT_AVATAR) || DEFAULT_AVATAR,
       userNickName: stored.nickName || this.data.userNickName || '微信用户'
     });
+    this._hydrateCloudAvatar(raw, ['userAvatarUrl']);
   },
 
   _markHomeProfileAuthPrompted() {
@@ -299,11 +354,13 @@ Page(withPageInteractionLock({
     }
 
     beginUserAuthFlow();
+    const rawAvatar = stored && (stored.avatarFileID || stored.avatarUrl);
     this.setData({
       showProfileAuth: true,
       authDraftNick: (stored && stored.nickName) || '',
-      authDraftAvatar: (stored && stored.avatarUrl) || DEFAULT_AVATAR
+      authDraftAvatar: sanitizeImageSrc(rawAvatar, DEFAULT_AVATAR) || DEFAULT_AVATAR
     });
+    this._hydrateCloudAvatar(rawAvatar, ['authDraftAvatar']);
   },
 
   onProfileAuthAvatarTap() {
@@ -317,8 +374,8 @@ Page(withPageInteractionLock({
       const profile = applyChooseAvatarEvent(e && e.detail);
       if (!profile) return;
       this.setData({
-        authDraftAvatar: profile.avatarUrl,
-        userAvatarUrl: profile.avatarUrl,
+        authDraftAvatar: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
+        userAvatarUrl: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
         userNickName: profile.nickName || this.data.authDraftNick || this.data.userNickName || '微信用户',
         authDraftNick: profile.nickName || this.data.authDraftNick || ''
       });
@@ -350,8 +407,9 @@ Page(withPageInteractionLock({
     this.setData({
       showProfileAuth: false,
       userNickName: next.nickName || '微信用户',
-      userAvatarUrl: next.avatarUrl || DEFAULT_AVATAR
+      userAvatarUrl: sanitizeImageSrc(next.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR
     });
+    this._hydrateCloudAvatar(next.avatarUrl, ['userAvatarUrl']);
     forceEndUserAuthFlow();
   },
 
@@ -373,7 +431,7 @@ Page(withPageInteractionLock({
       const profile = applyChooseAvatarEvent(e.detail);
       if (!profile) return;
       this.setData({
-        userAvatarUrl: profile.avatarUrl,
+        userAvatarUrl: sanitizeImageSrc(profile.avatarUrl, DEFAULT_AVATAR) || DEFAULT_AVATAR,
         userNickName: profile.nickName || this.data.userNickName || '微信用户'
       });
     } finally {
@@ -446,19 +504,22 @@ Page(withPageInteractionLock({
     if (this.data.loading) return;
 
     this.setData({ loading: true });
-    const clientCreateId = `client-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomCreate',
-        data: buildRoomJoinPayload(profile, { clientCreateId })
-      });
-
-      const result = (res && res.result) || {};
-      const roomId = result.roomId || (result.data && result.data.roomId);
+      const payload = buildRoomJoinPayload(profile);
+      const result = await dispatchRoomCommand('CREATE_ROOM', payload);
+      const roomId = result && result.outcome && result.outcome.roomId;
 
       if (result.ok === false || !roomId) {
+        if (result && result.errCode === 'ALREADY_IN_ROOM') {
+          // 服务端成员资格是事实源。本地缓存丢失或多端登录时，直接恢复原房间。
+          const current = await getRoomPageSnapshot('', { refresh: true });
+          if (current && current.ok === true && current.roomId) {
+            await this._goToRoomPage(current.roomId);
+            return;
+          }
+        }
         console.error('roomCreate error', result);
         wx.showToast({
           title: result.errMsg || '创建失败，请重试',
@@ -548,6 +609,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '未识别到有效房间号，请扫描正确的房间码', icon: 'none' });
         return;
       }
+      // 原始扫码结果只解析出了房间号，交给 addPlayer 完成唯一一次 JOIN_ROOM。
       await this._goToScanJoinRoom(roomId);
     } catch (err) {
       if (err.errMsg && err.errMsg.includes('cancel')) {
@@ -802,11 +864,12 @@ Page(withPageInteractionLock({
     const profile = await getOptionalProfileForRoom();
 
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'roomJoin',
-        data: buildRoomJoinPayload(profile, { roomId })
-      });
-      const result = (res && res.result) || {};
+      const result = await dispatchRoomCommand(
+        'JOIN_ROOM',
+        buildRoomJoinPayload(profile),
+        {},
+        { roomId }
+      );
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '加入失败', icon: 'none' });
         return;
@@ -818,7 +881,8 @@ Page(withPageInteractionLock({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      await this._goToScanJoinRoom(roomId);
+      // 当前命令已经完成加入，直接进入大厅，避免 fromScan 再提交一次 JOIN_ROOM。
+      await this._goToRoomPage(roomId);
     } catch (err) {
       wx.showToast({ title: err.errMsg || '加入失败', icon: 'none' });
     }

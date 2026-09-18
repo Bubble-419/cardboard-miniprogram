@@ -8,8 +8,7 @@ const projectRoot = path.resolve(__dirname, '../..');
 /** 这些页面只有进入页后的自动跳转/轮询，没有用户可重复触发的交互。 */
 const AUTO_ONLY_ROUTES = new Set([
   'pages/auth/index',
-  'pages/sub-pages/subAwait/index',
-  'packageSpy/pages/assign/index'
+  'pages/sub-pages/subAwait/index'
 ]);
 
 function getRegisteredRoutes() {

@@ -1,0 +1,5 @@
+cloudfunctions/roomCommand/index.js linguist-generated=true
+cloudfunctions/roomQuery/index.js linguist-generated=true
+cloudfunctions/roomSignal/index.js linguist-generated=true
+cloudfunctions/roomMedia/index.js linguist-generated=true
+cloudfunctions/speechToText/index.js linguist-generated=true

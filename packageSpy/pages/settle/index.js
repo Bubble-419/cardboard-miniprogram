@@ -1,10 +1,9 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  buildSpyPageUrl,
-  openUrl,
   roleLabel,
   winnerLabel,
   withSpyRefreshGuard,
@@ -12,7 +11,6 @@ const {
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -27,6 +25,7 @@ Page(withPageInteractionLock({
     civilianWord: '',
     spyWord: '',
     revealPlayers: [],
+    isHost: false,
     acting: false
   },
 
@@ -55,7 +54,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 1500,
       onPollResult: (result) => this.refresh(result)
     });
   },
@@ -74,12 +72,10 @@ Page(withPageInteractionLock({
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spysettle',
-          allowHost: true
-        });
-
         const spyGame = (result.roomState && result.roomState.spyGame) || {};
+        const nextCommandContext = spyGame.phase === 'settle'
+          ? captureSpyCommandContext(result)
+          : null;
         const winnerSide = spyGame.winnerSide || '';
         let revealPlayers = [];
         if (Array.isArray(spyGame.reveal) && spyGame.reveal.length) {
@@ -96,11 +92,14 @@ Page(withPageInteractionLock({
 
         this.setData({
           avatarList: buildAvatarList(result.members || []),
+          isHost: result.isHost === true,
           winnerSide,
           winnerText: winnerLabel(winnerSide) || '本局结束',
           civilianWord: spyGame.civilianWord || '',
           spyWord: spyGame.spyWord || '',
           revealPlayers
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
       } catch (e) {
         console.warn('spy settle refresh', e);
@@ -118,22 +117,55 @@ Page(withPageInteractionLock({
     if (this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('restart', { roomId: this.data.roomId });
+      const result = await callSpyAction('restart', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '失败', icon: 'none' });
         this.setData({ acting: false });
         return;
       }
-      const navigated = openUrl(buildSpyPageUrl('intro', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
       bumpSpyRoomSession();
-      if (!navigated && this._pageAlive) {
-        this.setData({ acting: false });
-      }
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '失败', icon: 'none' });
+      this.setData({ acting: false });
+    }
+  },
+
+  onFinishSession() {
+    return runPageInteraction(this, () => this._finishSession(), {
+      loadingText: '正在结束本次游戏…'
+    });
+  },
+
+  async _finishSession() {
+    if (this.data.acting || !this.data.isHost) return;
+    this.setData({ acting: true });
+    try {
+      const completed = await callSpyAction('complete', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
+      if (!completed || completed.ok !== true) {
+        wx.showToast({ title: completed && completed.errMsg || '结束失败', icon: 'none' });
+        this.setData({ acting: false });
+        return;
+      }
+      const returned = await callSpyAction('returnToLobby', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
+      if (!returned || returned.ok !== true) {
+        wx.showToast({ title: returned && returned.errMsg || '返回房间失败', icon: 'none' });
+        this.setData({ acting: false });
+        return;
+      }
+      this._pageAlive = false;
+      this.stopPolling();
+      await goRoomPage(this.data.roomId);
+    } catch (e) {
+      wx.showToast({ title: e && (e.errMsg || e.message) || '结束失败', icon: 'none' });
       this.setData({ acting: false });
     }
   },
@@ -145,4 +177,4 @@ Page(withPageInteractionLock({
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });
   }
-}, ['onRestart', 'handleGoRoom']));
+}, ['onRestart', 'onFinishSession', 'handleGoRoom']));

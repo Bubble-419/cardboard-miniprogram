@@ -14,6 +14,12 @@ const STEPS_WITHOUT_PLATFORM = [
 const { goRoomPage } = require('../../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
+  dispatchRoomCommand,
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  followRoomRouteAfterCommand
+} = require('../../../modules/room-session/index');
+const {
   isPageInteractionLocked,
   runPageInteraction,
   runPageNavigation
@@ -62,23 +68,14 @@ Page({
 
     this.setData({ includePlatform, steps, currentStep, bg });
     this.updateCanConfirm();
-    this._updateRoomState('selectBG');
+    bindPageToRoomSession(this, {
+      getRoomId: () => getApp().globalData.roomId || '',
+      followNavigation: true
+    }).catch((e) => console.warn('selectBG bind room', e));
   },
 
-  async _updateRoomState(currentPage) {
-    const roomId = getApp().globalData.roomId || '';
-    if (!roomId) return false;
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'updateRoomState',
-        data: { roomId, currentPage }
-      });
-      const result = (res && res.result) || {};
-      return result.ok === true;
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return false;
-    }
+  onUnload() {
+    unbindPageFromRoomSession(this);
   },
 
   goBack() {
@@ -161,24 +158,18 @@ Page({
       const roomId = app.globalData.roomId || '';
       this._confirmPending = true;
       try {
-        if (roomId) {
-          try {
-            const res = await wx.cloud.callFunction({
-              name: 'updateRoomState',
-              data: {
-                roomId,
-                currentPage: this.data.includePlatform ? 'confirmBG' : 'selectPlayer',
-                selectedBG: bg
-              }
-            });
-            const result = (res && res.result) || {};
-            if (result.ok !== true) {
-              wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
-              return;
-            }
-          } catch (e) {
-            console.warn('updateRoomState selectedBG', e);
-            wx.showToast({ title: '同步房间失败，请重试', icon: 'none' });
+        let result = null;
+        if (!this.data.includePlatform) {
+          if (!roomId) {
+            wx.showToast({ title: '缺少房间信息', icon: 'none' });
+            return;
+          }
+          result = await dispatchRoomCommand('SET_SCENARIO', {
+            source: 'CUSTOM',
+            scenario: bg
+          });
+          if (result.ok !== true) {
+            wx.showToast({ title: result.errMsg || '同步房间失败，请重试', icon: 'none' });
             return;
           }
         }
@@ -193,13 +184,8 @@ Page({
           };
         }
 
-        const url = roomId
-          ? `?roomId=${encodeURIComponent(roomId)}`
-          : '';
-        return {
-          method: 'redirectTo',
-          url: `/pages/main-pages/selectPlayer/index${url}`
-        };
+        await followRoomRouteAfterCommand(result, roomId);
+        return null;
       } finally {
         this._confirmPending = false;
       }

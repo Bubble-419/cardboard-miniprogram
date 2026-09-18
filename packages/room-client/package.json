@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "commonjs",
   "dependencies": {
-    "@cardboard/room-contracts": "workspace:*"
+    "@cardboard/room-contracts": "workspace:*",
+    "@cardboard/room-projection": "workspace:*"
   }
 }

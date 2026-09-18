@@ -1,7 +1,7 @@
 {
   "name": "roomCommand",
   "version": "1.0.0",
-  "description": "V2 房间命令入口（RoomKernel）",
+  "description": "V3 房间唯一业务命令入口",
   "main": "index.js",
   "dependencies": {
     "wx-server-sdk": "2.6.3"

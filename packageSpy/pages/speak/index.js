@@ -1,16 +1,14 @@
 const {
   fetchRoomDataOrExit,
   callSpyAction,
+  captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  buildSpyPageUrl,
-  openUrl,
   withSpyRefreshGuard,
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
 } = require('../../../utils/spyMode');
-const { followSpyRoomState } = require('../../../utils/spyFollow');
 const {
   getWordCardAssets,
   getLibraryGroupCount,
@@ -66,6 +64,8 @@ Page(withPageInteractionLock({
     contentTab: 0,
     acting: false,
     isHost: false,
+    isCurrentSpeaker: false,
+    currentSpeakerName: '',
     tieBreak: false,
     tiedNamesText: '',
     viewerOpen: false,
@@ -121,7 +121,6 @@ Page(withPageInteractionLock({
 
   startPolling() {
     startSpyRoomPoll(this, {
-      intervalMs: 800,
       onPollResult: (result) => this.refresh(result)
     });
   },
@@ -140,21 +139,22 @@ Page(withPageInteractionLock({
           : await fetchRoomDataOrExit(roomId);
         if (!this._pageAlive || !result || result.ok !== true) return;
 
-        followSpyRoomState(result, roomId, {
-          stayOnPage: 'spyspeak',
-          allowHost: true,
-          // 投票已开始：必须全员进投票页，覆盖大厅停留锁
-          force: !!(result.roomState
-            && result.roomState.spyGame
-            && result.roomState.spyGame.phase === 'vote')
-        });
-
         const spyGame = result.roomState && result.roomState.spyGame;
+        const nextCommandContext = spyGame && spyGame.phase === 'speak'
+          ? captureSpyCommandContext(result)
+          : null;
         const members = result.members || [];
         const isHost = result.isHost === true;
+        const currentSpeakerSeat = spyGame && spyGame.speakOrder
+          && spyGame.speakOrder[spyGame.currentSpeakerIndex];
+        const currentSpeaker = members.find((member) => Number(member.playerIndex) === Number(currentSpeakerSeat));
         this.setData({
           avatarList: buildAvatarList(members),
-          isHost
+          isHost,
+          isCurrentSpeaker: !!(currentSpeaker && currentSpeaker.isMe),
+          currentSpeakerName: currentSpeaker && currentSpeaker.nickName || ''
+        }, () => {
+          if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
         if (!spyGame) return;
 
@@ -297,11 +297,40 @@ Page(withPageInteractionLock({
     });
   },
 
+  onFinishSpeak() {
+    return runPageInteraction(this, () => this._finishSpeak(), {
+      loadingText: '正在结束发言…'
+    });
+  },
+
+  async _finishSpeak() {
+    if (!this.data.isCurrentSpeaker || this.data.acting) return;
+    this.setData({ acting: true });
+    try {
+      const result = await callSpyAction('finishSpeak', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '操作失败', icon: 'none', duration: 2500 });
+        return;
+      }
+      bumpSpyRoomSession();
+    } catch (e) {
+      wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
+    } finally {
+      if (this._pageAlive) this.setData({ acting: false });
+    }
+  },
+
   async _startVote() {
     if (!this.data.isHost || this.data.acting) return;
     this.setData({ acting: true });
     try {
-      const result = await callSpyAction('startVote', { roomId: this.data.roomId });
+      const result = await callSpyAction('startVote', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
       if (result.ok !== true) {
         const hint = result.errCode === 'DEPRECATED'
           ? '请重新上传云函数 roomCommand 后再试'
@@ -309,23 +338,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: hint, icon: 'none', duration: 2500 });
         return;
       }
-      // 房主立即进投票页；成员由发言页轮询 follow 同步
-      try {
-        const { clearSpyLobbyStay, clearSpyFollowLock } = require('../../../utils/spyFollow');
-        const { clearPendingNavigation } = require('../../../utils/pageNavigate');
-        clearSpyLobbyStay();
-        clearSpyFollowLock();
-        clearPendingNavigation();
-      } catch (e) {
-        // ignore
-      }
-      this._pageAlive = false;
-      this.stopPolling();
       bumpSpyRoomSession();
-      openUrl(buildSpyPageUrl('vote', this.data.roomId), {
-        immediate: true,
-        noReLaunch: true
-      });
     } catch (e) {
       wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
     } finally {
@@ -348,6 +361,7 @@ Page(withPageInteractionLock({
   'onPanelTouchEnd',
   'onTapLibraryCard',
   'onCloseViewer',
+  'onFinishSpeak',
   'onStartVote',
   'handleGoRoom'
 ]));

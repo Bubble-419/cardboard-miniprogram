@@ -143,7 +143,7 @@ function clearStickyAvatar(userKey) {
 /**
  * 将成员列表中的 cloud:// 头像 fileID 转为可展示地址（临时 HTTPS 或本地下载）
  */
-async function resolveCloudAvatarUrls(members) {
+async function resolveCloudAvatarUrls(members, options) {
   const list = members || [];
   const inputs = list.map((m) => {
     if (!m) return '';
@@ -151,7 +151,7 @@ async function resolveCloudAvatarUrls(members) {
     if (isCloudFileId(m.avatarFileID)) return m.avatarFileID;
     return m.avatarUrl || '';
   });
-  const displays = await resolveCloudDisplayUrls(inputs);
+  const displays = await resolveCloudDisplayUrls(inputs, options);
   return list.map((m, i) => {
     if (!m) return m;
     const fileID = isCloudFileId(m.avatarUrl)
@@ -240,8 +240,8 @@ function memberHasCloudAvatar(member) {
  * 展示前统一入口：先 resolve cloud://，再 assign 粘性/回退。
  * 各页轮询/首屏应优先走这里，避免只 assign 漏转临时链。
  */
-async function prepareMembersForDisplay(members) {
-  const resolved = await resolveCloudAvatarUrls(members || []);
+async function prepareMembersForDisplay(members, options) {
+  const resolved = await resolveCloudAvatarUrls(members || [], options);
   return assignAvatarImages(resolved);
 }
 
@@ -260,8 +260,8 @@ function buildAvatarList(members) {
     }));
 }
 
-async function buildAvatarListAsync(members, prevMembers) {
-  const resolved = await resolveCloudAvatarUrls(members || []);
+async function buildAvatarListAsync(members, prevMembers, options) {
+  const resolved = await resolveCloudAvatarUrls(members || [], options);
   let enriched = assignAvatarImages(resolved);
   if (prevMembers && prevMembers.length) {
     enriched = preserveMemberAvatars(enriched, prevMembers);

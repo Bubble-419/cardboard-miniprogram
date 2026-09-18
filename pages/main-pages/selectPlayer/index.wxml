@@ -1,7 +1,7 @@
 <view class="container">
   <view class="custom-navbar">
     <view class="navbar-content">
-      <view class="navbar-left">
+      <view class="navbar-left" wx:if="{{isHost}}">
         <image class="back-icon" src="/assets/icons/miniprogram-btn.png" mode="aspectFit" bindtap="goBack"></image>
       </view>
       <view class="navbar-title"></view>
@@ -16,12 +16,6 @@
   <view class="empty-wait-state" wx:if="{{isWaiting}}">
     <text class="empty-wait-text">请在主屏上参与抽取首位翻牌玩家</text>
   </view>
-  <page-footer
-    wx:if="{{isWaiting}}"
-    extClass="footer"
-    showPrimary="{{false}}"
-    bind:prev="goBack"
-  ></page-footer>
 
   <!-- 房主：触摸交互区域 -->
   <block wx:else>

@@ -21,7 +21,6 @@ const AWAIT_PAGE_TO_SCENE = {
   auth: 'bg',
   selectbg: 'bg',
   confirmbg: 'bg',
-  selectmode: 'mode',
   selectplayer: 'player',
   confirmfirstplayer: 'confirmFirstPlayer'
 };
@@ -51,11 +50,14 @@ const SCENE_UI = {
   },
   mode: {
     navbarTitle: '',
-    mainText: '等待主屏幕选择游戏模式和目标',
+    mainText: '等待房主确认游戏模式',
     mainTextLines: [],
     subText: '等待中...',
+    subTextLine1: '房主正在选择本次工作坊的游戏模式',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
     multiLine: false,
-    useHeroLayout: false
+    useHeroLayout: true
   },
   player: {
     navbarTitle: '',
@@ -78,6 +80,17 @@ const SCENE_UI = {
     statusText: '正在等待中...',
     multiLine: false,
     useHeroLayout: true
+  },
+  selectProblem: {
+    navbarTitle: '',
+    mainText: '等待房主选择设计问题',
+    mainTextLines: [],
+    subText: '等待中...',
+    subTextLine1: '房主正在挑选本次工作坊的设计问题',
+    subTextLine2: '请稍作等待，精彩即将开始~',
+    statusText: '正在等待中...',
+    multiLine: false,
+    useHeroLayout: true
   }
 };
 
@@ -89,23 +102,17 @@ const PAGE_PROGRESS_RANK = {
   confirmbg: 10,
   submitproblem: 20,
   selectproblem: 30,
-  selectmode: 40,
   selectplayer: 50,
   confirmfirstplayer: 60,
   gamepage: 70,
   creativeinput: 80,
   creativesummary: 90,
-  statement: 100,
   closingstatement: 105,
-  discussion: 110,
-  closingend: 115,
   leaderboard: 120,
   spymodeindex: 200,
-  spyassign: 210,
   spyspeak: 220,
   spyvote: 230,
   spyresult: 240,
-  spynextround: 245,
   spysettle: 250
 };
 
@@ -114,24 +121,18 @@ const ROUTE_TO_PAGE = {
   'pages/main-pages/brainstormMode/index': 'brainstormmode',
   'pages/main-pages/submitProblem/index': 'submitproblem',
   'pages/main-pages/selectProblem/index': 'selectproblem',
-  'pages/main-pages/selectMode/index': 'selectmode',
   'pages/main-pages/selectPlayer/index': 'selectplayer',
   'pages/main-pages/partnerMode/confirmFirstPlayer/index': 'confirmfirstplayer',
   'pages/main-pages/halliGalli/gamepage/index': 'gamepage',
   'pages/main-pages/partnerMode/gamepage/index': 'gamepage',
   'pages/main-pages/creativeInput/index': 'creativeinput',
   'pages/main-pages/creativeSummary/index': 'creativesummary',
-  'pages/main-pages/partnerMode/statement/index': 'statement',
   'pages/main-pages/partnerMode/closingStatement/index': 'closingstatement',
-  'pages/main-pages/partnerMode/closingEnd/index': 'closingend',
-  'pages/main-pages/discussion/index': 'discussion',
   'pages/leaderboard/index': 'leaderboard',
   'packageSpy/pages/modeIndex/index': 'spymodeindex',
-  'packageSpy/pages/assign/index': 'spyassign',
   'packageSpy/pages/speak/index': 'spyspeak',
   'packageSpy/pages/vote/index': 'spyvote',
   'packageSpy/pages/result/index': 'spyresult',
-  'packageSpy/pages/nextRound/index': 'spynextround',
   'packageSpy/pages/settle/index': 'spysettle'
 };
 
@@ -155,13 +156,37 @@ function shouldSkipStaleBackwardRedirect(targetPage) {
 const SCENE_PROGRESS_RANK = {
   brainstormMode: 5,
   bg: 10,
+  selectProblem: 30,
   mode: 40,
   player: 50,
   confirmFirstPlayer: 60
 };
 
+const WORKFLOW_STEP_TO_SCENE = {
+  CHOOSE_SCENARIO: 'bg',
+  SELECT_DESIGN_PROBLEM: 'selectProblem',
+  SELECT_FIRST_PLAYER: 'player',
+  CONFIRM_FIRST_PLAYER: 'confirmFirstPlayer'
+};
+
+function sceneFromWorkflowStep(step) {
+  return WORKFLOW_STEP_TO_SCENE[step] || 'bg';
+}
+
+function sceneFromMemberView(view, fallback) {
+  const params = view && view.route && view.route.params;
+  if (params && params.scene && SCENE_UI[params.scene]) return params.scene;
+  const step = view && view.session && view.session.workflow && view.session.workflow.step;
+  if (step && WORKFLOW_STEP_TO_SCENE[step]) return WORKFLOW_STEP_TO_SCENE[step];
+  if (params && params.phase && WORKFLOW_STEP_TO_SCENE[params.phase]) {
+    return WORKFLOW_STEP_TO_SCENE[params.phase];
+  }
+  return fallback || 'bg';
+}
+
 function getSceneUI(scene) {
-  return SCENE_UI[scene] || SCENE_UI.bg;
+  const ui = SCENE_UI[scene] || SCENE_UI.bg;
+  return { ...ui, useHeroLayout: true };
 }
 
 function isAwaitPage(page) {
@@ -223,13 +248,13 @@ function resolveHostMainPageUrl(page, roomState, roomId) {
   const p = (page || '').toLowerCase();
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
+  const modeId = resolveModeIdForNavigation(state);
   const hostMap = {
     brainstormmode: `/pages/main-pages/brainstormMode/index?roomId=${roomIdEnc}&isHost=1`,
-    auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}`,
-    selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}`,
+    auth: `/pages/main-pages/modeIndex/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}`,
+    selectbg: `/pages/main-pages/selectBG/index?roomId=${roomIdEnc}&mode=${encodeURIComponent(modeId)}`,
     confirmbg: `/pages/main-pages/partnerMode/confirmBG/index?roomId=${roomIdEnc}`,
-    selectmode: `/pages/main-pages/selectMode/index?roomId=${roomIdEnc}`,
-    selectplayer: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&isHost=1`,
+    selectplayer: `/pages/main-pages/selectPlayer/index?roomId=${roomIdEnc}&modeId=${encodeURIComponent(modeId)}&isHost=1`,
     confirmfirstplayer: `/pages/main-pages/partnerMode/confirmFirstPlayer/index?roomId=${roomIdEnc}&isHost=1`
   };
   return hostMap[p] || null;
@@ -240,7 +265,6 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId);
   const state = roomState || {};
   const idx = state.currentPlayerIndex != null ? state.currentPlayerIndex : 1;
-  const playerName = state.currentPlayerName || `玩家${idx}`;
   const modeId = resolveModeIdForNavigation(state);
   const isHost = options.isHost === true;
 
@@ -264,24 +288,17 @@ function resolveSubScreenNavigation(page, roomState, roomId, options = {}) {
         : (state.partnerGamePhase === 'closing' ? 'closing' : undefined),
       closingStep: state.partnerClosingStep || undefined
     }),
-    statement: buildGamepageUrl(roomId, idx, modeId, {
-      phase: 'discussion'
-    }),
     closingstatement: buildClosingStatementUrl(roomId, {
       closingVoteSessionId: state.closingVoteSessionId || '',
       _t: Date.now()
     }),
-    closingend: buildLeaderboardUrl(roomId, { from: 'closingEnd', isSubScreen: true }),
-    discussion: `/pages/main-pages/discussion/index?roomId=${roomIdEnc}&currentPlayerIndex=${idx}&currentPlayerName=${encodeURIComponent(playerName)}`,
     leaderboard: buildLeaderboardUrl(roomId, { from: 'closingEnd', isSubScreen: true }),
     creativeinput: `/pages/main-pages/creativeInput/index?roomId=${roomIdEnc}`,
     creativesummary: `/pages/main-pages/creativeSummary/index?roomId=${roomIdEnc}`,
     spymodeindex: buildSpyPageUrl('intro', roomId),
-    spyassign: buildSpyPageUrl('assign', roomId),
     spyspeak: buildSpyPageUrl('speak', roomId),
     spyvote: buildSpyPageUrl('vote', roomId),
     spyresult: buildSpyPageUrl('result', roomId),
-    spynextround: buildSpyPageUrl('nextRound', roomId),
     spysettle: buildSpyPageUrl('settle', roomId)
   };
 
@@ -347,13 +364,8 @@ function navigateByRoomState(page, roomState, roomId, options = {}) {
   const state = roomState || {};
   const current = getCurrentRoute();
 
-  // 大厅页不应被拉回收尾过渡页（避免 closingEnd ↔ addPlayer 振荡）
-  if (p === 'closingend' && current === 'pages/main-pages/addPlayer/index') {
-    return false;
-  }
-
   if (state.brainstormSessionEnded === true) {
-    const staleAfterEnd = ['closingend', 'closingstatement', 'gamepage', 'statement'];
+    const staleAfterEnd = ['closingstatement', 'gamepage'];
     if (staleAfterEnd.includes(p) && current === 'pages/main-pages/addPlayer/index') {
       return false;
     }
@@ -389,6 +401,8 @@ module.exports = {
   AWAIT_PAGE_TO_SCENE,
   SCENE_UI,
   getSceneUI,
+  sceneFromWorkflowStep,
+  sceneFromMemberView,
   isAwaitPage,
   getSceneForPage,
   getPageProgressRank,

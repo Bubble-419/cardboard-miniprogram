@@ -14,9 +14,17 @@ const TARGETS = {
     entry: path.join(ROOT, 'cloudfunctions/roomQuery/src/entry.js'),
     outfile: path.join(ROOT, 'cloudfunctions/roomQuery/index.js')
   },
-  roomPresence: {
-    entry: path.join(ROOT, 'cloudfunctions/roomPresence/src/entry.js'),
-    outfile: path.join(ROOT, 'cloudfunctions/roomPresence/index.js')
+  roomSignal: {
+    entry: path.join(ROOT, 'cloudfunctions/roomSignal/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/roomSignal/index.js')
+  },
+  roomMedia: {
+    entry: path.join(ROOT, 'cloudfunctions/roomMedia/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/roomMedia/index.js')
+  },
+  speechToText: {
+    entry: path.join(ROOT, 'cloudfunctions/speechToText/src/entry.js'),
+    outfile: path.join(ROOT, 'cloudfunctions/speechToText/index.js')
   }
 };
 
@@ -25,7 +33,8 @@ function runEsbuild(args) {
   if (fs.existsSync(localBin)) {
     return spawnSync(localBin, args, { cwd: ROOT, encoding: 'utf8' });
   }
-  return spawnSync('npx', ['--yes', 'esbuild@0.25.8', ...args], {
+  // 依赖只由 pnpm workspace 管理；缺少 node_modules 时也不让 npx 临时下载漂移版本。
+  return spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['exec', 'esbuild', ...args], {
     cwd: ROOT,
     encoding: 'utf8',
     shell: process.platform === 'win32'
@@ -44,6 +53,7 @@ function buildOne(name) {
   const aliasArgs = [
     `--alias:@cardboard/room-contracts=${path.join(ROOT, 'packages/room-contracts')}`,
     `--alias:@cardboard/room-domain=${path.join(ROOT, 'packages/room-domain')}`,
+    `--alias:@cardboard/room-projection=${path.join(ROOT, 'packages/room-projection')}`,
     `--alias:@cardboard/room-application=${path.join(ROOT, 'packages/room-application')}`,
     `--alias:@cardboard/room-cloudbase-adapter=${path.join(ROOT, 'packages/room-cloudbase-adapter')}`,
     `--alias:@cardboard/room-client=${path.join(ROOT, 'packages/room-client')}`
@@ -56,6 +66,7 @@ function buildOne(name) {
     '--target=node18',
     '--format=cjs',
     '--external:wx-server-sdk',
+    '--external:tencentcloud-sdk-nodejs',
     ...aliasArgs,
     `--outfile=${target.outfile}`
   ]);

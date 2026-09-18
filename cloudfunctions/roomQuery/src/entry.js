@@ -9,24 +9,34 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
 
-/**
- * V2 房间只读查询
- * event.action: 'head' | 'snapshot'（默认 head）
- */
+/** V3 房间只读入口：current / snapshot / sync / history / session / messages / leaderboard。 */
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext();
-  const userId = wxContext.FROM_OPENID || wxContext.OPENID || '';
+  const userId = wxContext.OPENID || '';
   const roomId = event && event.roomId;
-  const action = (event && event.action) || 'head';
+  const action = (event && event.action) || 'current';
+  const clientContext = event && event.clientContext || {};
+  const actorContext = { userId,
+    deviceSessionId: clientContext.deviceSessionId,
+    touchPresence: clientContext.touchPresence === true };
 
   try {
-    if (action === 'snapshot') {
-      return await app.readSnapshot(roomId, { userId }, {
-        domains: event.domains,
-        domainRevisions: event.domainRevisions
-      });
-    }
-    return await app.readHead(roomId, { userId });
+    if (action === 'current') return await app.readCurrentRoom(actorContext);
+    if (action === 'snapshot') return await app.readSnapshot(roomId, actorContext);
+    if (action === 'sync') return await app.sync(roomId, event && event.afterSeq, actorContext, {
+      limit: event && event.limit
+    });
+    if (action === 'history') return await app.readHistory(roomId, actorContext, {
+      limit: event && event.limit,
+      beforeOrdinal: event && event.beforeOrdinal
+    });
+    if (action === 'session') return await app.readSessionSnapshot(roomId, event && event.sessionId, actorContext);
+    if (action === 'messages') return await app.readMessages(roomId, event && event.sessionId, actorContext, {
+      limit: event && event.limit,
+      beforeSeq: event && event.beforeSeq
+    });
+    if (action === 'leaderboard') return await app.readLeaderboard(roomId, event && event.sessionId, actorContext);
+    return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: `未知查询 action: ${action}` };
   } catch (e) {
     console.error('roomQuery error', e);
     return {

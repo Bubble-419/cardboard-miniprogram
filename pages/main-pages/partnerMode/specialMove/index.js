@@ -1,10 +1,16 @@
 const { assignAvatarImages } = require('../../../../utils/avatars');
-const { buildGamepageUrl, buildClosingStatementUrl } = require('../../../../utils/modeRoutes');
-const { navigateByRoomState } = require('../../../../utils/subAwaitRoutes');
-const { followSubScreenRoomPoll } = require('../../../../utils/subScreenRoomPoll');
+const { buildGamepageUrl } = require('../../../../utils/modeRoutes');
+const {
+  bindPageToRoomSession,
+  unbindPageFromRoomSession,
+  dispatchRoomCommand,
+  followRoomRouteAfterCommand,
+  getRoomPageSnapshot,
+  getActiveRoomSession,
+  getRoomRequestContext
+} = require('../../../../modules/room-session/index');
 const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
 const { buildPartnerAvatarList, resolveCurrentPlayerFromRoom } = require('../../../../utils/partnerPlayerTurn');
-const { markPartnerSpecialMoveUsed } = require('../../../../utils/partnerSpecialMove');
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { openUrl } = require('../../../../utils/pageNavigate');
 const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
@@ -79,7 +85,8 @@ Page(withPageInteractionLock({
     initiatorPlayerIndex: 1,
     currentPlayerIndex: 1,
     currentRound: 1,
-    brainstormSessionSeq: 0,
+    sessionId: '',
+    turnId: '',
     avatarList: [],
     selectedProblemText: '',
     problemExpanded: false,
@@ -102,6 +109,8 @@ Page(withPageInteractionLock({
     silentStartedAt: 0,
     silentTimerActive: false,
     isHost: false,
+    isCurrentPlayer: false,
+    canEndSilent: false,
     /** 声贝等级 0~1，房主本地采样或从房间轮询读取 */
     soundLevel: 0,
     inspirationDraftText: '',
@@ -168,8 +177,18 @@ Page(withPageInteractionLock({
       return;
     }
 
+    const joinSilent = opts.silent === '1' || opts.silent === true || opts.silent === 'true';
+    this._joinSilent = joinSilent;
+
     getApp().globalData.roomId = roomId;
-    this.setData({ roomId, initiatorPlayerIndex, currentPlayerIndex: initiatorPlayerIndex });
+    this.setData({
+      roomId,
+      initiatorPlayerIndex,
+      currentPlayerIndex: initiatorPlayerIndex,
+      viewMode: joinSilent ? 'silent' : 'wheel',
+      isCurrentPlayer: !joinSilent,
+      canEndSilent: !joinSilent
+    });
     this._applyTopBarSafeInset();
     this.loadRoomData();
   },
@@ -180,11 +199,11 @@ Page(withPageInteractionLock({
     if (this.data.roomId) {
       this._startStatePolling();
     }
-    this._measureInspirationFooterClearance();
   },
 
   onHide() {
     this._unbindInspirationKeyboard();
+    this._flushInspirationKeyboardZero(true);
     this.setData({
       inspirationKeyboardHeight: 0,
       inspirationLiftStyle: ''
@@ -200,24 +219,15 @@ Page(withPageInteractionLock({
     this._stopSoundLevelSampling();
   },
 
-  /** 仅在确认「本人不是当前出牌人」时退出；isMe 未对上时不要踢，避免进页闪退 */
-  _shouldLeaveForTurnChange(members, player) {
+  /** 静默期间全员停留；仅确认「本人不是当前出牌人且未进入静默」时退出 */
+  _shouldLeaveForTurnChange(members, player, roomState) {
+    if (this.data.viewMode === 'silent' || this.data.silentTimerActive || this._joinSilent) {
+      return false;
+    }
+    if (roomState && roomState.partnerSilentMode === true) return false;
     const me = (members || []).find((m) => m && m.isMe);
     if (!me || !player) return false;
     return player.isCurrentPlayer !== true;
-  },
-
-  _markSpecialMoveUsedForGamepage() {
-    // 标记必须挂在当前出牌轮次玩家上，避免误锁下一玩家或房主自身
-    const playerIndex = this.data.currentPlayerIndex != null
-      ? this.data.currentPlayerIndex
-      : this.data.initiatorPlayerIndex;
-    markPartnerSpecialMoveUsed(
-      this.data.roomId,
-      playerIndex,
-      this.data.currentRound != null ? this.data.currentRound : 1,
-      this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0
-    );
   },
 
   _buildGamepageUrlFromRoom(pollResult, options = {}) {
@@ -227,21 +237,18 @@ Page(withPageInteractionLock({
       currentPlayerIndex,
       initiatorPlayerIndex,
       currentRound,
-      brainstormSessionSeq
+      sessionId
     } = this.data;
     const idx = currentPlayerIndex != null ? currentPlayerIndex : initiatorPlayerIndex;
     const urlOpts = {
       currentRound,
-      brainstormSessionSeq
+      sessionId
     };
     if (state.partnerGamePhase === 'discussion') {
       urlOpts.phase = 'discussion';
     } else if (state.partnerGamePhase === 'closing') {
       urlOpts.phase = 'closing';
       if (state.partnerClosingStep) urlOpts.closingStep = state.partnerClosingStep;
-    }
-    if (options.markUsed) {
-      urlOpts.specialMoveUsed = true;
     }
     return buildGamepageUrl(roomId, idx, 'partner', urlOpts);
   },
@@ -303,8 +310,9 @@ Page(withPageInteractionLock({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 发起人采样麦克风分贝并广播；其他人从房间轮询读取
+    // 仅房主采麦并广播；其他人只收瞬时信号
     this._startSoundLevelSampling();
+    if (!this._canEndSilent()) return;
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
     const elapsedMs = Math.max(0, Date.now() - startedAt);
     const remainMs = Math.max(0, SILENT_DURATION_SEC * 1000 - elapsedMs) + 4000;
@@ -333,6 +341,10 @@ Page(withPageInteractionLock({
   },
 
   handleSilentTimerExpire() {
+    if (!this._canEndSilent()) {
+      this._stopSilentTimerUi();
+      return;
+    }
     this.handleEndSilent();
   },
 
@@ -341,61 +353,46 @@ Page(withPageInteractionLock({
       // 先停轮询，避免 navigate 过程中被房间态打回 gamepage
       this._stopStatePolling();
       const roomId = this.data.roomId || '';
-      const seq = this.data.brainstormSessionSeq != null ? this.data.brainstormSessionSeq : 0;
+      const sessionId = String(this.data.sessionId || '');
       let url = '/pages/inspiration/index?scope=workshop';
       if (roomId) {
-        url += `&roomId=${encodeURIComponent(roomId)}&brainstormSessionSeq=${seq}`;
+        url += `&roomId=${encodeURIComponent(roomId)}&sessionId=${encodeURIComponent(sessionId)}`;
       }
       return { method: 'navigateTo', url };
     }, { loadingText: '正在打开灵感空间…' });
   },
 
-  _isDevtools() {
-    if (this._isDevtoolsCached != null) return this._isDevtoolsCached;
-    try {
-      const sys = wx.getSystemInfoSync();
-      this._isDevtoolsCached = !!(sys && sys.platform === 'devtools');
-    } catch (e) {
-      this._isDevtoolsCached = false;
+  _resetInspirationKeyboardUi() {
+    return { inspirationKeyboardHeight: 0, inspirationLiftStyle: '' };
+  },
+
+  _commitInspirationKeyboardHeight(next) {
+    const height = Math.max(0, Number(next) || 0);
+    if (height === this.data.inspirationKeyboardHeight && !this.data.inspirationLiftStyle) return;
+    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle: '' });
+  },
+
+  _flushInspirationKeyboardZero(immediate) {
+    if (this._inspirationKbZeroTimer) {
+      clearTimeout(this._inspirationKbZeroTimer);
+      this._inspirationKbZeroTimer = null;
     }
-    return this._isDevtoolsCached;
-  },
-
-  _measureInspirationFooterClearance() {
-    setTimeout(() => {
-      wx.createSelectorQuery()
-        .in(this)
-        .select('.page-footer')
-        .boundingClientRect((rect) => {
-          this._inspirationFooterClearancePx = rect && rect.height
-            ? Math.ceil(rect.height)
-            : 0;
-        })
-        .exec();
-    }, 64);
-  },
-
-  _buildInspirationLiftStyle(keyboardHeight) {
-    const kh = Math.max(0, Number(keyboardHeight) || 0);
-    if (kh <= 0) return '';
-    const footer = Math.max(0, this._inspirationFooterClearancePx || 0);
-    const dy = Math.max(0, kh - footer);
-    return dy > 0 ? `transform:translateY(-${dy}px)` : '';
+    if (immediate) this._commitInspirationKeyboardHeight(0);
   },
 
   _setInspirationKeyboardHeight(height) {
-    const next = this._isDevtools() ? 0 : Math.max(0, Number(height) || 0);
-    const style = this._buildInspirationLiftStyle(next);
-    if (
-      next === this.data.inspirationKeyboardHeight
-      && style === this.data.inspirationLiftStyle
-    ) {
+    const next = Math.max(0, Number(height) || 0);
+    if (next > 0) {
+      this._flushInspirationKeyboardZero(false);
+      this._commitInspirationKeyboardHeight(next);
       return;
     }
-    this.setData({
-      inspirationKeyboardHeight: next,
-      inspirationLiftStyle: style
-    });
+    if (this._inspirationNativeFocused || this.data.inspirationInputFocused) return;
+    if (this._inspirationKbZeroTimer) clearTimeout(this._inspirationKbZeroTimer);
+    this._inspirationKbZeroTimer = setTimeout(() => {
+      this._inspirationKbZeroTimer = null;
+      this._commitInspirationKeyboardHeight(0);
+    }, 120);
   },
 
   onInspirationFocus() {
@@ -426,8 +423,7 @@ Page(withPageInteractionLock({
       if (this._inspirationNativeFocused) return;
       this.setData({
         inspirationInputFocused: false,
-        inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: ''
+        ...this._resetInspirationKeyboardUi()
       });
     }, 180);
   },
@@ -446,22 +442,13 @@ Page(withPageInteractionLock({
   _bindInspirationKeyboard() {
     if (this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = true;
-    this._onInspirationKeyboardHeightChange = this.onInspirationKeyboardHeightChange.bind(this);
-    if (typeof wx.onKeyboardHeightChange === 'function') {
-      wx.onKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
+    // 只使用 input 的 bindkeyboardheightchange，避免全局监听与组件事件重复抖动。
   },
 
   _unbindInspirationKeyboard() {
     if (!this._inspirationKeyboardBound) return;
     this._inspirationKeyboardBound = false;
-    if (
-      typeof wx.offKeyboardHeightChange === 'function'
-      && this._onInspirationKeyboardHeightChange
-    ) {
-      wx.offKeyboardHeightChange(this._onInspirationKeyboardHeightChange);
-    }
-    this._onInspirationKeyboardHeightChange = null;
+    this._flushInspirationKeyboardZero(false);
   },
 
   onInspirationInput(e) {
@@ -644,9 +631,9 @@ Page(withPageInteractionLock({
     return attachPrivateNotesToSummaries(
       buildDisplaySummaries(filtered, members),
       this.data.roomId,
-      roomState && roomState.brainstormSessionSeq != null
-        ? roomState.brainstormSessionSeq
-        : this.data.brainstormSessionSeq
+      roomState && roomState.sessionId != null
+        ? roomState.sessionId
+        : this.data.sessionId
     ).map((item, idx) => ({
       ...item,
       reviewCardKey: this._reviewCardKey(item, idx),
@@ -798,11 +785,7 @@ Page(withPageInteractionLock({
   async loadRoomData() {
     const roomId = this.data.roomId;
     try {
-      const res = await wx.cloud.callFunction({
-        name: 'getAddPlayerData',
-        data: { roomId, full: true }
-      });
-      const result = (res && res.result) || {};
+      const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true || !result.members || !result.members.length) return;
 
       const members = assignAvatarImages(result.members);
@@ -812,7 +795,7 @@ Page(withPageInteractionLock({
         this.data.initiatorPlayerIndex
       );
       // 非当前出牌玩家不得停留；本人身份尚未对上时先留在本页
-      if (this._shouldLeaveForTurnChange(members, player)) {
+      if (this._shouldLeaveForTurnChange(members, player, result.roomState)) {
         wx.showToast({ title: '请等待您的轮次', icon: 'none' });
         this._returnToGamepage(false);
         return;
@@ -820,6 +803,10 @@ Page(withPageInteractionLock({
       const selectedProblem = resolveSelectedDesignProblem(getApp(), result);
       const roomState = result.roomState || {};
       const currentRound = roomState.currentRound != null ? roomState.currentRound : 1;
+      const sessionId = roomState.sessionId || '';
+      const turnId = result.view && result.view.session && result.view.session.activeTurn
+        ? result.view.session.activeTurn.turnId
+        : '';
 
       this.setData({
         members,
@@ -828,31 +815,58 @@ Page(withPageInteractionLock({
         currentPlayerIndex: player.currentPlayerIndex,
         initiatorPlayerIndex: player.currentPlayerIndex,
         currentRound,
-        brainstormSessionSeq: roomState.brainstormSessionSeq != null
-          ? roomState.brainstormSessionSeq
-          : 0,
+        sessionId,
+        turnId,
         isHost: result.isHost === true,
+        isCurrentPlayer: !!player.isCurrentPlayer,
+        canEndSilent: !!player.isCurrentPlayer,
         selectedProblemText: selectedProblem && selectedProblem.text ? selectedProblem.text : '',
         problemExpanded: false,
         problemTextOverflow: false
       }, () => {
+        this._renderedTurnContext = Object.freeze({ sessionId, turnId });
         this._checkProblemTextOverflow();
         this._syncAvatarTimerFromRoom(roomState, currentRound, player.currentPlayerIndex);
         this._applyRoundSummaries(this._normalizeRoundSummaries(roomState, members));
+        if (roomState.partnerSilentMode === true || this._joinSilent) {
+          const startedAt = roomState.partnerSilentStartedAt || Date.now();
+          if (this.data.viewMode !== 'silent') {
+            this.setData({ viewMode: 'silent' }, () => this._jumpToActionCard());
+          }
+          if (!this.data.silentTimerActive) this.startSilentTimer(startedAt);
+          else this._startSoundLevelSampling();
+        }
       });
     } catch (e) {
       console.warn('specialMove loadRoomData', e);
     }
   },
 
-  /**
-   * 房主采样分贝 → 本地音柱；节流写入房间态供全员同步。
-   * 声贝快路径不传 currentPage，避免把其他玩家打回房间页。
-   */
-  _startSoundLevelSampling() {
-    this._stopSoundLevelSampling();
+  _ensureRecordAuth() {
+    return new Promise((resolve) => {
+      wx.getSetting({
+        success: (res) => {
+          if (res.authSetting && res.authSetting['scope.record'] === true) {
+            resolve(true);
+            return;
+          }
+          wx.authorize({
+            scope: 'scope.record',
+            success: () => resolve(true),
+            fail: () => resolve(false)
+          });
+        },
+        fail: () => resolve(false)
+      });
+    });
+  },
 
-    wx.authorize({ scope: 'scope.record' }).catch(() => {});
+  /** 仅房主采麦；声纹通过瞬时 signal 广播，不进入业务 Event。 */
+  async _startSoundLevelSampling() {
+    this._stopSoundLevelSampling();
+    if (!this.data.isHost) return;
+    const allowed = await this._ensureRecordAuth();
+    if (!allowed || !this.data.silentTimerActive) return;
 
     const manager = wx.getRecorderManager();
     this._recorderManager = manager;
@@ -902,16 +916,17 @@ Page(withPageInteractionLock({
 
   _broadcastSilentSoundLevel(level) {
     const roomId = this.data.roomId || '';
-    if (!roomId || !this.data.silentTimerActive) return;
+    const sessionId = this.data.sessionId || '';
+    const turnId = this.data.turnId || '';
+    if (!roomId || !sessionId || !turnId || !this.data.silentTimerActive) return;
     const now = Date.now();
     if (this._lastSoundBroadcastAt && now - this._lastSoundBroadcastAt < 500) return;
     this._lastSoundBroadcastAt = now;
     wx.cloud.callFunction({
-      name: 'updateRoomState',
-      data: {
-        roomId,
-        partnerSilentSoundLevel: Math.min(1, Math.max(0, Number(level) || 0))
-      }
+      name: 'roomSignal',
+      data: { roomId, sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND',
+        value: Math.min(1, Math.max(0, Number(level) || 0)),
+        clientContext: getRoomRequestContext() }
     }).catch(() => {});
   },
 
@@ -923,58 +938,15 @@ Page(withPageInteractionLock({
     }
   },
 
-  async _updateRoomState(currentPage, currentPlayerIndex, currentPlayerName, extra) {
-    const roomId = this.data.roomId || '';
-    if (!roomId) return { ok: false };
-    try {
-      const data = { roomId, currentPage };
-      if (currentPlayerIndex != null) data.currentPlayerIndex = currentPlayerIndex;
-      if (currentPlayerName != null) data.currentPlayerName = currentPlayerName;
-      if (extra && extra.partnerMasterMode != null) {
-        data.partnerMasterMode = extra.partnerMasterMode;
-      }
-      if (extra && extra.partnerSilentMode != null) {
-        data.partnerSilentMode = extra.partnerSilentMode;
-      }
-      if (extra && extra.partnerSilentStartedAt != null) {
-        data.partnerSilentStartedAt = extra.partnerSilentStartedAt;
-      }
-      if (extra && extra.partnerGamePhase != null) {
-        data.partnerGamePhase = extra.partnerGamePhase;
-      }
-      if (extra && extra.resetClosingVotes === true) {
-        data.resetClosingVotes = true;
-      }
-      if (extra && extra.closingVoteInitiatorIndex != null) {
-        data.closingVoteInitiatorIndex = extra.closingVoteInitiatorIndex;
-      }
-      const res = await wx.cloud.callFunction({ name: 'updateRoomState', data });
-      const result = (res && res.result) || {};
-      return {
-        ok: result.ok === true,
-        closingVoteSessionId: result.closingVoteSessionId || 0,
-        closingVoteSeq: result.closingVoteSeq || 0
-      };
-    } catch (e) {
-      console.warn('updateRoomState', e);
-      return { ok: false };
-    }
-  },
-
   _startStatePolling() {
     this._stopStatePolling();
-    const poll = async () => {
-      const roomId = this.data.roomId || '';
-      if (!roomId) return;
-      try {
-        const res = await wx.cloud.callFunction({
-          name: 'getAddPlayerData',
-          data: {
-            roomId,
-            full: this.data.viewMode === 'silent' || this.data.viewMode === 'reverseRandom'
-          }
-        });
-        const result = (res && res.result) || {};
+    const roomId = this.data.roomId || '';
+    if (!roomId) return;
+    bindPageToRoomSession(this, {
+      getRoomId: () => this.data.roomId || '',
+      followNavigation: true,
+      onSnapshot(result) {
+        try {
         const members = result.members || this.data.members || [];
         const player = resolveCurrentPlayerFromRoom(
           members,
@@ -982,37 +954,35 @@ Page(withPageInteractionLock({
           this.data.currentPlayerIndex
         );
         // 轮次已切走：退出特殊行动页
-        if (result.ok === true && members.length && this._shouldLeaveForTurnChange(members, player)) {
+        if (result.ok === true && members.length && this._shouldLeaveForTurnChange(members, player, result.roomState)) {
           this._stopStatePolling();
           wx.showToast({ title: '请等待您的轮次', icon: 'none' });
           this._returnToGamepage(false);
           return;
         }
-        followSubScreenRoomPoll(result, roomId, {
-          beforeNavigate: (pollResult, page) => {
-            const state = pollResult.roomState || {};
+            const state = result.roomState || {};
             // 房主开始表态：静默/master/求助运气等均须与房主进入同一讨论流程
             if (state.partnerGamePhase === 'discussion') {
-              this._redirectToGamepageFromRoom(pollResult);
+              this._redirectToGamepageFromRoom(result);
               return true;
             }
             // 未本地采样时：从房间同步声贝等级到音柱
             if (
               !this._recorderManager
               && this.data.silentTimerActive
-              && pollResult.roomState
-              && pollResult.roomState.partnerSilentSoundLevel != null
+              && result.ephemeral && result.ephemeral.signals
+              && result.ephemeral.signals.PARTNER_SILENT_SOUND
             ) {
-              const lv = Math.min(1, Math.max(0, Number(pollResult.roomState.partnerSilentSoundLevel) || 0));
+              const lv = Math.min(1, Math.max(0, Number(result.ephemeral.signals.PARTNER_SILENT_SOUND.value) || 0));
               if (Math.abs(lv - (this.data.soundLevel || 0)) > 0.02) {
                 this.setData({ soundLevel: lv });
               }
             }
-            if (pollResult.roomState) {
+            if (result.roomState) {
               this._syncAvatarTimerFromRoom(
-                pollResult.roomState,
-                pollResult.roomState.currentRound != null
-                  ? pollResult.roomState.currentRound
+                result.roomState,
+                result.roomState.currentRound != null
+                  ? result.roomState.currentRound
                   : this.data.currentRound,
                 player.currentPlayerIndex
               );
@@ -1021,7 +991,7 @@ Page(withPageInteractionLock({
                 || this.data.viewMode === 'reverseRandom'
               ) {
                 this._applyRoundSummaries(
-                  this._normalizeRoundSummaries(pollResult.roomState, members)
+                  this._normalizeRoundSummaries(result.roomState, members)
                 );
               }
             }
@@ -1031,42 +1001,27 @@ Page(withPageInteractionLock({
               && this.data.silentTimerActive
               && state.partnerSilentMode === false
             ) {
-              this._redirectToGamepageFromRoom(pollResult);
-              return true;
-            }
-            // 收尾表态：房主/副屏都必须跳（含卡在本页时自救）
-            if (page === 'closingstatement') {
-              const state = pollResult.roomState || {};
-              openUrl(buildClosingStatementUrl(roomId, {
-                closingVoteSessionId: state.closingVoteSessionId || '',
-                _t: Date.now()
-              }), { immediate: true });
+              this._redirectToGamepageFromRoom(result);
               return true;
             }
             // 仍在 gamepage 且非 master：勿被旧 poll 打回 gamepage（防卡顿回跳）
             // 静默中同样留在 specialMove 控制页
             if (
-              page === 'gamepage'
-              && (pollResult.roomState || {}).partnerMasterMode !== true
+              state.currentPage === 'gamepage'
+              && state.partnerMasterMode !== true
             ) {
               return true;
             }
             return false;
-          }
-        });
       } catch (e) {
         console.warn('specialMove state poll', e);
       }
-    };
-    poll();
-    this._statePollTimer = setInterval(poll, 2000);
+      }
+    }).catch((e) => console.warn('specialMove roomSession', e));
   },
 
   _stopStatePolling() {
-    if (this._statePollTimer) {
-      clearInterval(this._statePollTimer);
-      this._statePollTimer = null;
-    }
+    unbindPageFromRoomSession(this);
   },
 
   handleGoRoom() {
@@ -1123,7 +1078,12 @@ Page(withPageInteractionLock({
       return;
     }
     if (viewMode === 'silent') {
-      // 返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
+      if (!this._canEndSilent()) {
+        return runPageInteraction(this, () => this._returnToGamepage(false), {
+          loadingText: '正在返回游戏…'
+        });
+      }
+      // 行动者返回转盘即取消静默：清房间态，避免其他人仍显示声贝边框
       this._stopSilentTimerUi();
       return runPageInteraction(this, async () => {
         await this._clearSilentRoomState();
@@ -1155,6 +1115,18 @@ Page(withPageInteractionLock({
     this.setData({ helpMethod: method });
   },
 
+  _turnContext() {
+    const rendered = this._renderedTurnContext;
+    return {
+      sessionId: rendered && rendered.sessionId || this.data.sessionId || '',
+      turnId: rendered && rendered.turnId || this.data.turnId || ''
+    };
+  },
+
+  _canEndSilent() {
+    return this.data.isCurrentPlayer === true;
+  },
+
   handleConfirm() {
     const { viewMode, selectedAction } = this.data;
 
@@ -1166,12 +1138,23 @@ Page(withPageInteractionLock({
     }
 
     if (selectedAction === 'helpLuck') {
-      // 默认进入反面随机拼（已去掉求助方式选择区）
-      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
-        this._jumpToActionCard();
-        this.loadRoomData();
+      return runPageInteraction(this, async () => {
+        const result = await dispatchRoomCommand(
+          'USE_PARTNER_SPECIAL',
+          { kind: 'HELP_LUCK' },
+          this._turnContext()
+        );
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
+          return;
+        }
+        this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
+          this._jumpToActionCard();
+          this.loadRoomData();
+        });
+      }, {
+        loadingText: '正在开启特殊行动…'
       });
-      return;
     }
 
     if (selectedAction === 'silent') {
@@ -1202,66 +1185,40 @@ Page(withPageInteractionLock({
     this._activatingClosing = true;
 
     try {
-      const initiatorIdx = Number(
-        this.data.initiatorPlayerIndex != null
-          ? this.data.initiatorPlayerIndex
-          : this.data.currentPlayerIndex
+      const result = await dispatchRoomCommand(
+        'USE_PARTNER_SPECIAL',
+        { kind: 'CLOSING' },
+        this._turnContext()
       );
-      const result = await this._updateRoomState('closingStatement', null, null, {
-        partnerGamePhase: 'closing',
-        partnerMasterMode: false,
-        partnerSilentMode: false,
-        resetClosingVotes: true,
-        closingVoteInitiatorIndex: initiatorIdx
-      });
       if (!result || result.ok !== true) {
-        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
       }
-
-      const url = buildClosingStatementUrl(roomId, {
-        closingVoteSessionId: result.closingVoteSessionId || '',
-        isInitiator: true,
-        _t: Date.now()
-      });
-      this._stopStatePolling();
-      const navigation = await this._returnToClosingStatement(url);
-      if (!navigation.ok) {
-        this._startStatePolling();
-        wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
-      }
+      await followRoomRouteAfterCommand(result, roomId);
     } finally {
       this._activatingClosing = false;
     }
   },
 
   async activateSilentMode() {
-    const { roomId, members } = this.data;
+    const { roomId } = this.data;
     if (!roomId) return;
     if (this._activatingSilent) return;
     this._activatingSilent = true;
 
     try {
-      const turnPlayerIndex = this.data.currentPlayerIndex != null
-        ? this.data.currentPlayerIndex
-        : this.data.initiatorPlayerIndex;
-      const turnPlayer = (members || []).find((m) => m.playerIndex === turnPlayerIndex);
-      const turnPlayerName = turnPlayer
-        ? (turnPlayer.nickName || `玩家${turnPlayerIndex}`)
-        : `玩家${turnPlayerIndex}`;
-      const startedAt = Date.now();
-
-      // 写入房间静默态，全员 gamepage 卡片切到声贝边框；保持 currentPage=gamepage 避免踢页
-      const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
-        partnerSilentMode: true,
-        partnerSilentStartedAt: startedAt,
-        partnerMasterMode: false
-      });
+      const result = await dispatchRoomCommand(
+        'USE_PARTNER_SPECIAL',
+        { kind: 'SILENT' },
+        this._turnContext()
+      );
       if (!result || result.ok !== true) {
-        wx.showToast({ title: '状态同步失败', icon: 'none' });
+        wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
       }
-
+      const session = getActiveRoomSession();
+      const snapshot = session && session.getSnapshot();
+      const startedAt = snapshot && snapshot.roomState && snapshot.roomState.partnerSilentStartedAt || Date.now();
       this.setData({ viewMode: 'silent' }, () => this._jumpToActionCard());
       this.startSilentTimer(startedAt);
       this.loadRoomData();
@@ -1271,43 +1228,26 @@ Page(withPageInteractionLock({
   },
 
   async activateMasterMode() {
-    const { roomId, members } = this.data;
+    const { roomId } = this.data;
     if (!roomId) return;
-
-    // MASTER 仅归属当前出牌玩家本人
-    const turnPlayerIndex = this.data.currentPlayerIndex != null
-      ? this.data.currentPlayerIndex
-      : this.data.initiatorPlayerIndex;
-    const turnPlayer = (members || []).find((m) => m.playerIndex === turnPlayerIndex);
-    const turnPlayerName = turnPlayer
-      ? (turnPlayer.nickName || `玩家${turnPlayerIndex}`)
-      : `玩家${turnPlayerIndex}`;
-
-    this._markSpecialMoveUsedForGamepage();
-
-    const result = await this._updateRoomState('gamepage', turnPlayerIndex, turnPlayerName, {
-      partnerMasterMode: true,
-      partnerSilentMode: false
-    });
+    const result = await dispatchRoomCommand(
+      'USE_PARTNER_SPECIAL',
+      { kind: 'MASTER' },
+      this._turnContext()
+    );
     if (!result || result.ok !== true) {
-      wx.showToast({ title: '状态同步失败', icon: 'none' });
+      wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
       return;
     }
-
     this._stopStatePolling();
     await this._returnToGamepage();
   },
 
   _clearSilentRoomState() {
+    if (!this._canEndSilent()) return Promise.resolve();
     const roomId = this.data.roomId || '';
     if (!roomId) return Promise.resolve();
-    const turnPlayerIndex = this.data.currentPlayerIndex != null
-      ? this.data.currentPlayerIndex
-      : this.data.initiatorPlayerIndex;
-    // 异步清场，不阻塞 UI；失败时依赖换轮 / 下次 poll 兜底
-    return this._updateRoomState('gamepage', turnPlayerIndex, null, {
-      partnerSilentMode: false
-    }).catch(() => {});
+    return dispatchRoomCommand('END_PARTNER_SILENT', {}, this._turnContext()).catch(() => {});
   },
 
   handleCancelAdopt() {
@@ -1322,7 +1262,6 @@ Page(withPageInteractionLock({
       await this.loadRoomData();
     }
     // 取消采用：特殊行动仍记为已使用，回 gamepage 继续倒计时
-    this._markSpecialMoveUsedForGamepage();
     this._stopStatePolling();
     await this._returnToGamepage();
   },
@@ -1338,7 +1277,6 @@ Page(withPageInteractionLock({
     if (this.data.currentRound == null) {
       await this.loadRoomData();
     }
-    this._markSpecialMoveUsedForGamepage();
     const app = getApp();
     if (!app.globalData) app.globalData = {};
     app.globalData.partnerAdoptDeckHint = {
@@ -1357,6 +1295,11 @@ Page(withPageInteractionLock({
 
   async _endSilent() {
     if (this._endingSilent) return;
+    if (!this._canEndSilent()) {
+      this._stopSilentTimerUi();
+      await this._returnToGamepage(false);
+      return;
+    }
     this._endingSilent = true;
     this._stopSilentTimerUi();
     try {
@@ -1364,13 +1307,7 @@ Page(withPageInteractionLock({
       if (this.data.currentRound == null) {
         await this.loadRoomData();
       }
-      this._markSpecialMoveUsedForGamepage();
-      const turnPlayerIndex = this.data.currentPlayerIndex != null
-        ? this.data.currentPlayerIndex
-        : this.data.initiatorPlayerIndex;
-      await this._updateRoomState('gamepage', turnPlayerIndex, null, {
-        partnerSilentMode: false
-      });
+      await dispatchRoomCommand('END_PARTNER_SILENT', {}, this._turnContext());
       await this._returnToGamepage();
     } finally {
       this._endingSilent = false;
@@ -1424,21 +1361,6 @@ Page(withPageInteractionLock({
     });
   },
 
-  _returnToClosingStatement(url) {
-    return new Promise((resolve) => {
-      wx.redirectTo({
-        url,
-        success: () => resolve({ ok: true }),
-        fail: () => {
-          wx.reLaunch({
-            url,
-            success: () => resolve({ ok: true }),
-            fail: (error) => resolve({ ok: false, error })
-          });
-        }
-      });
-    });
-  }
 }, [
   'handleGoRoom',
   'handleToggleProblemExpand',
@@ -1465,4 +1387,8 @@ Page(withPageInteractionLock({
   'onChatInput',
   'onTapSuggestion',
   'handleSendChat'
-]));
+], {
+  passthroughMethods: [
+    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange'
+  ]
+}));
