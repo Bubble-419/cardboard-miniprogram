@@ -1,5 +1,5 @@
 /**
- * 脑暴大富翁（partnerMode）- 出牌页
+ * 创意合伙人（partnerMode）- 出牌页
  * 路径：pages/main-pages/partnerMode/gamepage/
  */
 const {

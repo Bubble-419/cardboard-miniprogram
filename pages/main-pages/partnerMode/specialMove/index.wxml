@@ -254,7 +254,7 @@
                 <view class="reverse-card-inner">
                   <view class="special-action-header">
                     <view class="special-mode-badge">反面随机拼</view>
-                    <text class="special-action-title">请根据以下操作提示，进行反面随机拼</text>
+                    <text class="special-action-title">请根据以下提示操作</text>
                   </view>
                   <view class="action-divider reverse-divider"></view>
                   <view class="reverse-step-grid">
