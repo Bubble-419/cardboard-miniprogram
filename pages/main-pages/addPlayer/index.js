@@ -109,16 +109,28 @@ Page(withPageInteractionLock({
     showAvatarAuth: false,
     pendingJoinRoomId: '',
     navFreeze: false,
-    primaryBtnText: '开始游戏',
-    primaryBtnDisabled: false,
-    primaryBtnAction: 'selectMode',
-    showExitText: false,
-    exitTextLabel: '退出房间',
+    primaryBtnText: '',
+    primaryBtnDisabled: true,
+    primaryBtnAction: '',
+    showExitText: true,
+    exitTextLabel: '离开房间',
     exitTextAction: 'leave',
     showWaitingHint: false,
     waitingHintText: '等待房主选择模式',
     showModeActionSheet: false,
     showExitModeConfirm: false
+  },
+
+  _degradedLobbyFooter() {
+    return {
+      primaryBtnText: '',
+      primaryBtnDisabled: true,
+      primaryBtnAction: '',
+      showExitText: true,
+      exitTextLabel: this.data.isFromScan ? '退出房间' : '离开房间',
+      exitTextAction: 'leave',
+      showWaitingHint: false
+    };
   },
 
   _computeFooterActions(patch = {}) {
@@ -253,15 +265,18 @@ Page(withPageInteractionLock({
       isFromScan: fromScan,
       isHost: false,
       membershipConfirmed: false,
+      ...this._degradedLobbyFooter(),
       ...getDevRoomIdDisplayPatch(roomId)
     });
 
     if (fromScan) {
       this._beginScanJoinWithAvatarPrompt(roomId);
     } else {
-      this.loadRoomData(roomId).then((result) => {
-        if (!this._pageAlive || !result) return;
+      this._loadRoomDataAfterJoin(roomId).then((result) => {
+        if (!this._pageAlive) return;
         this._joinInFlight = false;
+        this._startMemberPolling();
+        if (!result) return;
         this.setData({ membershipConfirmed: true });
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
@@ -269,7 +284,6 @@ Page(withPageInteractionLock({
           // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
           this._followRoomPageFromResult(result, roomId);
         }
-        this._startMemberPolling();
         this._preloadBrainstormMode();
       });
     }
@@ -571,22 +585,17 @@ Page(withPageInteractionLock({
 
       const loaded = await this._loadRoomDataAfterJoin(roomId);
       if (!this._pageAlive) return;
-      if (!loaded) {
-        this._joinInFlight = false;
-        endScanJoin(roomId);
-        wx.showToast({ title: '加入失败，请重试', icon: 'none' });
-        return;
-      }
       this._joinInFlight = false;
-      this.setData({ membershipConfirmed: true });
       endScanJoin(roomId);
+      this._startMemberPolling();
+      if (!loaded) return;
+      this.setData({ membershipConfirmed: true });
       if (loaded.isHost === true) {
         this._syncLobbyRoomState(loaded);
       } else {
         // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
         this._followRoomPageFromResult(loaded, roomId);
       }
-      this._startMemberPolling();
       this._ensureMyAvatarSynced(roomId, loaded);
       this._preloadBrainstormMode();
     } catch (err) {
@@ -598,13 +607,13 @@ Page(withPageInteractionLock({
 
   async _loadRoomDataAfterJoin(roomId) {
     // 成员刚写入时云库偶发读不到，重试避免误报「您已不在该房间」
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       const loaded = await this.loadRoomData(roomId, { silent: true });
       if (loaded && loaded.ok !== false) return loaded;
       if (!this._pageAlive) return null;
       await new Promise((resolve) => setTimeout(resolve, 220 + i * 180));
     }
-    return this.loadRoomData(roomId, { silent: true });
+    return this.loadRoomData(roomId);
   },
 
   async loadRoomData(roomId, opts = {}) {
@@ -645,7 +654,8 @@ Page(withPageInteractionLock({
         if (!silent) {
           this.setData({
             qrcodeStatus: 'load_error',
-            qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试'
+            qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试',
+            ...this._degradedLobbyFooter()
           });
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         }
@@ -799,7 +809,8 @@ Page(withPageInteractionLock({
           : errMsg;
         this.setData({
           qrcodeStatus: 'load_error',
-          qrcodeErrorHint: hint
+          qrcodeErrorHint: hint,
+          ...this._degradedLobbyFooter()
         });
         wx.showToast({ title: '加载失败', icon: 'none' });
       }
@@ -889,7 +900,7 @@ Page(withPageInteractionLock({
     if (!roomId) return;
     return runPageInteraction(
       this,
-      () => this.loadRoomData(roomId, { forceRegenQr: true, silent: true }),
+      () => this.loadRoomData(roomId, { forceRegenQr: true }),
       { loadingText: '正在刷新二维码…' }
     );
   },
@@ -1829,7 +1840,6 @@ Page(withPageInteractionLock({
   },
 
   handleDissolveRoom() {
-    if (!this.data.isHost) return;
     wx.showModal({
       title: '解散房间',
       content: '解散后所有成员将退出房间，当前游戏进度会被清除且无法恢复。确定要解散吗？',
@@ -1879,8 +1889,24 @@ Page(withPageInteractionLock({
 
   async _leaveRoom() {
     try {
-      const result = await dispatchRoomCommand('LEAVE_ROOM', {});
+      const result = await dispatchRoomCommand('LEAVE_ROOM', {}) || {};
+      if (result && result.errCode === 'HOST_CANNOT_LEAVE') {
+        this.setData({
+          isHost: true,
+          exitTextLabel: '解散房间',
+          exitTextAction: 'dissolve'
+        });
+        this.handleDissolveRoom();
+        return;
+      }
       if (result.ok !== true) {
+        if (['NOT_IN_ROOM', 'NOT_MEMBER', 'ROOM_NOT_FOUND', 'ROOM_DISSOLVED'].includes(result.errCode)) {
+          disposeRoomSession();
+          try { wx.removeStorageSync('joinedRoomId'); } catch (e) { /* ignore */ }
+          getApp().globalData.roomId = null;
+          wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+          return;
+        }
         wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
         return;
       }
