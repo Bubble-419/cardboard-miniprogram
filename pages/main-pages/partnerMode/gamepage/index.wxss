@@ -33,6 +33,10 @@
   background: #fafafa;
 }
 
+.container-history-review .inspiration-bar-history-with-footer {
+  padding-bottom: 12rpx;
+}
+
 .page-body {
   flex: 1;
   min-height: 0;

@@ -129,6 +129,8 @@ Page(withPageInteractionLock({
     gamepagePhase: PHASE_PLAY,
     /** 历史工作坊回顾模式：只看纪要卡片、可记灵感，不推进游戏/轮询 */
     isHistoryReview: false,
+    /** 收尾阶段叠开的全局回顾：显示返回，回到等待房主的创意点复盘 */
+    reviewCanGoBack: false,
     reviewCardAnim: '',
     reviewStarMotion: 'none',
     reviewFocusAnim: false,
@@ -335,6 +337,24 @@ Page(withPageInteractionLock({
       : CLOSING_STEP_RUNE;
     const specialMoveUsedFromUrl = options && (options.specialMoveUsed === '1' || options.specialMoveUsed === 1);
     const isHistoryReview = !!(options && (options.mode === 'review' || options.from === 'history'));
+    const reviewCanGoBack = !!(isHistoryReview && options && options.from === 'closing');
+    this._reviewReturnUrl = '';
+    if (reviewCanGoBack) {
+      const pages = getCurrentPages();
+      const prev = pages.length >= 2 ? pages[pages.length - 2] : null;
+      const prevData = (prev && prev.data) || {};
+      this._reviewReturnUrl = buildGamepageUrl(
+        roomId,
+        prevData.currentPlayerIndex || 1,
+        'partner',
+        {
+          phase: 'closing',
+          closingStep: CLOSING_STEP_REVIEW,
+          currentRound: prevData.currentRound,
+          brainstormSessionSeq: prevData.brainstormSessionSeq
+        }
+      );
+    }
     // 从 URL 读取 currentRound，避免 discussion 重进时 loadRoomData 完成前本地值为初始的 1
     const initialRound = options && options.currentRound != null
       ? parseInt(options.currentRound, 10) || 1
@@ -364,6 +384,7 @@ Page(withPageInteractionLock({
       cardIndex: initialPhase === PHASE_CLOSING && initialClosingStep === CLOSING_STEP_REVIEW ? 1 : 0,
       specialMoveUsedThisTurn: !!specialMoveUsedFromUrl,
       isHistoryReview,
+      reviewCanGoBack,
       reviewCardAnim: isHistoryReview ? 'review-card-prep' : '',
       reviewStarMotion: isHistoryReview ? 'pending' : 'none',
       reviewFocusAnim: false
@@ -902,10 +923,13 @@ Page(withPageInteractionLock({
     };
   },
 
-  _finalizeHistoryReviewUi(selectedProblemText) {
+  _finalizeHistoryReviewUi(selectedProblemText, displaySummaries) {
     this._roomLoaded = true;
     this._roomDataReady = true;
-    const summaryCount = (this.data.displayRoundSummaries || []).length;
+    const list = Array.isArray(displaySummaries) && displaySummaries.length
+      ? displaySummaries
+      : (this.data.displayRoundSummaries || []);
+    const summaryCount = list.length;
     const cardCount = Math.max(1, summaryCount);
     this.setData({
       isHost: false,
@@ -1678,21 +1702,30 @@ Page(withPageInteractionLock({
 
   /** 回顾态大 patch 拆成两次 setData，避免真机单次超 1MB 闪退 */
   _applyReviewRoomPatch(patch, callback) {
-    const heavy = {};
-    const light = Object.assign({}, patch);
-    ['displayRoundSummaries', 'roundSummaries'].forEach((key) => {
-      if (light[key]) {
-        heavy[key] = light[key];
-        delete light[key];
-      }
-    });
-    this.setData(light, () => {
-      if (!Object.keys(heavy).length) {
-        if (typeof callback === 'function') callback();
-        return;
-      }
-      wx.nextTick(() => {
-        this.setData(heavy, callback);
+    return new Promise((resolve) => {
+      const finish = () => {
+        try {
+          if (typeof callback === 'function') callback();
+        } finally {
+          resolve();
+        }
+      };
+      const heavy = {};
+      const light = Object.assign({}, patch);
+      ['displayRoundSummaries', 'roundSummaries'].forEach((key) => {
+        if (light[key]) {
+          heavy[key] = light[key];
+          delete light[key];
+        }
+      });
+      this.setData(light, () => {
+        if (!Object.keys(heavy).length) {
+          finish();
+          return;
+        }
+        wx.nextTick(() => {
+          this.setData(heavy, finish);
+        });
       });
     });
   },
@@ -2521,7 +2554,10 @@ Page(withPageInteractionLock({
       patch.specialMoveUsedThisTurn = this._resolveSpecialMoveUsed(patch);
     }
 
-    if (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase))) {
+    if (
+      !this._isHistoryReviewMode()
+      && (closingStepChanged || (phaseChanged && isClosingPhase(roomPhase)))
+    ) {
       patch.cardIndex = closingStep === CLOSING_STEP_REVIEW ? 1 : 0;
       patch.paginationDots = buildPaginationDots(
         patch.cardIndex,
@@ -2683,12 +2719,21 @@ Page(withPageInteractionLock({
       }
       this._syncRoundSpeech();
     };
+    let applied = Promise.resolve();
     if (this._isHistoryReviewMode() && forcePatch) {
-      this._applyReviewRoomPatch(patch, applyPatchCallback);
+      applied = this._applyReviewRoomPatch(patch, applyPatchCallback);
     } else {
       this.setData(patch, applyPatchCallback);
     }
-    return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
+    return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase, applied };
+  },
+
+  async _awaitRoomContext(result, options) {
+    const ctx = this._applyRoomContext(result, options) || {};
+    if (ctx.applied && typeof ctx.applied.then === 'function') {
+      await ctx.applied;
+    }
+    return ctx;
   },
 
   async loadRoomData() {
@@ -2725,11 +2770,11 @@ Page(withPageInteractionLock({
               text: selectedProblem.text
             };
           }
-          this._applyRoomContext(fake, {
+          await this._awaitRoomContext(fake, {
             fallbackPlayerIndex: 0,
             resetTurnUi: true
           });
-          this._finalizeHistoryReviewUi(selectedProblemText);
+          this._finalizeHistoryReviewUi(selectedProblemText, this.data.displayRoundSummaries);
           return;
         }
         const meta = getHistoryWorkshopByRoomId(roomId);
@@ -2750,14 +2795,14 @@ Page(withPageInteractionLock({
         ? selectedProblem.text
         : '';
 
-      this._applyRoomContext(result, {
+      await this._awaitRoomContext(result, {
         fallbackPlayerIndex: this.data.currentPlayerIndex,
         resetTurnUi: true
       });
 
       if (isHistoryReview) {
         this._lastHistorySnapshotAt = 0;
-        this._finalizeHistoryReviewUi(selectedProblemText);
+        this._finalizeHistoryReviewUi(selectedProblemText, this.data.displayRoundSummaries);
         wx.nextTick(() => {
           try {
             const snapshot = buildReviewSnapshot({
@@ -2810,8 +2855,11 @@ Page(withPageInteractionLock({
         const snap = getReviewSnapshot(roomId);
         const fake = this._buildFakeRoomResultFromSnapshot(snap);
         if (fake) {
-          this._applyRoomContext(fake, { fallbackPlayerIndex: 0, resetTurnUi: true });
-          this._finalizeHistoryReviewUi((snap && snap.selectedProblemText) || '');
+          await this._awaitRoomContext(fake, { fallbackPlayerIndex: 0, resetTurnUi: true });
+          this._finalizeHistoryReviewUi(
+            (snap && snap.selectedProblemText) || '',
+            this.data.displayRoundSummaries
+          );
           return;
         }
       }
@@ -6122,7 +6170,7 @@ Page(withPageInteractionLock({
       this._prepareLeavePage();
       return {
         method: 'navigateTo',
-        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review`,
+        url: `/pages/main-pages/partnerMode/gamepage/index?roomId=${encodeURIComponent(roomId)}&mode=review&from=closing`,
         fail: () => {
           this._pageVisible = true;
           this._startStatePolling();
@@ -6667,6 +6715,36 @@ Page(withPageInteractionLock({
     });
   },
 
+  handleReviewBack() {
+    return runPageNavigation(this, async () => {
+      this._prepareLeavePage();
+      const fallbackUrl = this._reviewReturnUrl || (this.data.roomId
+        ? buildGamepageUrl(this.data.roomId, this.data.currentPlayerIndex || 1, 'partner', {
+          phase: 'closing',
+          closingStep: CLOSING_STEP_REVIEW
+        })
+        : '');
+      const pages = getCurrentPages();
+      if (pages.length > 1) {
+        return {
+          method: 'navigateBack',
+          fail: () => {
+            if (!fallbackUrl) return;
+            wx.redirectTo({
+              url: fallbackUrl,
+              fail: () => safeOpenUrl(fallbackUrl)
+            });
+          }
+        };
+      }
+      if (!fallbackUrl) {
+        wx.showToast({ title: '无法返回', icon: 'none' });
+        return null;
+      }
+      return { method: 'redirectTo', url: fallbackUrl };
+    }, { loadingText: '正在返回…' });
+  },
+
   handleGoBack() {
     return runPageInteraction(this, async () => {
       this._prepareLeavePage();
@@ -6697,6 +6775,7 @@ Page(withPageInteractionLock({
   'handleGlobalReview',
   'handleGoInspirationCenter',
   'handleGoBack',
+  'handleReviewBack',
   'handleGoRoom',
   'handleRoundTimerExpire',
   'handleStartStatement',

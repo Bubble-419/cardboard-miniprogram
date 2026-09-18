@@ -35,9 +35,11 @@
   box-sizing: border-box;
 }
 
-/* player-top-bar 已自带 padding-left:40rpx，抵消父级左边距避免加倍 */
+/* player-top-bar 已自带左右预留，需同时抵消父级左右 padding */
 .header-section > player-top-bar {
   margin-left: -40rpx;
+  margin-right: -40rpx;
+  width: calc(100% + 80rpx);
 }
 
 .title-section {
