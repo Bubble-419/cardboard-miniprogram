@@ -236,10 +236,10 @@ flowchart LR
 
 ## 10. 静态插图 CDN
 
-非必要插图不进小程序代码包，本地文件仍保留在仓库，由 `packOptions.ignore` 排除：
+非必要插图不进小程序代码包，本地文件仍保留在仓库，由 `packOptions.ignore` 排除。云存储对象平铺在 `miniprogram-static/` 根下，key 为文件名（不含仓库目录）：
 
-- `packageSpy/assets/interactionCards/webp/*`（Spy 交互卡）
-- `assets/subAwait/wait-hero-5a8ea5.webp`
+- `packageSpy/assets/interactionCards/webp/*` → `miniprogram-static/开关3x.webp` 等
+- `assets/subAwait/wait-hero-5a8ea5.webp` → `miniprogram-static/wait-hero-5a8ea5.webp`
 - `assets/home/empty-history-6f27f1.webp`
 - `assets/brainstormMode/mode-cover-*.jpg`
 - `assets/halliGalli/step-*.webp`
@@ -247,14 +247,12 @@ flowchart LR
 Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
 
-云存储前缀：`miniprogram-static/`，与仓库相对路径一致。HTTPS 形如：
+HTTPS 形如：
 
-`https://6361-cardboard-miniprogram-6a13aab073-1307472735.tcb.qcloud.la/miniprogram-static/...`
+`https://6361-cardboard-miniprogram-6a13aab073-1307472735.tcb.qcloud.la/miniprogram-static/<filename>`
 
-发布或真机预览前上传一次：
+发布或真机预览前确认该前缀可读（所有用户可读，或等价公开读）。客户端通过 `utils/staticCdn.js` 引入，不使用会过期的临时链。后续补传可用：
 
 ```bash
 pnpm upload:static
 ```
-
-无 CLI / 密钥时，按脚本清单在云开发控制台上传到同一前缀。存储安全规则需允许读取 `miniprogram-static/**`（所有用户可读，或等价公开读）。客户端通过 `utils/staticCdn.js` 引入，不使用会过期的临时链。
