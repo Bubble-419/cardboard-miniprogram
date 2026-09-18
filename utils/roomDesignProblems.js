@@ -6,7 +6,8 @@ function mapProblem(item, snapshot) {
   const member = (snapshot.members || []).find((row) => row.memberId === item.memberId) || {};
   return { id: item.contributionId, contributionId: item.contributionId, text: item.text,
     playerIndex: member.playerIndex, nickName: member.nickName || '', userId: item.memberId,
-    entityVersion: item.entityVersion, createTime: 0, updateTime: 0, submitTime: 0 };
+    entityVersion: item.entityVersion, createTime: item.createdAt, updateTime: item.createdAt,
+    submitTime: item.createdAt };
 }
 
 async function currentSnapshot(roomId, refresh) {

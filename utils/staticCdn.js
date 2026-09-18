@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * 非必要插图走云存储 HTTPS，不进小程序代码包。
- * 本地文件仍保留在仓库，由 packOptions.ignore 排除打包。
+ * 非必要插图优先走云存储 HTTPS；列表内原图由 packOptions.ignore 排除打包。
+ * Halli 的小体积 PNG 作为断网降级资源保留在代码包，不列入此处。
  */
 
 const CLOUD_ENV_ID = 'cardboard-miniprogram-6a13aab073';
@@ -29,8 +29,7 @@ const PACK_IGNORE_FOR_CDN = [
   { value: 'assets/subAwait/wait-hero-5a8ea5.webp', type: 'file' },
   { value: 'assets/home/empty-history-6f27f1.webp', type: 'file' },
   { value: 'assets/brainstormMode/*.jpg', type: 'glob' },
-  { value: 'assets/halliGalli/*.webp', type: 'glob' },
-  { value: 'assets/halliGalli/*.png', type: 'glob' }
+  { value: 'assets/halliGalli/*.webp', type: 'glob' }
 ];
 
 module.exports = {

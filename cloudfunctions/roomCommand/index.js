@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 4;
+    var VIEW_SCHEMA_VERSION = 5;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -574,6 +574,9 @@ var require_room_contracts = __commonJS({
     function validProjectedParticipant(participant) {
       return isRecord(participant) && isNonEmptyString(participant.memberId) && Number.isInteger(participant.seatNoAtStart) && participant.seatNoAtStart >= 1 && participant.seatNoAtStart <= MAX_SEATS && ["ACTIVE", "LEFT"].includes(participant.status) && isNonEmptyString(participant.nickName) && validNullableString(participant.avatarRef) && (participant.avatarIndex == null || Number.isInteger(participant.avatarIndex) && participant.avatarIndex >= 0) && typeof participant.color === "string";
     }
+    function validProjectedDesignProblem(problem) {
+      return isRecord(problem) && isNonEmptyString(problem.contributionId) && isNonEmptyString(problem.memberId) && typeof problem.text === "string" && Number.isInteger(problem.entityVersion) && problem.entityVersion >= 1 && Number.isFinite(problem.createdAt);
+    }
     function validActorStatus(status) {
       return isRecord(status) && typeof status.submitted === "boolean";
     }
@@ -614,7 +617,7 @@ var require_room_contracts = __commonJS({
       if (!validProjectedBack(back)) return false;
       if (view.session == null) return true;
       const session = view.session;
-      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1 || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
+      if (!isRecord(session) || !isNonEmptyString(session.sessionId) || !Number.isInteger(session.ordinal) || session.ordinal < 1 || !Object.values(SESSION_STATUS).includes(session.status) || !Object.values(MODE).includes(session.mode) || !Array.isArray(session.participants) || !session.participants.every(validProjectedParticipant) || !isRecord(session.setup) || !hasOwn(session.setup, "scenarioSource") || !hasOwn(session.setup, "scenario") || !hasOwn(session.setup, "proposedFirstMemberId") || !hasOwn(session.setup, "selectedProblem") || !Array.isArray(session.setup.designProblems) || !session.setup.designProblems.every(validProjectedDesignProblem) || !(session.setup.selectedProblem == null || validProjectedDesignProblem(session.setup.selectedProblem)) || !isRecord(session.workflow) || !Object.values(WORKFLOW_STEP).includes(session.workflow.step) || !Number.isInteger(session.workflow.revision) || session.workflow.revision < 1 || !isRecord(session.progress) || !isRecord(session.publicModeState) || !hasOwn(session, "activeTurn") || !(session.activeTurn == null || isRecord(session.activeTurn)) || !Array.isArray(session.activeArtifacts) || !Array.isArray(session.recentMessages) || !Array.isArray(session.turnSummaries) || !hasOwn(session, "result") || !(session.result == null || isRecord(session.result))) return false;
       const participantIds = session.participants.map((participant) => participant.memberId);
       const participantSeats = session.participants.map((participant) => participant.seatNoAtStart);
       return new Set(participantIds).size === participantIds.length && new Set(participantSeats).size === participantSeats.length;
@@ -1263,7 +1266,8 @@ var require_partner = __commonJS({
       const facts = ensureFacts(aggregate);
       const requiredVoters = new Set(closing.requiredMemberIds);
       const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId && requiredVoters.has(row.memberId));
-      const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === "question");
+      const seats = new Map((session.participants || []).map((item) => [item.memberId, item.seatNoAtStart]));
+      const question = rows.filter((row) => row.vote === "question").sort((a, b) => (seats.get(a.memberId) || Number.MAX_SAFE_INTEGER) - (seats.get(b.memberId) || Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt)[0];
       const summary = archiveActiveTurn(aggregate, question ? "CLOSING_QUESTIONED" : "CLOSING_ACCEPTED", null, deps);
       const dirty = summary ? [{ kind: "turns", id: summary.turnId }] : [];
       if (question) {
@@ -3068,14 +3072,16 @@ var require_room_projection = __commonJS({
             contributionId: selectedProblem.contributionId,
             memberId: selectedProblem.memberId,
             text: selectedProblem.text,
-            entityVersion: selectedProblem.entityVersion
+            entityVersion: selectedProblem.entityVersion,
+            createdAt: selectedProblem.createdAt
           } : null,
           // 问题在收集完成前互不可见；进入选择阶段后持续投影，确保配置页返回时可完整还原。
-          designProblems: problemRevealSteps.includes(session.workflow.step) ? contributions.filter((item) => item.kind === "DESIGN_PROBLEM").map((item) => ({
+          designProblems: problemRevealSteps.includes(session.workflow.step) ? contributions.filter((item) => item.kind === "DESIGN_PROBLEM").sort((a, b) => a.createdAt - b.createdAt || String(a.contributionId).localeCompare(String(b.contributionId))).map((item) => ({
             contributionId: item.contributionId,
             memberId: item.memberId,
             text: item.text,
-            entityVersion: item.entityVersion
+            entityVersion: item.entityVersion,
+            createdAt: item.createdAt
           })) : []
         },
         workflow: clone(session.workflow),

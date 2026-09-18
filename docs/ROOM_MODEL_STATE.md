@@ -247,6 +247,21 @@ facts.votes[voteSessionId:memberId]
 
 密牌只存在权威 Facts 和对应成员的 Actor View。`reveal` 只有在最终结算后才进入公共模式状态。
 
+### 设计问题事实与投影
+
+```text
+facts.contributions[sessionId:DESIGN_PROBLEM:memberId]
+├── contributionId / sessionId / memberId / kind
+├── text / entityVersion
+└── createdAt / updatedAt
+
+MemberView.session.setup.designProblems[]
+├── contributionId / memberId / text / entityVersion
+└── createdAt                 # 首次提交时间，编辑时不改变
+```
+
+`createdAt` 是问题展示顺序的权威字段；`updatedAt` 只用于事实审计，不得因 Host 编辑而改变列表顺序。
+
 ## 5. Event Group
 
 一个已接受 Command 对应一个 `roomV3Events` 文档，即一个不可拆分的 Event Group：
@@ -354,6 +369,9 @@ flowchart TB
 ```
 
 View 的两种更新路径属于同一个 Interface：Snapshot 直接提供完整 View；Event 只提供从旧 View 到新 View 的安全增量。页面永远只看到发布后的完整 View。
+
+进行中页面从冻结 `participants[]` 中只展示 `ACTIVE` 成员；`LEFT` 成员仍保留在 Member View
+供历史与审计使用，历史页面和已完成场次的结算页投影全部冻结成员。
 
 `capabilities` 是服务端投影的 UI 操作提示，不代替 Command 时的服务端授权。`route` 和
 `navigation` 都是成员级展示投影，不是业务事实。页面不得写回页面名，也不得根据物理页面栈

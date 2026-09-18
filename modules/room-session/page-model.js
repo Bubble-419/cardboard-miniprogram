@@ -43,8 +43,13 @@ function pageMembers(view, historical) {
   // 当前场次页面只能展示场次开始时冻结的 Participant；中途加入者在大厅仍看 Room Member。
   const useFrozenParticipants = !!(view.session && Array.isArray(view.session.participants)
     && (historical || (view.actor && view.actor.isParticipant)));
+  const includeDeparted = !!(historical || (view.session
+    && ['COMPLETED', 'CANCELLED'].includes(view.session.status)));
+  const participants = useFrozenParticipants
+    ? view.session.participants.filter((participant) => includeDeparted || participant.status === 'ACTIVE')
+    : [];
   const source = useFrozenParticipants
-    ? view.session.participants.map((participant) => ({
+    ? participants.map((participant) => ({
       memberId: participant.memberId,
       seatNo: participant.seatNoAtStart,
       nickName: participant.nickName,
@@ -55,7 +60,7 @@ function pageMembers(view, historical) {
       participantStatus: participant.status
     }))
     : view.room.members;
-  // 历史/结算页使用场次冻结资料；大厅和进行中页使用当前 Room Member。
+  // 历史/结算页保留全部冻结资料；进行中页只展示仍在场的 Participant，不能让离房者继续参与 UI 选择。
   return source.slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
     _id: member.memberId,
     memberId: member.memberId,

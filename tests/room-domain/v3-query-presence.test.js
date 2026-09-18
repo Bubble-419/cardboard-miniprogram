@@ -166,6 +166,37 @@ test('中途加入者留在大厅旁观，参玩者的游戏页只投影冻结 P
   assert.equal(observerSnapshot.view.actor.capabilities.SUBMIT_PARTNER_SCORE.allowed, false);
 });
 
+test('进行中页面排除已离房 Participant，但保留其冻结席位供历史回看', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  await h.command('u3', 'LEAVE_ROOM');
+
+  snapshot = await h.snapshot('host');
+  const livePage = projectPageSnapshot(snapshot.view, {
+    seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {}
+  });
+  const historyPage = projectPageSnapshot(snapshot.view, {
+    seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {}, historical: true
+  });
+  const completedPage = projectPageSnapshot({
+    ...snapshot.view,
+    session: { ...snapshot.view.session, status: 'COMPLETED' }
+  }, { seq: snapshot.seq, stateVersion: snapshot.stateVersion, ephemeral: {} });
+
+  assert.equal(snapshot.view.session.participants.length, 3, 'Member View 应保留冻结参与者历史');
+  assert.equal(snapshot.view.session.participants.find((item) => item.nickName === '玩家3').status, 'LEFT');
+  assert.deepEqual(livePage.members.map((item) => item.nickName), ['房主', '玩家2']);
+  assert.deepEqual(historyPage.members.map((item) => item.nickName), ['房主', '玩家2', '玩家3']);
+  assert.deepEqual(completedPage.members.map((item) => item.nickName), ['房主', '玩家2', '玩家3'],
+    '当前场次结算页也必须完整还原本场参与者');
+});
+
 test('Partner 匿名消息保持有界实时 View，并可通过游标完整分页读取', async () => {
   const h = createHarness();
   let snapshot = await h.seedMembers(3);
@@ -602,6 +633,19 @@ async function startSelectingDesignProblems(h, memberCount) {
   }
   return sessionId;
 }
+
+test('设计问题 Member View 保留服务端首次提交时间', async () => {
+  const h = createHarness();
+  await startSelectingDesignProblems(h, 3);
+  const problems = (await h.snapshot('host')).view.session.setup.designProblems;
+
+  assert.equal(problems.every((item) => Number.isFinite(item.createdAt)), true);
+  assert.deepEqual(problems.map((item) => item.text), [
+    '如何让协作更顺畅？', '如何降低沟通成本？', '如何快速达成共识？'
+  ]);
+  assert.equal(problems[0].createdAt < problems[1].createdAt, true);
+  assert.equal(problems[1].createdAt < problems[2].createdAt, true);
+});
 
 test('房主可广播设计问题编辑态，非房主能看到且不推进业务水位', async () => {
   const h = createHarness();

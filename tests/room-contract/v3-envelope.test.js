@@ -155,6 +155,17 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
   };
   assert.equal(validateMemberView(view, '12345678'), true);
 
+  const withProblem = JSON.parse(JSON.stringify(view));
+  withProblem.session.setup.designProblems = [{
+    contributionId: 'problem-1', memberId: 'member-1', text: '设计问题',
+    entityVersion: 1, createdAt: 10
+  }];
+  withProblem.session.setup.selectedProblem = { ...withProblem.session.setup.designProblems[0] };
+  assert.equal(validateMemberView(withProblem, '12345678'), true);
+  delete withProblem.session.setup.designProblems[0].createdAt;
+  assert.equal(validateMemberView(withProblem, '12345678'), false,
+    '设计问题缺少首次提交时间时必须拒绝，避免客户端顺序漂移');
+
   const missingCases = [
     ['room.members', (copy) => { delete copy.room.members; }],
     ['room.hostMemberId', (copy) => { delete copy.room.hostMemberId; }],

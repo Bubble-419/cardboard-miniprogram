@@ -219,7 +219,12 @@ function resolveClosing(aggregate, deps) {
   const requiredVoters = new Set(closing.requiredMemberIds);
   const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId
     && requiredVoters.has(row.memberId));
-  const question = rows.sort((a, b) => a.createdAt - b.createdAt).find((row) => row.vote === 'question');
+  const seats = new Map((session.participants || []).map((item) => [item.memberId, item.seatNoAtStart]));
+  // V2 约定多人质疑时由冻结座次最小者接棒，提交网络时序不能改变下一行动者。
+  const question = rows.filter((row) => row.vote === 'question').sort((a, b) =>
+    (seats.get(a.memberId) || Number.MAX_SAFE_INTEGER)
+      - (seats.get(b.memberId) || Number.MAX_SAFE_INTEGER)
+      || a.createdAt - b.createdAt)[0];
   const summary = archiveActiveTurn(aggregate, question ? 'CLOSING_QUESTIONED' : 'CLOSING_ACCEPTED', null, deps);
   const dirty = summary ? [{ kind: 'turns', id: summary.turnId }] : [];
   if (question) {

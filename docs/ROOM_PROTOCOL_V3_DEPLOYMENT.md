@@ -240,7 +240,10 @@ flowchart LR
 - `assets/subAwait/wait-hero-5a8ea5.webp`
 - `assets/home/empty-history-6f27f1.webp`
 - `assets/brainstormMode/mode-cover-*.jpg`
-- `assets/halliGalli/step-*.webp`（同源 PNG 也不打包）
+- `assets/halliGalli/step-*.webp`
+
+Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
+加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
 
 云存储前缀：`miniprogram-static/`，与仓库相对路径一致。HTTPS 形如：
 

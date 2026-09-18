@@ -144,3 +144,40 @@ test('非房主从 Page Model 看到问题列表和房主编辑中标记', async
   assert.equal(page.data.problems[1].isMine, true);
   assert.equal(page.data.problems.some((item) => item.selected), false);
 });
+
+test('问题列表按服务端首次提交时间展示，Snapshot 刷新不会按随机 id 重排', async () => {
+  global.wx = { showToast() {} };
+  const definition = loadPageDefinition('../../pages/main-pages/selectProblem/index');
+  const page = makePage(definition, {
+    roomId: '12345678', isHost: true, myPlayerIndex: 1
+  });
+  page._pageAlive = true;
+  page._syncCategoriesFromBG = () => {};
+
+  await page._applyRoomSnapshot({
+    ok: true,
+    isHost: true,
+    members: [
+      { memberId: 'member-host', playerIndex: 1, nickName: '房主', isMe: true },
+      { memberId: 'member-2', playerIndex: 2, nickName: '玩家2' }
+    ],
+    view: {
+      session: {
+        sessionId: 'session-1',
+        workflow: { step: 'SELECT_DESIGN_PROBLEM', revision: 7 },
+        setup: {
+          designProblems: [
+            { contributionId: 'z-first', memberId: 'member-host', text: '先提交',
+              entityVersion: 1, createdAt: 100 },
+            { contributionId: 'a-second', memberId: 'member-2', text: '后提交',
+              entityVersion: 1, createdAt: 200 }
+          ]
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(page.data.problems.map((item) => item.id), ['z-first', 'a-second']);
+  assert.deepEqual(page.data.problems.map((item) => item.createTime), [100, 200]);
+  assert.equal(page.data.selectedProblemId, 'z-first');
+});

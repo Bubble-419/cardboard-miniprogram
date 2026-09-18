@@ -295,7 +295,7 @@ Page(withPageInteractionLock({
       const member = members.find((row) => row.memberId === item.memberId) || {};
       return { id: item.contributionId, contributionId: item.contributionId, text: item.text,
         entityVersion: item.entityVersion, playerIndex: member.playerIndex,
-        nickName: member.nickName || '', createTime: 0, submitTime: 0 };
+        nickName: member.nickName || '', createTime: item.createdAt, submitTime: item.createdAt };
     });
     this._applyProblemList(problemList);
   },

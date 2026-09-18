@@ -316,6 +316,7 @@ flowchart TD
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
+选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。
 
 ## 5. Partner
 
@@ -393,6 +394,8 @@ flowchart TD
   RUNE -->|ADVANCE_PARTNER_CLOSING| REVIEW
   REVIEW -->|COMPLETE_PARTNER_SESSION| DONE
 ```
+
+多人同时选择 `question` 时，按本场冻结 Participant 座次升序选择下一位行动者；客户端提交先后和网络时延不参与裁决。
 
 ## 6. 德国心脏病（Halli Galli）
 
@@ -502,7 +505,7 @@ flowchart TD
   MODE --> SPY --> EVENT
 ```
 
-离开的参与者历史事实保留用于归档回看，但不再计入当前 `required/submitted`、评分或投票裁决。
+离开的参与者历史事实保留用于归档回看，但不再出现在进行中页面的成员列表，也不再计入当前 `required/submitted`、评分或投票裁决。
 
 ## 9. 完成、返回大厅、重玩与历史
 

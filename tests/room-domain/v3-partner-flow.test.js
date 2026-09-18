@@ -173,6 +173,27 @@ test('Partner 收尾 question 回到新 Turn；全 pass 进入 Rune/Review 并�
   assert.equal(leaderboard.leaderboard.length, 3);
 });
 
+test('Partner 多人同时 question 时按冻结座次选择下一位，而不是按提交先后', async () => {
+  const { h, sessionId, turnId, u2MemberId } = await seedPartner();
+  await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'CLOSING' }
+  });
+  const closing = (await h.snapshot('host')).view.session.publicModeState.closing;
+
+  await h.command('u3', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'question' }
+  });
+  await h.command('u2', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'question' }
+  });
+
+  const snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'PARTNER_TURN');
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
+});
+
 test('离开的当前行动者原子归档 ABANDONED 并推进下一位', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const left = await h.command('u2', 'LEAVE_ROOM');

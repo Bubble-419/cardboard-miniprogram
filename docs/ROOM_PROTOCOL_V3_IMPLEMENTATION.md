@@ -188,7 +188,7 @@ view
 ├── room { roomId, lifecycle, hostMemberId, workshopName, members[] }
 ├── session
 │   ├── { sessionId, ordinal, status, mode, participants[] }
-│   ├── setup { scenarioSource, scenario, selectedProblem, proposedFirstMemberId }
+│   ├── setup { scenarioSource, scenario, selectedProblem, designProblems[], proposedFirstMemberId }
 │   ├── workflow { step, revision, roundNo, activeMemberId, turnId, phaseStartedAt }
 │   ├── progress / publicModeState / activeTurn
 │   └── result / recentMessages / activeArtifacts / turnSummaries
@@ -534,6 +534,10 @@ flowchart TD
 ```
 
 已离房成员的事实仍用于审计和历史展示，但会同时移出 `required/submitted` 进度集合；Partner 收尾与 Spy 淘汰裁决只统计当前 `requiredMemberIds` 中的票。
+进行中的页面模型只把 `status=ACTIVE` 的冻结 Participant 投影为可见/可选成员；历史回看与已完成场次的结算页仍投影全部冻结 Participant。
+
+设计问题的公共投影保留服务端 `createdAt`。客户端必须按该字段稳定排序，不能使用随机
+`contributionId` 或本地接收顺序推断提交先后；该字段同时经 Snapshot 和 Event Patch 更新。
 
 ## 11. 辅助能力归属
 
