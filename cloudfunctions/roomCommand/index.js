@@ -5,6 +5,20 @@ var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 
+// cloudfunctions/roomCommand/src/transport.js
+var require_transport = __commonJS({
+  "cloudfunctions/roomCommand/src/transport.js"(exports2, module2) {
+    "use strict";
+    function commandEnvelopeFromEvent2(event) {
+      if (!event || typeof event !== "object" || Array.isArray(event)) return event || {};
+      if (Object.prototype.hasOwnProperty.call(event, "command")) return event.command;
+      const { tcbContext: _platformContext, userInfo: _userInfo, ...legacyEnvelope } = event;
+      return legacyEnvelope;
+    }
+    module2.exports = { commandEnvelopeFromEvent: commandEnvelopeFromEvent2 };
+  }
+});
+
 // packages/room-contracts/index.js
 var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
@@ -3596,8 +3610,7 @@ var require_room_application = __commonJS({
       MAX_SESSION_DOCUMENT_BYTES,
       MAX_SYNC_RESPONSE_BYTES,
       MAX_INCREMENTAL_SYNC_EVENTS,
-      SIGNAL_TYPES,
-      WORKFLOW_STEP
+      SIGNAL_TYPES
     } = require_room_contracts();
     var { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require_room_domain();
     var {
@@ -3694,7 +3707,7 @@ var require_room_application = __commonJS({
         occurredAt: eventGroup.occurredAt
       };
     }
-    function createRoomApplication2(repo, options) {
+    function createRoomApplication(repo, options) {
       if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
       const appOptions = options || {};
       const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
@@ -3784,8 +3797,7 @@ var require_room_application = __commonJS({
             return !!(currentSessionId && row.sessionId === currentSessionId);
           }
           if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
-            const workflow = aggregate && aggregate.currentSession && aggregate.currentSession.workflow;
-            return !!(currentSessionId && row.sessionId === currentSessionId && workflow && workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM && Number(row.workflowRevision) === Number(workflow.revision) && String(row.value || ""));
+            return !!(currentSessionId && row.sessionId === currentSessionId && String(row.value || ""));
           }
           return false;
         }).forEach((row) => {
@@ -4253,7 +4265,7 @@ var require_room_application = __commonJS({
       };
     }
     module2.exports = {
-      createRoomApplication: createRoomApplication2,
+      createRoomApplication,
       hash,
       deriveCommandSeed,
       deterministicRandom,
@@ -4361,15 +4373,15 @@ var require_room_cloudbase_adapter = __commonJS({
     function sameDocument(left, right) {
       return stableStringify(left) === stableStringify(right);
     }
-    function createCloudBaseRoomRepository2(deps) {
-      const db2 = deps && deps.db;
-      if (!db2 || typeof db2.runTransaction !== "function") throw new Error("CloudBase transaction database required");
+    function createCloudBaseRoomRepository(deps) {
+      const db = deps && deps.db;
+      if (!db || typeof db.runTransaction !== "function") throw new Error("CloudBase transaction database required");
       function generateRoomId(commandId, actorUserId, attempt) {
         const value = parseInt(digest(`${actorUserId}:${commandId}:room:${attempt || 0}`).slice(0, 12), 16);
         return String(1e7 + value % 9e7);
       }
       async function transactCommand(input, handler) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const actionId = docId(`${input.scopeKey}:${input.commandId}`);
           const existing = await safeGet(transaction, COLLECTIONS.actions, actionId);
           if (existing) {
@@ -4481,7 +4493,7 @@ var require_room_cloudbase_adapter = __commonJS({
         });
       }
       async function readAggregate(roomId) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const aggregate = await loadAggregate(transaction, roomId);
           if (!aggregate) return null;
           const first = await transaction.collection(COLLECTIONS.events).where({ roomId }).orderBy("seq", "asc").limit(1).get();
@@ -4491,17 +4503,17 @@ var require_room_cloudbase_adapter = __commonJS({
         });
       }
       async function readSessionAggregate(roomId, sessionId) {
-        return db2.runTransaction((transaction) => loadSessionAggregate(transaction, roomId, sessionId));
+        return db.runTransaction((transaction) => loadSessionAggregate(transaction, roomId, sessionId));
       }
       async function listSessions(roomId, options) {
         const size = Math.min(50, Math.max(1, Number(options && options.limit) || 20));
         const before = Number(options && options.beforeOrdinal);
         const condition = {
           roomId,
-          status: db2.command.in(["COMPLETED", "CANCELLED"])
+          status: db.command.in(["COMPLETED", "CANCELLED"])
         };
-        if (Number.isInteger(before)) condition.ordinal = db2.command.lt(before);
-        const result = await db2.collection(COLLECTIONS.sessions).where(condition).orderBy("ordinal", "desc").limit(size + 1).get();
+        if (Number.isInteger(before)) condition.ordinal = db.command.lt(before);
+        const result = await db.collection(COLLECTIONS.sessions).where(condition).orderBy("ordinal", "desc").limit(size + 1).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listMessages(roomId, sessionId, options) {
@@ -4509,22 +4521,22 @@ var require_room_cloudbase_adapter = __commonJS({
         const rawBeforeSeq = options && options.beforeSeq;
         const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
         const condition = { roomId, sessionId };
-        if (beforeSeq != null) condition.commitSeq = db2.command.lt(beforeSeq);
-        const result = await db2.collection(COLLECTIONS.messages).where(condition).orderBy("commitSeq", "desc").limit(size + 1).get();
+        if (beforeSeq != null) condition.commitSeq = db.command.lt(beforeSeq);
+        const result = await db.collection(COLLECTIONS.messages).where(condition).orderBy("commitSeq", "desc").limit(size + 1).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function readSyncState(roomId, afterSeq, limit) {
-        const room = await safeGet(db2, COLLECTIONS.rooms, roomId);
+        const room = await safeGet(db, COLLECTIONS.rooms, roomId);
         if (!compatibleRoom(room)) return { room: null, events: [] };
         const ceiling = room.eventSeq;
         if (afterSeq >= ceiling) return { room, events: [] };
         if (ceiling - afterSeq > MAX_INCREMENTAL_SYNC_EVENTS) return { room, events: [] };
-        const _ = db2.command;
-        const result = await db2.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
+        const _ = db.command;
+        const result = await db.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
         return { room, events: (result && result.data || []).map(cleanDoc) };
       }
       async function findActiveRoom(userId) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
           if (!active) return null;
           const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
@@ -4535,7 +4547,7 @@ var require_room_cloudbase_adapter = __commonJS({
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
         const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
         const presenceId = docId(`${roomId}:${memberId}:${row.deviceSessionId}`);
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const existing = await safeGet(transaction, COLLECTIONS.presence, presenceId);
           if (existing && Number(existing.lastSeenAt) >= Number(lastSeenAt)) return existing;
           await transaction.collection(COLLECTIONS.presence).doc(presenceId).set({ data: row });
@@ -4543,15 +4555,15 @@ var require_room_cloudbase_adapter = __commonJS({
         });
       }
       async function listPresence(roomId) {
-        const result = await db2.collection(COLLECTIONS.presence).where({ roomId }).orderBy("lastSeenAt", "desc").limit(50).get();
+        const result = await db.collection(COLLECTIONS.presence).where({ roomId }).orderBy("lastSeenAt", "desc").limit(50).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listSignals(roomId) {
-        const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => safeGet(db2, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))));
+        const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => safeGet(db, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))));
         return rows.filter(Boolean);
       }
       async function upsertSignal(input) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const room = await safeGet(transaction, COLLECTIONS.rooms, input.roomId);
           if (!compatibleRoom(room)) return { ok: false, errCode: "ROOM_NOT_FOUND", errMsg: "\u623F\u95F4\u4E0D\u5B58\u5728" };
           const member = room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === input.actorUserId);
@@ -4673,53 +4685,55 @@ var require_room_cloudbase_adapter = __commonJS({
         upsertSignal
       };
     }
-    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId, safeGet };
-  }
-});
-
-// cloudfunctions/roomCommand/src/transport.js
-var require_transport = __commonJS({
-  "cloudfunctions/roomCommand/src/transport.js"(exports2, module2) {
-    "use strict";
-    function commandEnvelopeFromEvent2(event) {
-      if (!event || typeof event !== "object" || Array.isArray(event)) return event || {};
-      if (Object.prototype.hasOwnProperty.call(event, "command")) return event.command;
-      const { tcbContext: _platformContext, userInfo: _userInfo, ...legacyEnvelope } = event;
-      return legacyEnvelope;
-    }
-    module2.exports = { commandEnvelopeFromEvent: commandEnvelopeFromEvent2 };
+    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository, digest, docId, safeGet };
   }
 });
 
 // cloudfunctions/roomCommand/src/entry.js
-var cloud = require("wx-server-sdk");
-var { createRoomApplication } = require_room_application();
-var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
 var { commandEnvelopeFromEvent } = require_transport();
-cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-var db = cloud.database();
-var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
-  serverSecret: process.env.ROOM_PROTOCOL_SERVER_SECRET
-});
+var runtime;
+function isRetryableCommandError(errCode, errMsg) {
+  const code = String(errCode || "");
+  const message = String(errMsg || "");
+  return code === "DEPENDENCY_UNAVAILABLE" || code === "RATE_LIMITED" || code === "-501001" || /TransactionBusy|resource system error/i.test(message);
+}
+function commandFailure(error) {
+  console.error("roomCommand error", error);
+  const errCode = error && (error.errCode || error.code) || "INTERNAL_ERROR";
+  const errMsg = error && (error.errMsg || error.message) || "roomCommand failed";
+  return {
+    ok: false,
+    errCode,
+    errMsg,
+    retryable: isRetryableCommandError(errCode, errMsg)
+  };
+}
+function getRuntime() {
+  if (runtime) return runtime;
+  const cloud = require("wx-server-sdk");
+  const { createRoomApplication } = require_room_application();
+  const { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
+  cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  const db = cloud.database();
+  const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }), {
+    serverSecret: process.env.ROOM_PROTOCOL_SERVER_SECRET
+  });
+  runtime = { cloud, app };
+  return runtime;
+}
 exports.main = async (event) => {
-  const wxContext = cloud.getWXContext();
-  const userId = wxContext.OPENID || "";
-  const clientContext = event && event.clientContext || {};
-  const envelope = commandEnvelopeFromEvent(event);
   try {
+    const { cloud, app } = getRuntime();
+    const wxContext = cloud.getWXContext();
+    const userId = wxContext.OPENID || "";
+    const clientContext = event && event.clientContext || {};
+    const envelope = commandEnvelopeFromEvent(event);
     return await app.executeCommand(envelope, {
       userId,
       deviceSessionId: clientContext.deviceSessionId,
       touchPresence: clientContext.touchPresence === true
     });
   } catch (e) {
-    console.error("roomCommand error", e);
-    const errCode = e.errCode || e.code || "INTERNAL_ERROR";
-    return {
-      ok: false,
-      errCode,
-      errMsg: e.errMsg || e.message || "roomCommand failed",
-      retryable: ["DEPENDENCY_UNAVAILABLE", "RATE_LIMITED"].includes(errCode)
-    };
+    return commandFailure(e);
   }
 };

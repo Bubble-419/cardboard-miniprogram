@@ -166,3 +166,65 @@ test('创建命令返回 ALREADY_IN_ROOM 时恢复服务端当前房间，而不
   assert.equal(app.globalData.roomId, '87654321');
   assert.equal(toasts.includes('已经加入其他房间'), false);
 });
+
+test('创建房间遇到 -504002 时先恢复服务端当前房间', async () => {
+  const toasts = [];
+  let redirectedUrl = '';
+  global.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    showToast: (options) => toasts.push(options.title),
+    redirectTo(options) {
+      redirectedUrl = options.url;
+      if (options.success) options.success({});
+    },
+    reLaunch(options) {
+      redirectedUrl = options.url;
+      if (options.success) options.success({});
+    }
+  };
+
+  const page = loadHomePage({
+    dispatchRoomCommand: async () => {
+      const error = new Error('cloud.callFunction:fail Error: errCode: -504002');
+      error.errCode = -504002;
+      error.errMsg = 'cloud.callFunction:fail Error: errCode: -504002';
+      throw error;
+    },
+    getCurrentRoomPageSnapshot: async () => roomSnapshot('87654321'),
+    getRoomPageSnapshot: async () => roomSnapshot('87654321')
+  });
+
+  await page._handleCreateRoom();
+
+  assert.equal(redirectedUrl, '/pages/main-pages/addPlayer/index?roomId=87654321');
+  assert.equal(toasts.length, 0);
+});
+
+test('创建房间遇到 -504002 且没有当前房间时提示重新部署，不展示原始 errMsg', async () => {
+  const toasts = [];
+  global.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    showToast: (options) => toasts.push(options.title),
+    redirectTo() {},
+    reLaunch() {}
+  };
+
+  const page = loadHomePage({
+    dispatchRoomCommand: async () => {
+      const error = new Error('cloud.callFunction:fail Error: errCode: -504002');
+      error.errCode = -504002;
+      error.errMsg = 'cloud.callFunction:fail Error: errCode: -504002';
+      throw error;
+    },
+    getCurrentRoomPageSnapshot: async () => ({ ok: true, roomId: null }),
+    getRoomPageSnapshot: async () => ({ ok: true, roomId: null })
+  });
+
+  await page._handleCreateRoom();
+
+  assert.deepEqual(toasts, ['云函数执行失败，请重新部署']);
+});

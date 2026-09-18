@@ -5,7 +5,7 @@ const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, COMMAND_TYPES, EVENT_TYPES, ERR,
   fail, okResult, validateCommandEnvelope, stableStringify, isNonEmptyString,
   validatePublicViewPatch, validateActorViewPatch, MAX_SESSION_DOCUMENT_BYTES,
-  MAX_SYNC_RESPONSE_BYTES, MAX_INCREMENTAL_SYNC_EVENTS, SIGNAL_TYPES, WORKFLOW_STEP
+  MAX_SYNC_RESPONSE_BYTES, MAX_INCREMENTAL_SYNC_EVENTS, SIGNAL_TYPES
 } = require('@cardboard/room-contracts');
 const { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require('@cardboard/room-domain');
 const {
@@ -229,12 +229,10 @@ function createRoomApplication(repo, options) {
         return !!(currentSessionId && row.sessionId === currentSessionId);
       }
       if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
-        const workflow = aggregate && aggregate.currentSession && aggregate.currentSession.workflow;
+        // 高频 Sync 只读 Room + Signal，不为瞬时编辑态额外重建 Session。
+        // raw signal 只做当前 Session 粗筛；workflow revision 由 Page Model 与 Member View 精确校验。
         return !!(currentSessionId
           && row.sessionId === currentSessionId
-          && workflow
-          && workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM
-          && Number(row.workflowRevision) === Number(workflow.revision)
           && String(row.value || ''));
       }
       return false;

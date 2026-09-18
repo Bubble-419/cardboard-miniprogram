@@ -4,6 +4,7 @@
  * - 创建/加入房间时 upsert 一条记录（置顶）
  * - 游戏进行中定期/离页时写入 reviewSnapshot（设计问题、成员头像、轮次纪要）
  * - 房间结束/退出时再 upsert 一次刷新时间
+ * - 首页可进入管理态多选删除本地记录（不解散云端房间）
  * - 首页点卡片 → gamepage?mode=review，优先云端，失败则用本地快照
  */
 const HISTORY_STORAGE_KEY = 'historyWorkshops';
@@ -157,6 +158,30 @@ function upsertHistoryWorkshop(entry) {
   }
 }
 
+function _normalizeRoomIds(roomIds) {
+  const list = Array.isArray(roomIds) ? roomIds : [roomIds];
+  return list.map((id) => String(id || '').trim()).filter(Boolean);
+}
+
+/** 从首页历史列表移除指定房间，只影响本地记录，不解散云端房间 */
+function removeHistoryWorkshops(roomIds) {
+  const ids = _normalizeRoomIds(roomIds);
+  if (!ids.length) return getHistoryWorkshops();
+  const idSet = new Set(ids);
+  try {
+    const next = getHistoryWorkshops().filter((it) => {
+      if (!it) return false;
+      const roomId = String(it.roomId || it.id || '');
+      return !idSet.has(roomId);
+    });
+    wx.setStorageSync(HISTORY_STORAGE_KEY, next);
+    return next;
+  } catch (e) {
+    console.warn('[historyWorkshops] remove failed', e);
+    return getHistoryWorkshops();
+  }
+}
+
 function getHistoryWorkshopByRoomId(roomId) {
   if (!roomId) return null;
   return getHistoryWorkshops().find((it) => it && it.roomId === roomId) || null;
@@ -185,6 +210,7 @@ module.exports = {
   formatTime,
   getHistoryWorkshops,
   upsertHistoryWorkshop,
+  removeHistoryWorkshops,
   buildReviewSnapshot,
   getHistoryWorkshopByRoomId,
   getReviewSnapshot,

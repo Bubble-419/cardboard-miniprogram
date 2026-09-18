@@ -74,6 +74,31 @@ test('roomCommand still rejects unknown client command fields', async () => {
   assert.equal(result.errMsg, 'command.unexpectedClientField 是未知字段');
 });
 
+test('roomCommand 依赖加载失败时返回结构化错误，而不是让平台抛出 -504002', async () => {
+  const originalLoad = Module._load;
+  const entryPath = require.resolve('../../cloudfunctions/roomCommand/src/entry');
+
+  Module._load = function loadMissingSdk(request, parent, isMain) {
+    if (request === 'wx-server-sdk') {
+      throw Object.assign(new Error("Cannot find module 'wx-server-sdk'"), { code: 'MODULE_NOT_FOUND' });
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  delete require.cache[entryPath];
+  try {
+    const result = await require(entryPath).main({
+      command: createRoomCommand()
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.errCode, 'MODULE_NOT_FOUND');
+    assert.match(result.errMsg, /wx-server-sdk/);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[entryPath];
+  }
+});
+
 test('roomCommand ignores arbitrary platform metadata outside the wrapped command', async () => {
   const result = await invokeRoomCommand({
     command: createRoomCommand(),

@@ -3596,8 +3596,7 @@ var require_room_application = __commonJS({
       MAX_SESSION_DOCUMENT_BYTES,
       MAX_SYNC_RESPONSE_BYTES,
       MAX_INCREMENTAL_SYNC_EVENTS,
-      SIGNAL_TYPES,
-      WORKFLOW_STEP
+      SIGNAL_TYPES
     } = require_room_contracts();
     var { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require_room_domain();
     var {
@@ -3784,8 +3783,7 @@ var require_room_application = __commonJS({
             return !!(currentSessionId && row.sessionId === currentSessionId);
           }
           if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
-            const workflow = aggregate && aggregate.currentSession && aggregate.currentSession.workflow;
-            return !!(currentSessionId && row.sessionId === currentSessionId && workflow && workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM && Number(row.workflowRevision) === Number(workflow.revision) && String(row.value || ""));
+            return !!(currentSessionId && row.sessionId === currentSessionId && String(row.value || ""));
           }
           return false;
         }).forEach((row) => {

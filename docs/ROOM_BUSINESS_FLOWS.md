@@ -304,7 +304,7 @@ flowchart TD
 | 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
 | 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
-| Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 在对应条目显示「房主编辑中…」 |
+| Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 通过 2 秒 idle Sync 的 ephemeral 更新 Member View，并在对应条目显示「房主编辑中…」，不依赖 Event |
 | Host 保存问题正文 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
@@ -529,6 +529,8 @@ flowchart TD
 ```
 
 旧 Session 和 Facts 归档后不可变；新场次不复用旧 `sessionId/gameId/turnId/voteSessionId`。History 按 `ordinal` 分页，精确回看按 `sessionId` 获取独立 Snapshot，不切换当前 RoomClient 连接。
+
+首页「历史工作坊」是本地回看入口：普通态点卡片打开回看；管理态可单选、全选并删除本地索引与缓存 Snapshot。删除不会写入房间协议，也不会解散云端 Room 或删除归档 Session；本地存储失败时必须保留管理态和选中项。
 
 ## 10. View 正确性与端到端验收
 
