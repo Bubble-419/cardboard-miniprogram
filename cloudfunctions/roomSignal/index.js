@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 2;
+    var VIEW_SCHEMA_VERSION = 3;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;

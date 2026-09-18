@@ -21,6 +21,7 @@
 - 修改 `packages/room-contracts`、领域状态机、View 投影、持久化结构、云函数入口或部署资源时，必须在同一变更中更新对应活跃文档。
 - 版本号只以 `packages/room-contracts/index.js` 为准；文档不得复制一个未经核对的版本。
 - `Member View` 必须同时支持两条等价更新路径：Snapshot 完整替换和连续 Event Patch 增量归约。任何 View 字段变更都要同时检查 Snapshot projector、Event public/actor patch 和客户端 reducer。
+- 只要 `Member View` 的结构或可观察语义发生不兼容变化，就必须在同一提交中提升 `packages/room-contracts/index.js` 的 `VIEW_SCHEMA_VERSION`，包括字段增删或类型变化、枚举含义变化、`route/params/navigation/capabilities` 等投影语义变化、Public/Actor Patch 语义变化，以及客户端 reducer 对字段解释的变化。升级后必须重新构建所有 V3 云函数，并验证旧版本 Event/Sync 会触发重新读取 Snapshot、旧版本 Snapshot 会被拒绝安装，不能继续增量归约。
 - 页面只消费完整 `Member View`，不得根据 Snapshot 或 Event 来源走两套业务分支，也不得维护第二份权威房间状态。
 - 业务流程变化更新 `ROOM_BUSINESS_FLOWS.md`；数据归属或不变量变化更新 `ROOM_MODEL_STATE.md`；协议接口、同步或恢复变化更新 `ROOM_PROTOCOL_V3_IMPLEMENTATION.md`；云资源变化更新部署文档。
 - 不新增“计划”“阶段日志”“临时检查清单”作为长期架构文档。已经完成或废弃的内容直接删除，必要背景通过 ADR 或 Git 历史追溯。
