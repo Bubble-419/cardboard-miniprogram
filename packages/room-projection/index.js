@@ -222,11 +222,11 @@ function projectPublicView(aggregate) {
       }));
   } else if (session.mode === MODE.HALLI_GALLI) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
-    const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
     view.publicModeState = {
       firstMemberId: session.setup.proposedFirstMemberId || null,
       submittedMemberIds: ideas.map((item) => item.memberId),
-      ideas: reveal ? ideas.map((item) => ({ memberId: item.memberId, text: item.text })) : []
+      // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
+      ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
     };
   } else if (session.mode === MODE.SPY) {
     const spy = currentSpy(aggregate) || {};

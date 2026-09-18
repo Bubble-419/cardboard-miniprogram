@@ -1138,23 +1138,12 @@ Page(withPageInteractionLock({
     }
 
     if (selectedAction === 'helpLuck') {
-      return runPageInteraction(this, async () => {
-        const result = await dispatchRoomCommand(
-          'USE_PARTNER_SPECIAL',
-          { kind: 'HELP_LUCK' },
-          this._turnContext()
-        );
-        if (!result || result.ok !== true) {
-          wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
-          return;
-        }
-        this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
-          this._jumpToActionCard();
-          this.loadRoomData();
-        });
-      }, {
-        loadingText: '正在开启特殊行动…'
+      // 预览可以返回转盘；只有确定采用或取消采用时才消耗本轮特殊行动。
+      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
+        this._jumpToActionCard();
+        this.loadRoomData();
       });
+      return;
     }
 
     if (selectedAction === 'silent') {
@@ -1256,12 +1245,26 @@ Page(withPageInteractionLock({
     });
   },
 
+  async _consumeHelpLuck() {
+    const result = await dispatchRoomCommand(
+      'USE_PARTNER_SPECIAL',
+      { kind: 'HELP_LUCK' },
+      this._turnContext()
+    );
+    if (!result || result.ok !== true) {
+      wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
+      return false;
+    }
+    return true;
+  },
+
   async _cancelAdopt() {
     if (!this.data.roomId) return;
     if (this.data.currentRound == null) {
       await this.loadRoomData();
     }
     // 取消采用：特殊行动仍记为已使用，回 gamepage 继续倒计时
+    if (!await this._consumeHelpLuck()) return;
     this._stopStatePolling();
     await this._returnToGamepage();
   },
@@ -1277,6 +1280,7 @@ Page(withPageInteractionLock({
     if (this.data.currentRound == null) {
       await this.loadRoomData();
     }
+    if (!await this._consumeHelpLuck()) return;
     const app = getApp();
     if (!app.globalData) app.globalData = {};
     app.globalData.partnerAdoptDeckHint = {

@@ -42,6 +42,7 @@ const {
   isDiscussionPhase,
   isClosingPhase,
   STATEMENT_ALL_PASS,
+  STATEMENT_PARTIAL_PASS,
   STATEMENT_ALL_QUESTION
 } = require('../utils/partnerGamePhase');
 const {
@@ -273,8 +274,10 @@ Page(withPageInteractionLock({
     hostStatementTipReady: false,
     hostStatementTipSpotStyle: '',
     hostStatementTipTextStyle: '',
-    /** 表态并讨论：同步中禁止连点，避免未写完房间态被轮询打回出牌页 */
+    /** 表态结果由房主根据实体表态卡选择，选择前不推进房间态。 */
+    statementPickerVisible: false,
     statementSwitching: false,
+    statementSwitchAction: '',
     discussionSwitching: false,
     discussionSwitchAction: ''
   },
@@ -2022,7 +2025,7 @@ Page(withPageInteractionLock({
     if (this._isHistoryReviewMode()) {
       roomPhase = PHASE_PLAY;
     }
-    const switchingDiscussion = this.data.statementSwitching || this._startingStatement
+    const switchingDiscussion = this.data.statementSwitching
       || this.data.discussionSwitching || this._endingDiscussion;
     if (switchingDiscussion) {
       const localPhase = this.data.gamepagePhase;
@@ -5016,51 +5019,62 @@ Page(withPageInteractionLock({
   },
 
   handleStartStatement() {
-    return runPageInteraction(this, () => this._startStatement(), {
-      loadingText: '正在开始讨论…'
+    if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
+    if (this.data.statementSwitching) return;
+    this.setData({ statementPickerVisible: true, statementSwitchAction: '' });
+  },
+
+  handleCloseStatementPicker() {
+    if (this.data.statementSwitching) return;
+    this.setData({ statementPickerVisible: false, statementSwitchAction: '' });
+  },
+
+  handleStatementResult(e) {
+    return runPageInteraction(this, () => this._submitStatementResult(e), {
+      loadingText: '正在提交表态…'
     });
   },
 
-  async _startStatement() {
-    if (!this.data.canStartStatement || isDiscussionPhase(this.data.gamepagePhase)) return;
-    if (this.data.statementSwitching || this._startingStatement) return;
-    this._startingStatement = true;
-
+  async _submitStatementResult(e) {
+    if (!this.data.isHost || !this.data.statementPickerVisible || this.data.statementSwitching) return;
+    const statementResult = e && e.currentTarget && e.currentTarget.dataset
+      && e.currentTarget.dataset.result;
+    if (![STATEMENT_ALL_PASS, STATEMENT_PARTIAL_PASS, STATEMENT_ALL_QUESTION].includes(statementResult)) {
+      return;
+    }
+    this.setData({ statementSwitching: true, statementSwitchAction: statementResult });
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-
-    // 先切讨论页，避免等云函数期间一直停在「进入中」
-    this.setData({
-      statementSwitching: false,
-      canStartStatement: false,
-      gamepagePhase: PHASE_DISCUSSION
-    }, () => {
-      this._syncRoundSpeech();
-    });
-
     try {
-      const cmd = await this._dispatchPartnerCommand('START_PARTNER_STATEMENT', {});
+      const cmd = await this._dispatchPartnerCommand('START_PARTNER_STATEMENT', { statementResult });
       if (!cmd || cmd.ok !== true) {
         this.setData({
-          gamepagePhase: PHASE_PLAY,
-          canStartStatement: true
+          statementSwitching: false,
+          statementSwitchAction: ''
         });
         wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
         this._startStatePolling();
         return;
       }
-      this._startStatePolling();
-    } catch (err) {
-      console.warn('handleStartStatement', err);
       this.setData({
-        gamepagePhase: PHASE_PLAY,
-        canStartStatement: true
+        statementPickerVisible: false,
+        statementSwitching: false,
+        statementSwitchAction: ''
       });
-      wx.showToast({ title: '进入讨论失败', icon: 'none' });
-      this._startStatePolling();
+      const session = this._boundRoomSession || getActiveRoomSession();
+      const snapshot = session && session.getSnapshot && session.getSnapshot();
+      if (snapshot) this._applyRoomContext(snapshot, { resetTurnUi: true, force: true });
+    } catch (err) {
+      console.warn('handleStatementResult', err);
+      this.setData({
+        statementSwitching: false,
+        statementSwitchAction: ''
+      });
+      wx.showToast({ title: '表态提交失败', icon: 'none' });
     } finally {
-      this._startingStatement = false;
+      this._syncRoundSpeech();
+      this._startStatePolling();
     }
   },
 
@@ -5080,17 +5094,13 @@ Page(withPageInteractionLock({
     return prev;
   },
 
-  handleAllPassFromDiscussion() {
-    return this.handleEndDiscussion({ statementResult: STATEMENT_ALL_PASS });
-  },
-
-  handleEndDiscussion(options) {
-    return runPageInteraction(this, () => this._endDiscussion(options), {
+  handleEndDiscussion() {
+    return runPageInteraction(this, () => this._endDiscussion(), {
       loadingText: '正在结束讨论…'
     });
   },
 
-  async _endDiscussion(options) {
+  async _endDiscussion() {
     if (!this.data.isHost) {
       wx.showToast({ title: '请等待房主结束讨论', icon: 'none' });
       return;
@@ -5098,17 +5108,15 @@ Page(withPageInteractionLock({
     if (this.data.discussionSwitching || this._endingDiscussion) return;
     this._endingDiscussion = true;
 
-    const statementResult = (options && options.statementResult) || STATEMENT_ALL_QUESTION;
-    const action = statementResult === STATEMENT_ALL_PASS ? 'allPass' : 'end';
     this.setData({
       discussionSwitching: true,
-      discussionSwitchAction: action
+      discussionSwitchAction: 'end'
     });
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
 
     try {
-      const cmd = await this._dispatchPartnerCommand('ADVANCE_PARTNER_TURN', { statementResult });
+      const cmd = await this._dispatchPartnerCommand('ADVANCE_PARTNER_TURN', {});
       if (!cmd || cmd.ok !== true) throw new Error(cmd && cmd.errMsg || '状态同步失败');
       this._starRatingPinnedOpen = false;
       this._starRatingDismissed = false;
@@ -6207,7 +6215,6 @@ Page(withPageInteractionLock({
 }, [
   'closeExpressComposer',
   'dismissHostStatementTip',
-  'handleAllPassFromDiscussion',
   'handleAvatarTap',
   'handleClosingNextStep',
   'handleEndBrainstorm',
@@ -6218,6 +6225,8 @@ Page(withPageInteractionLock({
   'handleReviewBack',
   'handleGoRoom',
   'handleRoundTimerExpire',
+  'handleCloseStatementPicker',
+  'handleStatementResult',
   'handleStartStatement',
   'handleViewSituation',
   'onCardImagePreview',

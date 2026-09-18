@@ -1,0 +1,107 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+function loadPageDefinition(app) {
+  const originalPage = global.Page;
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  let definition;
+  global.Page = (value) => { definition = value; };
+  global.getApp = () => app;
+  global.wx = {
+    showToast() {},
+    getStorageSync() { return null; },
+    setStorageSync() {},
+    getWindowInfo() { return { windowHeight: 800, statusBarHeight: 44 }; },
+    getMenuButtonBoundingClientRect() { return { top: 48, height: 32, width: 87, right: 360 }; }
+  };
+  const modulePath = require.resolve('../../pages/main-pages/partnerMode/specialMove/index');
+  delete require.cache[modulePath];
+  require(modulePath);
+  delete require.cache[modulePath];
+  global.Page = originalPage;
+  global.getApp = originalGetApp;
+  global.wx = originalWx;
+  return definition;
+}
+
+function makePage(definition, data) {
+  const page = {
+    ...definition,
+    data: { ...definition.data, ...data },
+    setData(patch, callback) {
+      Object.assign(this.data, patch);
+      if (typeof callback === 'function') callback();
+    }
+  };
+  Object.keys(definition).forEach((key) => {
+    if (typeof definition[key] === 'function') page[key] = definition[key].bind(page);
+  });
+  page._jumpToActionCard = () => {};
+  page.loadRoomData = async () => {};
+  page._stopStatePolling = () => {};
+  page._returnToGamepage = async () => {};
+  return page;
+}
+
+async function withRuntime(app, run) {
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  global.getApp = () => app;
+  global.wx = { showToast() {} };
+  try {
+    return await run();
+  } finally {
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+  }
+}
+
+function fixture() {
+  const commands = [];
+  const app = { globalData: {} };
+  app.globalData.roomId = '12345678';
+  app.globalData.roomSession = {
+    roomId: '12345678',
+    getView: () => ({
+      actor: { capabilities: { USE_PARTNER_SPECIAL: { allowed: true } } },
+      session: { sessionId: 's1', activeTurn: { turnId: 't1' } }
+    }),
+    dispatch: async (command) => {
+      commands.push(command);
+      return { ok: true };
+    }
+  };
+  const definition = loadPageDefinition(app);
+  const page = makePage(definition, {
+    roomId: '12345678', sessionId: 's1', turnId: 't1', currentRound: 1,
+    selectedAction: 'helpLuck', viewMode: 'wheel'
+  });
+  return { app, page, commands };
+}
+
+test('反面随机拼预览和返回转盘不消耗特殊行动', async () => {
+  const { app, page, commands } = fixture();
+  await withRuntime(app, async () => {
+    await page.handleConfirm();
+    assert.equal(page.data.viewMode, 'reverseRandom');
+    assert.equal(commands.length, 0, '打开预览不应发送 USE_PARTNER_SPECIAL');
+
+    await page.handleGoBack();
+    assert.equal(page.data.viewMode, 'wheel');
+    assert.equal(commands.length, 0, '从预览返回转盘不应消耗特殊行动');
+  });
+});
+
+test('反面随机拼只在取消采用或采用卡组时消耗特殊行动', async () => {
+  for (const action of ['handleCancelAdopt', 'handleAdoptDeck']) {
+    const { app, page, commands } = fixture();
+    page.setData({ viewMode: 'reverseRandom' });
+    await withRuntime(app, async () => page[action]());
+    assert.equal(commands.length, 1, `${action} 应当只发送一次指令`);
+    assert.equal(commands[0].type, 'USE_PARTNER_SPECIAL');
+    assert.deepEqual(commands[0].payload, { kind: 'HELP_LUCK' });
+  }
+});

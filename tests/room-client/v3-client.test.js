@@ -251,8 +251,7 @@ test('跨配置、Partner 换轮和中途加入后，分批 Event 仍与最新 S
   await h.command('u2', 'POST_PARTNER_MESSAGE', {
     context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' }, payload: { text: '事件等价性' }
   });
-  await h.command('host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId } });
-  await h.command('host', 'ADVANCE_PARTNER_TURN', {
+  await h.command('host', 'START_PARTNER_STATEMENT', {
     context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
   });
   await h.command('u4', 'JOIN_ROOM', { payload: { nickName: '旁观者' } });

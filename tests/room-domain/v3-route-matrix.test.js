@@ -225,11 +225,13 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await runCommand(h, 'u3', 'SUBMIT_PARTNER_SCORE', {
     context: { sessionId, turnId: firstTurnId }, payload: { scoreHalfSteps: 9 }
   });
-  await runCommand(h, 'host', 'START_PARTNER_STATEMENT', { context: { sessionId, turnId: firstTurnId } });
+  await runCommand(h, 'host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId: firstTurnId }, payload: { statementResult: 'partialPass' }
+  });
   await assertRoutes(h, { host: 'partnerGame', u2: 'partnerGame', u3: 'partnerGame' }, 'Partner 表态');
 
   await runCommand(h, 'host', 'ADVANCE_PARTNER_TURN', {
-    context: { sessionId, turnId: firstTurnId }, payload: { statementResult: 'allPass' }
+    context: { sessionId, turnId: firstTurnId }
   });
   host = await h.snapshot('host');
   const closingTurnId = host.view.session.activeTurn.turnId;

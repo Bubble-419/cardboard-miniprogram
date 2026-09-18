@@ -10,8 +10,8 @@ var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
     var PROTOCOL_VERSION = 3;
-    var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 5;
+    var SCHEMA_VERSION = 5;
+    var VIEW_SCHEMA_VERSION = 6;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -292,8 +292,8 @@ var require_room_contracts = __commonJS({
       REMOVE_ARTIFACT: ["operationId"],
       SUBMIT_PARTNER_SCORE: ["scoreHalfSteps"],
       POST_PARTNER_MESSAGE: ["text"],
-      START_PARTNER_STATEMENT: [],
-      ADVANCE_PARTNER_TURN: ["statementResult"],
+      START_PARTNER_STATEMENT: ["statementResult"],
+      ADVANCE_PARTNER_TURN: [],
       USE_PARTNER_SPECIAL: ["kind"],
       END_PARTNER_SILENT: [],
       SUBMIT_PARTNER_CLOSING_VOTE: ["vote"],
@@ -436,7 +436,7 @@ var require_room_contracts = __commonJS({
           return fail(ERR.LIMIT_EXCEEDED, "\u7D20\u6750\u5F15\u7528\u8D85\u8FC7\u4E0A\u9650");
         }
       }
-      if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
+      if (type === COMMAND_TYPES.START_PARTNER_STATEMENT && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
         return fail(ERR.INVALID_ARGUMENT, "statementResult \u4E0D\u5408\u6CD5");
       }
       if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM, COMMAND_TYPES.UPDATE_MEMBER_PROFILE].includes(type) && payload.nickName != null) {
@@ -1371,7 +1371,22 @@ var require_partner = __commonJS({
         if (check.turn.ordinal >= MAX_PARTNER_TURNS) {
           return fail(ERR.LIMIT_EXCEEDED, `\u5F53\u524D\u573A\u6B21\u5DF2\u8FBE\u5230 ${MAX_PARTNER_TURNS} \u4E2A\u884C\u52A8\u8F6E\uFF0C\u8BF7\u4F7F\u7528\u6536\u5C3E\u884C\u52A8`);
         }
+        if (command.payload.statementResult === "allPass") {
+          const summary = archiveActiveTurn(aggregate, "COMPLETED", "allPass", deps);
+          const turn = beginNextPartnerTurn(aggregate, deps);
+          if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
+          return domainOk(
+            aggregate,
+            [
+              event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),
+              event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: turn.activeMemberId, roundNo: turn.roundNo })
+            ],
+            { kind: "ACCEPTED", turnId: turn.turnId },
+            [{ kind: "turns", id: summary.turnId }]
+          );
+        }
         check.turn.phase = "STATEMENT";
+        check.turn.statementResult = command.payload.statementResult;
         check.turn.phaseStartedAt = nowOf(deps);
         check.turn.masterMode = false;
         check.turn.silentStartedAt = null;
@@ -1388,7 +1403,7 @@ var require_partner = __commonJS({
         if (!host.ok) return host;
         const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]);
         if (!check.ok) return check;
-        const summary = archiveActiveTurn(aggregate, "COMPLETED", command.payload.statementResult || null, deps);
+        const summary = archiveActiveTurn(aggregate, "COMPLETED", check.turn.statementResult, deps);
         const turn = beginNextPartnerTurn(aggregate, deps);
         if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
         return domainOk(
@@ -3180,11 +3195,11 @@ var require_room_projection = __commonJS({
         }));
       } else if (session.mode === MODE.HALLI_GALLI) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
-        const reveal = session.workflow.step === WORKFLOW_STEP.HALLI_SUMMARY || session.status === SESSION_STATUS.COMPLETED;
         view.publicModeState = {
           firstMemberId: session.setup.proposedFirstMemberId || null,
           submittedMemberIds: ideas.map((item) => item.memberId),
-          ideas: reveal ? ideas.map((item) => ({ memberId: item.memberId, text: item.text })) : []
+          // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
+          ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
         };
       } else if (session.mode === MODE.SPY) {
         const spy = currentSpy(aggregate) || {};

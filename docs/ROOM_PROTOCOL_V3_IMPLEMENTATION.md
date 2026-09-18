@@ -437,7 +437,8 @@ stateDiagram-v2
   [*] --> PARTNER_TURN: 确认首位成员
   PARTNER_TURN --> PARTNER_TURN: 评分/表达/素材/HELP_LUCK/MASTER
   PARTNER_TURN --> PARTNER_TURN: SILENT 开启/结束
-  PARTNER_TURN --> PARTNER_STATEMENT: 全部有效评分完成
+  PARTNER_TURN --> PARTNER_TURN: START_PARTNER_STATEMENT(allPass)
+  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT(partialPass/allQuestion)
   PARTNER_STATEMENT --> PARTNER_TURN: 归档 Turn + 下一成员
   PARTNER_TURN --> PARTNER_CLOSING_VOTE: 当前行动者使用 CLOSING
   PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一 question
@@ -445,6 +446,15 @@ stateDiagram-v2
   PARTNER_CLOSING_RUNE --> PARTNER_CLOSING_REVIEW: 房主推进
   PARTNER_CLOSING_REVIEW --> COMPLETED: 房主完成
 ```
+
+表态选择器是 Host 本地 UI，打开时不产生 Command。`START_PARTNER_STATEMENT`
+必须携带 `statementResult`：`allPass` 在同一事务内归档当前 Turn 并开始下一
+Turn；`partialPass/allQuestion` 将结果保存在权威 Active Turn 后进入讨论。
+`ADVANCE_PARTNER_TURN` 不再接收表态结果，它只能从 `PARTNER_STATEMENT`
+使用已保存结果归档并换轮，断线恢复不依赖客户端草稿。
+
+`HELP_LUCK` 的反面随机拼先进入可返回的本地预览；只有用户选择“取消采用”
+或“采用卡组”时才发送 `USE_PARTNER_SPECIAL(HELP_LUCK)`，从预览返回转盘不消耗行动。
 
 ```mermaid
 flowchart LR
@@ -472,6 +482,8 @@ stateDiagram-v2
 ```
 
 成员离开会在同一事务内缩减 `requiredMemberIds`；若剩余提交已经齐全，立即进入汇总。
+已提交的 Halli 创意在 `HALLI_CREATIVE` 阶段就进入公共 View，每次提交产生的
+Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
 
 ## 8. Spy 状态机与秘密边界
 

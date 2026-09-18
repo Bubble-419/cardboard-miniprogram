@@ -327,7 +327,8 @@ stateDiagram-v2
   [*] --> PARTNER_TURN
   PARTNER_TURN --> PARTNER_TURN: Score / Message / Artifact / HELP_LUCK / MASTER
   PARTNER_TURN --> PARTNER_TURN: SILENT 开始或结束
-  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT
+  PARTNER_TURN --> PARTNER_TURN: START_PARTNER_STATEMENT(allPass)
+  PARTNER_TURN --> PARTNER_STATEMENT: START_PARTNER_STATEMENT(partialPass/allQuestion)
   PARTNER_STATEMENT --> PARTNER_TURN: ADVANCE_PARTNER_TURN
   PARTNER_TURN --> PARTNER_CLOSING_VOTE: USE_PARTNER_SPECIAL(CLOSING)
   PARTNER_CLOSING_VOTE --> PARTNER_TURN: 任一 question
@@ -345,8 +346,10 @@ flowchart LR
   REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
   BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
 
-  TURN -->|全员评分后 Host“表态并讨论”| STATEMENT
-  STATEMENT -->|Host“没有疑问/结束讨论”| TURN
+  TURN --> PICK{全员评分后<br/>Host 选择实体表态卡结果}
+  PICK -->|全部通过| TURN
+  PICK -->|部分通过 / 全部疑问| STATEMENT
+  STATEMENT -->|Host“结束讨论”| TURN
   TURN -->|当前行动者“收尾行动”| VOTE
   VOTE -->|question| TURN
   VOTE -->|全部 pass| RUNE
@@ -359,15 +362,18 @@ flowchart LR
 | 非行动者星级评分 | `SUBMIT_PARTNER_SCORE` | 0～10 半星单位；同一 Turn 每人一次 |
 | 非行动者匿名表达 | `POST_PARTNER_MESSAGE` | 出牌阶段非行动者；讨论阶段所有参与者 |
 | 增删改文本/图片/语音 | `APPEND/UPDATE/REMOVE_ARTIFACT` | `operationId + entityVersion` 保证重试和并发正确 |
-| Host “表态并讨论” | `START_PARTNER_STATEMENT` | 当前 required 评分全部完成 |
-| Host “没有疑问/结束讨论” | `ADVANCE_PARTNER_TURN` | 归档当前 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`SILENT` 后其他成员叠入 `specialMove?silent=1`；仅房主采麦，声纹广播给全员 |
+| Host “开始表态” | 暂不发 Command | 只打开本地三态选择器，不改变权威状态 |
+| Host 选“全部通过” | `START_PARTNER_STATEMENT(allPass)` | 原子归档当前 Turn 并创建下一 Turn，不进入讨论 |
+| Host 选“部分通过/全部疑问” | `START_PARTNER_STATEMENT(partialPass/allQuestion)` | 将结果保存在 Active Turn，进入 `PARTNER_STATEMENT` 讨论 |
+| Host “结束讨论” | `ADVANCE_PARTNER_TURN` | 使用服务端已保存的表态结果归档 Turn，创建下一 Turn |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员叠入 `specialMove?silent=1`；仅房主采麦，声纹广播给全员 |
 | 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
 | Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。
+排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
@@ -424,7 +430,7 @@ flowchart LR
 
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
-线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。本人提交后可以先看等待汇总页，但在最后一人提交前不公开其他人的创意正文。
+线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。
 
 ## 7. 谁是卧底（Spy）
 

@@ -208,6 +208,7 @@ modeState.partner
 ├── roundRemainingMemberIds   # 本轮尚未开始的成员；开始 Turn 时立刻出队
 ├── activeTurn
 │   ├── turnId / activeMemberId / phase
+│   ├── statementResult          # 仅部分通过/全部疑问的讨论期保存
 │   ├── scoreProgress
 │   ├── specialUsed / masterMode
 │   └── silentStartedAt / silentDeadlineAt
@@ -217,7 +218,7 @@ modeState.partner
     └── stage
 ```
 
-完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。排行榜从归档 Turn 汇总，不由客户端提交。
+完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。“全部通过”在提交表态结果时直接归档；“部分通过/全部疑问”先把 `statementResult` 持久化到 Active Turn，讨论结束后再归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
 
 ### Halli Galli
 
@@ -228,7 +229,7 @@ facts.contributions[HALLI_IDEA]
 result.ideaCount
 ```
 
-创意在收集阶段只公开提交进度；进入 `HALLI_SUMMARY` 后才公开内容。
+创意是公共协作事实；每次 `SUBMIT_HALLI_IDEA` 都会将已提交内容增量投影给全员。`HALLI_SUMMARY` 表示全员提交完成，不是内容首次解封点。
 
 ### Spy
 
