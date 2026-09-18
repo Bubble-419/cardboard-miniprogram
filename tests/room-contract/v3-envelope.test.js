@@ -113,6 +113,12 @@ test('校验嵌套情境、全量席位与语义枚举', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.ADVANCE_PARTNER_TURN, {
     context: { sessionId: 's', turnId: 't' }, payload: {}
   })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.ADVANCE_PARTNER_TURN, {
+    context: { sessionId: 's', turnId: 't' }, payload: { statementResult: 'allPass' }
+  })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.ADVANCE_PARTNER_TURN, {
+    context: { sessionId: 's', turnId: 't' }, payload: { statementResult: 'unknown' }
+  })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SET_SCENARIO, {
     context: { sessionId: 's', workflowStep: 'CHOOSE_SCENARIO', workflowRevision: 1 },
     payload: { source: 'CUSTOM', scenario: { scene: '场景', user: '用户', function: '功能' } }

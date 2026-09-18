@@ -200,7 +200,7 @@ const COMMAND_PAYLOAD_KEYS = Object.freeze({
   SUBMIT_PARTNER_SCORE: ['scoreHalfSteps'],
   POST_PARTNER_MESSAGE: ['text'],
   START_PARTNER_STATEMENT: ['statementResult'],
-  ADVANCE_PARTNER_TURN: [],
+  ADVANCE_PARTNER_TURN: ['statementResult'],
   USE_PARTNER_SPECIAL: ['kind'],
   END_PARTNER_SILENT: [],
   SUBMIT_PARTNER_CLOSING_VOTE: ['vote'],
@@ -338,6 +338,10 @@ function validatePayload(type, payload) {
     }
   }
   if (type === COMMAND_TYPES.START_PARTNER_STATEMENT
+    && !['allPass', 'partialPass', 'allQuestion'].includes(payload.statementResult)) {
+    return fail(ERR.INVALID_ARGUMENT, 'statementResult 不合法');
+  }
+  if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN && payload.statementResult != null
     && !['allPass', 'partialPass', 'allQuestion'].includes(payload.statementResult)) {
     return fail(ERR.INVALID_ARGUMENT, 'statementResult 不合法');
   }

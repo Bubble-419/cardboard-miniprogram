@@ -57,19 +57,19 @@ function makePage(definition) {
   page._startStatePolling = () => {};
   page._syncRoundSpeech = () => {};
   page._applyRoomContext = () => {};
+  page._cancelStarPanelCollapse = () => {};
   return { page, commands };
 }
 
-test('Partner 表态选择器对房主提供三种 V2 结果', () => {
+test('开始表态直接进入疑问讨论页，不弹出三态选择器', async () => {
   const wxml = fs.readFileSync(path.resolve(
     __dirname, '../../pages/main-pages/partnerMode/gamepage/index.wxml'
   ), 'utf8');
-  for (const result of ['allPass', 'partialPass', 'allQuestion']) {
-    assert.match(wxml, new RegExp(`data-result="${result}"`));
-  }
-});
+  assert.doesNotMatch(wxml, /statement-picker-mask/);
+  assert.match(wxml, /bindtap="handleAllPassFromDiscussion"/);
+  assert.match(wxml, /handleAllPassFromDiscussion[\s\S]*?没有疑问/);
+  assert.match(wxml, /handleEndDiscussion[\s\S]*?结束讨论/);
 
-test('Partner 打开表态选择器不推进房间，选定结果后才发送指令', async () => {
   const originalWx = global.wx;
   const originalGetApp = global.getApp;
   global.wx = { showToast() {} };
@@ -77,15 +77,31 @@ test('Partner 打开表态选择器不推进房间，选定结果后才发送指
   try {
     const { page, commands } = makePage(loadPageDefinition());
     await page.handleStartStatement();
-    assert.equal(page.data.statementPickerVisible, true);
-    assert.equal(commands.length, 0);
-
-    await page.handleStatementResult({ currentTarget: { dataset: { result: 'partialPass' } } });
+    assert.equal(page.data.gamepagePhase, 'discussion');
     assert.deepEqual(commands, [{
       type: 'START_PARTNER_STATEMENT',
-      payload: { statementResult: 'partialPass' }
+      payload: { statementResult: 'allQuestion' }
     }]);
-    assert.equal(page.data.statementPickerVisible, false);
+  } finally {
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
+test('疑问讨论页两个按钮分别提交没有疑问和结束讨论', async () => {
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  global.wx = { showToast() {} };
+  global.getApp = () => ({ globalData: {} });
+  try {
+    const { page, commands } = makePage(loadPageDefinition());
+    page.data.gamepagePhase = 'discussion';
+    await page.handleAllPassFromDiscussion();
+    await page.handleEndDiscussion();
+    assert.deepEqual(commands, [
+      { type: 'ADVANCE_PARTNER_TURN', payload: { statementResult: 'allPass' } },
+      { type: 'ADVANCE_PARTNER_TURN', payload: { statementResult: 'allQuestion' } }
+    ]);
   } finally {
     global.wx = originalWx;
     global.getApp = originalGetApp;

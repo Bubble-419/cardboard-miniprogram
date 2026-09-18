@@ -1061,6 +1061,15 @@
     </view>
     <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
       <button
+        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
+        disabled="{{discussionSwitching}}"
+        loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
+        hover-class="none"
+        bindtap="handleAllPassFromDiscussion"
+      >
+        {{discussionSwitching && discussionSwitchAction === 'allPass' ? '处理中' : '没有疑问'}}
+      </button>
+      <button
         class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
         disabled="{{discussionSwitching}}"
         loading="{{discussionSwitching && discussionSwitchAction === 'end'}}"
@@ -1107,38 +1116,8 @@
           hover-class="none"
           bindtap="handleStartStatement"
         >
-          {{statementSwitching ? '提交中' : '开始表态'}}
+          {{statementSwitching ? '进入中' : '开始表态'}}
         </button>
-      </view>
-    </view>
-  </view>
-
-  <view class="statement-picker-mask" wx:if="{{statementPickerVisible}}" catchtouchmove="preventMove">
-    <view class="statement-picker-panel">
-      <view class="statement-picker-header">
-        <view class="statement-picker-close" bindtap="handleCloseStatementPicker">×</view>
-        <text class="statement-picker-title">请用实体表态卡表态</text>
-        <text class="statement-picker-subtitle">选择本轮表态统计结果</text>
-      </view>
-      <view class="statement-result-list">
-        <button
-          class="statement-result-btn statement-result-pass"
-          data-result="allPass"
-          disabled="{{statementSwitching}}"
-          bindtap="handleStatementResult"
-        >全部通过</button>
-        <button
-          class="statement-result-btn statement-result-partial"
-          data-result="partialPass"
-          disabled="{{statementSwitching}}"
-          bindtap="handleStatementResult"
-        >部分通过</button>
-        <button
-          class="statement-result-btn statement-result-question"
-          data-result="allQuestion"
-          disabled="{{statementSwitching}}"
-          bindtap="handleStatementResult"
-        >全部疑问</button>
       </view>
     </view>
   </view>

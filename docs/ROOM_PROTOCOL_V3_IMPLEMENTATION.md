@@ -451,11 +451,12 @@ stateDiagram-v2
   PARTNER_CLOSING_REVIEW --> COMPLETED: 房主完成
 ```
 
-表态选择器是 Host 本地 UI，打开时不产生 Command。`START_PARTNER_STATEMENT`
-必须携带 `statementResult`：`allPass` 在同一事务内归档当前 Turn 并开始下一
-Turn；`partialPass/allQuestion` 将结果保存在权威 Active Turn 后进入讨论。
-`ADVANCE_PARTNER_TURN` 不再接收表态结果，它只能从 `PARTNER_STATEMENT`
-使用已保存结果归档并换轮，断线恢复不依赖客户端草稿。
+表态选择器不再作为权威入口。Host 点「开始表态」即发送
+`START_PARTNER_STATEMENT(allQuestion)` 并进入疑问讨论页。`allPass` 仍可在同一事务内
+归档当前 Turn 并开始下一 Turn，但当前页面用讨论页「没有疑问」通过
+`ADVANCE_PARTNER_TURN(allPass)` 提交。`partialPass/allQuestion` 将结果保存在权威
+Active Turn 后进入讨论。`ADVANCE_PARTNER_TURN` 可选用 `statementResult` 覆盖已保存
+结果；未传时使用讨论开始时写入的结果。断线恢复不依赖客户端草稿。
 
 `HELP_LUCK` 的反面随机拼先进入可返回的本地预览；只有用户选择“取消采用”
 或“采用卡组”时才发送 `USE_PARTNER_SPECIAL(HELP_LUCK)`，从预览返回转盘不消耗行动。

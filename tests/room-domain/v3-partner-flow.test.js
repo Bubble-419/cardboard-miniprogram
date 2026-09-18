@@ -132,6 +132,24 @@ test('Partner 部分通过和全部疑问会保留结果进入讨论，结束后
   }
 });
 
+test('Partner 讨论中的没有疑问可以覆盖已保存的表态结果', async () => {
+  const { h, sessionId, turnId } = await seedPartner();
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 7 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allQuestion' }
+  });
+  const advanced = await h.command('host', 'ADVANCE_PARTNER_TURN', {
+    context: { sessionId, turnId }, payload: { statementResult: 'allPass' }
+  });
+  assert.equal(advanced.ok, true);
+  assert.equal(h.repo.rooms.get('12345678').facts.turns[turnId].statementResult, 'allPass');
+});
+
 test('Partner Artifact 的 operationId 只可重放同一业务操作', async () => {
   const { h, sessionId, turnId } = await seedPartner();
   const fields = { context: { sessionId, turnId, workflowStep: 'PARTNER_TURN' },
