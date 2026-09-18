@@ -109,5 +109,5 @@ test('selectPlayer 等待态和 subAwait 都不展示上一页', () => {
   assert.doesNotMatch(subAwait, /page-footer/);
   assert.doesNotMatch(subAwait, /bindtap="goBack"/);
   assert.doesNotMatch(subAwait, /back-icon/);
-  assert.match(subAwait, /wait-hero-5a8ea5\.webp/);
+  assert.match(subAwait, /src="\{\{waitHeroSrc\}\}"/);
 });

@@ -83,6 +83,26 @@
         "type": "folder"
       },
       {
+        "value": "packageSpy/assets",
+        "type": "folder"
+      },
+      {
+        "value": "assets/subAwait/wait-hero-5a8ea5.webp",
+        "type": "file"
+      },
+      {
+        "value": "assets/home/empty-history-6f27f1.webp",
+        "type": "file"
+      },
+      {
+        "value": "assets/brainstormMode/*.jpg",
+        "type": "glob"
+      },
+      {
+        "value": "assets/halliGalli/*.webp",
+        "type": "glob"
+      },
+      {
         "value": ".md",
         "type": "suffix"
       },

@@ -14,7 +14,7 @@
       <view class="hero-section">
         <image
           class="hero-image"
-          src="/assets/subAwait/wait-hero-5a8ea5.webp"
+          src="{{waitHeroSrc}}"
           mode="widthFix"
         />
       </view>

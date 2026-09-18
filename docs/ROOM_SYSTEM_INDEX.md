@@ -27,7 +27,7 @@ flowchart TD
 | [协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md) | Command、Snapshot、Event、View 和恢复如何工作？ | 活跃、协议主文档 |
 | [房间业务流程](./ROOM_BUSINESS_FLOWS.md) | 三种模式和成员变化如何推进？ | 活跃 |
 | [房间模型与状态](./ROOM_MODEL_STATE.md) | 权威数据放在哪里、有哪些状态与不变量？ | 活跃 |
-| [部署与验收清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md) | 云端需要创建和发布什么？ | 活跃 |
+| [部署与验收清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md) | 云端需要创建和发布什么？静态插图如何上传到云存储？ | 活跃 |
 | [ADR-0001](./adr/0001-room-snapshot-event-protocol.md) | 为什么不是全量轮询或完整事件溯源？ | Accepted |
 
 ## 当前系统一图

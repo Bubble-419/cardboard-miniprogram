@@ -6,6 +6,7 @@ const {
   getRoomPageSnapshot
 } = require('../../../../modules/room-session/index');
 const { runPageInteraction, withPageInteractionLock } = require('../../../../utils/pageInteractionLock');
+const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
 
 Page(withPageInteractionLock({
   data: {
@@ -16,7 +17,8 @@ Page(withPageInteractionLock({
     isSubmitting: false,
     voteResult: '',
     closingVoteSessionId: '',
-    closingVoteSeq: 0
+    closingVoteSeq: 0,
+    waitHeroSrc: WAIT_HERO_SRC
   },
 
   onLoad(options) {

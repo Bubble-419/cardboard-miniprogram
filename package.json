@@ -9,7 +9,8 @@
     "test:client": "node --require ./scripts/test-register.js --test tests/room-client/*.test.js",
     "test:ui": "node --require ./scripts/test-register.js --test tests/ui/*.test.js",
     "build:cloud": "node scripts/build-cloud-functions.js",
-    "build:roomCommand": "node scripts/build-cloud-functions.js roomCommand"
+    "build:roomCommand": "node scripts/build-cloud-functions.js roomCommand",
+    "upload:static": "node scripts/upload-static-cdn.js"
   },
   "engines": {
     "node": ">=18"
