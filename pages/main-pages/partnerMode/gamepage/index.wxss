@@ -1066,6 +1066,13 @@
   justify-content: center;
 }
 
+/* 讨论卡空状态贴着标题，避免「暂无匿名表达」撑出大块空白 */
+.spectator-chat-empty-compact {
+  padding: 0 0 8rpx;
+  min-height: 0;
+  justify-content: flex-start;
+}
+
 .spectator-chat-empty-text {
   font-size: 26rpx;
   color: #aeaeae;

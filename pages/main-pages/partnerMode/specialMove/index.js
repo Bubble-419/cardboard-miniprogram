@@ -111,7 +111,7 @@ Page(withPageInteractionLock({
     isHost: false,
     isCurrentPlayer: false,
     canEndSilent: false,
-    /** 声贝等级 0~1，房主本地采样或从房间轮询读取 */
+    /** 声贝等级 0~1，本机麦克风采样；无麦时回退房主瞬时信号 */
     soundLevel: 0,
     inspirationDraftText: '',
     inspirationInputFocused: false,
@@ -196,9 +196,11 @@ Page(withPageInteractionLock({
   onShow() {
     this._applyTopBarSafeInset();
     this._bindInspirationKeyboard();
+    this._silentRecordDenied = false;
     if (this.data.roomId) {
       this._startStatePolling();
     }
+    if (this.data.silentTimerActive) this._startSoundLevelSampling();
   },
 
   onHide() {
@@ -310,7 +312,7 @@ Page(withPageInteractionLock({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 仅房主采麦并广播；其他人只收瞬时信号
+    // 全员本机采麦测 40dB；无麦时再回退到房主广播的瞬时信号
     this._startSoundLevelSampling();
     if (!this._canEndSilent()) return;
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
@@ -844,16 +846,45 @@ Page(withPageInteractionLock({
 
   _ensureRecordAuth() {
     return new Promise((resolve) => {
+      if (this._silentRecordDenied) {
+        resolve(false);
+        return;
+      }
       wx.getSetting({
         success: (res) => {
           if (res.authSetting && res.authSetting['scope.record'] === true) {
             resolve(true);
             return;
           }
+          if (res.authSetting && res.authSetting['scope.record'] === false) {
+            wx.showModal({
+              title: '需要麦克风权限',
+              content: '静默模式要用本机麦克风监测是否低于 40dB',
+              confirmText: '去设置',
+              success: (modal) => {
+                if (!modal.confirm) {
+                  this._silentRecordDenied = true;
+                  resolve(false);
+                  return;
+                }
+                wx.openSetting({
+                  success: (settingRes) => {
+                    resolve(!!(settingRes.authSetting && settingRes.authSetting['scope.record']));
+                  },
+                  fail: () => resolve(false)
+                });
+              },
+              fail: () => resolve(false)
+            });
+            return;
+          }
           wx.authorize({
             scope: 'scope.record',
             success: () => resolve(true),
-            fail: () => resolve(false)
+            fail: () => {
+              this._silentRecordDenied = true;
+              resolve(false);
+            }
           });
         },
         fail: () => resolve(false)
@@ -861,57 +892,64 @@ Page(withPageInteractionLock({
     });
   },
 
-  /** 仅房主采麦；声纹通过瞬时 signal 广播，不进入业务 Event。 */
+  /** 全员本机采麦驱动边框；房主额外广播瞬时 signal，给无麦端回退。 */
   async _startSoundLevelSampling() {
-    this._stopSoundLevelSampling();
-    if (!this.data.isHost) return;
-    const allowed = await this._ensureRecordAuth();
-    if (!allowed || !this.data.silentTimerActive) return;
+    if (this._recorderManager || this._silentRecordStarting) return;
+    this._silentRecordStarting = true;
+    const token = (this._soundSampleToken = (this._soundSampleToken || 0) + 1);
+    try {
+      const allowed = await this._ensureRecordAuth();
+      if (token !== this._soundSampleToken) return;
+      if (!allowed || !this.data.silentTimerActive) return;
 
-    const manager = wx.getRecorderManager();
-    this._recorderManager = manager;
+      const manager = wx.getRecorderManager();
+      this._recorderManager = manager;
 
-    manager.onFrameRecorded((res) => {
-      if (!res || !res.frameBuffer) return;
-      try {
-        const buf = res.frameBuffer;
-        const samples = new Int16Array(buf);
-        if (!samples.length) return;
-        let sumSq = 0;
-        for (let i = 0; i < samples.length; i++) {
-          sumSq += samples[i] * samples[i];
+      manager.onFrameRecorded((res) => {
+        if (this._recorderManager !== manager || !this.data.silentTimerActive) return;
+        if (!res || !res.frameBuffer) return;
+        try {
+          const buf = res.frameBuffer;
+          const samples = new Int16Array(buf);
+          if (!samples.length) return;
+          let sumSq = 0;
+          for (let i = 0; i < samples.length; i++) {
+            sumSq += samples[i] * samples[i];
+          }
+          const rms = Math.sqrt(sumSq / samples.length);
+          const dbfs = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
+          // 0 dBFS ≈ 94 dB SPL 经验映射，使 40 dB 落在半周中段
+          const approxDb = Math.min(90, Math.max(0, dbfs + 94));
+          const lv = Math.min(1, approxDb / 80);
+          this._soundEma = this._soundEma == null
+            ? lv
+            : this._soundEma * 0.74 + lv * 0.26;
+          const smooth = Math.min(1, Math.max(0, this._soundEma));
+          if (Math.abs(smooth - (this.data.soundLevel || 0)) > 0.01) {
+            this.setData({ soundLevel: smooth });
+          }
+          if (this.data.isHost) this._broadcastSilentSoundLevel(smooth);
+        } catch (e) {
+          // ignore PCM parse errors
         }
-        const rms = Math.sqrt(sumSq / samples.length);
-        const dbfs = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
-        // 0 dBFS ≈ 94 dB SPL 经验映射，使 40 dB 落在半周中段
-        const approxDb = Math.min(90, Math.max(0, dbfs + 94));
-        const lv = Math.min(1, approxDb / 80);
-        this._soundEma = this._soundEma == null
-          ? lv
-          : this._soundEma * 0.74 + lv * 0.26;
-        const smooth = Math.min(1, Math.max(0, this._soundEma));
-        if (Math.abs(smooth - (this.data.soundLevel || 0)) > 0.01) {
-          this.setData({ soundLevel: smooth });
-        }
-        this._broadcastSilentSoundLevel(smooth);
-      } catch (e) {
-        // ignore PCM parse errors
-      }
-    });
+      });
 
-    manager.onError((err) => {
-      console.warn('silent recorder error', err);
-      this._stopSoundLevelSampling();
-    });
+      manager.onError((err) => {
+        console.warn('silent recorder error', err);
+        this._stopSoundLevelSampling();
+      });
 
-    manager.start({
-      duration: (SILENT_DURATION_SEC + 10) * 1000,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      encodeBitRate: 48000,
-      format: 'pcm',
-      frameSize: 1
-    });
+      manager.start({
+        duration: (SILENT_DURATION_SEC + 10) * 1000,
+        sampleRate: 16000,
+        numberOfChannels: 1,
+        encodeBitRate: 48000,
+        format: 'pcm',
+        frameSize: 1
+      });
+    } finally {
+      if (token === this._soundSampleToken) this._silentRecordStarting = false;
+    }
   },
 
   _broadcastSilentSoundLevel(level) {
@@ -931,6 +969,8 @@ Page(withPageInteractionLock({
   },
 
   _stopSoundLevelSampling() {
+    this._soundSampleToken = (this._soundSampleToken || 0) + 1;
+    this._silentRecordStarting = false;
     this._soundEma = null;
     if (this._recorderManager) {
       try { this._recorderManager.stop(); } catch (e) { /* ignore */ }
@@ -966,7 +1006,7 @@ Page(withPageInteractionLock({
               this._redirectToGamepageFromRoom(result);
               return true;
             }
-            // 未本地采样时：从房间同步声贝等级到音柱
+            // 本机没采上麦时：回退房主广播的瞬时声贝
             if (
               !this._recorderManager
               && this.data.silentTimerActive

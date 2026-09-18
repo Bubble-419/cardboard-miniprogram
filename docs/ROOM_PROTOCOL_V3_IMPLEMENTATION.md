@@ -546,7 +546,7 @@ flowchart TD
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
-| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写 | 否 |
+| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写。边框以各端本地麦克风为准，该 signal 只给无麦端回退 | 否 |
 | 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；同一成员 15 秒内幂等 | 否 |
 | 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。不推进 seq，成员端必须从 idle Sync 的 `ephemeral.signals`（以及 Page Model `editingProblemId`）读取，不能只等 Event | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |

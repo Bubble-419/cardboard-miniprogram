@@ -559,7 +559,7 @@
                         </view>
                       </view>
                     </view>
-                    <view class="spectator-chat-empty" wx:else>
+                    <view class="spectator-chat-empty spectator-chat-empty-compact" wx:else>
                       <text class="spectator-chat-empty-text">暂无匿名表达</text>
                     </view>
                   </view>
@@ -616,7 +616,7 @@
                       </view>
                       <view id="discussion-express-chat-bottom" style="height: 1rpx;"></view>
                     </view>
-                    <view class="spectator-chat-empty" wx:elif="{{!discussionBlocks.length}}">
+                    <view class="spectator-chat-empty spectator-chat-empty-compact" wx:elif="{{!discussionBlocks.length}}">
                       <text class="spectator-chat-empty-text">暂无疑问讨论</text>
                     </view>
                   </view>
