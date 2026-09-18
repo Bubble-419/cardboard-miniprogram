@@ -19,6 +19,7 @@ const {
   executeProjectedBack,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
+  getRoomRequestContext,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
 
@@ -33,6 +34,8 @@ Page(withPageInteractionLock({
     problems: [],
     selectedProblemId: null,
     myPlayerIndex: null,
+    sessionId: '',
+    workflowRevision: null,
     countdown: 5,
     editingProblemId: '',
     /** 他端同步的房主编辑中问题 id（只读展示） */
@@ -116,6 +119,10 @@ Page(withPageInteractionLock({
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
     }
+    this._stopEditingHeartbeat();
+    if (this.data.isHost && this.data.editingProblemId) {
+      this._syncEditingProblemId('');
+    }
     this._stopStatePolling();
   },
 
@@ -152,14 +159,23 @@ Page(withPageInteractionLock({
       const meMember = (result.members || []).find((m) => m.isMe);
       const me = avatarList.find((item) => item.isMe);
       const isHost = result.isHost === true;
+      const session = result.view && result.view.session;
       this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
 
       const patch = {
         workshopName: result.workshopName || '脑暴工作坊',
         currentUser: me ? me.id : null,
         myPlayerIndex: meMember ? meMember.playerIndex : null,
-        isHost
+        isHost,
+        sessionId: session && session.sessionId || this.data.sessionId || '',
+        workflowRevision: session && session.workflow && session.workflow.revision || null
       };
+      const remoteId = !isHost && result.roomState && result.roomState.editingProblemId
+        ? String(result.roomState.editingProblemId)
+        : '';
+      if (remoteId !== (this.data.remoteEditingProblemId || '')) {
+        patch.remoteEditingProblemId = remoteId;
+      }
       const avatarFp = (avatarList || [])
         .map((item) => `${item.id || ''}:${item.avatarImage || item.avatar || ''}`)
         .join('|');
@@ -361,13 +377,57 @@ Page(withPageInteractionLock({
           [`textareaHeights.${problemId}`]: height,
         });
         this._syncEditingProblemId(problemId);
+        this._startEditingHeartbeat();
       })
       .exec();
   },
 
   async _syncEditingProblemId(problemId) {
-    // 编辑态是本地 UI 临时状态，不进入房间事实模型。
-    return problemId;
+    const roomId = this.data.roomId || getApp().globalData.roomId || '';
+    const sessionId = this.data.sessionId || '';
+    const workflowRevision = this.data.workflowRevision;
+    if (!roomId || !sessionId || !Number.isInteger(workflowRevision) || !this.data.isHost) return problemId;
+    const contributionId = problemId == null ? '' : String(problemId);
+    // 所有编辑心跳与清空操作串行发送，避免旧心跳晚到后覆盖清空状态。
+    const previous = this._editingSignalQueue || Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+      try {
+        await wx.cloud.callFunction({
+          name: 'roomSignal',
+          data: {
+            roomId,
+            sessionId,
+            workflowRevision,
+            signalType: 'DESIGN_PROBLEM_EDITING',
+            value: contributionId,
+            clientContext: getRoomRequestContext()
+          }
+        });
+      } catch (e) {
+        console.warn('sync editingProblemId', e);
+      }
+      return problemId;
+    });
+    this._editingSignalQueue = task.then(() => undefined, () => undefined);
+    return task;
+  },
+
+  _startEditingHeartbeat() {
+    this._stopEditingHeartbeat();
+    this._editingHeartbeat = setInterval(() => {
+      if (!this._pageAlive || !this.data.isHost || !this.data.editingProblemId) {
+        this._stopEditingHeartbeat();
+        return;
+      }
+      this._syncEditingProblemId(this.data.editingProblemId);
+    }, 20000);
+  },
+
+  _stopEditingHeartbeat() {
+    if (this._editingHeartbeat) {
+      clearInterval(this._editingHeartbeat);
+      this._editingHeartbeat = null;
+    }
   },
 
   stopPropagation() {},
@@ -379,8 +439,9 @@ Page(withPageInteractionLock({
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
     const text = ((problem && problem.text) || '').trim();
+    this._stopEditingHeartbeat();
     this.setData({ editingProblemId: '' });
-    this._syncEditingProblemId('');
+    await this._syncEditingProblemId('');
 
     if (!text) return;
     return runPageInteraction(this, async () => {
@@ -408,8 +469,9 @@ Page(withPageInteractionLock({
     const problem = this.data.problems.find((p) => p.id === id);
     if (!problem) return;
     const text = (e.detail.value || '').trim();
+    this._stopEditingHeartbeat();
     this.setData({ editingProblemId: '' });
-    this._syncEditingProblemId('');
+    await this._syncEditingProblemId('');
     if (!id || !text) return;
 
     const problems = this.data.problems.map((item) => (
@@ -438,7 +500,9 @@ Page(withPageInteractionLock({
 
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
       if (this.data.editingProblemId) {
+        this._stopEditingHeartbeat();
         this.setData({ editingProblemId: '' });
+        await this._syncEditingProblemId('');
       }
       const result = await dispatchRoomCommand('SELECT_DESIGN_PROBLEM', {
         contributionId: problem.id

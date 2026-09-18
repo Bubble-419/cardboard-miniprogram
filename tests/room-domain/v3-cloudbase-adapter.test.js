@@ -382,7 +382,7 @@ test('CloudBase Presence 与 Signal 拒绝较旧请求覆盖较新时间戳', as
   assert.equal(documents.get(`${COLLECTIONS.signals}:${signalId}`).value, 0.9);
 });
 
-test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计问题催促', async () => {
+test('CloudBase Signal 按类型点读公开文档，已提交者可写入设计问题催促', async () => {
   const { SIGNAL_TYPES } = require('@cardboard/room-contracts');
   const soundId = docId('12345678:PARTNER_SILENT_SOUND');
   const nudgeId = docId('12345678:DESIGN_PROBLEM_NUDGE');
@@ -474,6 +474,89 @@ test('CloudBase Signal 按类型点读两篇文档，已提交者可写入设计
   assert.equal(rejected.errCode, 'INVALID_TRANSITION');
   assert.equal(listedAfter.length, 2);
   assert.equal(documents.get(`${COLLECTIONS.signals}:${nudgeId}`).memberId, 'member-2');
+});
+
+test('CloudBase 仅房主可在选题步骤写入设计问题编辑态', async () => {
+  const { SIGNAL_TYPES } = require('@cardboard/room-contracts');
+  const editingId = docId('12345678:DESIGN_PROBLEM_EDITING');
+  const documents = new Map([
+    [`${COLLECTIONS.rooms}:12345678`, {
+      roomId: '12345678', ...CURRENT_ROOM_VERSION, lifecycle: 'OPEN',
+      currentSessionId: 'session-1', hostMemberId: 'member-host',
+      members: [
+        { userId: 'host', memberId: 'member-host' },
+        { userId: 'u2', memberId: 'member-2' }
+      ]
+    }],
+    [`${COLLECTIONS.sessions}:session-1`, {
+      roomId: '12345678',
+      sessionId: 'session-1',
+      workflow: { step: 'SELECT_DESIGN_PROBLEM', revision: 7 },
+      participants: [
+        { memberId: 'member-host', status: 'ACTIVE' },
+        { memberId: 'member-2', status: 'ACTIVE' }
+      ],
+      facts: {
+        contributions: {
+          'session-1:DESIGN_PROBLEM:member-host': {
+            contributionId: 'problem-1',
+            sessionId: 'session-1',
+            kind: 'DESIGN_PROBLEM',
+            memberId: 'member-host',
+            text: '如何让协作更顺畅？'
+          }
+        }
+      }
+    }]
+  ]);
+  const store = {
+    collection(name) {
+      return {
+        doc(id) {
+          const key = `${name}:${id}`;
+          return {
+            async get() {
+              if (!documents.has(key)) {
+                throw Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
+              }
+              return { data: documents.get(key) };
+            },
+            async set({ data }) { documents.set(key, data); }
+          };
+        }
+      };
+    }
+  };
+  const db = {
+    runTransaction: (callback) => callback(store),
+    collection: (name) => store.collection(name)
+  };
+  const repo = createCloudBaseRoomRepository({ db });
+
+  const written = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    workflowRevision: 7,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5000
+  });
+  const rejected = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'u2', sessionId: 'session-1',
+    workflowRevision: 7,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: 'problem-1', now: 5001
+  });
+  const cleared = await repo.upsertSignal({
+    roomId: '12345678', actorUserId: 'host', sessionId: 'session-1',
+    workflowRevision: 7,
+    signalType: SIGNAL_TYPES.DESIGN_PROBLEM_EDITING, value: '', now: 5002
+  });
+
+  assert.equal(written.ok, true);
+  assert.equal(written.signal.value, 'problem-1');
+  assert.equal(written.signal.workflowRevision, 7);
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.errCode, 'HOST_REQUIRED');
+  assert.equal(cleared.ok, true);
+  assert.equal(cleared.signal.value, '');
+  assert.equal(documents.get(`${COLLECTIONS.signals}:${editingId}`).expiresAt, 5002);
 });
 
 test('CloudBase 房间元数据命令不重复写 Session 和未变化的活跃索引', async () => {

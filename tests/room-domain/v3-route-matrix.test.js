@@ -165,9 +165,9 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   await runCommand(h, 'u3', 'SUBMIT_DESIGN_PROBLEM', {
     context: { sessionId }, payload: { text: '问题 C' }
   });
-  await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '选择问题');
+  await assertRoutes(h, { host: 'selectProblem', u2: 'selectProblem', u3: 'selectProblem' }, '选择问题');
   assertBack(await h.snapshot('host'), 'RESET_SCENARIO');
-  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'selectProblem');
+  assert.equal((await h.snapshot('u2')).view.navigation.back.kind, 'NONE');
 
   host = await h.snapshot('host');
   const problemId = host.view.session.setup.designProblems[0].contributionId;
@@ -181,8 +181,7 @@ test('Partner：配置、行动、收尾和排行榜均投影到正确角色页�
   assertBack(await h.snapshot('host'), 'RESET_DESIGN_PROBLEM');
 
   await runCommand(h, 'host', 'RESET_DESIGN_PROBLEM', { context: { sessionId } });
-  await assertRoutes(h, { host: 'selectProblem', u2: 'subAwait', u3: 'subAwait' }, '从选首位返回重选问题');
-  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'selectProblem');
+  await assertRoutes(h, { host: 'selectProblem', u2: 'selectProblem', u3: 'selectProblem' }, '从选首位返回重选问题');
   assert.equal((await h.snapshot('host')).view.actor.capabilities.RESET_DESIGN_PROBLEM.allowed, false);
 
   await runCommand(h, 'host', 'SELECT_DESIGN_PROBLEM', {

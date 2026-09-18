@@ -153,6 +153,9 @@ test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与
     context: { sessionId }, payload: { text: '如何快速达成共识？' }
   });
   assertScreen(state.snapshot, 'SELECT_DESIGN_PROBLEM', 'selectProblem');
+  const selectingPlayer = await h.snapshot('u2');
+  assert.equal(selectingPlayer.view.route.name, 'selectProblem');
+  assert.equal(selectingPlayer.view.session.setup.designProblems.length, 3);
 
   const problemId = state.snapshot.view.session.setup.designProblems[0].contributionId;
   state = await executeAndReduce(h, 'host', 'SELECT_DESIGN_PROBLEM', {

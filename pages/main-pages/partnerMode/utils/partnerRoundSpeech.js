@@ -2,7 +2,7 @@ const SEGMENT_DURATION_MS = 59000;
 
 const {
   dispatchRoomCommand, getActiveRoomSession, getRoomRequestContext
-} = require('../modules/room-session/index');
+} = require('../../../../modules/room-session/index');
 
 function getCloudInstance() {
   const app = getApp();

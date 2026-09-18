@@ -55,6 +55,10 @@
         "type": "folder"
       },
       {
+        "value": "cloudfunctions",
+        "type": "folder"
+      },
+      {
         "value": "cloud-common",
         "type": "folder"
       },
@@ -73,6 +77,30 @@
       {
         "value": "packages/room-cloudbase-adapter",
         "type": "folder"
+      },
+      {
+        "value": "assets/figma",
+        "type": "folder"
+      },
+      {
+        "value": "packageSpy/assets",
+        "type": "folder"
+      },
+      {
+        "value": "assets/subAwait/wait-hero-5a8ea5.webp",
+        "type": "file"
+      },
+      {
+        "value": "assets/home/empty-history-6f27f1.webp",
+        "type": "file"
+      },
+      {
+        "value": "assets/brainstormMode/*.jpg",
+        "type": "glob"
+      },
+      {
+        "value": "assets/halliGalli/*.webp",
+        "type": "glob"
       },
       {
         "value": ".md",
@@ -112,6 +140,22 @@
       },
       {
         "value": "assets/icons/aaatest.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/wearable.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/share.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/display.png",
+        "type": "file"
+      },
+      {
+        "value": "assets/icons/question-mark.png",
         "type": "file"
       }
     ],

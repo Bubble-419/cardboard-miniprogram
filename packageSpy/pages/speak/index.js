@@ -8,17 +8,17 @@ const {
   startSpyRoomPoll,
   stopSpyRoomPoll,
   bumpSpyRoomSession
-} = require('../../../utils/spyMode');
+} = require('../../utils/spyMode');
 const {
   getWordCardAssets,
   getLibraryGroupCount,
   listLibraryCards
-} = require('../../../utils/spyWordCardAssets');
+} = require('../../utils/spyWordCardAssets');
 const {
   buildTiedNames,
   isTieReturnPending,
   showTieReturnModal
-} = require('../../../utils/spyTiePrompt');
+} = require('../../utils/spyTiePrompt');
 const {
   runPageInteraction,
   withPageInteractionLock

@@ -5,9 +5,9 @@ const assert = require('node:assert/strict');
 const { createNavigationCoordinator } = require('../../modules/room-navigation/index');
 const { followRoomRouteAfterCommand } = require('../../modules/room-session/index');
 
-async function withCurrentRoute(route, data, run) {
+async function withCurrentRoute(route, data, run, extra) {
   const previous = global.getCurrentPages;
-  global.getCurrentPages = () => [{ route, data: data || {} }];
+  global.getCurrentPages = () => [{ route, data: data || {}, ...(extra || {}) }];
   try {
     return await run();
   } finally {
@@ -79,6 +79,68 @@ test('回看情境叠层不被游戏同步拆掉，回大厅时关闭', async ()
     const leave = await navigation.reconcile({ name: 'addPlayer', params: {} }, 9, { roomId: '12345678' });
     assert.equal(leave.ok, true);
     assert.equal(opened.pop(), '/pages/main-pages/addPlayer/index?roomId=12345678');
+  });
+});
+
+test('提交设计问题回看情境叠层仍归属 submitProblem', async () => {
+  const opened = [];
+  const navigation = createNavigationCoordinator({
+    open: async (descriptor) => { opened.push(descriptor.url); }
+  });
+  await withCurrentRoute(
+    'pages/main-pages/partnerMode/confirmBG/index',
+    { from: 'submit', fromGameView: true },
+    async () => {
+      const stay = await navigation.reconcile({ name: 'submitProblem', params: {} }, 11, { roomId: '12345678' });
+      assert.equal(stay.reason, 'LOCAL_OVERLAY');
+      assert.deepEqual(opened, []);
+    },
+    { _fromGameView: true, _fromSource: 'submit' }
+  );
+});
+
+test('情境等待页在进入收集问题后跟随到提交设计问题', async () => {
+  const opened = [];
+  const navigation = createNavigationCoordinator({
+    open: async (descriptor) => { opened.push(descriptor.url); }
+  });
+  await withCurrentRoute('pages/sub-pages/subAwait/index', { scene: 'bg' }, async () => {
+    const stay = await navigation.reconcile(
+      { name: 'subAwait', params: { scene: 'bg', phase: 'CHOOSE_SCENARIO' } },
+      5,
+      { roomId: '12345678' }
+    );
+    assert.equal(stay.reason, 'SAME_ROUTE');
+    const leave = await navigation.reconcile(
+      { name: 'submitProblem', params: { phase: 'COLLECT_DESIGN_PROBLEMS' } },
+      6,
+      { roomId: '12345678' }
+    );
+    assert.equal(leave.ok, true);
+    assert.equal(
+      opened.pop(),
+      '/pages/main-pages/submitProblem/index?roomId=12345678&phase=COLLECT_DESIGN_PROBLEMS'
+    );
+  });
+});
+
+test('跟随跳转失败不得抬高水位，后续同步还能再试', async () => {
+  let attempts = 0;
+  const navigation = createNavigationCoordinator({
+    open: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('fail');
+    }
+  });
+  await withCurrentRoute('pages/sub-pages/subAwait/index', {}, async () => {
+    const first = await navigation.reconcile({ name: 'submitProblem', params: {} }, 6, { roomId: '12345678' });
+    assert.equal(first.ok, false);
+    assert.equal(first.reason, 'NAV_FAILED');
+    assert.equal(navigation.getLastSeq(), 0);
+    const second = await navigation.reconcile({ name: 'submitProblem', params: {} }, 6, { roomId: '12345678' });
+    assert.equal(second.ok, true);
+    assert.equal(attempts, 2);
+    assert.equal(navigation.getLastSeq(), 6);
   });
 });
 
@@ -156,7 +218,13 @@ test('指令同步未到提交水位时先刷新 Snapshot 再跟随权威 route'
   global.wx = {
     redirectTo(options) {
       opened = options.url;
-      options.complete({});
+      if (typeof options.success === 'function') options.success({});
+      if (typeof options.complete === 'function') options.complete({});
+    },
+    reLaunch(options) {
+      opened = options.url;
+      if (typeof options.success === 'function') options.success({});
+      if (typeof options.complete === 'function') options.complete({});
     }
   };
   try {

@@ -46,6 +46,7 @@ const {
   getCurrentRoomPageSnapshot,
   getRoomPageSnapshot
 } = require('../../../modules/room-session/index');
+const { EMPTY_HISTORY_SRC } = require('../../../utils/staticCdn');
 
 /** 扫码跳转中：避免 onShow 用未 join 的 roomId 误踢 */
 let _scanJoinNavigatingRoomId = '';
@@ -76,7 +77,8 @@ Page(withPageInteractionLock({
     historyWorkshops: [],
     showProfileAuth: false,
     authDraftNick: '',
-    authDraftAvatar: DEFAULT_AVATAR
+    authDraftAvatar: DEFAULT_AVATAR,
+    emptyHistorySrc: EMPTY_HISTORY_SRC
   },
 
   onLoad() {

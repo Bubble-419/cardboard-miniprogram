@@ -194,6 +194,23 @@ function createRoomClient(options) {
       && validateMemberView(snapshot.view, targetRoomId);
   }
 
+  function invalidSnapshotMessage(snapshot, targetRoomId) {
+    if (!snapshot) return '无效的房间快照';
+    if (snapshot.ok !== true) return snapshot.errMsg || '无效的房间快照';
+    if (snapshot.protocolVersion !== PROTOCOL_VERSION) {
+      return `房间协议版本不匹配（${snapshot.protocolVersion}）`;
+    }
+    if (snapshot.viewSchemaVersion !== VIEW_SCHEMA_VERSION) {
+      return `房间视图版本不匹配，请重新部署云函数（${snapshot.viewSchemaVersion}/${VIEW_SCHEMA_VERSION}）`;
+    }
+    if (!Number.isInteger(snapshot.seq) || !Number.isInteger(snapshot.stateVersion)) {
+      return '房间快照缺少版本水位';
+    }
+    if (snapshot.roomId !== targetRoomId) return '房间快照与当前房间不一致';
+    if (!validateMemberView(snapshot.view, targetRoomId)) return '房间快照结构不完整';
+    return '无效的房间快照';
+  }
+
   function mergeEphemeral(previous, incoming) {
     const before = previous || {};
     const next = incoming || {};
@@ -208,7 +225,7 @@ function createRoomClient(options) {
 
   function installSnapshot(snapshot, targetRoomId, requestedAt) {
     if (!validateSnapshot(snapshot, targetRoomId)) {
-      const invalid = new Error((snapshot && snapshot.errMsg) || '无效的房间快照');
+      const invalid = new Error(invalidSnapshotMessage(snapshot, targetRoomId));
       invalid.code = (snapshot && snapshot.errCode) || ERR.SNAPSHOT_REQUIRED;
       throw invalid;
     }

@@ -1,6 +1,6 @@
-const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../../utils/spyMode');
-const { listLibraryCards, getLibraryGroupCount } = require('../../../utils/spyWordCardAssets');
-const { SPY_PHASE } = require('../../../utils/spyGameState');
+const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../utils/spyMode');
+const { listLibraryCards, getLibraryGroupCount } = require('../../utils/spyWordCardAssets');
+const { SPY_PHASE } = require('../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,

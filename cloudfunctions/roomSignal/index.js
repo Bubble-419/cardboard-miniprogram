@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 3;
+    var VIEW_SCHEMA_VERSION = 4;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -115,11 +115,13 @@ var require_room_contracts = __commonJS({
     });
     var SIGNAL_TYPES = Object.freeze({
       PARTNER_SILENT_SOUND: "PARTNER_SILENT_SOUND",
-      DESIGN_PROBLEM_NUDGE: "DESIGN_PROBLEM_NUDGE"
+      DESIGN_PROBLEM_NUDGE: "DESIGN_PROBLEM_NUDGE",
+      DESIGN_PROBLEM_EDITING: "DESIGN_PROBLEM_EDITING"
     });
     var SIGNAL_TTL_MS = Object.freeze({
       [SIGNAL_TYPES.PARTNER_SILENT_SOUND]: 3e3,
-      [SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]: 8e3
+      [SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]: 8e3,
+      [SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]: 6e4
     });
     var DESIGN_PROBLEM_NUDGE_COOLDOWN_MS = 15e3;
     var EVENT_TYPES = Object.freeze([
@@ -762,6 +764,25 @@ var require_model = __commonJS({
       }
       return null;
     }
+    function designProblemEditingDeniedReason(session, hostMemberId, memberId, contributionId, facts, workflowRevision) {
+      if (!session || !session.workflow || session.workflow.step !== WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) {
+        return { errCode: ERR.INVALID_TRANSITION, errMsg: "\u5F53\u524D\u4E0D\u80FD\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
+      }
+      if (Number(workflowRevision) !== Number(session.workflow.revision)) {
+        return { errCode: ERR.STALE_CONTEXT, errMsg: "\u5DE5\u4F5C\u6D41\u9636\u6BB5\u5DF2\u7ECF\u53D8\u5316" };
+      }
+      if (!hostMemberId || hostMemberId !== memberId) {
+        return { errCode: ERR.HOST_REQUIRED, errMsg: "\u4EC5\u623F\u4E3B\u53EF\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
+      }
+      if (!isActiveParticipant(session, memberId)) {
+        return { errCode: ERR.NOT_PARTICIPANT, errMsg: "\u975E\u672C\u573A\u53C2\u4E0E\u8005" };
+      }
+      const id = String(contributionId || "").trim();
+      if (!id) return null;
+      const found = Object.values(facts && facts.contributions || {}).some((item) => item && item.sessionId === session.sessionId && item.kind === "DESIGN_PROBLEM" && item.contributionId === id);
+      if (!found) return { errCode: ERR.STALE_CONTEXT, errMsg: "\u8BBE\u8BA1\u95EE\u9898\u4E0D\u5B58\u5728" };
+      return null;
+    }
     function activeParticipantsBySeat(aggregate) {
       const ids = new Set(activeParticipantIds(aggregate.currentSession));
       return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
@@ -950,6 +971,7 @@ var require_model = __commonJS({
       activeParticipantsBySeat,
       progressComplete,
       designProblemNudgeDeniedReason,
+      designProblemEditingDeniedReason,
       nextSeat,
       nextColor,
       createMember,
@@ -2288,6 +2310,7 @@ var require_room_domain = __commonJS({
       assertParticipant,
       assertSession,
       designProblemNudgeDeniedReason,
+      designProblemEditingDeniedReason,
       transitionWorkflow,
       newSession,
       normalizeScenario,
@@ -2926,6 +2949,7 @@ var require_room_domain = __commonJS({
       sortedMembers,
       minimumPlayers,
       designProblemNudgeDeniedReason,
+      designProblemEditingDeniedReason,
       ...require_spy()
     };
   }
@@ -3297,7 +3321,7 @@ var require_room_projection = __commonJS({
       const routes = {
         [WORKFLOW_STEP.CHOOSE_SCENARIO]: host ? "modeIndex" : "subAwait",
         [WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS]: "submitProblem",
-        [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM]: host ? "selectProblem" : "subAwait",
+        [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM]: "selectProblem",
         [WORKFLOW_STEP.SELECT_FIRST_PLAYER]: host ? "selectPlayer" : "subAwait",
         [WORKFLOW_STEP.CONFIRM_FIRST_PLAYER]: host ? "confirmFirstPlayer" : "subAwait",
         [WORKFLOW_STEP.PARTNER_TURN]: "partnerGame",
@@ -3566,7 +3590,8 @@ var require_room_application = __commonJS({
       MAX_SESSION_DOCUMENT_BYTES,
       MAX_SYNC_RESPONSE_BYTES,
       MAX_INCREMENTAL_SYNC_EVENTS,
-      SIGNAL_TYPES
+      SIGNAL_TYPES,
+      WORKFLOW_STEP
     } = require_room_contracts();
     var { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require_room_domain();
     var {
@@ -3752,6 +3777,10 @@ var require_room_application = __commonJS({
           if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
             return !!(currentSessionId && row.sessionId === currentSessionId);
           }
+          if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
+            const workflow = aggregate && aggregate.currentSession && aggregate.currentSession.workflow;
+            return !!(currentSessionId && row.sessionId === currentSessionId && workflow && workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM && Number(row.workflowRevision) === Number(workflow.revision) && String(row.value || ""));
+          }
           return false;
         }).forEach((row) => {
           if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
@@ -3760,6 +3789,7 @@ var require_room_application = __commonJS({
               memberId: row.memberId,
               sessionId: row.sessionId,
               turnId: row.turnId,
+              workflowRevision: row.workflowRevision,
               updatedAt: row.updatedAt,
               expiresAt: row.expiresAt
             };
@@ -3823,16 +3853,28 @@ var require_room_application = __commonJS({
         const sessionId = String(input && input.sessionId || "");
         const turnId = String(input && input.turnId || "");
         const signalType = String(input && input.signalType || "");
+        const workflowRevision = input && input.workflowRevision;
         const rawValue = input && input.value;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
         const designNudge = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE;
+        const designEditing = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING;
         if (silentSound) {
           if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId) || typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
             return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
           }
         } else if (designNudge) {
           if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+            return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
+          }
+        } else if (designEditing) {
+          if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !Number.isInteger(workflowRevision) || workflowRevision < 1) {
+            return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
+          }
+          if (rawValue != null && rawValue !== "" && typeof rawValue !== "string") {
+            return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
+          }
+          if (rawValue && !isOpaqueId(String(rawValue).trim())) {
             return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
           }
         } else {
@@ -3845,13 +3887,14 @@ var require_room_application = __commonJS({
           sessionId,
           turnId: silentSound ? turnId : "",
           signalType,
-          value: silentSound ? Math.min(1, Math.max(0, rawValue)) : 1,
+          workflowRevision: designEditing ? workflowRevision : void 0,
+          value: silentSound ? Math.min(1, Math.max(0, rawValue)) : designEditing ? String(rawValue || "").trim() : 1,
           now: now()
         });
         if (!result || result.ok !== true) {
           return fail(
             result && result.errCode || ERR.INVALID_TRANSITION,
-            result && result.errMsg || (silentSound ? "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" : "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898")
+            result && result.errMsg || (silentSound ? "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" : designEditing ? "\u5F53\u524D\u4E0D\u80FD\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" : "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898")
           );
         }
         await touchActivity(roomId, result.signal.memberId, actorContext);
@@ -4221,7 +4264,7 @@ var require_room_cloudbase_adapter = __commonJS({
     "use strict";
     var crypto = require("crypto");
     var { clone } = require_room_projection();
-    var { emptyFacts, designProblemNudgeDeniedReason } = require_room_domain();
+    var { emptyFacts, designProblemNudgeDeniedReason, designProblemEditingDeniedReason } = require_room_domain();
     var {
       PROTOCOL_VERSION,
       SCHEMA_VERSION,
@@ -4569,6 +4612,43 @@ var require_room_cloudbase_adapter = __commonJS({
             } });
             return { ok: true, signal: row };
           }
+          if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
+            if (room.currentSessionId !== input.sessionId) {
+              return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
+            }
+            const session = await safeGet(transaction, COLLECTIONS.sessions, input.sessionId);
+            if (!session || session.roomId !== input.roomId) {
+              return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u540C\u6B65\u8BBE\u8BA1\u95EE\u9898\u7F16\u8F91\u6001" };
+            }
+            const contributionId = String(input.value || "").trim();
+            const denied = designProblemEditingDeniedReason(
+              session,
+              room.hostMemberId,
+              member.memberId,
+              contributionId,
+              session.facts,
+              input.workflowRevision
+            );
+            if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+            const signalId = docId(`${input.roomId}:${input.signalType}`);
+            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+            if (existing && existing.sessionId === input.sessionId && Number(existing.workflowRevision) === Number(input.workflowRevision) && String(existing.value || "") === contributionId && Number(existing.updatedAt) >= Number(input.now)) {
+              return { ok: true, signal: existing };
+            }
+            const row = {
+              roomId: input.roomId,
+              signalType: input.signalType,
+              value: contributionId,
+              memberId: member.memberId,
+              sessionId: input.sessionId,
+              turnId: "",
+              workflowRevision: input.workflowRevision,
+              updatedAt: input.now,
+              expiresAt: contributionId ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING] : input.now
+            };
+            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            return { ok: true, signal: row };
+          }
           return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7" };
         });
       }
@@ -4612,6 +4692,7 @@ exports.main = async (event) => {
       signalType,
       sessionId,
       turnId,
+      workflowRevision: event && event.workflowRevision,
       value: event && event.value
     }, {
       userId,

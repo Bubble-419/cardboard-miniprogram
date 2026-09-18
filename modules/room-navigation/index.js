@@ -41,9 +41,11 @@ function currentPage() {
 function confirmOverlayOwner(page) {
   if (!page || page.route !== 'pages/main-pages/partnerMode/confirmBG/index') return '';
   const data = page.data || {};
-  if (page._fromGameView || data.fromGameView || String(data.from || '') === 'game') return 'partnerGame';
-  if (String(data.from || '') === 'select') return 'selectProblem';
-  if (String(data.from || '') === 'submit') return 'submitProblem';
+  const from = String(page._fromSource || data.from || '');
+  // submit/select 回看也会把 fromGameView 设为 true，必须先按来源页归属，不能当成对局叠层。
+  if (from === 'select') return 'selectProblem';
+  if (from === 'submit') return 'submitProblem';
+  if (page._fromGameView || data.fromGameView || from === 'game') return 'partnerGame';
   return 'modeIndex';
 }
 
@@ -126,12 +128,25 @@ function createNavigationCoordinator(options) {
     }
     active = true;
     try {
-      lastSeq = nextSeq;
       if (typeof open === 'function') await open(descriptor);
       else if (typeof wx !== 'undefined' && typeof wx[descriptor.mode] === 'function') {
-        await new Promise((resolve) => wx[descriptor.mode]({ url: descriptor.url, complete: resolve }));
+        const opened = await new Promise((resolve) => {
+          wx[descriptor.mode]({
+            url: descriptor.url,
+            success: () => resolve({ ok: true }),
+            fail: (error) => resolve({ ok: false, error })
+          });
+        });
+        if (!opened.ok) {
+          return { ok: false, reason: 'NAV_FAILED', error: opened.error };
+        }
+      } else {
+        return { ok: false, reason: 'NAV_UNAVAILABLE' };
       }
+      lastSeq = nextSeq;
       return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: 'NAV_FAILED', error };
     } finally {
       active = false;
       if (pending) {

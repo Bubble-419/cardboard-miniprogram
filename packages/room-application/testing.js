@@ -2,7 +2,7 @@
 
 const { PROTOCOL_VERSION, SCHEMA_VERSION, COMMAND_TYPES, SIGNAL_TYPES, SIGNAL_TTL_MS,
   DESIGN_PROBLEM_NUDGE_COOLDOWN_MS } = require('@cardboard/room-contracts');
-const { memberByUserId, designProblemNudgeDeniedReason } = require('@cardboard/room-domain');
+const { memberByUserId, designProblemNudgeDeniedReason, designProblemEditingDeniedReason } = require('@cardboard/room-domain');
 const { clone } = require('@cardboard/room-projection');
 
 /** 仅供单元测试使用；生产云函数不应打包内存仓储。 */
@@ -235,6 +235,41 @@ function createInMemoryRoomRepository(options) {
           expiresAt: input.now + DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
           signal: copy(row)
         });
+        return { ok: true, signal: copy(row) };
+      }
+      if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_EDITING) {
+        const session = aggregate.currentSession;
+        if (!session || session.sessionId !== input.sessionId) {
+          return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能同步设计问题编辑态' };
+        }
+        const contributionId = String(input.value || '').trim();
+        const denied = designProblemEditingDeniedReason(
+          session, aggregate.room.hostMemberId, member.memberId, contributionId, aggregate.facts,
+          input.workflowRevision
+        );
+        if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+        const key = `${input.roomId}:${input.signalType}`;
+        const existing = signals.get(key);
+        if (existing && existing.sessionId === input.sessionId
+          && Number(existing.workflowRevision) === Number(input.workflowRevision)
+          && String(existing.value || '') === contributionId
+          && Number(existing.updatedAt) >= Number(input.now)) {
+          return { ok: true, signal: copy(existing) };
+        }
+        const row = {
+          roomId: input.roomId,
+          signalType: input.signalType,
+          value: contributionId,
+          memberId: member.memberId,
+          sessionId: input.sessionId,
+          turnId: '',
+          workflowRevision: input.workflowRevision,
+          updatedAt: input.now,
+          expiresAt: contributionId
+            ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]
+            : input.now
+        };
+        signals.set(key, copy(row));
         return { ok: true, signal: copy(row) };
       }
       return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };

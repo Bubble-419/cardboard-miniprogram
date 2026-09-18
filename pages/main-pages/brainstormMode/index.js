@@ -18,27 +18,28 @@ const {
   runPageInteraction,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const { staticCdnUrl } = require('../../../utils/staticCdn');
 
 const BRAINSTORM_MODES = [
   {
     id: 'halliGalli',
     title: '德国心脏病模式',
     description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
-    coverImage: '/assets/brainstormMode/mode-cover-halligalli.jpg',
+    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'partner',
     title: PARTNER_MODE_DISPLAY_TITLE,
     description: '团队协作，\n共同打磨并提交最佳创意方案',
-    coverImage: '/assets/brainstormMode/mode-cover-partner.jpg',
+    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-partner.jpg'),
     pagePath: MODE_INDEX_PATH
   },
   {
     id: 'spy',
     title: '谁是卧底模式',
     description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
-    coverImage: '/assets/brainstormMode/mode-cover-spy.jpg',
+    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-spy.jpg'),
     pagePath: '/packageSpy/pages/modeIndex/index'
   }
 ];

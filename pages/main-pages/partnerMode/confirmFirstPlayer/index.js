@@ -3,7 +3,7 @@ const {
   expandMembersToSlots,
   dedupeMembersById,
   buildMemberSlots
-} = require('../../../../utils/circleMemberLayout');
+} = require('../utils/circleMemberLayout');
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,

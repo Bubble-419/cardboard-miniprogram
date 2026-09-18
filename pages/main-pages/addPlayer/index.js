@@ -109,16 +109,28 @@ Page(withPageInteractionLock({
     showAvatarAuth: false,
     pendingJoinRoomId: '',
     navFreeze: false,
-    primaryBtnText: '开始游戏',
-    primaryBtnDisabled: false,
-    primaryBtnAction: 'selectMode',
-    showExitText: false,
-    exitTextLabel: '退出房间',
+    primaryBtnText: '',
+    primaryBtnDisabled: true,
+    primaryBtnAction: '',
+    showExitText: true,
+    exitTextLabel: '离开房间',
     exitTextAction: 'leave',
     showWaitingHint: false,
     waitingHintText: '等待房主选择模式',
     showModeActionSheet: false,
     showExitModeConfirm: false
+  },
+
+  _degradedLobbyFooter() {
+    return {
+      primaryBtnText: '',
+      primaryBtnDisabled: true,
+      primaryBtnAction: '',
+      showExitText: true,
+      exitTextLabel: this.data.isFromScan ? '退出房间' : '离开房间',
+      exitTextAction: 'leave',
+      showWaitingHint: false
+    };
   },
 
   _computeFooterActions(patch = {}) {
@@ -253,15 +265,18 @@ Page(withPageInteractionLock({
       isFromScan: fromScan,
       isHost: false,
       membershipConfirmed: false,
+      ...this._degradedLobbyFooter(),
       ...getDevRoomIdDisplayPatch(roomId)
     });
 
     if (fromScan) {
       this._beginScanJoinWithAvatarPrompt(roomId);
     } else {
-      this.loadRoomData(roomId).then((result) => {
-        if (!this._pageAlive || !result) return;
+      this._loadRoomDataAfterJoin(roomId).then((result) => {
+        if (!this._pageAlive) return;
         this._joinInFlight = false;
+        this._startMemberPolling();
+        if (!result) return;
         this.setData({ membershipConfirmed: true });
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
@@ -269,7 +284,6 @@ Page(withPageInteractionLock({
           // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
           this._followRoomPageFromResult(result, roomId);
         }
-        this._startMemberPolling();
         this._preloadBrainstormMode();
       });
     }
@@ -571,22 +585,17 @@ Page(withPageInteractionLock({
 
       const loaded = await this._loadRoomDataAfterJoin(roomId);
       if (!this._pageAlive) return;
-      if (!loaded) {
-        this._joinInFlight = false;
-        endScanJoin(roomId);
-        wx.showToast({ title: '加入失败，请重试', icon: 'none' });
-        return;
-      }
       this._joinInFlight = false;
-      this.setData({ membershipConfirmed: true });
       endScanJoin(roomId);
+      this._startMemberPolling();
+      if (!loaded) return;
+      this.setData({ membershipConfirmed: true });
       if (loaded.isHost === true) {
         this._syncLobbyRoomState(loaded);
       } else {
         // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
         this._followRoomPageFromResult(loaded, roomId);
       }
-      this._startMemberPolling();
       this._ensureMyAvatarSynced(roomId, loaded);
       this._preloadBrainstormMode();
     } catch (err) {
@@ -598,13 +607,13 @@ Page(withPageInteractionLock({
 
   async _loadRoomDataAfterJoin(roomId) {
     // 成员刚写入时云库偶发读不到，重试避免误报「您已不在该房间」
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       const loaded = await this.loadRoomData(roomId, { silent: true });
       if (loaded && loaded.ok !== false) return loaded;
       if (!this._pageAlive) return null;
       await new Promise((resolve) => setTimeout(resolve, 220 + i * 180));
     }
-    return this.loadRoomData(roomId, { silent: true });
+    return this.loadRoomData(roomId);
   },
 
   async loadRoomData(roomId, opts = {}) {
@@ -644,9 +653,15 @@ Page(withPageInteractionLock({
         }
         if (!silent) {
           this.setData({
-            qrcodeStatus: 'load_error',
-            qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试'
+            ...this._degradedLobbyFooter()
           });
+          await this._fillQrcodeIfNeeded(roomId);
+          if (!(this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl)) {
+            this.setData({
+              qrcodeStatus: 'load_error',
+              qrcodeErrorHint: result.errMsg || '请重新部署 roomQuery 与 roomMedia 后重试'
+            });
+          }
           wx.showToast({ title: result.errMsg || '加载失败', icon: 'none' });
         }
         return null;
@@ -719,58 +734,13 @@ Page(withPageInteractionLock({
           }
           this.setData(patch);
         }
+        this._fillQrcodeIfNeeded(roomId);
         return result;
       }
 
       const members = this._expandMembersToSlots(withAvatars);
       const memberSlots = this.buildMemberSlots(members);
-
-      let qrcodeFileID = forceRegenQr ? null : result.qrcodeFileID;
-      let qrResolved = {
-        qrcodeUrl: (!forceRegenQr && result.qrcodeUrl) || '',
-        qrcodeStatus: (!forceRegenQr && result.qrcodeUrl) ? 'success' : 'no_qr',
-        qrcodeErrorHint: ''
-      };
-
-      if (!qrResolved.qrcodeUrl) {
-        if (!qrcodeFileID) {
-          const regen = await this._regenerateRoomQrcode(roomId, forceRegenQr);
-          qrcodeFileID = regen.qrcodeFileID;
-          if (regen.qrcodeUrl) {
-            qrResolved = {
-              qrcodeUrl: regen.qrcodeUrl,
-              qrcodeStatus: 'success',
-              qrcodeErrorHint: ''
-            };
-          } else if (regen.errMsg) {
-            qrResolved = {
-              qrcodeUrl: '',
-              qrcodeStatus: 'error',
-              qrcodeErrorHint: regen.errMsg
-            };
-          }
-        }
-
-        if (!qrResolved.qrcodeUrl && qrcodeFileID) {
-          qrResolved = await this._resolveQrcodeUrl(roomId, qrcodeFileID);
-        }
-
-        // 已有 fileID 但临时链接失效时，强制补生成一次
-        if (qrResolved.qrcodeStatus === 'error' && !forceRegenQr) {
-          const regen = await this._regenerateRoomQrcode(roomId, true);
-          if (regen.qrcodeUrl) {
-            qrResolved = {
-              qrcodeUrl: regen.qrcodeUrl,
-              qrcodeStatus: 'success',
-              qrcodeErrorHint: ''
-            };
-          } else if (regen.qrcodeFileID) {
-            qrResolved = await this._resolveQrcodeUrl(roomId, regen.qrcodeFileID);
-          } else if (regen.errMsg) {
-            qrResolved.qrcodeErrorHint = regen.errMsg;
-          }
-        }
-      }
+      const qrResolved = await this._fetchRoomQrcode(roomId, forceRegenQr);
 
       this._triggerCountBounceIfNeeded(roomMeta.memberCount);
       this.setData({
@@ -798,13 +768,91 @@ Page(withPageInteractionLock({
           ? '云函数执行失败，请重新上传部署 roomQuery'
           : errMsg;
         this.setData({
-          qrcodeStatus: 'load_error',
-          qrcodeErrorHint: hint
+          ...this._degradedLobbyFooter()
         });
+        await this._fillQrcodeIfNeeded(roomId);
+        if (!(this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl)) {
+          this.setData({
+            qrcodeStatus: 'load_error',
+            qrcodeErrorHint: hint
+          });
+        }
         wx.showToast({ title: '加载失败', icon: 'none' });
       }
       return null;
     }
+  },
+
+  async _fetchRoomQrcode(roomId, force = false) {
+    const regen = await this._regenerateRoomQrcode(roomId, force);
+    if (regen.qrcodeUrl) {
+      return {
+        qrcodeUrl: regen.qrcodeUrl,
+        qrcodeStatus: 'success',
+        qrcodeErrorHint: ''
+      };
+    }
+    if (regen.qrcodeFileID) {
+      const resolved = await this._resolveQrcodeUrl(roomId, regen.qrcodeFileID);
+      if (resolved.qrcodeStatus === 'success' && resolved.qrcodeUrl) return resolved;
+      if (!force) {
+        const retry = await this._regenerateRoomQrcode(roomId, true);
+        if (retry.qrcodeUrl) {
+          return {
+            qrcodeUrl: retry.qrcodeUrl,
+            qrcodeStatus: 'success',
+            qrcodeErrorHint: ''
+          };
+        }
+        if (retry.qrcodeFileID) return this._resolveQrcodeUrl(roomId, retry.qrcodeFileID);
+        return {
+          qrcodeUrl: '',
+          qrcodeStatus: 'error',
+          qrcodeErrorHint: retry.errMsg || resolved.qrcodeErrorHint || '生成二维码失败'
+        };
+      }
+      return resolved;
+    }
+    return {
+      qrcodeUrl: '',
+      qrcodeStatus: regen.errMsg ? 'error' : 'no_qr',
+      qrcodeErrorHint: regen.errMsg || ''
+    };
+  },
+
+  _fillQrcodeIfNeeded(roomId, opts = {}) {
+    if (!this._pageAlive || !roomId) return Promise.resolve();
+    if (!opts.force) {
+      if (this.data.qrcodeStatus === 'success' && this.data.qrcodeUrl) {
+        return Promise.resolve();
+      }
+      // 已有明确失败时交给「重试」，避免成员轮询反复打 roomMedia
+      if (['error', 'no_qr', 'load_error'].includes(this.data.qrcodeStatus)) {
+        return Promise.resolve();
+      }
+    }
+    if (this._qrcodeInFlight) return this._qrcodeInFlight;
+    this._qrcodeInFlight = this._fetchRoomQrcode(roomId, opts.force === true)
+      .then((qr) => {
+        if (!this._pageAlive) return qr;
+        this.setData({
+          qrcodeUrl: qr.qrcodeUrl,
+          qrcodeStatus: qr.qrcodeStatus,
+          qrcodeErrorHint: qr.qrcodeErrorHint || ''
+        });
+        return qr;
+      })
+      .catch((e) => {
+        if (!this._pageAlive) return;
+        this.setData({
+          qrcodeStatus: 'error',
+          qrcodeErrorHint: (e && (e.errMsg || e.message)) || '生成二维码失败'
+        });
+      })
+      .finally(() => {
+        this._qrcodeInFlight = null;
+      });
+    return this._qrcodeInFlight;
   },
 
   async _regenerateRoomQrcode(roomId, force = false) {
@@ -889,7 +937,7 @@ Page(withPageInteractionLock({
     if (!roomId) return;
     return runPageInteraction(
       this,
-      () => this.loadRoomData(roomId, { forceRegenQr: true, silent: true }),
+      () => this.loadRoomData(roomId, { forceRegenQr: true }),
       { loadingText: '正在刷新二维码…' }
     );
   },
@@ -1829,7 +1877,6 @@ Page(withPageInteractionLock({
   },
 
   handleDissolveRoom() {
-    if (!this.data.isHost) return;
     wx.showModal({
       title: '解散房间',
       content: '解散后所有成员将退出房间，当前游戏进度会被清除且无法恢复。确定要解散吗？',
@@ -1879,8 +1926,24 @@ Page(withPageInteractionLock({
 
   async _leaveRoom() {
     try {
-      const result = await dispatchRoomCommand('LEAVE_ROOM', {});
+      const result = await dispatchRoomCommand('LEAVE_ROOM', {}) || {};
+      if (result && result.errCode === 'HOST_CANNOT_LEAVE') {
+        this.setData({
+          isHost: true,
+          exitTextLabel: '解散房间',
+          exitTextAction: 'dissolve'
+        });
+        this.handleDissolveRoom();
+        return;
+      }
       if (result.ok !== true) {
+        if (['NOT_IN_ROOM', 'NOT_MEMBER', 'ROOM_NOT_FOUND', 'ROOM_DISSOLVED'].includes(result.errCode)) {
+          disposeRoomSession();
+          try { wx.removeStorageSync('joinedRoomId'); } catch (e) { /* ignore */ }
+          getApp().globalData.roomId = null;
+          wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+          return;
+        }
         wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
         return;
       }

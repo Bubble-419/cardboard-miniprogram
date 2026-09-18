@@ -211,6 +211,8 @@ function projectPageSnapshot(view, clientState) {
   }
   const session = view.session;
   const clockOffsetMs = Number(state.serverClockOffsetMs) || 0;
+  const projectedNow = Number(state.serverNow);
+  const serverNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
   const members = pageMembers(view, state.historical);
   const roomState = {
     protocolVersion: PROTOCOL_VERSION,
@@ -224,6 +226,7 @@ function projectPageSnapshot(view, clientState) {
     brainstormSessionEnded: !!(session && session.status === 'COMPLETED'),
     selectedBG: session && session.setup.scenario,
     selectedDesignProblem: session && session.setup.selectedProblem,
+    editingProblemId: '',
     memberCount: members.length
   };
   if (session && session.mode === MODE.PARTNER) {
@@ -241,8 +244,6 @@ function projectPageSnapshot(view, clientState) {
     roomState.partnerTurnStartedAt = turn && clientClockTimestamp(turn.turnStartedAt, clockOffsetMs);
     roomState.partnerRoundStartedAt = turn && clientClockTimestamp(turn.phaseStartedAt, clockOffsetMs);
     roomState.partnerMasterMode = !!(turn && turn.masterMode);
-    const projectedNow = Number(state.serverNow);
-    const serverNow = Number.isFinite(projectedNow) ? projectedNow : Date.now();
     roomState.partnerSilentMode = !!(turn && turn.silentDeadlineAt && turn.silentDeadlineAt > serverNow);
     roomState.partnerSilentStartedAt = turn && clientClockTimestamp(turn.silentStartedAt, clockOffsetMs);
     const silentSignal = state.ephemeral && state.ephemeral.signals
@@ -283,6 +284,15 @@ function projectPageSnapshot(view, clientState) {
     roomState.currentPlayerName = first && first.nickName || '';
   } else if (session && session.mode === MODE.SPY) {
     roomState.spyGame = spyPageState(view, session);
+  }
+  const editingSignal = state.ephemeral && state.ephemeral.signals
+    && state.ephemeral.signals.DESIGN_PROBLEM_EDITING;
+  if (session && session.workflow && session.workflow.step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM
+    && editingSignal && editingSignal.sessionId === session.sessionId
+    && Number(editingSignal.workflowRevision) === Number(session.workflow.revision)
+    && Number(editingSignal.expiresAt) > serverNow
+    && String(editingSignal.value || '')) {
+    roomState.editingProblemId = String(editingSignal.value);
   }
   const result = {
     ok: true,

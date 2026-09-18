@@ -2,7 +2,7 @@ const { saveHistoryScenario, shouldSaveSelectedBGToHistory, isValidPartnerBG } =
 const { goRoomPage } = require('../../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
-const { resolveSelectedDesignProblem } = require('../../../../utils/selectedDesignProblem');
+const { resolveSelectedDesignProblem } = require('../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../../../utils/scenarioCategories');
 const {
   bindPageToRoomSession,
@@ -33,6 +33,7 @@ Page(withPageInteractionLock({
     isWaiting: false,
     /** 从 gamepage / submitProblem 回看情境：只读 */
     fromGameView: false,
+    from: '',
     /** 游戏页点设计问题进入：缩小叠卡 + 完整问题，一屏不滚 */
     isGameDetail: false,
     /** 缩小叠卡叠距（rpx） */
@@ -66,6 +67,7 @@ Page(withPageInteractionLock({
     this._passedProblemText = String(passedProblemText || '').trim();
     this._fromGameView = fromGameView;
     this._fromSource = from || (fromGameView ? 'game' : '');
+    this.setData({ from: this._fromSource });
 
     if (roomId) {
       getApp().globalData.roomId = roomId;

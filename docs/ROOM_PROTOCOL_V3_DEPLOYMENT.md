@@ -85,8 +85,9 @@ flowchart TB
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 
-`roomV3Signals` 的公开信号按 `_id=hash(roomId:PARTNER_SILENT_SOUND)` 和
-`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 两点读；设计问题催促另按
+`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)`、
+`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 和 `_id=hash(roomId:DESIGN_PROBLEM_EDITING)`
+三点读；设计问题催促另按
 `hash(roomId:sessionId:DESIGN_PROBLEM_NUDGE:cooldown:memberId)` 点写成员冷却凭证，
 该凭证不投影给客户端。两类文档都不需要组合索引。其余读取
 使用确定性 `_id`，不需要额外业务索引。
@@ -109,7 +110,7 @@ flowchart LR
 - `roomV3Sessions`、`roomV3Events`、`roomV3Actions` 均不开放客户端读权限；其中包含私密事实或成员投影。
 - 日志不得输出 openid、Spy 词语/身份、投票明细、消息或素材正文。
 - `roomMedia` 生成二维码前通过 Member Snapshot 鉴权；强制刷新仅 Host。
-- `roomSignal` 只接受已登记类型：静默声贝须绑定当前 session/turn 且 Silent 未过期，仅房主可写；设计问题催促须在 `COLLECT_DESIGN_PROBLEMS` 且调用者已提交。
+- `roomSignal` 只接受已登记类型：静默声贝须绑定当前 session/turn 且 Silent 未过期，仅房主可写；设计问题催促须在 `COLLECT_DESIGN_PROBLEMS` 且调用者已提交；设计问题编辑态须在 `SELECT_DESIGN_PROBLEM` 且仅房主可写。
 
 ## 5. 构建与部署顺序
 
@@ -230,3 +231,25 @@ flowchart LR
 - 回退时不要让旧客户端读取 `roomV3*`，也不要让 V3 客户端读取旧集合。
 - 已产生 V3 房间后优先前向修复；整体回退只服务旧数据，V3 房间暂时不可继续。
 - 不建立 legacy fallback、兼容字段、双写任务或旧数据迁移脚本。
+
+## 10. 静态插图 CDN
+
+非必要插图不进小程序代码包，本地文件仍保留在仓库，由 `packOptions.ignore` 排除：
+
+- `packageSpy/assets/interactionCards/webp/*`（Spy 交互卡）
+- `assets/subAwait/wait-hero-5a8ea5.webp`
+- `assets/home/empty-history-6f27f1.webp`
+- `assets/brainstormMode/mode-cover-*.jpg`
+- `assets/halliGalli/step-*.webp`（同源 PNG 也不打包）
+
+云存储前缀：`miniprogram-static/`，与仓库相对路径一致。HTTPS 形如：
+
+`https://6361-cardboard-miniprogram-6a13aab073-1307472735.tcb.qcloud.la/miniprogram-static/...`
+
+发布或真机预览前上传一次：
+
+```bash
+pnpm upload:static
+```
+
+无 CLI / 密钥时，按脚本清单在云开发控制台上传到同一前缀。存储安全规则需允许读取 `miniprogram-static/**`（所有用户可读，或等价公开读）。客户端通过 `utils/staticCdn.js` 引入，不使用会过期的临时链。

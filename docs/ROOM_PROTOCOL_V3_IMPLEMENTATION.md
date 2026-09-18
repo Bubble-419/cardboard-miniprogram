@@ -507,7 +507,7 @@ flowchart LR
 | 非本场 Participant | `addPlayer?observing=true` | 同左 |
 | `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg` |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |
-| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait?scene=selectProblem` |
+| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` |
 | `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
 | `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer` |
 | `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame` | `partnerGame` |
@@ -542,6 +542,7 @@ flowchart TD
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
 | Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写 | 否 |
 | 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；房间级最新信号供客户端投影，Session + Member 级冷却凭证保证同一成员 15 秒内幂等 | 否 |
+| 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；绑定精确 `sessionId + workflowRevision`，value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒 | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
 | 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |

@@ -73,6 +73,36 @@ function designProblemNudgeDeniedReason(session, memberId) {
   }
   return null;
 }
+function designProblemEditingDeniedReason(
+  session,
+  hostMemberId,
+  memberId,
+  contributionId,
+  facts,
+  workflowRevision
+) {
+  if (!session || !session.workflow || session.workflow.step !== WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) {
+    return { errCode: ERR.INVALID_TRANSITION, errMsg: '当前不能同步设计问题编辑态' };
+  }
+  // 编辑态虽然可丢失，也必须绑定精确工作流世代，避免离开后再次进入同一步骤时旧心跳复活。
+  if (Number(workflowRevision) !== Number(session.workflow.revision)) {
+    return { errCode: ERR.STALE_CONTEXT, errMsg: '工作流阶段已经变化' };
+  }
+  if (!hostMemberId || hostMemberId !== memberId) {
+    return { errCode: ERR.HOST_REQUIRED, errMsg: '仅房主可同步设计问题编辑态' };
+  }
+  if (!isActiveParticipant(session, memberId)) {
+    return { errCode: ERR.NOT_PARTICIPANT, errMsg: '非本场参与者' };
+  }
+  const id = String(contributionId || '').trim();
+  if (!id) return null;
+  const found = Object.values((facts && facts.contributions) || {}).some((item) => item
+    && item.sessionId === session.sessionId
+    && item.kind === 'DESIGN_PROBLEM'
+    && item.contributionId === id);
+  if (!found) return { errCode: ERR.STALE_CONTEXT, errMsg: '设计问题不存在' };
+  return null;
+}
 function activeParticipantsBySeat(aggregate) {
   const ids = new Set(activeParticipantIds(aggregate.currentSession));
   return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
@@ -241,6 +271,7 @@ module.exports = {
   clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, emptyFacts, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
   activeParticipantIds, activeParticipantsBySeat, progressComplete, designProblemNudgeDeniedReason,
+  designProblemEditingDeniedReason,
   nextSeat, nextColor, createMember, createRoomAggregate,
   assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, transitionWorkflow, newSession,
   normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,

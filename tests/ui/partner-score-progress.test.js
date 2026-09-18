@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const {
   resolvePartnerScoreProgress,
   shouldApplyRoomSnapshot
-} = require('../../utils/partnerScoreProgress');
+} = require('../../pages/main-pages/partnerMode/utils/partnerScoreProgress');
 
 test('V3 打分进度按业务 turnId 接受，不要求旧的 turn_r座位 假键', () => {
   const resolved = resolvePartnerScoreProgress({

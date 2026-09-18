@@ -61,9 +61,9 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
-| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 设计问题 / 首位玩家 / 确认首位 |
+| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 首位玩家 / 确认首位 |
 | `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题；已提交者可催促未提交者 |
-| `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | Host 选择设计问题 |
+| `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | 全员查看设计问题；Host 可选择/编辑，Player 只读并显示「房主编辑中」 |
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
 | `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | Host 确认 Partner 首位玩家 |
 | `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
@@ -86,7 +86,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | 任意进行中 Session | 对应下表 | 对应下表 | 非本场参与者固定为 `addPlayer?observing=true` |
 | `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | Player `params.scene=bg` |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
-| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `subAwait` | Player `params.scene=selectProblem` |
+| `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` | Player 只读；可通过 `roomSignal` `DESIGN_PROBLEM_EDITING` 看到房主正在编辑 |
 | `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | Player `params.scene=player` |
 | `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait` | Player `params.scene=confirmFirstPlayer` |
 | `PARTNER_TURN` | `partnerGame` | `partnerGame` | 当前行动者、Host、其他玩家能力不同 |
@@ -269,8 +269,7 @@ flowchart TD
   CHOOSE_H[CHOOSE_SCENARIO<br/>Host: modeIndex]
   CHOOSE_P[Player: subAwait]
   COLLECT[COLLECT_DESIGN_PROBLEMS<br/>全员: submitProblem]
-  SELECT_PROBLEM_H[SELECT_DESIGN_PROBLEM<br/>Host: selectProblem]
-  SELECT_PROBLEM_P[Player: subAwait]
+  SELECT_PROBLEM[SELECT_DESIGN_PROBLEM<br/>全员: selectProblem]
   SELECT_FIRST_H[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
   SELECT_FIRST_P[Player: subAwait]
   CONFIRM_H[CONFIRM_FIRST_PLAYER<br/>Host: confirmFirstPlayer]
@@ -285,20 +284,18 @@ flowchart TD
   PICK -->|START_WORKSHOP_SESSION Spy| SPY
   CHOOSE_H -->|SET_SCENARIO Partner 非 OFFLINE| COLLECT
   CHOOSE_P -. Event / Snapshot .-> COLLECT
-  COLLECT -->|全员 SUBMIT_DESIGN_PROBLEM| SELECT_PROBLEM_H
-  COLLECT -->|全员提交完成| SELECT_PROBLEM_P
-  SELECT_PROBLEM_H -->|SELECT_DESIGN_PROBLEM| SELECT_FIRST_H
-  SELECT_PROBLEM_H -->|RESET_SCENARIO| CHOOSE_H
-  SELECT_FIRST_H -->|RESET_DESIGN_PROBLEM| SELECT_PROBLEM_H
+  COLLECT -->|全员 SUBMIT_DESIGN_PROBLEM| SELECT_PROBLEM
+  SELECT_PROBLEM -->|SELECT_DESIGN_PROBLEM| SELECT_FIRST_H
+  SELECT_PROBLEM -->|RESET_SCENARIO| CHOOSE_H
+  SELECT_FIRST_H -->|RESET_DESIGN_PROBLEM| SELECT_PROBLEM
   SELECT_FIRST_H -->|无已选问题时 RESET_SCENARIO| CHOOSE_H
-  SELECT_PROBLEM_P -. Event / Snapshot .-> SELECT_FIRST_P
-  CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
-  CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM_H
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Partner| CONFIRM_P
   CONFIRM_H -->|RESET_FIRST_PLAYER| SELECT_FIRST_H
   CONFIRM_H -->|CONFIRM_FIRST_PLAYER| PARTNER
   CONFIRM_P -. Event / Snapshot .-> PARTNER
+  CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
+  CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli| HALLI
 ```
 
@@ -307,7 +304,8 @@ flowchart TD
 | 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
 | 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
-| Host 编辑问题 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
+| Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 在对应条目显示「房主编辑中…」 |
+| Host 保存问题正文 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
 | Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |

@@ -16,6 +16,11 @@ const {
   getRoomPageSnapshot,
   unbindPageFromRoomSession
 } = require('../../../../modules/room-session/index');
+const { staticCdnUrl } = require('../../../../utils/staticCdn');
+
+function halliStepSrc(key) {
+  return staticCdnUrl(`assets/halliGalli/step-${key}.webp`);
+}
 
 Page(withPageInteractionLock({
   data: {
@@ -26,12 +31,12 @@ Page(withPageInteractionLock({
     currentPlayerName: '玩家1',
     isHost: false,
     selectedBG: null,
-    stepImgDeal: '/assets/halliGalli/step-deal.webp',
-    stepImgFlip: '/assets/halliGalli/step-flip.webp',
-    stepImgRing: '/assets/halliGalli/step-ring.webp',
-    stepImgPlay: '/assets/halliGalli/step-play.webp',
-    stepImgVote: '/assets/halliGalli/step-vote.webp',
-    stepImgJudge: '/assets/halliGalli/step-judge.webp'
+    stepImgDeal: halliStepSrc('deal'),
+    stepImgFlip: halliStepSrc('flip'),
+    stepImgRing: halliStepSrc('ring'),
+    stepImgPlay: halliStepSrc('play'),
+    stepImgVote: halliStepSrc('vote'),
+    stepImgJudge: halliStepSrc('judge')
   },
 
   onLoad(options) {
@@ -128,27 +133,9 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
-  onStepImgError(e) {
-    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
-    if (!key) return;
-    const map = {
-      deal: 'stepImgDeal',
-      flip: 'stepImgFlip',
-      ring: 'stepImgRing',
-      play: 'stepImgPlay',
-      vote: 'stepImgVote',
-      judge: 'stepImgJudge'
-    };
-    const field = map[key];
-    if (!field) return;
-    const png = `/assets/halliGalli/step-${key}.png`;
-    if (this.data[field] === png) return;
-    this.setData({ [field]: png });
-  },
-
   handleGoRoom() {
     return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
       loadingText: '正在返回房间…'
     });
   }
-}, ['handleEndGame', 'handleGoRoom', 'onStepImgError']));
+}, ['handleEndGame', 'handleGoRoom']));

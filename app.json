@@ -8,12 +8,6 @@
     "pages/main-pages/submitProblem/index",
     "pages/main-pages/selectProblem/index",
     "pages/main-pages/selectPlayer/index",
-    "pages/main-pages/partnerMode/confirmBG/index",
-    "pages/main-pages/partnerMode/confirmFirstPlayer/index",
-    "pages/main-pages/partnerMode/gamepage/index",
-    "pages/main-pages/partnerMode/imageCrop/index",
-    "pages/main-pages/partnerMode/specialMove/index",
-    "pages/main-pages/partnerMode/closingStatement/index",
     "pages/main-pages/case/index",
     "pages/main-pages/selectBG/index",
     "pages/main-pages/modeIndex/index",
@@ -24,6 +18,18 @@
     "pages/leaderboard/index"
   ],
   "subPackages": [
+    {
+      "root": "pages/main-pages/partnerMode",
+      "name": "partner",
+      "pages": [
+        "confirmBG/index",
+        "confirmFirstPlayer/index",
+        "gamepage/index",
+        "imageCrop/index",
+        "specialMove/index",
+        "closingStatement/index"
+      ]
+    },
     {
       "root": "packageSpy",
       "name": "spy",
@@ -39,8 +45,12 @@
   ],
   "preloadRule": {
     "pages/main-pages/brainstormMode/index": {
+      "network": "wifi",
+      "packages": ["partner"]
+    },
+    "pages/main-pages/modeIndex/index": {
       "network": "all",
-      "packages": ["spy"]
+      "packages": ["partner"]
     }
   },
   "window": {
@@ -54,5 +64,6 @@
     "interaction-lock-layer": "/components/interaction-lock-layer/index"
   },
   "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json"
 }

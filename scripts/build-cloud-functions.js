@@ -29,9 +29,9 @@ const TARGETS = {
 };
 
 function runEsbuild(args) {
-  const localBin = path.join(ROOT, 'node_modules', '.bin', 'esbuild');
+  const localBin = path.join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'esbuild.cmd' : 'esbuild');
   if (fs.existsSync(localBin)) {
-    return spawnSync(localBin, args, { cwd: ROOT, encoding: 'utf8' });
+    return spawnSync(localBin, args, { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' });
   }
   // 依赖只由 pnpm workspace 管理；缺少 node_modules 时也不让 npx 临时下载漂移版本。
   return spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['exec', 'esbuild', ...args], {

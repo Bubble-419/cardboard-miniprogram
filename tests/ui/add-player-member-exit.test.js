@@ -82,3 +82,48 @@ test('中途加入的旁观成员不能从大厅进入当前场次', () => {
   assert.equal(footer.showWaitingHint, true);
   assert.match(footer.waitingHintText, /下一场/);
 });
+
+test('快照未就绪时大厅仍显示离开入口，不展示无效的开始游戏', () => {
+  const definition = loadPageDefinition();
+  assert.equal(definition.data.showExitText, true);
+  assert.equal(definition.data.primaryBtnText, '');
+  assert.equal(definition.data.primaryBtnAction, '');
+  assert.equal(definition.data.exitTextAction, 'leave');
+
+  const page = {
+    ...definition,
+    data: {
+      ...definition.data,
+      isFromScan: false
+    }
+  };
+  const footer = page._degradedLobbyFooter();
+  assert.equal(footer.showExitText, true);
+  assert.equal(footer.exitTextLabel, '离开房间');
+  assert.equal(footer.primaryBtnText, '');
+});
+
+test('解散房间不依赖已成功安装的 isHost 快照', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/addPlayer/index.js'),
+    'utf8'
+  );
+  assert.match(source, /HOST_CANNOT_LEAVE/);
+  assert.doesNotMatch(
+    source,
+    /handleDissolveRoom\(\) \{\s*if \(!this\.data\.isHost\) return;/,
+    '快照失败时房主仍需能解散'
+  );
+});
+
+test('静默刷新成功后仍会补拉二维码，快照失败也会尝试 roomMedia', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/addPlayer/index.js'),
+    'utf8'
+  );
+  assert.match(source, /this\._fillQrcodeIfNeeded\(roomId\)/);
+  assert.match(source, /async _fetchRoomQrcode\(roomId, force = false\)/);
+  assert.match(source, /name: 'roomMedia'/);
+  const silentBlock = source.split('if (silent) {')[1] || '';
+  assert.match(silentBlock.slice(0, 1800), /_fillQrcodeIfNeeded\(roomId\)/);
+});

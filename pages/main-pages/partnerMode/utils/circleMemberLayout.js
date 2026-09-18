@@ -4,7 +4,7 @@ const AVATAR_SIZE = 80;
 const CENTER_XY = 300;
 const START_ANGLE = -Math.PI / 2;
 
-const { assignAvatarImages } = require('./avatars');
+const { assignAvatarImages } = require('../../../../utils/avatars');
 
 function expandMembersToSlots(members) {
   const arr = [...(members || [])];

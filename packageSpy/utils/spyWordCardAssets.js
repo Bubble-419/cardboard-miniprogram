@@ -1,6 +1,6 @@
 /**
- * 词语 → 交互卡 WebP 路径（文件名与词语对应）
- * 游戏分词与牌库浏览共用本模块。
+ * 词语 → 交互卡 WebP（文件名与词语对应）
+ * 游戏分词与牌库浏览共用本模块。卡片文件在仓库中，打包时忽略，运行时走 CDN。
  *
  * 约定（webp/ 目录）：
  * - {词语}3x.webp   → 词语（交互方式卡）
@@ -9,11 +9,12 @@
  */
 
 const { WORD_ENTRIES, SPY_WORD_PAIRS } = require('./spyWordPairs');
+const { staticCdnUrl } = require('../../utils/staticCdn');
 
-const ASSET_ROOT = '/packageSpy/assets/interactionCards';
+const ASSET_ROOT = 'packageSpy/assets/interactionCards';
 const RAW_DIR = `${ASSET_ROOT}/raw`;
 const WEBP_DIR = `${ASSET_ROOT}/webp`;
-const CARD_BACK_WEBP = `${WEBP_DIR}/背面3x.webp`;
+const CARD_BACK_WEBP = staticCdnUrl(`${WEBP_DIR}/背面3x.webp`);
 
 /** 旧 PNG 编号映射，仅作 WebP 缺失时的回退（游戏词） */
 const WORD_RAW_FALLBACK = {
@@ -71,10 +72,10 @@ function getWordCardAssets(word) {
 
   const raw = WORD_RAW_FALLBACK[word];
   return {
-    assignedWordSrc: `${WEBP_DIR}/${word}3x.webp`,
-    assignedWordFallbackSrc: raw ? `${RAW_DIR}/${raw.method}` : '',
-    word1Src: `${WEBP_DIR}/${word}13x.webp`,
-    word1FallbackSrc: raw ? `${RAW_DIR}/${raw.ixdl}` : '',
+    assignedWordSrc: staticCdnUrl(`${WEBP_DIR}/${word}3x.webp`),
+    assignedWordFallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.method}`) : '',
+    word1Src: staticCdnUrl(`${WEBP_DIR}/${word}13x.webp`),
+    word1FallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
     backSrc: CARD_BACK_WEBP
   };
 }

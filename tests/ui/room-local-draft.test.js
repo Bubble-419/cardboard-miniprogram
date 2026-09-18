@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   storageKey, readRoomLocalDraft, writeRoomLocalDraft, clearRoomLocalDraft
-} = require('../../utils/roomLocalDraft');
+} = require('../../pages/main-pages/partnerMode/utils/roomLocalDraft');
 
 test('房间本地草稿按 room/session/turn 隔离，并可在页面重建后恢复', () => {
   const originalWx = global.wx;
