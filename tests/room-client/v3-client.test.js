@@ -508,7 +508,7 @@ test('从后台恢复时立即重新读取 Snapshot', async () => {
   assert.equal(client.getView().room.workshopName, '快照2');
 });
 
-test('cancelScheduledPoll 只取消预约轮询，不暂停客户端', async () => {
+test('Command 网络异常后恢复预约轮询', async () => {
   let syncCalls = 0;
   const view = makeStableView('12345678', '房间');
   const gateway = {
@@ -526,17 +526,19 @@ test('cancelScheduledPoll 只取消预约轮询，不暂停客户端', async () 
         delivery: 'EVENTS', events: [], ephemeral: {}
       };
     },
-    dispatch: async () => ({ ok: true, outcome: { kind: 'ACCEPTED', roomId: '12345678' } })
+    dispatch: async () => { throw new Error('network down'); }
   };
   const timers = manualTimers();
   const client = createRoomClient({ gateway, ...timers });
   await client.open();
-  client.cancelScheduledPoll();
+  await assert.rejects(
+    client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } }),
+    /network down/
+  );
   await timers.run();
-  assert.equal(syncCalls, 0);
+  assert.equal(syncCalls, 1);
   assert.equal(client.getState().status, 'READY');
-  await client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
-  assert.equal(client.getState().status, 'READY');
+  client.close();
 });
 
 test('Sync 内联 Snapshot 可直接替换 View，不再追加一次 Snapshot 请求', async () => {

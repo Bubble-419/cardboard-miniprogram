@@ -95,8 +95,9 @@ function isSafeFactKey(id) {
     && !id.includes('.') && !id.includes('$');
 }
 
-function scoreSessionPatch(inputType, decision, afterSession) {
-  if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+function scoreSessionPatch(inputType, decision, beforeSession, afterSession) {
+  if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !beforeSession
+    || !afterSession || decision.archivedSession) {
     return null;
   }
   const dirty = decision.dirtyFacts || [];
@@ -107,13 +108,21 @@ function scoreSessionPatch(inputType, decision, afterSession) {
   const progress = afterSession.progress && afterSession.progress.scoreProgress;
   if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
   const data = {
+    updatedAt: afterSession.updatedAt,
     'modeState.partner.activeTurn.scoreProgress': clone(activeTurn.scoreProgress),
     'progress.scoreProgress': clone(progress)
   };
+  const patched = clone(beforeSession);
+  patched.updatedAt = afterSession.updatedAt;
+  patched.modeState.partner.activeTurn.scoreProgress = clone(activeTurn.scoreProgress);
+  patched.progress.scoreProgress = clone(progress);
   for (const item of dirty) {
     if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
     data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+    patched.facts.scores[item.id] = clone(scores[item.id]);
   }
+  // 点更新只能用于确知没有其他字段变化的评分命令；领域模型扩展时自动退回整文档写入。
+  if (!sameDocument(patched, afterSession)) return null;
   return data;
 }
 
@@ -190,8 +199,8 @@ function createCloudBaseRoomRepository(deps) {
         await transaction.collection(COLLECTIONS.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
         const beforeSession = beforeSessionSnapshot;
         const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-        const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
-        // 评分只改 scores 与 scoreProgress：点更新避免把消息/素材整文档再写一遍。
+        const sessionPatch = scoreSessionPatch(input.type, decision, beforeSession, afterSession);
+        // 评分只改 scores、scoreProgress 与审计时间：点更新避免把消息/素材整文档再写一遍。
         if (sessionPatch) {
           await transaction.collection(COLLECTIONS.sessions).doc(afterSession.sessionId)
             .update({ data: sessionPatch });

@@ -421,8 +421,9 @@ flowchart LR
 产生时扇出为 actor patch。`afterSeq == Room.eventSeq` 时只读 Room，不发起空 Event 查询；连续
 积压为 1～25 条时读取 Event；积压超过 25 条、缺口或版本不兼容时读取一次 Aggregate，并在同一
 响应内交付最新 Snapshot。房间资料等不改变 Session 的 Command 也不会重写 Session/Facts 或所有
-未变化的 `ActiveByUser` 索引。`SUBMIT_PARTNER_SCORE` 只点更新 `facts.scores.{id}` 与
-`scoreProgress`，不把消息、素材等其余 Facts 整文档再写一遍。
+未变化的 `ActiveByUser` 索引。`SUBMIT_PARTNER_SCORE` 在确认 Session 除评分字段外没有其他变化时，
+只点更新 `facts.scores.{id}`、`scoreProgress` 与 `updatedAt`；一旦出现其他字段变化就回退整文档写入，
+避免领域模型扩展后静默漏存，同时不为普通评分重复写入消息、素材等大体积 Facts。
 
 ## 8. 业务状态与瞬时状态
 

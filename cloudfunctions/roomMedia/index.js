@@ -4430,8 +4430,8 @@ var require_room_cloudbase_adapter = __commonJS({
     function isSafeFactKey(id) {
       return typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes(".") && !id.includes("$");
     }
-    function scoreSessionPatch(inputType, decision, afterSession) {
-      if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !afterSession || decision.archivedSession) {
+    function scoreSessionPatch(inputType, decision, beforeSession, afterSession) {
+      if (inputType !== COMMAND_TYPES.SUBMIT_PARTNER_SCORE || !beforeSession || !afterSession || decision.archivedSession) {
         return null;
       }
       const dirty = decision.dirtyFacts || [];
@@ -4441,13 +4441,20 @@ var require_room_cloudbase_adapter = __commonJS({
       const progress = afterSession.progress && afterSession.progress.scoreProgress;
       if (!activeTurn || !activeTurn.scoreProgress || !progress) return null;
       const data = {
+        updatedAt: afterSession.updatedAt,
         "modeState.partner.activeTurn.scoreProgress": clone(activeTurn.scoreProgress),
         "progress.scoreProgress": clone(progress)
       };
+      const patched = clone(beforeSession);
+      patched.updatedAt = afterSession.updatedAt;
+      patched.modeState.partner.activeTurn.scoreProgress = clone(activeTurn.scoreProgress);
+      patched.progress.scoreProgress = clone(progress);
       for (const item of dirty) {
         if (!isSafeFactKey(item.id) || !scores[item.id]) return null;
         data[`facts.scores.${item.id}`] = clone(scores[item.id]);
+        patched.facts.scores[item.id] = clone(scores[item.id]);
       }
+      if (!sameDocument(patched, afterSession)) return null;
       return data;
     }
     function createCloudBaseRoomRepository2(deps) {
@@ -4522,7 +4529,7 @@ var require_room_cloudbase_adapter = __commonJS({
             await transaction.collection(COLLECTIONS2.rooms).doc(resolvedRoomId).set({ data: cleanDoc(decision.aggregate.room) });
             const beforeSession = beforeSessionSnapshot;
             const afterSession = persistedSession(decision.aggregate, resolvedRoomId);
-            const sessionPatch = scoreSessionPatch(input.type, decision, afterSession);
+            const sessionPatch = scoreSessionPatch(input.type, decision, beforeSession, afterSession);
             if (sessionPatch) {
               await transaction.collection(COLLECTIONS2.sessions).doc(afterSession.sessionId).update({ data: sessionPatch });
             } else if (afterSession && !sameDocument(beforeSession, afterSession)) {

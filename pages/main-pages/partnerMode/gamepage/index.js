@@ -1692,13 +1692,6 @@ Page(withPageInteractionLock({
     this.setData(narrow);
   },
 
-  _holdRoomPollForScore() {
-    const session = this._boundRoomSession || getActiveRoomSession();
-    if (session && typeof session.cancelScheduledPoll === 'function') {
-      session.cancelScheduledPoll();
-    }
-  },
-
   _markScoreUiBusy() {
     this._scoreUiBusy = true;
     if (this._scoreUiBusyTimer) {
@@ -1763,7 +1756,6 @@ Page(withPageInteractionLock({
     }
     const score = clampSelectableScore(rawScore);
     if (score == null) return;
-    this._holdRoomPollForScore();
     this._pendingScoreSubmit = score;
     this._pendingScore = score;
     this._starRatingPinnedOpen = true;
@@ -3996,7 +3988,6 @@ Page(withPageInteractionLock({
 
   onStarGestureStart() {
     this._cancelStarPanelCollapse();
-    this._holdRoomPollForScore();
     this._markScoreUiBusy();
     if (!this.data.starRatingGesturing) {
       this.setData({ starRatingGesturing: true });
@@ -4388,7 +4379,6 @@ Page(withPageInteractionLock({
     if (score == null) return;
     if (this._scoreSubmitting) return;
     this._markScoreUiBusy();
-    this._holdRoomPollForScore();
 
     if (this.data.isCurrentPlayer) {
       this._releaseScoreUiBusy(120);

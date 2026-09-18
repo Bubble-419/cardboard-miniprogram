@@ -705,7 +705,7 @@ test('CloudBase 命令把当前 Session 与 Facts 原子写入同一文档', asy
   assert.equal(documents.has(`${COLLECTIONS.events}:12345678_000000000002`), true);
 });
 
-test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档 set Session', async () => {
+test('CloudBase 评分命令只点更新 scores、scoreProgress 与 updatedAt', async () => {
   const missing = () => Object.assign(new Error('document not found'), { code: 'DOCUMENT_NOT_FOUND' });
   const scoreId = 'turn_1:member-u2';
   const documents = new Map([
@@ -769,6 +769,7 @@ test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档
     const progress = { requiredMemberIds: ['member-u2'], submittedMemberIds: ['member-u2'] };
     aggregate.currentSession.modeState.partner.activeTurn.scoreProgress = progress;
     aggregate.currentSession.progress.scoreProgress = progress;
+    aggregate.currentSession.updatedAt = 2;
     aggregate.facts.scores[scoreId] = {
       sessionId: 'session-1', turnId: 'turn_1', memberId: 'member-u2',
       scoreHalfSteps: 7, commitSeq: 2
@@ -783,10 +784,12 @@ test('CloudBase 评分命令只点更新 scores 与 scoreProgress，不整文档
   const sessionWrites = writes.filter((item) => item[0] === COLLECTIONS.sessions);
   assert.equal(sessionWrites.length, 1);
   assert.equal(sessionWrites[0][1], 'update');
+  assert.equal(sessionWrites[0][2].updatedAt, 2);
   assert.equal(sessionWrites[0][2][`facts.scores.${scoreId}`].scoreHalfSteps, 7);
   const stored = documents.get(`${COLLECTIONS.sessions}:session-1`);
   assert.equal(stored.facts.messages[0].messageId, 'm1');
   assert.equal(stored.facts.scores[scoreId].scoreHalfSteps, 7);
   assert.deepEqual(stored.progress.scoreProgress.submittedMemberIds, ['member-u2']);
+  assert.equal(stored.updatedAt, 2);
   assert.equal(committed.events.length, 1);
 });
