@@ -11,6 +11,7 @@ const {
   memberByUserId, memberById, isHost, activeParticipantIds, activeParticipantsBySeat, nextSeat,
   progressComplete,
   createMember, createRoomAggregate, assertRoom, assertMember, assertHost, assertParticipant, assertSession,
+  designProblemNudgeDeniedReason,
   transitionWorkflow,
   newSession, normalizeScenario, markParticipantLeft, normalizeMode, LIFECYCLE, MODE, SESSION_STATUS,
   WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS
@@ -519,6 +520,6 @@ function authorizeSessionRead(aggregate, actorUserId) {
 
 module.exports = {
   reduceCommand, authorizeRoomRead, authorizeSessionRead, createRoomAggregate, emptyFacts, normalizeHalfStarScore,
-  memberByUserId, memberById, sortedMembers, minimumPlayers,
+  memberByUserId, memberById, sortedMembers, minimumPlayers, designProblemNudgeDeniedReason,
   ...require('./spy')
 };

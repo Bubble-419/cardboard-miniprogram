@@ -20,8 +20,15 @@ const {
   bindPageToRoomSession,
   followRoomRouteAfterCommand,
   getRoomPageSnapshot,
+  getRoomRequestContext,
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
+
+const DESIGN_PROBLEM_NUDGE_SIGNAL = 'DESIGN_PROBLEM_NUDGE';
+const NUDGE_COOLDOWN_MS = 15000;
+const NUDGE_SHAKE_MS = 500;
+const NUDGE_HINT_MS = 3000;
+const NUDGE_HINT_FADE_MS = 280;
 
 Page(withPageInteractionLock({
   data: {
@@ -39,7 +46,14 @@ Page(withPageInteractionLock({
     submittedCount: 0,
     totalMembers: 0,
     isSubmitting: false,
-    inputFocused: false
+    inputFocused: false,
+    sessionId: '',
+    showNudgeButton: false,
+    nudgeDisabled: false,
+    nudgeCooldownLeft: 0,
+    inputNudgeShake: false,
+    showNudgeHint: false,
+    nudgeHintFading: false
   },
 
   onLoad(options) {
@@ -70,6 +84,7 @@ Page(withPageInteractionLock({
       if (!this._pageAlive || this._inputFocused) return;
       this.refreshSubmitStatus();
     });
+    this._tickNudgeCooldown();
     this._startPolling();
   },
 
@@ -81,6 +96,12 @@ Page(withPageInteractionLock({
   onUnload() {
     this._pageAlive = false;
     this._stopPolling();
+    this._clearNudgeCooldownTimer();
+    this._clearNudgeHintTimers();
+    if (this._nudgeShakeTimer) {
+      clearTimeout(this._nudgeShakeTimer);
+      this._nudgeShakeTimer = null;
+    }
     if (this._inputBlurTimer) {
       clearTimeout(this._inputBlurTimer);
       this._inputBlurTimer = null;
@@ -121,6 +142,7 @@ Page(withPageInteractionLock({
       this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
 
       await this._syncMembersFromResult(result);
+      this._applySubmitSnapshot(result);
     } catch (e) {
       console.warn('loadRoomData', e);
     }
@@ -136,11 +158,11 @@ Page(withPageInteractionLock({
         this.data.myPlayerIndex,
         this.data.totalMembers
       );
-      const patch = {
+      const patch = this._withNudgeVisibility({
         submittedCount: status.submittedCount || 0,
         totalMembers: status.totalMembers || this.data.totalMembers,
         hasSubmitted: status.hasSubmitted === true
-      };
+      });
       if (status.hasSubmitted) {
         patch.problemText = status.myProblemText || '';
       }
@@ -158,24 +180,164 @@ Page(withPageInteractionLock({
       followNavigation: true,
       onSnapshot: (result) => {
         if (!this._pageAlive || this._pageVisible === false) return;
-        this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
-        this._syncMembersFromResult(result);
-        const session = result.view && result.view.session;
-        const progress = session && session.progress && session.progress.contributionProgress || {};
-        const actor = result.view && result.view.actor;
-        const patch = {
-          submittedCount: progress.submittedCount || 0,
-          totalMembers: progress.requiredCount || result.memberCount || 0,
-          hasSubmitted: !!(actor && actor.contributionStatus.submitted)
-        };
-        if (patch.hasSubmitted && !this._inputFocused) patch.problemText = actor.contributionStatus.text || '';
-        this.setData(patch);
+        this._applySubmitSnapshot(result);
       }
     }).catch((e) => console.warn('submitProblem bind room', e));
   },
 
   _stopPolling() {
     unbindPageFromRoomSession(this);
+  },
+
+  _withNudgeVisibility(patch) {
+    const submittedCount = patch.submittedCount != null ? patch.submittedCount : this.data.submittedCount;
+    const totalMembers = patch.totalMembers != null ? patch.totalMembers : this.data.totalMembers;
+    const hasSubmitted = patch.hasSubmitted != null ? patch.hasSubmitted : this.data.hasSubmitted;
+    return {
+      ...patch,
+      showNudgeButton: !!hasSubmitted && submittedCount < totalMembers
+    };
+  },
+
+  _applySubmitSnapshot(result) {
+    if (!result || result.ok !== true) return;
+    this._syncCategoriesFromBG(normalizeBG(result.selectedBG));
+    this._syncMembersFromResult(result);
+    const session = result.view && result.view.session;
+    const progress = session && session.progress && session.progress.contributionProgress || {};
+    const actor = result.view && result.view.actor;
+    const hasSubmitted = !!(actor && actor.contributionStatus && actor.contributionStatus.submitted);
+    const patch = this._withNudgeVisibility({
+      sessionId: session && session.sessionId || this.data.sessionId || '',
+      submittedCount: progress.submittedCount || 0,
+      totalMembers: progress.requiredCount || result.memberCount || 0,
+      hasSubmitted
+    });
+    if (patch.hasSubmitted && !this._inputFocused) {
+      patch.problemText = actor.contributionStatus.text || '';
+    }
+    this.setData(patch);
+    this._applyNudgeSignal(result.ephemeral, patch.hasSubmitted);
+  },
+
+  _applyNudgeSignal(ephemeral, hasSubmitted) {
+    if (hasSubmitted) return;
+    const signal = ephemeral && ephemeral.signals && ephemeral.signals[DESIGN_PROBLEM_NUDGE_SIGNAL];
+    const updatedAt = Number(signal && signal.updatedAt) || 0;
+    if (!updatedAt || updatedAt <= (this._lastNudgeSeenAt || 0)) return;
+    this._lastNudgeSeenAt = updatedAt;
+    this._playNudgeShake();
+    this._playNudgeHint();
+  },
+
+  _playNudgeShake() {
+    if (this._nudgeShakeTimer) {
+      clearTimeout(this._nudgeShakeTimer);
+      this._nudgeShakeTimer = null;
+    }
+    this.setData({ inputNudgeShake: false });
+    const startShake = () => {
+      if (!this._pageAlive || this.data.hasSubmitted) return;
+      this.setData({ inputNudgeShake: true });
+      this._nudgeShakeTimer = setTimeout(() => {
+        if (this._pageAlive) this.setData({ inputNudgeShake: false });
+      }, NUDGE_SHAKE_MS);
+    };
+    if (typeof wx !== 'undefined' && wx && typeof wx.nextTick === 'function') {
+      wx.nextTick(startShake);
+    } else {
+      setTimeout(startShake, 0);
+    }
+  },
+
+  _clearNudgeHintTimers() {
+    if (this._nudgeHintTimer) {
+      clearTimeout(this._nudgeHintTimer);
+      this._nudgeHintTimer = null;
+    }
+    if (this._nudgeHintFadeTimer) {
+      clearTimeout(this._nudgeHintFadeTimer);
+      this._nudgeHintFadeTimer = null;
+    }
+  },
+
+  _playNudgeHint() {
+    this._clearNudgeHintTimers();
+    if (!this._pageAlive || this.data.hasSubmitted) return;
+    this.setData({ showNudgeHint: true, nudgeHintFading: false });
+    this._nudgeHintTimer = setTimeout(() => {
+      if (!this._pageAlive || this.data.hasSubmitted) return;
+      this.setData({ nudgeHintFading: true });
+      this._nudgeHintFadeTimer = setTimeout(() => {
+        if (!this._pageAlive) return;
+        this.setData({ showNudgeHint: false, nudgeHintFading: false });
+      }, NUDGE_HINT_FADE_MS);
+    }, NUDGE_HINT_MS);
+  },
+
+  _clearNudgeCooldownTimer() {
+    if (this._nudgeCooldownTimer) {
+      clearTimeout(this._nudgeCooldownTimer);
+      this._nudgeCooldownTimer = null;
+    }
+  },
+
+  _clearNudgeCooldown() {
+    this._clearNudgeCooldownTimer();
+    this._nudgeCooldownUntil = 0;
+    if (this._pageAlive) {
+      this.setData({ nudgeDisabled: false, nudgeCooldownLeft: 0 });
+    }
+  },
+
+  _tickNudgeCooldown() {
+    this._clearNudgeCooldownTimer();
+    const until = Number(this._nudgeCooldownUntil) || 0;
+    const leftMs = Math.max(0, until - Date.now());
+    const leftSec = leftMs > 0 ? Math.ceil(leftMs / 1000) : 0;
+    if (this._pageAlive) {
+      this.setData({ nudgeDisabled: leftMs > 0, nudgeCooldownLeft: leftSec });
+    }
+    if (leftMs > 0) {
+      this._nudgeCooldownTimer = setTimeout(() => this._tickNudgeCooldown(), 250);
+    }
+  },
+
+  _startNudgeCooldown() {
+    this._nudgeCooldownUntil = Date.now() + NUDGE_COOLDOWN_MS;
+    this._tickNudgeCooldown();
+  },
+
+  async nudgeUnsubmittedPlayers() {
+    if (!this.data.showNudgeButton || this.data.nudgeDisabled || this.data.hasSubmitted !== true) return;
+    const roomId = this.data.roomId;
+    const sessionId = this.data.sessionId;
+    if (!roomId || !sessionId) {
+      wx.showToast({ title: '房间信息未就绪', icon: 'none' });
+      return;
+    }
+    this._startNudgeCooldown();
+    try {
+      const response = await wx.cloud.callFunction({
+        name: 'roomSignal',
+        data: {
+          roomId,
+          sessionId,
+          signalType: DESIGN_PROBLEM_NUDGE_SIGNAL,
+          clientContext: getRoomRequestContext()
+        }
+      });
+      const result = response && Object.prototype.hasOwnProperty.call(response, 'result')
+        ? response.result
+        : response;
+      if (!result || result.ok !== true) {
+        this._clearNudgeCooldown();
+        wx.showToast({ title: (result && result.errMsg) || '催促失败', icon: 'none' });
+      }
+    } catch (e) {
+      this._clearNudgeCooldown();
+      wx.showToast({ title: '催促失败', icon: 'none' });
+    }
   },
 
   handleOpenCase() {
@@ -301,11 +463,11 @@ Page(withPageInteractionLock({
         );
 
         wx.showToast({ title: '提交成功', icon: 'success', duration: 1200 });
-        this.setData({
+        this.setData(this._withNudgeVisibility({
           hasSubmitted: true,
           submittedCount: status.submittedCount || 0,
           totalMembers: status.totalMembers || this.data.totalMembers
-        });
+        }));
 
         // 最后一位提交者也必须按自己的 Member View 路由：房主进选择页，玩家进等待页。
         await followRoomRouteAfterCommand(result, this.data.roomId);
@@ -322,7 +484,7 @@ Page(withPageInteractionLock({
 }, [
   'handleOpenCase', 'handleGoRoom', 'handleViewContext',
   'selectCategory', 'onInputFocus', 'onInputBlur', 'onInput', 'preventTouchMove',
-  'submitProblem'
+  'submitProblem', 'nudgeUnsubmittedPlayers'
 ], {
   passthroughMethods: ['onInputFocus', 'onInputBlur']
 }));

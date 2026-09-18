@@ -316,6 +316,57 @@ test('事件缺口触发 Snapshot 恢复，不猜测修补', async () => {
   assert.equal(client.getView().room.workshopName, '恢复后');
 });
 
+test('旧 View Schema 的 Event/Sync 强制重新读取当前 Snapshot', async () => {
+  let snapshotCalls = 0;
+  const view = makeStableView('12345678', '当前版本快照');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => {
+      snapshotCalls += 1;
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        roomId: '12345678', seq: 0, stateVersion: 0, view, ephemeral: {} };
+    },
+    sync: async () => ({ ok: true, protocolVersion: 3,
+      viewSchemaVersion: VIEW_SCHEMA_VERSION - 1, eventSchemaVersion: EVENT_SCHEMA_VERSION,
+      afterSeq: 0, throughSeq: 1, roomCurrentSeq: 1, hasMore: false, delivery: 'EVENTS',
+      events: [{ eventSchemaVersion: EVENT_SCHEMA_VERSION,
+        viewSchemaVersion: VIEW_SCHEMA_VERSION - 1,
+        roomId: '12345678', seq: 1, stateVersion: 1,
+        commandId: 'old-view-schema', publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+        publicPatch: { set: [], remove: [], splice: [] }, actorPatch: null }], ephemeral: {} }),
+    dispatch: async () => null
+  };
+  const timers = manualTimers();
+  const client = createRoomClient({ gateway, ...timers });
+
+  await client.open();
+  await timers.run();
+
+  assert.equal(snapshotCalls, 2);
+  assert.equal(client.getView().room.workshopName, '当前版本快照');
+  assert.equal(client.getState().status, 'READY');
+  client.close();
+});
+
+test('旧 View Schema 的 Snapshot 不得安装为稳定 View', async () => {
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3,
+      viewSchemaVersion: VIEW_SCHEMA_VERSION - 1,
+      roomId: '12345678', seq: 0, stateVersion: 0,
+      view: makeStableView('12345678', '旧版本快照'), ephemeral: {} }),
+    sync: async () => null,
+    dispatch: async () => null
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+
+  await client.open();
+
+  assert.equal(client.getView(), null);
+  assert.equal(client.getState().status, 'DEGRADED');
+  client.close();
+});
+
 test('传输超时使用相同 commandId 重试', async () => {
   const sent = [];
   let attempt = 0;

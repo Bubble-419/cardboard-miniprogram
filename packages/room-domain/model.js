@@ -57,6 +57,22 @@ function progressComplete(progress) {
   const submitted = new Set((progress && progress.submittedMemberIds) || []);
   return ((progress && progress.requiredMemberIds) || []).every((memberId) => submitted.has(memberId));
 }
+function designProblemNudgeDeniedReason(session, memberId) {
+  if (!session || !session.workflow || session.workflow.step !== WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS) {
+    return { errCode: ERR.INVALID_TRANSITION, errMsg: '当前不能催促提交设计问题' };
+  }
+  if (!isActiveParticipant(session, memberId)) {
+    return { errCode: ERR.NOT_PARTICIPANT, errMsg: '非本场参与者' };
+  }
+  const progress = session.progress && session.progress.contributionProgress;
+  if (!progress || !(progress.submittedMemberIds || []).includes(memberId)) {
+    return { errCode: ERR.INVALID_TRANSITION, errMsg: '提交后才能催促其他人' };
+  }
+  if (progressComplete(progress)) {
+    return { errCode: ERR.INVALID_TRANSITION, errMsg: '没有尚未提交的玩家' };
+  }
+  return null;
+}
 function activeParticipantsBySeat(aggregate) {
   const ids = new Set(activeParticipantIds(aggregate.currentSession));
   return sortedMembers(aggregate.room).filter((member) => ids.has(member.memberId));
@@ -224,7 +240,7 @@ function markParticipantLeft(aggregate, memberId) {
 module.exports = {
   clone, event, domainOk, fail, okResult, idOf, nowOf, normalizeHalfStarScore, emptyFacts, ensureFacts, sortedMembers,
   memberByUserId, memberById, isHost, participantById, isActiveParticipant, activeParticipants,
-  activeParticipantIds, activeParticipantsBySeat, progressComplete,
+  activeParticipantIds, activeParticipantsBySeat, progressComplete, designProblemNudgeDeniedReason,
   nextSeat, nextColor, createMember, createRoomAggregate,
   assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, transitionWorkflow, newSession,
   normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,

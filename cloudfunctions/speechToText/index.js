@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 4;
-    var VIEW_SCHEMA_VERSION = 2;
+    var VIEW_SCHEMA_VERSION = 3;
     var EVENT_SCHEMA_VERSION = 3;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -113,6 +113,15 @@ var require_room_contracts = __commonJS({
       RESTART_SPY_GAME: "RESTART_SPY_GAME",
       COMPLETE_SPY_SESSION: "COMPLETE_SPY_SESSION"
     });
+    var SIGNAL_TYPES = Object.freeze({
+      PARTNER_SILENT_SOUND: "PARTNER_SILENT_SOUND",
+      DESIGN_PROBLEM_NUDGE: "DESIGN_PROBLEM_NUDGE"
+    });
+    var SIGNAL_TTL_MS = Object.freeze({
+      [SIGNAL_TYPES.PARTNER_SILENT_SOUND]: 3e3,
+      [SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]: 8e3
+    });
+    var DESIGN_PROBLEM_NUDGE_COOLDOWN_MS = 15e3;
     var EVENT_TYPES = Object.freeze([
       "ROOM_CREATED",
       "ROOM_PROFILE_UPDATED",
@@ -628,6 +637,9 @@ var require_room_contracts = __commonJS({
       WORKFLOW_GROUPS,
       COMMAND_TYPES,
       EVENT_TYPES,
+      SIGNAL_TYPES,
+      SIGNAL_TTL_MS,
+      DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
       ERR,
       ERR_MSG,
       COMMAND_CONTEXT,
@@ -733,6 +745,22 @@ var require_model = __commonJS({
     function progressComplete(progress) {
       const submitted = new Set(progress && progress.submittedMemberIds || []);
       return (progress && progress.requiredMemberIds || []).every((memberId) => submitted.has(memberId));
+    }
+    function designProblemNudgeDeniedReason(session, memberId) {
+      if (!session || !session.workflow || session.workflow.step !== WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS) {
+        return { errCode: ERR.INVALID_TRANSITION, errMsg: "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898" };
+      }
+      if (!isActiveParticipant(session, memberId)) {
+        return { errCode: ERR.NOT_PARTICIPANT, errMsg: "\u975E\u672C\u573A\u53C2\u4E0E\u8005" };
+      }
+      const progress = session.progress && session.progress.contributionProgress;
+      if (!progress || !(progress.submittedMemberIds || []).includes(memberId)) {
+        return { errCode: ERR.INVALID_TRANSITION, errMsg: "\u63D0\u4EA4\u540E\u624D\u80FD\u50AC\u4FC3\u5176\u4ED6\u4EBA" };
+      }
+      if (progressComplete(progress)) {
+        return { errCode: ERR.INVALID_TRANSITION, errMsg: "\u6CA1\u6709\u5C1A\u672A\u63D0\u4EA4\u7684\u73A9\u5BB6" };
+      }
+      return null;
     }
     function activeParticipantsBySeat(aggregate) {
       const ids = new Set(activeParticipantIds(aggregate.currentSession));
@@ -921,6 +949,7 @@ var require_model = __commonJS({
       activeParticipantIds,
       activeParticipantsBySeat,
       progressComplete,
+      designProblemNudgeDeniedReason,
       nextSeat,
       nextColor,
       createMember,
@@ -2258,6 +2287,7 @@ var require_room_domain = __commonJS({
       assertHost,
       assertParticipant,
       assertSession,
+      designProblemNudgeDeniedReason,
       transitionWorkflow,
       newSession,
       normalizeScenario,
@@ -2895,6 +2925,7 @@ var require_room_domain = __commonJS({
       memberById,
       sortedMembers,
       minimumPlayers,
+      designProblemNudgeDeniedReason,
       ...require_spy()
     };
   }
@@ -3534,7 +3565,8 @@ var require_room_application = __commonJS({
       validateActorViewPatch,
       MAX_SESSION_DOCUMENT_BYTES,
       MAX_SYNC_RESPONSE_BYTES,
-      MAX_INCREMENTAL_SYNC_EVENTS
+      MAX_INCREMENTAL_SYNC_EVENTS,
+      SIGNAL_TYPES
     } = require_room_contracts();
     var { reduceCommand, authorizeRoomRead, authorizeSessionRead, memberByUserId } = require_room_domain();
     var {
@@ -3711,10 +3743,16 @@ var require_room_application = __commonJS({
         });
         const signals = {};
         const scope = signalScope(aggregate);
+        const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId || aggregate && aggregate.room && aggregate.room.currentSessionId || null;
         (signalRows || []).filter((row) => {
           if (Number(row.expiresAt) <= now()) return false;
-          if (row.signalType !== "PARTNER_SILENT_SOUND") return true;
-          return !!(scope && row.sessionId === scope.sessionId && row.turnId === scope.turnId && row.memberId === scope.memberId && Number(scope.deadlineAt) > now());
+          if (row.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
+            return !!(scope && row.sessionId === scope.sessionId && row.turnId === scope.turnId && row.memberId === scope.memberId && Number(scope.deadlineAt) > now());
+          }
+          if (row.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
+            return !!(currentSessionId && row.sessionId === currentSessionId);
+          }
+          return false;
         }).forEach((row) => {
           if (!signals[row.signalType] || Number(signals[row.signalType].updatedAt) < Number(row.updatedAt)) {
             signals[row.signalType] = {
@@ -3787,7 +3825,17 @@ var require_room_application = __commonJS({
         const signalType = String(input && input.signalType || "");
         const rawValue = input && input.value;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-        if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId) || signalType !== "PARTNER_SILENT_SOUND" || typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+        const silentSound = signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND;
+        const designNudge = signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE;
+        if (silentSound) {
+          if (!isRoomId(roomId) || !isOpaqueId(sessionId) || !isOpaqueId(turnId) || typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+            return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
+          }
+        } else if (designNudge) {
+          if (!isRoomId(roomId) || !isOpaqueId(sessionId)) {
+            return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
+          }
+        } else {
           return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7");
         }
         if (typeof repo.upsertSignal !== "function") return fail(ERR.DEPENDENCY_UNAVAILABLE);
@@ -3795,15 +3843,15 @@ var require_room_application = __commonJS({
           roomId,
           actorUserId,
           sessionId,
-          turnId,
+          turnId: silentSound ? turnId : "",
           signalType,
-          value: Math.min(1, Math.max(0, rawValue)),
+          value: silentSound ? Math.min(1, Math.max(0, rawValue)) : 1,
           now: now()
         });
         if (!result || result.ok !== true) {
           return fail(
             result && result.errCode || ERR.INVALID_TRANSITION,
-            result && result.errMsg || "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D"
+            result && result.errMsg || (silentSound ? "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" : "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898")
           );
         }
         await touchActivity(roomId, result.signal.memberId, actorContext);
@@ -4173,12 +4221,15 @@ var require_room_cloudbase_adapter = __commonJS({
     "use strict";
     var crypto = require("crypto");
     var { clone } = require_room_projection();
-    var { emptyFacts } = require_room_domain();
+    var { emptyFacts, designProblemNudgeDeniedReason } = require_room_domain();
     var {
       PROTOCOL_VERSION,
       SCHEMA_VERSION,
       MAX_INCREMENTAL_SYNC_EVENTS,
-      stableStringify
+      stableStringify,
+      SIGNAL_TYPES,
+      SIGNAL_TTL_MS,
+      DESIGN_PROBLEM_NUDGE_COOLDOWN_MS
     } = require_room_contracts();
     var COLLECTIONS = Object.freeze({
       rooms: "roomV3Rooms",
@@ -4447,8 +4498,8 @@ var require_room_cloudbase_adapter = __commonJS({
         return (result && result.data || []).map(cleanDoc);
       }
       async function listSignals(roomId) {
-        const row = await safeGet(db2, COLLECTIONS.signals, docId(`${roomId}:PARTNER_SILENT_SOUND`));
-        return row ? [row] : [];
+        const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => safeGet(db2, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))));
+        return rows.filter(Boolean);
       }
       async function upsertSignal(input) {
         return db2.runTransaction(async (transaction) => {
@@ -4456,27 +4507,61 @@ var require_room_cloudbase_adapter = __commonJS({
           if (!compatibleRoom(room)) return { ok: false, errCode: "ROOM_NOT_FOUND", errMsg: "\u623F\u95F4\u4E0D\u5B58\u5728" };
           const member = room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === input.actorUserId);
           if (!member) return { ok: false, errCode: "NOT_MEMBER", errMsg: "\u975E\u623F\u95F4\u6210\u5458" };
-          const scope = room.signalScope;
-          if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
-            return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" };
+          if (input.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
+            const scope = room.signalScope;
+            if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
+              return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" };
+            }
+            const signalId = docId(`${input.roomId}:${input.signalType}`);
+            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+            if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId && Number(existing.updatedAt) >= Number(input.now)) {
+              return { ok: true, signal: existing };
+            }
+            const row = {
+              roomId: input.roomId,
+              signalType: input.signalType,
+              value: input.value,
+              memberId: member.memberId,
+              sessionId: input.sessionId,
+              turnId: input.turnId,
+              updatedAt: input.now,
+              expiresAt: Math.min(Number(scope.deadlineAt), input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.PARTNER_SILENT_SOUND])
+            };
+            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            return { ok: true, signal: row };
           }
-          const signalId = docId(`${input.roomId}:${input.signalType}`);
-          const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
-          if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId && Number(existing.updatedAt) >= Number(input.now)) {
-            return { ok: true, signal: existing };
+          if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
+            if (room.currentSessionId !== input.sessionId) {
+              return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898" };
+            }
+            const session = await safeGet(transaction, COLLECTIONS.sessions, input.sessionId);
+            if (!session || session.roomId !== input.roomId) {
+              return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u50AC\u4FC3\u63D0\u4EA4\u8BBE\u8BA1\u95EE\u9898" };
+            }
+            const denied = designProblemNudgeDeniedReason(session, member.memberId);
+            if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
+            const signalId = docId(`${input.roomId}:${input.signalType}`);
+            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+            if (existing && existing.sessionId === input.sessionId && Number(existing.updatedAt) >= Number(input.now)) {
+              return { ok: true, signal: existing };
+            }
+            if (existing && existing.sessionId === input.sessionId && existing.memberId === member.memberId && Number(input.now) - Number(existing.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS) {
+              return { ok: true, signal: existing };
+            }
+            const row = {
+              roomId: input.roomId,
+              signalType: input.signalType,
+              value: 1,
+              memberId: member.memberId,
+              sessionId: input.sessionId,
+              turnId: "",
+              updatedAt: input.now,
+              expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
+            };
+            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            return { ok: true, signal: row };
           }
-          const row = {
-            roomId: input.roomId,
-            signalType: input.signalType,
-            value: input.value,
-            memberId: member.memberId,
-            sessionId: input.sessionId,
-            turnId: input.turnId,
-            updatedAt: input.now,
-            expiresAt: Math.min(Number(scope.deadlineAt), input.now + 3e3)
-          };
-          await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
-          return { ok: true, signal: row };
+          return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7" };
         });
       }
       return {

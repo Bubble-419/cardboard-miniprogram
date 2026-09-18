@@ -148,9 +148,36 @@
   line-height: 40rpx;
 }
 
+.nudge-hint {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 20rpx 0;
+  opacity: 1;
+}
+.nudge-hint-out {
+  opacity: 0;
+  transition: opacity 280ms ease;
+}
+.nudge-hint-text {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #5EC159;
+  line-height: 32rpx;
+}
+
 /* 输入框区（Figma: padding-bottom 7px） */
 .form-input-wrap {
   position: relative;
+}
+.form-input-wrap-nudge {
+  animation: problem-nudge-shake 0.5s ease;
+}
+@keyframes problem-nudge-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-16rpx); }
+  40% { transform: translateX(16rpx); }
+  60% { transform: translateX(-10rpx); }
+  80% { transform: translateX(10rpx); }
 }
 /* 文本框容器（Figma: bg white，border 1px rgba(76,175,80,0.3)，radius 16px，padding 16px） */
 .textarea-box {
@@ -205,7 +232,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80rpx 40rpx 40rpx;
+  padding: 80rpx 40rpx calc(180rpx + env(safe-area-inset-bottom));
   margin: 40rpx 0 0;
   gap: 44rpx;
   background: transparent;
@@ -263,4 +290,32 @@
 }
 .confirm-btn:active {
   opacity: 0.9;
+}
+
+.nudge-btn {
+  width: 100%;
+  height: 90rpx;
+  font-size: 40rpx;
+  font-weight: 400;
+  color: #FFFFFF;
+  background-color: #5EC159;
+  border-radius: 22rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.0909em;
+  pointer-events: auto;
+}
+.nudge-btn::after {
+  border: none;
+}
+.nudge-btn:active {
+  opacity: 0.9;
+}
+.nudge-btn-disabled,
+.nudge-btn[disabled] {
+  background-color: #C5C5C5 !important;
+  color: #FFFFFF !important;
+  opacity: 1 !important;
 }
