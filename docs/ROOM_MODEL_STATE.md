@@ -218,7 +218,7 @@ modeState.partner
     └── stage
 ```
 
-完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。“全部通过”在提交表态结果时直接归档；“部分通过/全部疑问”先把 `statementResult` 持久化到 Active Turn，讨论结束后再归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
+完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。当前页面「开始表态」先进入讨论；讨论页「没有疑问」以 `allPass` 归档，「结束讨论」以 `allQuestion` 归档。协议仍允许 `START_PARTNER_STATEMENT(allPass)` 直接归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
 
 ### Halli Galli
 
@@ -402,7 +402,7 @@ erDiagram
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
 | `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
-| `roomV3Signals` | 三种可丢失公开信号按 `hash(roomId:signalType)` 点读；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影 | ephemeral 投影与服务端限流 |
+| `roomV3Signals` | 三种可丢失公开信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）按 `hash(roomId:signalType)` 点读；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默边框以各端本地麦克风为准，`PARTNER_SILENT_SOUND` 仅房主可写、给无麦端回退 | ephemeral 投影与服务端限流 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid

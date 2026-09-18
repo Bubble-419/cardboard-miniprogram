@@ -276,7 +276,7 @@ Page({
           return;
         }
 
-        // 脑暴大富翁（partnerMode）：确认情境页 → 选择问题
+        // 创意合伙人（partnerMode）：确认情境页 → 选择问题
         if (this.data.modeId === 'partner') {
           app.globalData.selectedBG = { ...scenario.bg };
           app.globalData.gameMode = 'partner';

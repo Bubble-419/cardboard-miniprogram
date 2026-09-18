@@ -296,7 +296,7 @@ var require_room_contracts = __commonJS({
       SUBMIT_PARTNER_SCORE: ["scoreHalfSteps"],
       POST_PARTNER_MESSAGE: ["text"],
       START_PARTNER_STATEMENT: ["statementResult"],
-      ADVANCE_PARTNER_TURN: [],
+      ADVANCE_PARTNER_TURN: ["statementResult"],
       USE_PARTNER_SPECIAL: ["kind"],
       END_PARTNER_SILENT: [],
       SUBMIT_PARTNER_CLOSING_VOTE: ["vote"],
@@ -441,6 +441,9 @@ var require_room_contracts = __commonJS({
         }
       }
       if (type === COMMAND_TYPES.START_PARTNER_STATEMENT && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
+        return fail(ERR.INVALID_ARGUMENT, "statementResult \u4E0D\u5408\u6CD5");
+      }
+      if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN && payload.statementResult != null && !["allPass", "partialPass", "allQuestion"].includes(payload.statementResult)) {
         return fail(ERR.INVALID_ARGUMENT, "statementResult \u4E0D\u5408\u6CD5");
       }
       if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM, COMMAND_TYPES.UPDATE_MEMBER_PROFILE].includes(type) && payload.nickName != null) {
@@ -1420,7 +1423,8 @@ var require_partner = __commonJS({
         if (!host.ok) return host;
         const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]);
         if (!check.ok) return check;
-        const summary = archiveActiveTurn(aggregate, "COMPLETED", check.turn.statementResult, deps);
+        const statementResult = ["allPass", "partialPass", "allQuestion"].includes(command.payload.statementResult) ? command.payload.statementResult : check.turn.statementResult;
+        const summary = archiveActiveTurn(aggregate, "COMPLETED", statementResult, deps);
         const turn = beginNextPartnerTurn(aggregate, deps);
         if (!turn) return fail(ERR.INVALID_TRANSITION, "\u6CA1\u6709\u53EF\u7528\u7684\u4E0B\u4E00\u4F4D\u53C2\u4E0E\u8005");
         return domainOk(

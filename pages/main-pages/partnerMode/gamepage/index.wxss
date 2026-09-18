@@ -1066,6 +1066,13 @@
   justify-content: center;
 }
 
+/* 讨论卡空状态贴着标题，避免「暂无匿名表达」撑出大块空白 */
+.spectator-chat-empty-compact {
+  padding: 0 0 8rpx;
+  min-height: 0;
+  justify-content: flex-start;
+}
+
 .spectator-chat-empty-text {
   font-size: 26rpx;
   color: #aeaeae;
@@ -2343,89 +2350,6 @@ game-card-timer {
   color: #fff !important;
   opacity: 0.85 !important;
   pointer-events: none;
-}
-
-/* 实体表态卡统计结果：只在房主本地选择，选定后才提交权威指令。 */
-.statement-picker-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(0, 0, 0, 0.42);
-}
-
-.statement-picker-panel {
-  position: relative;
-  width: 100%;
-  padding: 44rpx 48rpx calc(44rpx + env(safe-area-inset-bottom));
-  border-radius: 36rpx 36rpx 0 0;
-  background: #fafafa;
-  box-sizing: border-box;
-}
-
-.statement-picker-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10rpx;
-  padding-bottom: 32rpx;
-}
-
-.statement-picker-close {
-  position: absolute;
-  top: 22rpx;
-  right: 30rpx;
-  width: 64rpx;
-  height: 64rpx;
-  color: #777;
-  font-size: 50rpx;
-  line-height: 60rpx;
-  text-align: center;
-}
-
-.statement-picker-title {
-  color: #5ec159;
-  font-size: 34rpx;
-  font-weight: 600;
-}
-
-.statement-picker-subtitle {
-  color: #8f8f8f;
-  font-size: 26rpx;
-}
-
-.statement-result-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-}
-
-.statement-result-btn {
-  width: 100%;
-  height: 96rpx;
-  margin: 0;
-  border: none;
-  border-radius: 24rpx;
-  color: #fff;
-  font-size: 36rpx;
-  line-height: 96rpx;
-}
-
-.statement-result-btn::after {
-  border: none;
-}
-
-.statement-result-pass {
-  background: #5ec159;
-}
-
-.statement-result-partial {
-  background: #979797;
-}
-
-.statement-result-question {
-  background: #161616;
 }
 
 .discussion-card-body {

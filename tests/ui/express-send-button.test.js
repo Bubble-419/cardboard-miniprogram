@@ -48,3 +48,13 @@ test('打分星星与匿名表态按钮在同一行垂直居中对齐', () => {
   assert.match(starRoot, /align-items:\s*center;/);
   assert.match(starRoot, /height:\s*100%;/);
 });
+
+test('讨论卡暂无匿名表达时使用紧凑空状态，不撑出大块空白', () => {
+  const wxml = fs.readFileSync(GAME_WXML, 'utf8');
+  const wxss = fs.readFileSync(GAME_WXSS, 'utf8');
+  const discussion = wxml.match(/提出疑问并讨论[\s\S]*?暂无疑问讨论/)[0];
+  assert.match(discussion, /spectator-chat-empty spectator-chat-empty-compact[\s\S]*?暂无匿名表达/);
+  const compact = wxss.match(/\.spectator-chat-empty-compact\s*\{[\s\S]*?\n\}/)[0];
+  assert.match(compact, /padding:\s*0 0 8rpx;/);
+  assert.doesNotMatch(compact, /padding:\s*80rpx 0;/);
+});

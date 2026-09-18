@@ -135,7 +135,7 @@ flowchart TD
 | `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随。静默模式时其他成员以 `specialMove?silent=1` 叠入；仅房主采麦，声纹经 `PARTNER_SILENT_SOUND` 广播 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随。静默模式时其他成员以 `specialMove?silent=1` 叠入；全员本机采麦测 40dB，边框用本地声级。`PARTNER_SILENT_SOUND` 仍仅房主可写，给无麦端回退 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
 | `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
@@ -346,10 +346,8 @@ flowchart LR
   REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
   BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
 
-  TURN --> PICK{全员评分后<br/>Host 选择实体表态卡结果}
-  PICK -->|全部通过| TURN
-  PICK -->|部分通过 / 全部疑问| STATEMENT
-  STATEMENT -->|Host“结束讨论”| TURN
+  TURN -->|Host“开始表态”| STATEMENT
+  STATEMENT -->|Host“没有疑问 / 结束讨论”| TURN
   TURN -->|当前行动者“收尾行动”| VOTE
   VOTE -->|question| TURN
   VOTE -->|全部 pass| RUNE
@@ -362,11 +360,12 @@ flowchart LR
 | 非行动者星级评分 | `SUBMIT_PARTNER_SCORE` | 0～10 半星单位；同一 Turn 每人一次 |
 | 非行动者匿名表达 | `POST_PARTNER_MESSAGE` | 出牌阶段非行动者；讨论阶段所有参与者 |
 | 增删改文本/图片/语音 | `APPEND/UPDATE/REMOVE_ARTIFACT` | `operationId + entityVersion` 保证重试和并发正确 |
-| Host “开始表态” | 暂不发 Command | 只打开本地三态选择器，不改变权威状态 |
-| Host 选“全部通过” | `START_PARTNER_STATEMENT(allPass)` | 原子归档当前 Turn 并创建下一 Turn，不进入讨论 |
+| Host “开始表态” | `START_PARTNER_STATEMENT(allQuestion)` | 进入 `PARTNER_STATEMENT` 疑问讨论页；底部为「没有疑问 / 结束讨论」 |
+| Host 选“全部通过” | `START_PARTNER_STATEMENT(allPass)` | 原子归档当前 Turn 并创建下一 Turn，不进入讨论（协议仍支持，当前页不用此入口） |
 | Host 选“部分通过/全部疑问” | `START_PARTNER_STATEMENT(partialPass/allQuestion)` | 将结果保存在 Active Turn，进入 `PARTNER_STATEMENT` 讨论 |
-| Host “结束讨论” | `ADVANCE_PARTNER_TURN` | 使用服务端已保存的表态结果归档 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员叠入 `specialMove?silent=1`；仅房主采麦，声纹广播给全员 |
+| Host “没有疑问” | `ADVANCE_PARTNER_TURN(allPass)` | 覆盖讨论期结果为全部通过，归档 Turn，创建下一 Turn |
+| Host “结束讨论” | `ADVANCE_PARTNER_TURN(allQuestion)` | 按疑问结果归档 Turn，创建下一 Turn |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员叠入 `specialMove?silent=1`；全员本机采麦测 40dB。房主仍可写 `PARTNER_SILENT_SOUND`，给无麦端回退 |
 | 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |

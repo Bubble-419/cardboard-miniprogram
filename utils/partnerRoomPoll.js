@@ -1,5 +1,5 @@
 /**
- * 脑暴大富翁（partnerMode）房间轮询辅助：页面隐藏时自动停止，避免多页面并发跳转
+ * 创意合伙人（partnerMode）房间轮询辅助：页面隐藏时自动停止，避免多页面并发跳转
  */
 
 function bindPartnerPageVisibility(pageInstance, callbacks) {

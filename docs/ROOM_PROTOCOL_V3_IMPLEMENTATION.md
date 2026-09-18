@@ -451,11 +451,12 @@ stateDiagram-v2
   PARTNER_CLOSING_REVIEW --> COMPLETED: 房主完成
 ```
 
-表态选择器是 Host 本地 UI，打开时不产生 Command。`START_PARTNER_STATEMENT`
-必须携带 `statementResult`：`allPass` 在同一事务内归档当前 Turn 并开始下一
-Turn；`partialPass/allQuestion` 将结果保存在权威 Active Turn 后进入讨论。
-`ADVANCE_PARTNER_TURN` 不再接收表态结果，它只能从 `PARTNER_STATEMENT`
-使用已保存结果归档并换轮，断线恢复不依赖客户端草稿。
+表态选择器不再作为权威入口。Host 点「开始表态」即发送
+`START_PARTNER_STATEMENT(allQuestion)` 并进入疑问讨论页。`allPass` 仍可在同一事务内
+归档当前 Turn 并开始下一 Turn，但当前页面用讨论页「没有疑问」通过
+`ADVANCE_PARTNER_TURN(allPass)` 提交。`partialPass/allQuestion` 将结果保存在权威
+Active Turn 后进入讨论。`ADVANCE_PARTNER_TURN` 可选用 `statementResult` 覆盖已保存
+结果；未传时使用讨论开始时写入的结果。断线恢复不依赖客户端草稿。
 
 `HELP_LUCK` 的反面随机拼先进入可返回的本地预览；只有用户选择“取消采用”
 或“采用卡组”时才发送 `USE_PARTNER_SPECIAL(HELP_LUCK)`，从预览返回转盘不消耗行动。
@@ -568,7 +569,7 @@ flowchart TD
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
-| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写 | 否 |
+| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写。边框以各端本地麦克风为准，该 signal 只给无麦端回退 | 否 |
 | 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；房间级最新信号供客户端投影，Session + Member 级冷却凭证保证同一成员 15 秒内幂等 | 否 |
 | 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；绑定精确 `sessionId + workflowRevision`，value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。它不推进 seq，每次 idle Sync 仍返回当前 ephemeral，Page Model 校验步骤、Session、workflow revision 和过期时间后投影 `roomState.editingProblemId`；页面不得直读 raw ephemeral | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |

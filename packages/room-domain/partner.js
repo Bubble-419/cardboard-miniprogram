@@ -342,7 +342,10 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
   if (type === COMMAND_TYPES.ADVANCE_PARTNER_TURN) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
     const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_STATEMENT]); if (!check.ok) return check;
-    const summary = archiveActiveTurn(aggregate, 'COMPLETED', check.turn.statementResult, deps);
+    const statementResult = ['allPass', 'partialPass', 'allQuestion'].includes(command.payload.statementResult)
+      ? command.payload.statementResult
+      : check.turn.statementResult;
+    const summary = archiveActiveTurn(aggregate, 'COMPLETED', statementResult, deps);
     const turn = beginNextPartnerTurn(aggregate, deps);
     if (!turn) return fail(ERR.INVALID_TRANSITION, '没有可用的下一位参与者');
     return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, summary }),
