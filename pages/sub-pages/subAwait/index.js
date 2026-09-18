@@ -71,16 +71,23 @@ Page({
     });
   },
 
+  _sceneFromSnapshot(snapshot) {
+    const routeName = snapshot && snapshot.view && snapshot.view.route && snapshot.view.route.name;
+    // 已经离开等待页时不要再按默认 scene=bg 刷情境空状态，否则会和跟随跳转抢 setData。
+    if (routeName && routeName !== 'subAwait') return '';
+    const page = snapshot && snapshot.roomState && snapshot.roomState.currentPage;
+    const nav = resolveSubScreenNavigation(page, snapshot && snapshot.roomState, this.data.roomId);
+    return sceneFromMemberView(snapshot && snapshot.view)
+      || ((nav && nav.action === 'await' && nav.scene) || '');
+  },
+
   async checkRoomState() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) return;
 
     try {
       const result = await getRoomPageSnapshot(roomId, { refresh: true });
-      const page = result && result.roomState && result.roomState.currentPage;
-      const nav = resolveSubScreenNavigation(page, result && result.roomState, roomId);
-      const scene = sceneFromMemberView(result && result.view)
-        || ((nav && nav.action === 'await' && nav.scene) || '');
+      const scene = this._sceneFromSnapshot(result);
       if (scene) this.applyScene(scene);
     } catch (e) {
       console.warn('subAwait checkRoomState', e);
@@ -93,10 +100,7 @@ Page({
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
       followNavigation: true,
       onSnapshot(snapshot) {
-        const page = snapshot && snapshot.roomState && snapshot.roomState.currentPage;
-        const nav = resolveSubScreenNavigation(page, snapshot && snapshot.roomState, this.data.roomId);
-        const scene = sceneFromMemberView(snapshot && snapshot.view)
-          || ((nav && nav.action === 'await' && nav.scene) || '');
+        const scene = this._sceneFromSnapshot(snapshot);
         if (scene) this.applyScene(scene);
       }
     }).catch((e) => console.warn('subAwait roomSession', e));

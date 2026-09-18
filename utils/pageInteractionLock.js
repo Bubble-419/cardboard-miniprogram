@@ -72,6 +72,7 @@ function waitForPageNavigation(method, options = {}) {
 
     const originalSuccess = options.success;
     const originalFail = options.fail;
+    const originalComplete = options.complete;
     let settled = false;
     const finish = (result) => {
       if (settled) return;
@@ -94,6 +95,14 @@ function waitForPageNavigation(method, options = {}) {
             if (typeof originalFail === 'function') originalFail(error);
           } finally {
             finish({ ok: false, error });
+          }
+        },
+        complete(result) {
+          try {
+            if (typeof originalComplete === 'function') originalComplete(result);
+          } finally {
+            // 未收到 success/fail 时（部分测试桩或旧运行时）仍要结束 Promise，避免页面锁死。
+            finish({ ok: true, result: result || { completed: true } });
           }
         }
       });

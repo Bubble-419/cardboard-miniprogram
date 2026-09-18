@@ -40,6 +40,14 @@ test('subAwait 优先使用 view.route.params.scene，其次 phase/step', () => 
   }), 'confirmFirstPlayer');
 });
 
+test('等待页源码在权威 route 离开 subAwait 后不再刷情境空状态', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../../pages/sub-pages/subAwait/index.js'), 'utf8');
+  assert.match(source, /routeName !== 'subAwait'/);
+  assert.match(source, /_sceneFromSnapshot/);
+});
+
 test('确认首位时非房主走 subAwait，房主才进入 confirmFirstPlayer 页', () => {
   const previousGetApp = global.getApp;
   global.getApp = () => ({ globalData: {} });

@@ -8,7 +8,21 @@ const { createNavigationCoordinator } = require('../room-navigation/index');
 const { projectPageSnapshot } = require('./page-model');
 const { waitForPageNavigation } = require('../../utils/pageInteractionLock');
 
-const navigation = createNavigationCoordinator();
+const SPY_ROUTE_NAMES = new Set(['spyIntro', 'spySpeak', 'spyVote', 'spyResult', 'spySettle']);
+
+async function openAuthoritativeRoute(descriptor) {
+  const result = await waitForPageNavigation(descriptor.mode, { url: descriptor.url });
+  if (result.ok) return;
+  // Spy 流程避免 reLaunch 整栈重建白屏；其余权威页在 redirectTo 失败后还能用 reLaunch 跟上。
+  if (descriptor.mode === 'redirectTo' && !SPY_ROUTE_NAMES.has(descriptor.name)) {
+    const relaunch = await waitForPageNavigation('reLaunch', { url: descriptor.url });
+    if (relaunch.ok) return;
+    throw relaunch.error || result.error || new Error('导航失败');
+  }
+  throw result.error || new Error('导航失败');
+}
+
+const navigation = createNavigationCoordinator({ open: openAuthoritativeRoute });
 
 function currentView() {
   const session = getActiveRoomSession();
@@ -290,7 +304,11 @@ async function bindPageToRoomSession(page, options) {
     if (page._roomSessionBindGen !== generation) return;
     if (first && options.emitCurrent === false) { first = false; return; }
     first = false;
-    if (typeof options.onSnapshot === 'function') options.onSnapshot.call(page, snapshot);
+    try {
+      if (typeof options.onSnapshot === 'function') options.onSnapshot.call(page, snapshot);
+    } catch (error) {
+      console.warn('room snapshot listener', error);
+    }
     const view = snapshot.view;
     if (options.followNavigation && view && view.route) {
       navigation.reconcile(view.route, snapshot.revision, { roomId,
