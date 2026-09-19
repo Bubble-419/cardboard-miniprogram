@@ -380,6 +380,23 @@ test('Master Event 刷新不会让非当前玩家离开 game 屏幕或丢失打�
   assert.equal(page.data.starRatingCollapsed, false);
 });
 
+test('静默音量 Signal 在相同业务指纹下窄刷卡片效果', async () => {
+  const page = makeGamePage();
+  const first = gameSnapshot(22);
+  first.roomState.partnerSilentMode = true;
+  first.roomState.partnerSilentSoundLevel = 0.2;
+  let applied = page._applyRoomContext(first);
+  await applied.applied;
+  assert.equal(page.data.silentSoundLevel, 0.2);
+
+  const signalUpdate = gameSnapshot(22);
+  signalUpdate.roomState.partnerSilentMode = true;
+  signalUpdate.roomState.partnerSilentSoundLevel = 0.85;
+  applied = page._applyRoomContext(signalUpdate);
+  assert.equal(applied.applied, undefined, '瞬时信号不应触发整页补丁');
+  assert.equal(page.data.silentSoundLevel, 0.85);
+});
+
 test('收尾投票屏幕恢复前台时不启动游戏计时、语音或灵感副作用', () => {
   const page = makeGamePage();
   page.data.roomShellScreen = PARTNER_SHELL_SCREEN.CLOSING_VOTE;
@@ -418,6 +435,33 @@ test('等待确认首位玩家屏幕恢复前台时只恢复 RoomSession，不�
   assert.equal(gameEffects, 0);
 });
 
+test('从本地叠层返回时立即消费 RoomSession 当前 View，无需等待下一次轮询', () => {
+  const page = makeGamePage();
+  const previousGetApp = global.getApp;
+  let polling = 0;
+  let gameEffects = 0;
+  global.getApp = () => ({
+    globalData: {
+      roomSession: { getSnapshot: () => closingSnapshot() }
+    }
+  });
+  page._startStatePolling = () => { polling += 1; };
+  page._refreshInspirationCount = () => { gameEffects += 1; };
+  page._ensureSharedRoundTimerOnEnter = () => {
+    gameEffects += 1;
+    return Promise.resolve();
+  };
+
+  try {
+    page.onShow();
+    assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.CLOSING_VOTE);
+    assert.equal(polling, 1);
+    assert.equal(gameEffects, 0, '权威 View 为收尾投票时不得短暂恢复游戏副作用');
+  } finally {
+    global.getApp = previousGetApp;
+  }
+});
+
 test('离开 Partner Shell 的权威 route 交给全局导航，不闪回游戏屏幕', async () => {
   const page = makeGamePage();
   let applied = page._applyRoomContext(closingSnapshot());
@@ -428,6 +472,11 @@ test('离开 Partner Shell 的权威 route 交给全局导航，不闪回游戏�
   applied = page._applyRoomContext(completed);
   await applied.applied;
 
-  assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.CLOSING_VOTE);
+  assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.LEAVING);
   assert.equal(applied.shellScreen, PARTNER_SHELL_SCREEN.EXTERNAL);
+});
+
+test('Partner 在线页首屏默认等待完整 Snapshot，不按 URL 猜业务屏幕', () => {
+  const definition = loadGamePageDefinition();
+  assert.equal(definition.data.roomShellScreen, PARTNER_SHELL_SCREEN.LOADING);
 });

@@ -65,6 +65,13 @@ function fixture() {
   app.globalData.roomId = '12345678';
   app.globalData.roomSession = {
     roomId: '12345678',
+    getSnapshot: () => ({
+      ok: true,
+      revision: 2,
+      roomId: '12345678',
+      roomState: { partnerGamePhase: 'closing' },
+      view: { route: { name: 'closingStatement', params: {} } }
+    }),
     getView: () => ({
       actor: { capabilities: { USE_PARTNER_SPECIAL: { allowed: true } } },
       session: { sessionId: 's1', activeTurn: { turnId: 't1' } }
@@ -142,4 +149,20 @@ test('Master 完成后关闭本地叠层并复用下层 gamepage，不用 redire
   } finally {
     global.getCurrentPages = previousPages;
   }
+});
+
+test('进入收尾阶段后关闭本地叠层，由下层 RoomShell 消费权威 View', async () => {
+  const { app, page, commands } = fixture();
+  let returnedState = null;
+  page._redirectToGamepageFromRoom = async (snapshot) => {
+    returnedState = snapshot.roomState;
+    return { ok: true };
+  };
+
+  await withRuntime(app, async () => page.activateClosing());
+
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].type, 'USE_PARTNER_SPECIAL');
+  assert.deepEqual(commands[0].payload, { kind: 'CLOSING' });
+  assert.deepEqual(returnedState, { partnerGamePhase: 'closing' });
 });

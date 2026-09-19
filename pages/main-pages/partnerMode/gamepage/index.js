@@ -112,7 +112,6 @@ const {
 const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
 const {
   PARTNER_SHELL_SCREEN,
-  projectPartnerWaiting,
   projectPartnerRoomShell
 } = require('../utils/partnerRoomShell');
 
@@ -129,7 +128,7 @@ Page(withPageInteractionLock({
   data: {
     roomId: '',
     /** Partner 运行态固定留在本页，由权威 route 选择 Shell 内的屏幕。 */
-    roomShellScreen: PARTNER_SHELL_SCREEN.GAME,
+    roomShellScreen: PARTNER_SHELL_SCREEN.LOADING,
     waitingModel: null,
     closingVoteModel: null,
     closingVoteSubmitting: false,
@@ -388,11 +387,10 @@ Page(withPageInteractionLock({
     const initialSessionId = options && options.sessionId
       ? String(options.sessionId)
       : '';
-    const requestedShellScreen = options && options.roomShellScreen;
-    const initialShellScreen = requestedShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE
-      || requestedShellScreen === PARTNER_SHELL_SCREEN.WAITING
-      ? requestedShellScreen
-      : PARTNER_SHELL_SCREEN.GAME;
+    // 在线业务页只相信完整 PageSnapshot；URL 只负责把客户端送到物理 Shell。
+    const initialShellScreen = isHistoryReview
+      ? PARTNER_SHELL_SCREEN.GAME
+      : PARTNER_SHELL_SCREEN.LOADING;
     this._isHistoryReview = isHistoryReview;
     this._reviewOpenedAsHost = false;
     this._reviewEnterPlayed = false;
@@ -405,9 +403,7 @@ Page(withPageInteractionLock({
     this.setData({
       roomId,
       roomShellScreen: initialShellScreen,
-      waitingModel: initialShellScreen === PARTNER_SHELL_SCREEN.WAITING
-        ? projectPartnerWaiting(String(options && options.scene || 'confirmFirstPlayer'))
-        : null,
+      waitingModel: null,
       closingVoteModel: null,
       currentPlayerIndex,
       currentRound: initialRound,
@@ -599,6 +595,16 @@ Page(withPageInteractionLock({
       return;
     }
     if (this.data.roomId) {
+      // 从本地叠层返回时先消费 RoomSession 已提交的 View，再恢复订阅与屏幕副作用。
+      // 这样 Command 改变 route 后无需等待下一轮网络查询。
+      const session = typeof getApp === 'function' ? getActiveRoomSession() : null;
+      const snapshot = session && typeof session.getSnapshot === 'function'
+        ? session.getSnapshot()
+        : null;
+      if (snapshot && snapshot.ok !== false
+        && (!snapshot.roomId || snapshot.roomId === this.data.roomId)) {
+        this._applyRoomContext(snapshot);
+      }
       this._startStatePolling();
       if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) return;
       this._bindInspirationKeyboard();
@@ -1717,6 +1723,15 @@ Page(withPageInteractionLock({
     this.setData(narrow);
   },
 
+  /** 静默音量是高频瞬时信号，只窄刷卡片效果，不能重建整个 swiper。 */
+  _applySilentEffectPatch(patch) {
+    const level = patch && patch.isSilentMode === true
+      ? Math.min(1, Math.max(0, Number(patch.silentSoundLevel) || 0))
+      : 0;
+    if (level === this.data.silentSoundLevel) return;
+    this.setData({ silentSoundLevel: level });
+  },
+
   _markScoreUiBusy() {
     this._scoreUiBusy = true;
     if (this._scoreUiBusyTimer) {
@@ -1990,7 +2005,14 @@ Page(withPageInteractionLock({
 
   /** 切入稳定 Shell 的非游戏屏幕时，立即终止只属于 game 屏幕的局部副作用。 */
   _suspendGameScreenEffects() {
+    this._dismissInputsBeforeCardNavigation();
     this._unbindInspirationKeyboard();
+    this._closingNativeFocused = false;
+    this.setData({
+      closingCreativeEditFocus: false,
+      closingCreativeWantFocus: false,
+      ...this._resetClosingKeyboardUi()
+    });
     this._stopRoundSpeech();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
@@ -2112,7 +2134,22 @@ Page(withPageInteractionLock({
     }
     if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.EXTERNAL) {
       if (incomingRevision) this._appliedRoomRevision = incomingRevision;
-      // 外部 Route 由统一导航协调器处理；保留当前 Shell 屏幕，避免跳转前闪回游戏操作区。
+      let applied = Promise.resolve();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.LEAVING) {
+        this._roomShellFingerprint = `external#${shell.routeName}`;
+        this._roomContextFingerprint = '';
+        this._suspendGameScreenEffects();
+        applied = new Promise((resolve) => {
+          this.setData({
+            roomShellScreen: PARTNER_SHELL_SCREEN.LEAVING,
+            waitingModel: null,
+            closingVoteModel: null,
+            closingVoteSubmitting: false,
+            showHostStatementTip: false
+          }, resolve);
+        });
+      }
+      // 外部 Route 由统一导航协调器处理；跳转失败时保持无交互过渡态，后续同步仍会重试。
       return {
         playerChanged: false,
         phaseChanged: false,
@@ -2125,7 +2162,7 @@ Page(withPageInteractionLock({
         },
         roomPhase: this.data.gamepagePhase,
         shellScreen: shell.screen,
-        applied: Promise.resolve()
+        applied
       };
     }
     const returningFromShellScreen = !this._isHistoryReviewMode()
@@ -2718,7 +2755,8 @@ Page(withPageInteractionLock({
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
-      // 仅评分进度变化：窄 setData，不动 displayRoundSummaries / cardIndex
+      // 高频瞬时效果与评分进度都窄 setData，不动 displayRoundSummaries / cardIndex。
+      this._applySilentEffectPatch(patch);
       this._applyScoreProgressPatch(patch);
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }

@@ -1,8 +1,14 @@
 'use strict';
 
 const { projectWaitScreenModel } = require('../../../utils/subAwaitRoutes');
+const {
+  ROOM_SHELL_OWNER,
+  ROOM_SHELL_SCREEN,
+  classifyRoomShellRoute
+} = require('../../../modules/room-navigation/roomShellRoute');
 
 const SELECT_PLAYER_SHELL_SCREEN = Object.freeze({
+  LOADING: 'loading',
   WAITING: 'waiting',
   SELECTOR: 'selector',
   EXTERNAL: 'external'
@@ -15,11 +21,13 @@ function projectSelectPlayerWaiting(scene) {
 
 function projectSelectPlayerShell(snapshot) {
   const route = snapshot && snapshot.view && snapshot.view.route || {};
-  const routeName = String(route.name || '');
+  const classification = classifyRoomShellRoute(route);
+  const routeName = classification.routeName;
   const revision = Number(snapshot && snapshot.revision) || 0;
-  const scene = route.params && route.params.scene;
+  const scene = classification.scene;
 
-  if (routeName === 'subAwait' && ['bg', 'player'].includes(scene)) {
+  if (classification.owner === ROOM_SHELL_OWNER.SELECT_PLAYER
+    && classification.screen === ROOM_SHELL_SCREEN.WAITING) {
     return {
       screen: SELECT_PLAYER_SHELL_SCREEN.WAITING,
       routeName,
@@ -30,7 +38,8 @@ function projectSelectPlayerShell(snapshot) {
     };
   }
 
-  if (routeName === 'selectPlayer') {
+  if (classification.owner === ROOM_SHELL_OWNER.SELECT_PLAYER
+    && classification.screen === ROOM_SHELL_SCREEN.SELECTOR) {
     return {
       screen: SELECT_PLAYER_SHELL_SCREEN.SELECTOR,
       routeName,

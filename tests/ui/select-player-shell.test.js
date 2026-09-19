@@ -7,6 +7,11 @@ const path = require('node:path');
 
 const { ROUTES, describeRoute, createNavigationCoordinator } = require('../../modules/room-navigation/index');
 const {
+  ROOM_SHELL_OWNER,
+  ROOM_SHELL_SCREEN,
+  classifyRoomShellRoute
+} = require('../../modules/room-navigation/roomShellRoute');
+const {
   SELECT_PLAYER_SHELL_SCREEN,
   projectSelectPlayerShell
 } = require('../../pages/main-pages/selectPlayer/shell');
@@ -81,6 +86,22 @@ test('情境等待与选择首位等待共用 selectPlayer Setup Shell', async (
   }
 });
 
+test('导航与 Setup Shell 共用同一个权威 route 分类器', () => {
+  assert.deepEqual(
+    classifyRoomShellRoute({ name: 'subAwait', params: { scene: 'player' } }),
+    {
+      owner: ROOM_SHELL_OWNER.SELECT_PLAYER,
+      screen: ROOM_SHELL_SCREEN.WAITING,
+      routeName: 'subAwait',
+      scene: 'player'
+    }
+  );
+  assert.equal(
+    classifyRoomShellRoute({ name: 'subAwait', params: { scene: 'confirmFirstPlayer' } }).owner,
+    ROOM_SHELL_OWNER.PARTNER
+  );
+});
+
 test('Setup Shell 只按完整 Member View 在等待场景之间切屏', () => {
   const scenario = projectSelectPlayerShell(waitingSnapshot('bg'));
   const firstPlayer = projectSelectPlayerShell(waitingSnapshot('player', 6));
@@ -137,9 +158,21 @@ test('selectPlayer 页面消费 Shell Model 原地切换等待场景与 Host 选
     view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
   });
   assert.equal(page.data.roomShellScreen, SELECT_PLAYER_SHELL_SCREEN.SELECTOR);
-  assert.equal(page.data.isWaiting, false);
   assert.equal(page.data.isHost, true);
   assert.equal(page.data.members.length, 1);
+});
+
+test('selectPlayer 首屏和离开 Shell 时都保持无交互加载态', () => {
+  const page = makePage();
+  assert.equal(page.data.roomShellScreen, SELECT_PLAYER_SHELL_SCREEN.LOADING);
+
+  page._applyRoomContext({
+    ok: true,
+    revision: 9,
+    view: { route: { name: 'halliGame', params: {} } }
+  });
+  assert.equal(page.data.roomShellScreen, SELECT_PLAYER_SHELL_SCREEN.LOADING);
+  assert.equal(page.data.waitingModel, null);
 });
 
 test('selectPlayer Setup Shell 由受控等待组件和原选择器拼接', () => {
@@ -153,5 +186,7 @@ test('selectPlayer Setup Shell 由受控等待组件和原选择器拼接', () =
   ));
   assert.match(markup, /<room-wait-screen/);
   assert.match(markup, /roomShellScreen === 'waiting'/);
+  assert.match(markup, /roomShellScreen === 'selector'/);
+  assert.match(markup, /wx:else class="room-shell-loading"/);
   assert.equal(config.usingComponents['room-wait-screen'], '/components/room-wait-screen/index');
 });

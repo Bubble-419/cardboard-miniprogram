@@ -16,7 +16,7 @@
 
 <view wx:elif="{{roomShellScreen === 'closingVote'}}" class="room-shell-loading"></view>
 
-<block wx:else>
+<block wx:elif="{{roomShellScreen === 'game'}}">
 <view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}">
   <view class="page-body">
     <partner-game-header
@@ -927,6 +927,8 @@
 
 </view>
 </block>
+
+<view wx:else class="room-shell-loading"></view>
 
 <interaction-lock-layer
   locked="{{interactionLocked}}"

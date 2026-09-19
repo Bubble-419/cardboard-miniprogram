@@ -1,12 +1,19 @@
 'use strict';
 
 const { projectWaitScreenModel } = require('../../../../utils/subAwaitRoutes');
+const {
+  ROOM_SHELL_OWNER,
+  ROOM_SHELL_SCREEN,
+  classifyRoomShellRoute
+} = require('../../../../modules/room-navigation/roomShellRoute');
 
 /**
  * Partner 稳定 Shell 的屏幕标识。
  * Shell 只解释服务端投影的 route，不从 workflow 或本地页面状态猜路由。
  */
 const PARTNER_SHELL_SCREEN = Object.freeze({
+  LOADING: 'loading',
+  LEAVING: 'leaving',
   WAITING: 'waiting',
   GAME: 'game',
   CLOSING_VOTE: 'closingVote',
@@ -14,16 +21,6 @@ const PARTNER_SHELL_SCREEN = Object.freeze({
 });
 
 const PARTNER_SHELL_ROUTES = new Set(['partnerGame', 'closingStatement']);
-
-function routeNameOf(snapshot) {
-  return String(snapshot && snapshot.view && snapshot.view.route
-    && snapshot.view.route.name || '');
-}
-
-function routeParamsOf(snapshot) {
-  return snapshot && snapshot.view && snapshot.view.route
-    && snapshot.view.route.params || {};
-}
 
 function projectPartnerWaiting(scene) {
   const normalizedScene = scene === 'confirmFirstPlayer' ? scene : 'confirmFirstPlayer';
@@ -49,11 +46,13 @@ function projectClosingVote(snapshot) {
  * Snapshot 完整替换与 Event 归约后的 View 在这里走完全相同的路径。
  */
 function projectPartnerRoomShell(snapshot) {
-  const routeName = routeNameOf(snapshot);
+  const route = snapshot && snapshot.view && snapshot.view.route || {};
+  const classification = classifyRoomShellRoute(route);
+  const routeName = classification.routeName;
   const revision = Number(snapshot && snapshot.revision) || 0;
-  const routeParams = routeParamsOf(snapshot);
-  if (routeName === 'subAwait' && routeParams.scene === 'confirmFirstPlayer') {
-    const scene = 'confirmFirstPlayer';
+  if (classification.owner === ROOM_SHELL_OWNER.PARTNER
+    && classification.screen === ROOM_SHELL_SCREEN.WAITING) {
+    const scene = classification.scene;
     return {
       screen: PARTNER_SHELL_SCREEN.WAITING,
       routeName,
@@ -63,7 +62,8 @@ function projectPartnerRoomShell(snapshot) {
       closingVote: null
     };
   }
-  if (routeName === 'partnerGame') {
+  if (classification.owner === ROOM_SHELL_OWNER.PARTNER
+    && classification.screen === ROOM_SHELL_SCREEN.GAME) {
     const sessionId = String(snapshot && snapshot.roomState && snapshot.roomState.sessionId || '');
     return {
       screen: PARTNER_SHELL_SCREEN.GAME,
@@ -74,7 +74,8 @@ function projectPartnerRoomShell(snapshot) {
       closingVote: null
     };
   }
-  if (routeName === 'closingStatement') {
+  if (classification.owner === ROOM_SHELL_OWNER.PARTNER
+    && classification.screen === ROOM_SHELL_SCREEN.CLOSING_VOTE) {
     const closingVote = projectClosingVote(snapshot);
     return {
       screen: PARTNER_SHELL_SCREEN.CLOSING_VOTE,

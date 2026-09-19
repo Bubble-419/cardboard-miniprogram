@@ -4,7 +4,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   dispatchRoomCommand,
-  followRoomRouteAfterCommand,
+  getCommittedSnapshotAfterCommand,
   getRoomPageSnapshot,
   getActiveRoomSession,
   getRoomRequestContext
@@ -1250,7 +1250,14 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
       }
-      await followRoomRouteAfterCommand(result, roomId);
+      const committed = await getCommittedSnapshotAfterCommand(result);
+      if (!committed.ok) {
+        wx.showToast({ title: '房间状态正在同步，请稍后重试', icon: 'none' });
+        return;
+      }
+      // specialMove 是稳定 gamepage 上的本地叠层；权威 route 已由 Command 提交，
+      // 正常页面栈只需关闭叠层，由下层 RoomShell 立即消费当前 Session View。
+      await this._redirectToGamepageFromRoom(committed.snapshot);
     } finally {
       this._activatingClosing = false;
     }

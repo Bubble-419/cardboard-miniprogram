@@ -14,7 +14,6 @@ const {
 const { WAIT_HERO_SRC } = require('../../../utils/staticCdn');
 const {
   SELECT_PLAYER_SHELL_SCREEN,
-  projectSelectPlayerWaiting,
   projectSelectPlayerShell
 } = require('./shell');
 
@@ -30,8 +29,7 @@ Page({
     members: [],
     selectedModeId: '',
     isHost: false,
-    isWaiting: false, // 普通玩家等待房主在主屏抽取首位玩家
-    roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.SELECTOR,
+    roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
     waitingModel: null,
     waitHeroSrc: WAIT_HERO_SRC,
     interactionLocked: false,
@@ -42,10 +40,6 @@ Page({
   onLoad(options) {
     this._appliedRoomRevision = 0;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const requestedShellScreen = options && options.roomShellScreen;
-    const isWaiting = requestedShellScreen === SELECT_PLAYER_SHELL_SCREEN.WAITING
-      || (options && (options.isWaiting === '1' || options.isWaiting === true));
-    const forceHost = options && (options.isHost === '1' || options.isHost === true);
     const modeId = (options && options.modeId) || '';
     const from = (options && options.from) || '';
     this._fromModeIndex = from === 'modeIndex' || from === 'offline';
@@ -54,13 +48,8 @@ Page({
     }
     this.setData({
       roomId,
-      isWaiting: !!isWaiting,
-      roomShellScreen: isWaiting
-        ? SELECT_PLAYER_SHELL_SCREEN.WAITING
-        : SELECT_PLAYER_SHELL_SCREEN.SELECTOR,
-      waitingModel: isWaiting
-        ? projectSelectPlayerWaiting(String(options && options.scene || 'bg'))
-        : null,
+      roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
+      waitingModel: null,
       selectedModeId: modeId || this.data.selectedModeId
     });
     if (!roomId) {
@@ -68,12 +57,6 @@ Page({
       return;
     }
     getApp().globalData.roomId = roomId;
-
-    if (isWaiting && !forceHost) {
-      this.setData({ isHost: false, isWaiting: true });
-      this._startStatePolling();
-      return;
-    }
 
     this._bootstrapAsHostOrWait(roomId);
   },
@@ -133,7 +116,24 @@ Page({
     }
     if (incomingRevision) this._appliedRoomRevision = incomingRevision;
     const shell = projectSelectPlayerShell(result);
-    if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.EXTERNAL) return shell;
+    if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.EXTERNAL) {
+      this._clearLongPressTimer();
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+      }
+      if (this.selectionTimer) {
+        clearTimeout(this.selectionTimer);
+        this.selectionTimer = null;
+      }
+      this.setData({
+        roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
+        waitingModel: null,
+        activeTouches: [],
+        isSelecting: false
+      });
+      return shell;
+    }
 
     if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.WAITING) {
       this._clearLongPressTimer();
@@ -149,7 +149,6 @@ Page({
         roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.WAITING,
         waitingModel: shell.waiting,
         isHost: false,
-        isWaiting: true,
         activeTouches: [],
         isSelecting: false
       });
@@ -164,7 +163,6 @@ Page({
       roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.SELECTOR,
       waitingModel: null,
       isHost: selector.isHost === true,
-      isWaiting: false,
       selectedModeId,
       members,
       minPlayers: members.length || this.data.minPlayers

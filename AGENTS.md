@@ -50,6 +50,7 @@
 
 - 逻辑 Route 与微信物理页面不要求一一对应。多个连续屏幕共享大量本地状态且切换频繁时，优先用稳定 RoomShell 原地切屏，避免依赖 `redirectTo` 的页面销毁和竞态；不要为无关联页面扩大 Shell 边界。
 - RoomShell 通过纯 projector 将最新 `view.route.name + params` 映射成屏幕模型。订阅回调先原子安装完整 PageSnapshot，再协调全局导航；同物理路径返回 `SAME_ROUTE` 时仍必须刷新 Shell。
+- 在线 Shell 首屏保持无交互加载态，禁止按 URL 参数猜业务屏幕；导航与各 Shell projector 必须共用同一个 Route 分类器。离开 Shell 边界时先进入无交互过渡态并停止旧屏幕副作用，导航失败仍保留重试水位。
 - Shell 不维护第二份业务状态，不以生命周期、计时器或临时叠层猜测当前屏幕。旧 revision 必须丢弃；相同 route 下的可见字段变化仍需刷新，不能被游戏区优化吞掉。
 - 屏幕副作用按当前 Shell screen 启停：等待页、投票页不得启动游戏计时、录音等副作用。离开 Shell 的权威 Route 交还全局导航处理，不能闪回旧游戏屏幕。
 - 本地叠层不是新 Route。完成后优先关闭叠层并恢复下层 Shell；页面栈不符合预期时，才使用有超时的权威 URL 重建路径。

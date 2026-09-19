@@ -412,15 +412,21 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
 Route 映射到同一路径时，协调器返回 `SAME_ROUTE`，Shell 仍必须按最新 `view.route.name + params`
 原子切屏。
-Shell 不能用本地计时器、页面生命周期或临时叠层猜测屏幕，也不能维护第二份业务状态。
+Shell 不能用本地计时器、页面生命周期、URL 参数或临时叠层猜测屏幕，也不能维护第二份业务状态。
+在线 Shell 首屏必须先显示无交互 `loading`，收到完整 PageSnapshot 后才能进入业务屏幕；投影到 Shell
+边界外的 Route 时立即进入无交互 `leaving`，停止当前屏幕副作用，再由导航协调器跳转。导航失败时
+继续保持 `leaving`，且不得抬高导航水位，以便后续同步重试。
 
 当前有两个小而明确的 Shell 边界：`selectPlayer` Setup Shell 承载 Player 的情境等待与首位玩家
 等待，Partner `gamepage` RoomShell 承载确认首位等待、游戏和收尾投票。通用
-`room-wait-screen` 只渲染 Shell Model，不订阅 RoomSession，也不执行导航。
+`room-wait-screen` 只渲染 Shell Model，不订阅 RoomSession，也不执行导航。导航描述器与两个 Shell
+projector 共用同一个纯 Route 分类器，不能各自重复解释 `subAwait.params.scene`。
 
 本地叠层不是第二个业务页面。`specialMove` 正常完成时只关闭叠层并恢复下层 Partner RoomShell；
 Master / Silent 等不改变逻辑 Route 的 View 字段变化仍是强制可见的 Shell 刷新，不能因为 route
-相同或游戏区指纹相同而丢弃。页面栈异常时的 URL 重建仅是有超时的恢复路径。
+相同或游戏区指纹相同而丢弃。静默声级属于高频瞬时字段，应窄刷新对应效果，不能为它重建卡片
+swiper。从叠层返回时，下层页面先消费 RoomSession 内已提交的当前 View，再恢复订阅和屏幕副作用，
+无需等待下一次网络轮询。页面栈异常时的 URL 重建仅是有超时的恢复路径。
 
 ```mermaid
 sequenceDiagram

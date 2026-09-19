@@ -329,7 +329,8 @@ flowchart TD
 
 Player 的 `CHOOSE_SCENARIO → SELECT_FIRST_PLAYER` 使用稳定 `selectPlayer` Setup Shell：完整 Member
 View 将 `subAwait?scene=bg/player` 投影成受控 `waiting` 组件，Host 的 `selectPlayer` Route 投影成
-`selector`。同路径变化只更新 Shell Model，不调用微信导航；进入其他流程页面才交还全局导航协调器。
+`selector`。首次进入时保持无交互加载态，不按 URL 猜测 Host/Player 屏幕；同路径变化只更新 Shell
+Model，不调用微信导航；进入其他流程页面时先冻结触摸与计时，再交还全局导航协调器。
 
 ## 5. Partner
 
@@ -394,7 +395,8 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 全局 Route 协调。同物理路径返回 `SAME_ROUTE` 只表示不需要微信导航，不代表忽略屏幕更新。
 卡片滑动、打分手势和输入草稿可以延迟普通游戏区刷新，但不得延迟
 `waiting ↔ game ↔ closingVote` 权威屏幕切换。每个稳定屏幕都只消费 Shell Model；切入非游戏
-屏幕时停止计时、语音和输入副作用，切回 `game` 时显式恢复，不能依赖 `onShow` 再次触发。
+屏幕时停止计时、语音和输入副作用，切回 `game` 时由 Shell 显式恢复。从本地叠层返回触发
+`onShow` 时，必须先消费 RoomSession 已提交的当前 View，再决定恢复哪个屏幕的副作用，不能先按旧屏幕启动游戏。
 旧的独立 `closingStatement` 页面不再注册，也不保留第二套轮询或投票逻辑。
 
 | 页面操作 | Command | 约束 / 结果 |

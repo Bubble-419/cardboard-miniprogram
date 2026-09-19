@@ -434,4 +434,4 @@ module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSessio
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, followRoomRouteAfterCommand,
-  executeProjectedBack, canRoomCommand, commandContext };
+  getCommittedSnapshotAfterCommand, executeProjectedBack, canRoomCommand, commandContext };

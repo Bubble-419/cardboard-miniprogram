@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  ROOM_SHELL_OWNER,
+  ROOM_SHELL_SCREEN,
+  classifyRoomShellRoute
+} = require('./roomShellRoute');
+
 const ROUTES = Object.freeze({
   addPlayer: { path: '/pages/main-pages/addPlayer/index', mode: 'reLaunch', pageKey: 'addplayer' },
   modeIndex: { path: '/pages/main-pages/modeIndex/index', mode: 'redirectTo', pageKey: 'modeindex' },
@@ -67,16 +73,13 @@ function queryString(params) {
 function describeRoute(route, roomId) {
   if (!route || !ROUTES[route.name]) return null;
   const params = route.params || {};
-  const isPartnerFirstPlayerWait = route.name === 'subAwait'
-    && params.scene === 'confirmFirstPlayer';
-  const isSelectPlayerSetupWait = route.name === 'subAwait'
-    && ['bg', 'player'].includes(params.scene);
-  const config = isPartnerFirstPlayerWait
+  const shell = classifyRoomShellRoute(route);
+  const config = shell.owner === ROOM_SHELL_OWNER.PARTNER
     ? ROUTES.partnerGame
-    : (isSelectPlayerSetupWait ? ROUTES.selectPlayer : ROUTES[route.name]);
-  const shellParams = route.name === 'closingStatement'
+    : (shell.owner === ROOM_SHELL_OWNER.SELECT_PLAYER ? ROUTES.selectPlayer : ROUTES[route.name]);
+  const shellParams = shell.screen === ROOM_SHELL_SCREEN.CLOSING_VOTE
     ? { roomShellScreen: 'closingVote' }
-    : (isPartnerFirstPlayerWait || isSelectPlayerSetupWait
+    : (shell.screen === ROOM_SHELL_SCREEN.WAITING
       ? { roomShellScreen: 'waiting' }
       : {});
   const query = queryString({ roomId, ...shellParams, ...params });
