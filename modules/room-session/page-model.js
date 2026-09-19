@@ -1,6 +1,7 @@
 'use strict';
 
 const { PROTOCOL_VERSION, MODE, WORKFLOW_STEP } = require('../../packages/room-contracts/index');
+const { getStatementLabel } = require('../../utils/partnerRoundContent');
 
 const PARTNER_CLOSING_STEPS = new Set([
   WORKFLOW_STEP.PARTNER_CLOSING_VOTE,
@@ -108,6 +109,7 @@ function partnerSummary(view, summary) {
     playerIndex: member && (member.seatNo || member.seatNoAtStart),
     playerName: member && member.nickName,
     statementResult: summary.statementResult,
+    statementLabel: getStatementLabel(summary.statementResult),
     avgScore: summary.avgScore,
     scoredCount: summary.scoredCount,
     totalStars: summary.totalStars,

@@ -1543,6 +1543,8 @@ Page(withPageInteractionLock({
       return {
         ...turn,
         playerLabel,
+        // 本地历史快照可能只保存语义枚举；展示文案始终由同一映射恢复。
+        statementLabel: turn.statementLabel || getStatementLabel(turn.statementResult) || '',
         avgScoreText: Number.isFinite(avg) ? formatScoreDisplay(avg) : ''
       };
     });
@@ -5297,22 +5299,6 @@ Page(withPageInteractionLock({
       this._syncRoundSpeech();
       this._startStatePolling();
     }
-  },
-
-  _mergeStatementTurnRecord(result) {
-    const idx = this.data.currentPlayerIndex;
-    const record = {
-      statementResult: result,
-      statementLabel: getStatementLabel(result),
-      recordedAt: Date.now(),
-      playerIndex: idx
-    };
-    const prev = Array.isArray(this.data.turnRecords) ? this.data.turnRecords.slice() : [];
-    const found = prev.findIndex((item) => item && item.playerIndex === idx);
-    if (found >= 0) prev[found] = { ...prev[found], ...record };
-    else prev.push(record);
-    this.setData({ turnRecords: prev });
-    return prev;
   },
 
   handleAllPassFromDiscussion() {
