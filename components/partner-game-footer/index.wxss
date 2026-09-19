@@ -68,7 +68,7 @@
   align-items: center;
   justify-content: center;
 }
-.statement-btn[disabled] { background: #c0c0c0 !important; color: #fff !important; opacity: 1 !important; }
+.statement-btn-disabled { background: #c0c0c0 !important; color: #fff !important; opacity: 1 !important; }
 .statement-btn-enabled { background: #5ec159 !important; }
 .statement-btn-loading { background: #5ec159 !important; opacity: 0.85 !important; pointer-events: none; }
 .bottom-actions-discussion { gap: 16rpx; }

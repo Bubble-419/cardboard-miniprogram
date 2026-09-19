@@ -50,7 +50,7 @@
     <view class="bottom-actions-gap" wx:if="{{(showSpecialMove || isCurrentPlayer) && isHost && phase !== 'discussion' && phase !== 'closing'}}"></view>
     <view class="statement-btn-wrap" wx:if="{{isHost}}" id="hostStatementBtn">
       <button
-        class="statement-btn {{canStartStatement && !statementSwitching ? 'statement-btn-enabled' : ''}} {{statementSwitching ? 'statement-btn-loading' : ''}}"
+        class="statement-btn {{!canStartStatement || statementSwitching ? 'statement-btn-disabled' : 'statement-btn-enabled'}} {{statementSwitching ? 'statement-btn-loading' : ''}}"
         disabled="{{!canStartStatement || statementSwitching}}"
         loading="{{statementSwitching}}"
         hover-class="none"
@@ -60,4 +60,3 @@
     </view>
   </view>
 </view>
-
