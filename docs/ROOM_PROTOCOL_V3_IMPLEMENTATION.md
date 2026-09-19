@@ -38,7 +38,7 @@ V3 遵循以下不可拆分的原则：
 7. **隐私在投影前收口**：公共补丁可以共享，Actor 补丁在 Command 提交时按成员扇出；查询只返回调用成员自己的补丁。Spy 秘密不得进入公共 View 或公共 Event。
 8. **不可信就重置**：事件缺口、版本不兼容、状态版本不连续、矛盾水位或无进展批次都必须丢弃 staging View 并读取 Snapshot，禁止客户端猜测修补。
 9. **业务与瞬时状态分离**：Presence、Signal 和本地输入状态不改变 `stateVersion/eventSeq`，也不能决定成员资格或业务流程。
-10. **单一客户端连接**：房间页面共享一个 `RoomClient`、一个请求队列和一个最短 2 秒轮询器；页面不得再创建业务轮询或第二份房间状态。
+10. **单一客户端连接**：房间页面共享一个 `RoomClient`、一条 `roomCommand/roomQuery` 串行请求队列和一个最短 2 秒轮询器；页面不得再创建业务轮询或第二份房间状态。自动 Sync 从前一请求结束后重新计算完整静默窗口，不能与 Command 并发或在 Command 后紧接着补发。
 
 ### 0.2 View 必须同时支持 Snapshot 与 Event
 
@@ -238,7 +238,7 @@ sequenceDiagram
   C->>F: protocolVersion + commandId + knownSeq
   F->>A: actorUserId 只取云函数上下文
   A->>T: transactCommand
-  T->>T: 查 Receipt / ActiveRoom / Aggregate
+  T->>T: 查 Receipt / Aggregate<br/>Create/Join 才查 ActiveRoom
   T->>D: 最新 Aggregate + Command
   D-->>T: Next Aggregate + Domain Events + Dirty Facts
   T->>P: Before/After Public View + Actor View
@@ -250,7 +250,15 @@ sequenceDiagram
   C-->>U: 发布新 View
 ```
 
-`roomCommand` 在 `exports.main` 内才加载 `wx-server-sdk` 并创建 Application。依赖缺失、`database()` 初始化失败或事务抛错都会返回结构化 `{ ok: false, errCode, errMsg }`，避免平台把未捕获异常显示成 `cloud.callFunction:fail errCode: -504002`。数据库 `TransactionBusy`（`-501001`）标记为 `retryable`。
+`roomCommand` 在模块初始化阶段预热 `wx-server-sdk`、Repository 和 Application，缩短首次业务处理的关键路径；初始化异常会被捕获并在 `exports.main` 返回结构化 `{ ok: false, errCode, errMsg }`，不会因为预热重新退化为未捕获的 `cloud.callFunction:fail errCode: -504002`。数据库 `TransactionBusy`（`-501001`）标记为 `retryable`。
+
+`roomV3ActiveByUser` 只参与 `CREATE_ROOM/JOIN_ROOM` 的“是否已在其他开放房间”裁决。
+普通业务 Command 直接以目标 Room Aggregate 校验成员资格，不读 Active 索引；
+Join 的 Active Room 与目标 Room 相同时复用已读文档，不在同一事务内重复点读。
+
+每个调用在云函数日志输出一条 `[roomCommand:perf]` 结构化记录，包含
+`transactionMs/presenceMs/syncMs/totalMs`、`syncSource`、重放标志与脱敏 `commandIdHash`。
+观测回调失败不得改变 Command 成功或失败语义，日志中不记录 Payload 或 OpenID。
 
 对会跨步骤复用同一 `turnId` 的写操作，Envelope 额外冻结 `workflowStep`：
 
@@ -310,6 +318,7 @@ sequenceDiagram
   Q-->>C: Snapshot(view, seq=N, stateVersion, ephemeral)
 
   loop 单一短轮询计时器
+    Note over C: 前一 Command/Query 完成后静默 2 秒<br/>期间有新请求则废弃旧 timer 并重新计时
     C->>Q: sync(afterSeq=N)
     Q->>DB: 点读 Room，固定 roomCurrentSeq
     alt afterSeq 已追平
@@ -613,7 +622,18 @@ flowchart TD
 
 RoomClient 的最小轮询间隔为 **2 秒**。所有房间调用复用同一个 `deviceSessionId`；距离上次续租
 达到 **5 秒**时携带 `touchPresence=true`，服务端以自身时间写租约。在线投影窗口为 **15 秒**，
-写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。
+写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。Presence 续租使用
+事务外单次点写，`db.command.max(lastSeenAt)` 原子防止延迟到达的旧请求回退时间戳；
+它不与业务 Aggregate 共用事务。
+`roomCommand` 与所有 `roomQuery` action 共用一条串行通道；用户显式打开历史等前台读取可立即排队，
+但自动 Sync 只有在上一请求结束后连续静默 2 秒才会发起。页面切换紧跟刚完成的 Command/Query 时
+直接消费内存中的权威 View，不重复读取 Snapshot；前台请求完成后同样重新开始静默窗口。
+
+业务 Sync 仍按 2 秒检查事件，Presence 列表独立降频为每 **5 秒**最多读取一次；其他 Sync 将
+`ephemeral.stale.presence=true`，客户端保留上次成功在线投影。Presence 查询在数据库索引层使用
+`lastSeenAt >= cutoff` 排除过期租约。三种公开 Signal 聚合在一个
+`_id=hash(roomId:PUBLIC_SIGNALS)` 文档中，活跃场次的最终 Sync 只需一次点读；大厅没有活跃
+Session 时不读取 Signal 文档。成员级催促冷却凭证仍独立保存。
 Presence 或 Signal 读取失败时，响应在 `ephemeral.stale` 标记对应通道；客户端保留该通道
 最后一次成功值，直到后续成功响应替换，不能把依赖故障误显示为全员离线或信号归零。
 

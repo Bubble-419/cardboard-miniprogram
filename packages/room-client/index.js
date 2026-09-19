@@ -2,6 +2,7 @@
 
 const {
   PROTOCOL_VERSION, VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, EVENT_TYPES, ERR,
+  MAX_INCREMENTAL_SYNC_EVENTS,
   stableStringify, validatePublicViewPatch, validateActorViewPatch, validateMemberView
 } = require('../room-contracts/index');
 const { clone, applyProjectedEvent } = require('../room-projection/index');
@@ -9,6 +10,7 @@ const { clone, applyProjectedEvent } = require('../room-projection/index');
 // RoomClient 的统一轮询下限；页面不能再通过局部配置发起更高频的请求。
 const ROOM_POLL_INTERVAL_MS = 2000;
 const PRESENCE_TOUCH_INTERVAL_MS = 5000;
+const PRESENCE_READ_INTERVAL_MS = 5000;
 
 function defaultCommandId() {
   return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
@@ -58,9 +60,11 @@ function createRoomClient(options) {
   const intervalMs = requestedIntervalMs > 0
     ? Math.max(ROOM_POLL_INTERVAL_MS, requestedIntervalMs)
     : ROOM_POLL_INTERVAL_MS;
-  const syncLimit = Math.min(100, Math.max(1, Number(options.syncLimit) || 100));
+  const syncLimit = Math.min(MAX_INCREMENTAL_SYNC_EVENTS,
+    Math.max(1, Number(options.syncLimit) || MAX_INCREMENTAL_SYNC_EVENTS));
   const setTimeoutFn = options.setTimeoutFn || setTimeout;
   const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
+  const now = typeof options.nowFn === 'function' ? options.nowFn : Date.now;
   const makeCommandId = options.commandIdFactory || defaultCommandId;
   const deviceSessionId = options.deviceSessionId || `device_${defaultCommandId()}`;
 
@@ -75,11 +79,14 @@ function createRoomClient(options) {
   let status = 'IDLE';
   let error = null;
   let timer = null;
+  let timerGeneration = 0;
   let disposed = false;
   let paused = false;
   let lastPresenceTouchAt = 0;
+  let lastPresenceReadAt = 0;
   let consecutiveSyncFailures = 0;
   let serverClockOffsetMs = 0;
+  let lastRequestCompletedAt = null;
   let listenerSeq = 0;
   let queue = Promise.resolve();
   const listeners = new Map();
@@ -89,12 +96,13 @@ function createRoomClient(options) {
     return {
       roomId, view: clone(view), ephemeral: clone(ephemeral), seq: appliedSeq,
       stateVersion: appliedStateVersion, status, error: clone(error),
-      serverClockOffsetMs, serverNow: Date.now() + serverClockOffsetMs
+      serverClockOffsetMs, serverNow: now() + serverClockOffsetMs,
+      lastRequestCompletedAt
     };
   }
 
   function observeServerTime(serverTime, requestedAt) {
-    const receivedAt = Date.now();
+    const receivedAt = now();
     const serverAt = Number(serverTime);
     if (!Number.isFinite(serverAt)) return;
     // 以请求往返中点估算时钟偏差，供倒计时展示使用；服务端仍是截止时间的唯一裁决者。
@@ -110,32 +118,71 @@ function createRoomClient(options) {
   }
 
   function cancelTimer() {
+    timerGeneration += 1;
     if (timer) clearTimeoutFn(timer);
     timer = null;
   }
 
-  function getRequestContext() {
-    const requestedAt = Date.now();
+  function getRequestContext(contextOptions) {
+    const requestedAt = now();
     const touchPresence = requestedAt - lastPresenceTouchAt >= PRESENCE_TOUCH_INTERVAL_MS;
     if (touchPresence) lastPresenceTouchAt = requestedAt;
-    return { deviceSessionId, touchPresence };
+    const requestContext = { deviceSessionId, touchPresence };
+    if (contextOptions && contextOptions.readPresence) {
+      const readPresence = contextOptions.forcePresence === true
+        || requestedAt - lastPresenceReadAt >= PRESENCE_READ_INTERVAL_MS;
+      requestContext.readPresence = readPresence;
+    }
+    return requestContext;
   }
 
   function schedule(delay) {
     cancelTimer();
     if (disposed || paused || (!roomId && status !== 'DEGRADED')) return;
+    const generation = timerGeneration;
     timer = setTimeoutFn(() => {
+      timer = null;
+      // 已经入队的 Command/Query 会推进 generation；到期的旧 poll 不得跟在它后面立即执行。
+      if (generation !== timerGeneration || disposed || paused) return undefined;
       // 只有持有可信 View 才能消费增量事件；Snapshot 失败后不得退化成 sync(0)。
       const operation = roomId ? (view || stagingView ? syncUntilCurrent : resumeInternal) : openInternal;
-      return enqueue(operation).catch((syncError) => console.warn('RoomClient sync', syncError));
+      return enqueue(() => {
+        if (generation !== timerGeneration || disposed || paused) return view;
+        return operation();
+      }).catch((syncError) => console.warn('RoomClient sync', syncError));
     }, delay == null ? intervalMs : delay);
   }
 
   function enqueue(operation) {
     // Promise.then 会把上一任务的返回值作为参数传入；syncUntilCurrent 的首参有协议语义，必须显式隔离。
-    const run = queue.then(() => operation(), () => operation());
+    const execute = () => Promise.resolve().then(operation).finally(() => {
+      lastRequestCompletedAt = now();
+    });
+    const run = queue.then(execute, execute);
     queue = run.catch(() => undefined);
     return run;
+  }
+
+  function nextPollDelay() {
+    return status === 'DEGRADED'
+      ? Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4)))
+      : intervalMs;
+  }
+
+  /**
+   * 前台 Command/Query 共享同一请求通道。调用时立即作废旧 poll，执行完成后再开启完整静默窗口。
+   * 必要的握手查询（current -> snapshot）仍可在同一个 operation 内连续完成。
+   */
+  function enqueueForeground(operation) {
+    cancelTimer();
+    return enqueue(async () => {
+      cancelTimer();
+      try {
+        return await operation();
+      } finally {
+        schedule(nextPollDelay());
+      }
+    });
   }
 
   function resetConnection(nextStatus) {
@@ -151,6 +198,7 @@ function createRoomClient(options) {
     consecutiveSyncFailures = 0;
     serverClockOffsetMs = 0;
     lastPresenceTouchAt = 0;
+    lastPresenceReadAt = 0;
     status = nextStatus || 'IDLE';
     error = null;
   }
@@ -169,6 +217,7 @@ function createRoomClient(options) {
     consecutiveSyncFailures = 0;
     serverClockOffsetMs = 0;
     lastPresenceTouchAt = 0;
+    lastPresenceReadAt = 0;
   }
 
   function isTerminalRoomError(connectionError) {
@@ -234,6 +283,8 @@ function createRoomClient(options) {
     view = clone(snapshot.view);
     // 换房后的瞬时态必须从空状态开始，不能把上一房间的在线状态或信号带过来。
     ephemeral = mergeEphemeral(sameRoom ? ephemeral : {}, snapshot.ephemeral);
+    if (snapshot.ephemeral && snapshot.ephemeral.stale
+      && snapshot.ephemeral.stale.presence === false) lastPresenceReadAt = now();
     appliedSeq = snapshot.seq;
     appliedStateVersion = snapshot.stateVersion;
     stagingView = null;
@@ -248,8 +299,9 @@ function createRoomClient(options) {
   }
 
   async function replaceFromSnapshot(targetRoomId) {
-    const requestedAt = Date.now();
-    const snapshot = await gateway.snapshot(targetRoomId, getRequestContext());
+    const requestedAt = now();
+    const snapshot = await gateway.snapshot(targetRoomId,
+      getRequestContext({ readPresence: true, forcePresence: true }));
     return installSnapshot(snapshot, targetRoomId, requestedAt);
   }
 
@@ -330,6 +382,8 @@ function createRoomClient(options) {
     appliedSeq = throughSeq;
     appliedStateVersion = candidateStateVersion;
     ephemeral = mergeEphemeral(ephemeral, batch.ephemeral);
+    if (batch.ephemeral && batch.ephemeral.stale
+      && batch.ephemeral.stale.presence === false) lastPresenceReadAt = now();
     stagingView = null;
     stagingSeq = 0;
     stagingStateVersion = 0;
@@ -346,15 +400,16 @@ function createRoomClient(options) {
     cancelTimer();
     status = stagingView ? 'CATCHING_UP' : 'SYNCING';
     try {
-      let requestedAt = Date.now();
+      let requestedAt = now();
       let batch = initialBatch || await gateway.sync(roomId, stagingView ? stagingSeq : appliedSeq,
-        syncLimit, getRequestContext());
+        syncLimit, getRequestContext({ readPresence: true }));
       while (true) {
         const consumed = consumeBatch(batch, initialBatch ? undefined : requestedAt);
         if (consumed.snapshotApplied) break;
         if (!consumed.hasMore) break;
-        requestedAt = Date.now();
-        batch = await gateway.sync(roomId, stagingSeq, syncLimit, getRequestContext());
+        requestedAt = now();
+        batch = await gateway.sync(roomId, stagingSeq, syncLimit,
+          getRequestContext({ readPresence: true }));
       }
       return view;
     } catch (syncError) {
@@ -382,10 +437,7 @@ function createRoomClient(options) {
       publish();
       return view;
     } finally {
-      const retryDelay = status === 'DEGRADED'
-        ? Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4)))
-        : intervalMs;
-      schedule(retryDelay);
+      schedule(nextPollDelay());
     }
   }
 
@@ -460,10 +512,7 @@ function createRoomClient(options) {
       if (!isTerminalRoomError(resumeError)) publish();
       return view;
     } finally {
-      const retryDelay = status === 'DEGRADED'
-        ? Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4)))
-        : intervalMs;
-      schedule(retryDelay);
+      schedule(nextPollDelay());
     }
   }
 
@@ -475,7 +524,7 @@ function createRoomClient(options) {
     const envelope = { protocolVersion: PROTOCOL_VERSION, commandId,
       roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
       knownSeq: appliedSeq, type: input.type,
-      context: clone(input.context || {}), payload: clone(input.payload || {}), clientSentAt: Date.now() };
+      context: clone(input.context || {}), payload: clone(input.payload || {}), clientSentAt: now() };
     let result;
     let attempts = 0;
     do {
@@ -539,49 +588,58 @@ function createRoomClient(options) {
   }
 
   return {
-    open: () => enqueue(openInternal),
+    open: () => enqueueForeground(openInternal),
     subscribe(listener, subscribeOptions) {
       const id = ++listenerSeq;
       listeners.set(id, listener);
       if (!subscribeOptions || subscribeOptions.emitCurrent !== false) listener(clone(view), state());
       return () => listeners.delete(id);
     },
-    dispatch(input) { return enqueue(() => dispatchInternal(input || {})); },
+    dispatch(input) { return enqueueForeground(() => dispatchInternal(input || {})); },
     // refresh 与前后台 resume 共享同一恢复语义：终态错误会断开，可恢复错误会进入退避重试。
-    refresh() { return enqueue(resumeInternal); },
+    refresh() { return enqueueForeground(resumeInternal); },
     history(query, targetRoomId) {
-      const queryRoomId = targetRoomId || roomId;
-      return queryRoomId && typeof gateway.history === 'function'
-        ? gateway.history(queryRoomId, query || {}, getRequestContext())
-        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
+      return enqueueForeground(() => {
+        const queryRoomId = targetRoomId || roomId;
+        return queryRoomId && typeof gateway.history === 'function'
+          ? gateway.history(queryRoomId, query || {}, getRequestContext())
+          : { ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' };
+      });
     },
     sessionSnapshot(sessionId, targetRoomId) {
-      const queryRoomId = targetRoomId || roomId;
-      return queryRoomId && typeof gateway.session === 'function'
-        ? gateway.session(queryRoomId, sessionId, getRequestContext())
-        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
+      return enqueueForeground(() => {
+        const queryRoomId = targetRoomId || roomId;
+        return queryRoomId && typeof gateway.session === 'function'
+          ? gateway.session(queryRoomId, sessionId, getRequestContext())
+          : { ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' };
+      });
     },
     messages(sessionId, query, targetRoomId) {
-      const queryRoomId = targetRoomId || roomId;
-      return queryRoomId && typeof gateway.messages === 'function'
-        ? gateway.messages(queryRoomId, sessionId, query || {}, getRequestContext())
-        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
+      return enqueueForeground(() => {
+        const queryRoomId = targetRoomId || roomId;
+        return queryRoomId && typeof gateway.messages === 'function'
+          ? gateway.messages(queryRoomId, sessionId, query || {}, getRequestContext())
+          : { ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' };
+      });
     },
     leaderboard(sessionId, targetRoomId) {
-      const queryRoomId = targetRoomId || roomId;
-      return queryRoomId && typeof gateway.leaderboard === 'function'
-        ? gateway.leaderboard(queryRoomId, sessionId, getRequestContext())
-        : Promise.resolve({ ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' });
+      return enqueueForeground(() => {
+        const queryRoomId = targetRoomId || roomId;
+        return queryRoomId && typeof gateway.leaderboard === 'function'
+          ? gateway.leaderboard(queryRoomId, sessionId, getRequestContext())
+          : { ok: false, errCode: ERR.NOT_MEMBER, errMsg: '当前没有房间' };
+      });
     },
     getView() { return clone(view); },
     getState: state,
     getRequestContext,
     pause() { paused = true; cancelTimer(); },
-    resume() { return enqueue(resumeInternal); },
+    resume() { return enqueueForeground(resumeInternal); },
     close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }
   };
 }
 
 module.exports = {
-  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway, defaultCommandId
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, PRESENCE_READ_INTERVAL_MS,
+  createRoomClient, createCloudRoomGateway, defaultCommandId
 };

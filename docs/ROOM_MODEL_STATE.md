@@ -397,12 +397,12 @@ erDiagram
 |---|---|---|
 | `roomV3Rooms` | Room、成员、当前 Session 引用、业务水位 | 高频 Sync 读取 |
 | `roomV3Sessions` | 单个 Session + 全部 Facts | Snapshot、Command、历史回看 |
-| `roomV3ActiveByUser` | 用户当前开放房间的唯一索引 | `current` 与 Command 前置检查 |
+| `roomV3ActiveByUser` | 用户当前开放房间的唯一索引 | `current` 与 `CREATE_ROOM/JOIN_ROOM` 前置检查；普通 Command 不读 |
 | `roomV3Actions` | Command Receipt 和请求哈希 | 幂等重放与冲突判断 |
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
-| `roomV3Presence` | 设备在线租约 | Snapshot/最终 Sync 的 ephemeral 投影 |
-| `roomV3Signals` | 三种可丢失公开信号（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）按 `hash(roomId:signalType)` 点读；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默边框以各端本地麦克风为准，`PARTNER_SILENT_SOUND` 仅房主可写、给无麦端回退 | ephemeral 投影与服务端限流 |
+| `roomV3Presence` | 设备在线租约；按 `roomId + lastSeenAt` 在数据库内过滤有效窗口 | Snapshot 与降频后的最终 Sync ephemeral 投影 |
+| `roomV3Signals` | 一个 `hash(roomId:PUBLIC_SIGNALS)` 文档保存三种可丢失公开信号槽位（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默边框以各端本地麦克风为准，`PARTNER_SILENT_SOUND` 仅房主可写、给无麦端回退 | 一次点读完成 ephemeral 投影；独立凭证负责服务端限流 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid
@@ -437,7 +437,12 @@ flowchart LR
 | 服务端时钟偏差 | 否 | 否，RoomClient 元数据 | 响应 `serverTime` |
 | 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地；需恢复的草稿按房间/场次/Turn 隔离 |
 
-Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。设备离线不会删除 Member；离房、被踢或房间解散后，旧租约即使尚未清理，也必须被成员投影过滤。
+Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。续租是事务外的单次点写，
+`max(lastSeenAt)` 保证旧请求不会回退已写入的新时间戳；它失败不回滚已提交的业务 Command。
+设备离线不会删除 Member；离房、被踢或房间解散后，旧租约即使尚未清理，也必须被数据库时间窗口与成员投影双重过滤。
+客户端每 2 秒同步业务事件，但在线列表每 5 秒最多读取一次；跳过读取的响应显式标记 stale，使客户端保留上次成功值。
+
+公开 Signal 文档的顶层 `expiresAt` 取所有槽位过期时间的最大值，只有全部公开信号都过期后才可整体清理；读取时仍逐槽校验各自的 `expiresAt` 和 Session/Turn/Workflow 作用域。事务内更新单个槽位时必须保留其余槽位，依赖文档读写冲突检测避免并发覆盖。
 
 `ephemeral.stale.presence/signals` 分别表示对应读取通道暂时不可用。客户端在 stale 时保留上次
 成功值；只有通道读取成功后，空集合才表示当前确实没有在线租约或有效信号。

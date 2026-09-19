@@ -43,8 +43,9 @@ async function safeGet(store, collection, id) {
   }
 }
 
-async function loadAggregate(store, roomId) {
-  const room = await safeGet(store, COLLECTIONS.rooms, roomId);
+async function loadAggregate(store, roomId, preloadedRoom) {
+  // JOIN_ROOM 已经为 Active 索引验证过同一 Room 时直接复用，避免事务内重复点读。
+  const room = preloadedRoom ? cleanDoc(preloadedRoom) : await safeGet(store, COLLECTIONS.rooms, roomId);
   if (!compatibleRoom(room)) return null;
   const currentSession = room.currentSessionId
     ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId)
@@ -88,6 +89,35 @@ function persistedSession(aggregate, roomId) {
 
 function sameDocument(left, right) {
   return stableStringify(left) === stableStringify(right);
+}
+
+const PUBLIC_SIGNALS_RECORD_TYPE = 'PUBLIC_SIGNALS';
+
+function publicSignalsId(roomId) {
+  return docId(`${roomId}:PUBLIC_SIGNALS`);
+}
+
+function publicSignalsFromDocument(document) {
+  if (!document || document.recordType !== PUBLIC_SIGNALS_RECORD_TYPE
+    || !document.signals || typeof document.signals !== 'object' || Array.isArray(document.signals)) return {};
+  return document.signals;
+}
+
+async function readPublicSignals(store, roomId) {
+  const document = await safeGet(store, COLLECTIONS.signals, publicSignalsId(roomId));
+  return { document, signals: publicSignalsFromDocument(document) };
+}
+
+async function writePublicSignal(store, roomId, previousDocument, signalType, signal, now) {
+  const signals = { ...publicSignalsFromDocument(previousDocument), [signalType]: signal };
+  await store.collection(COLLECTIONS.signals).doc(publicSignalsId(roomId)).set({ data: {
+    roomId,
+    recordType: PUBLIC_SIGNALS_RECORD_TYPE,
+    signals,
+    // 聚合文档在最后一个槽位过期后即可整体清理；业务读取仍逐槽校验 expiresAt。
+    expiresAt: Math.max(...Object.values(signals).map((row) => Number(row && row.expiresAt) || 0)),
+    updatedAt: now
+  } });
 }
 
 function isSafeFactKey(id) {
@@ -144,7 +174,13 @@ function createCloudBaseRoomRepository(deps) {
           || existing.requestHash !== input.requestHash || existing.type !== input.type;
         return conflict ? { conflict: true } : { replayed: true, receipt: existing };
       }
-      const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+      // ActiveByUser 只用于裁决“是否已在其他房间”。普通业务指令的成员资格
+      // 由目标 Room Aggregate 权威校验，不应为每个 Command 多做两次事务读。
+      const requiresActiveLookup = input.type === COMMAND_TYPES.CREATE_ROOM
+        || input.type === COMMAND_TYPES.JOIN_ROOM;
+      const active = requiresActiveLookup
+        ? await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId))
+        : null;
       let activeRoomId = active && active.roomId;
       let activeRoomDocument = null;
       let danglingActive = false;
@@ -159,7 +195,7 @@ function createCloudBaseRoomRepository(deps) {
         }
       }
       let resolvedRoomId = input.roomId;
-      if (input.type === 'CREATE_ROOM') {
+      if (input.type === COMMAND_TYPES.CREATE_ROOM) {
         resolvedRoomId = null;
         for (const candidate of input.roomIdCandidates || [input.roomId]) {
           if (!await safeGet(transaction, COLLECTIONS.rooms, candidate)) {
@@ -168,7 +204,10 @@ function createCloudBaseRoomRepository(deps) {
           }
         }
       }
-      const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
+      const reusableRoom = activeRoomId && activeRoomId === resolvedRoomId ? activeRoomDocument : null;
+      const current = resolvedRoomId
+        ? await loadAggregate(transaction, resolvedRoomId, reusableRoom)
+        : null;
       // handler 允许就地修改聚合；在调用前固定比较基线，避免漏写变更。
       const beforeUsersSnapshot = openUsers(current);
       const beforeSessionSnapshot = persistedSession(current, resolvedRoomId);
@@ -329,25 +368,25 @@ function createCloudBaseRoomRepository(deps) {
   async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
     const row = { roomId, memberId, deviceSessionId: deviceSessionId || 'default', lastSeenAt, online: true };
     const presenceId = docId(`${roomId}:${memberId}:${row.deviceSessionId}`);
-    return db.runTransaction(async (transaction) => {
-      const existing = await safeGet(transaction, COLLECTIONS.presence, presenceId);
-      if (existing && Number(existing.lastSeenAt) >= Number(lastSeenAt)) return existing;
-      await transaction.collection(COLLECTIONS.presence).doc(presenceId).set({ data: row });
-      return row;
+    // Presence 是允许丢失的瞬时租约，不需要额外读事务。max 在单次点写中
+    // 保证延迟到达的旧请求不会把较新的 lastSeenAt 回退。
+    await db.collection(COLLECTIONS.presence).doc(presenceId).set({
+      data: { ...row, lastSeenAt: db.command.max(lastSeenAt) }
     });
+    return row;
   }
 
-  async function listPresence(roomId) {
-    const result = await db.collection(COLLECTIONS.presence).where({ roomId })
+  async function listPresence(roomId, cutoff) {
+    const condition = { roomId };
+    if (Number.isFinite(Number(cutoff))) condition.lastSeenAt = db.command.gte(Number(cutoff));
+    const result = await db.collection(COLLECTIONS.presence).where(condition)
       .orderBy('lastSeenAt', 'desc').limit(50).get();
     return (result && result.data || []).map(cleanDoc);
   }
 
   async function listSignals(roomId) {
-    const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => (
-      safeGet(db, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))
-    )));
-    return rows.filter(Boolean);
+    const state = await readPublicSignals(db, roomId);
+    return Object.values(state.signals).filter((row) => row && Object.values(SIGNAL_TYPES).includes(row.signalType));
   }
 
   async function upsertSignal(input) {
@@ -363,8 +402,8 @@ function createCloudBaseRoomRepository(deps) {
           || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
           return { ok: false, errCode: 'INVALID_TRANSITION', errMsg: '当前不能发布静默声贝' };
         }
-        const signalId = docId(`${input.roomId}:${input.signalType}`);
-        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+        const signalState = await readPublicSignals(transaction, input.roomId);
+        const existing = signalState.signals[input.signalType];
         if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId
           && Number(existing.updatedAt) >= Number(input.now)) {
           return { ok: true, signal: existing };
@@ -373,7 +412,8 @@ function createCloudBaseRoomRepository(deps) {
           memberId: member.memberId, sessionId: input.sessionId, turnId: input.turnId,
           updatedAt: input.now,
           expiresAt: Math.min(Number(scope.deadlineAt), input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.PARTNER_SILENT_SOUND]) };
-        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        await writePublicSignal(transaction, input.roomId, signalState.document,
+          input.signalType, row, input.now);
         return { ok: true, signal: row };
       }
       if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
@@ -393,7 +433,7 @@ function createCloudBaseRoomRepository(deps) {
           && cooldown.signal) {
           return { ok: true, signal: cooldown.signal };
         }
-        const signalId = docId(`${input.roomId}:${input.signalType}`);
+        const signalState = await readPublicSignals(transaction, input.roomId);
         const row = {
           roomId: input.roomId,
           signalType: input.signalType,
@@ -404,7 +444,8 @@ function createCloudBaseRoomRepository(deps) {
           updatedAt: input.now,
           expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
         };
-        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        await writePublicSignal(transaction, input.roomId, signalState.document,
+          input.signalType, row, input.now);
         // 最新广播只有一篇；限流凭证按 Session + Member 隔离，且不会被 listSignals 投影给客户端。
         await transaction.collection(COLLECTIONS.signals).doc(cooldownId).set({ data: {
           recordType: 'MEMBER_SIGNAL_COOLDOWN',
@@ -432,8 +473,8 @@ function createCloudBaseRoomRepository(deps) {
           input.workflowRevision
         );
         if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
-        const signalId = docId(`${input.roomId}:${input.signalType}`);
-        const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+        const signalState = await readPublicSignals(transaction, input.roomId);
+        const existing = signalState.signals[input.signalType];
         if (existing && existing.sessionId === input.sessionId
           && Number(existing.workflowRevision) === Number(input.workflowRevision)
           && String(existing.value || '') === contributionId
@@ -453,7 +494,8 @@ function createCloudBaseRoomRepository(deps) {
             ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING]
             : input.now
         };
-        await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+        await writePublicSignal(transaction, input.roomId, signalState.document,
+          input.signalType, row, input.now);
         return { ok: true, signal: row };
       }
       return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: '未知瞬时信号' };

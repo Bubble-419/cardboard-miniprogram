@@ -3709,7 +3709,7 @@ var require_room_application = __commonJS({
       createPublicPatch,
       projectActorPatches
     } = require_room_projection();
-    var DEFAULT_SYNC_LIMIT = 100;
+    var DEFAULT_SYNC_LIMIT = MAX_INCREMENTAL_SYNC_EVENTS;
     var PRESENCE_TTL_MS = 15e3;
     function isRoomId(value) {
       return typeof value === "string" && /^\d{8}$/.test(value);
@@ -3844,6 +3844,7 @@ var require_room_application = __commonJS({
       if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
       const appOptions = options || {};
       const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
+      const performanceNow = typeof appOptions.performanceNow === "function" ? appOptions.performanceNow : Date.now;
       const requestedSessionLimit = Number(appOptions.maxSessionDocumentBytes);
       const sessionDocumentByteLimit = Number.isFinite(requestedSessionLimit) && requestedSessionLimit > 0 ? Math.min(MAX_SESSION_DOCUMENT_BYTES, requestedSessionLimit) : MAX_SESSION_DOCUMENT_BYTES;
       function validateSessionDocumentSize(aggregate) {
@@ -3903,14 +3904,16 @@ var require_room_application = __commonJS({
       function signalScope(aggregate) {
         return signalScopeFromSession(aggregate) || aggregate && !aggregate.currentSession && aggregate.room && aggregate.room.signalScope || null;
       }
-      async function ephemeral(roomId, aggregate) {
+      async function ephemeral(roomId, aggregate, options2) {
+        const shouldReadPresence = !options2 || options2.readPresence !== false;
+        const cutoff = now() - (appOptions.presenceTtlMs || PRESENCE_TTL_MS);
+        const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId || aggregate && aggregate.room && aggregate.room.currentSessionId || null;
         const [presenceResult, signalResult] = await Promise.allSettled([
-          typeof repo.listPresence === "function" ? repo.listPresence(roomId) : Promise.resolve([]),
-          typeof repo.listSignals === "function" ? repo.listSignals(roomId) : Promise.resolve([])
+          shouldReadPresence && typeof repo.listPresence === "function" ? repo.listPresence(roomId, cutoff) : Promise.resolve([]),
+          currentSessionId && typeof repo.listSignals === "function" ? repo.listSignals(roomId) : Promise.resolve([])
         ]);
         const rows = presenceResult.status === "fulfilled" ? presenceResult.value : [];
         const signalRows = signalResult.status === "fulfilled" ? signalResult.value : [];
-        const cutoff = now() - (appOptions.presenceTtlMs || PRESENCE_TTL_MS);
         const currentMemberIds = new Set((aggregate && aggregate.room && aggregate.room.members || []).map((member) => member.memberId));
         const byMemberId = {};
         (rows || []).filter((row) => Number(row.lastSeenAt) >= cutoff && currentMemberIds.has(row.memberId)).forEach((row) => {
@@ -3920,7 +3923,6 @@ var require_room_application = __commonJS({
         });
         const signals = {};
         const scope = signalScope(aggregate);
-        const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId || aggregate && aggregate.room && aggregate.room.currentSessionId || null;
         (signalRows || []).filter((row) => {
           if (Number(row.expiresAt) <= now()) return false;
           if (row.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
@@ -3949,7 +3951,10 @@ var require_room_application = __commonJS({
         return {
           presenceByMemberId: byMemberId,
           signals,
-          stale: { presence: presenceResult.status === "rejected", signals: signalResult.status === "rejected" }
+          stale: {
+            presence: !shouldReadPresence || presenceResult.status === "rejected",
+            signals: signalResult.status === "rejected"
+          }
         };
       }
       function mergeTouchedPresence(projectedEphemeral, touched) {
@@ -4175,7 +4180,10 @@ var require_room_application = __commonJS({
         if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
         const baseSeq = Number(afterSeq);
         if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, "afterSeq \u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570");
-        const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
+        const limit = Math.min(
+          MAX_INCREMENTAL_SYNC_EVENTS,
+          Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT)
+        );
         const bundle = await repo.readSyncState(roomId, baseSeq, limit);
         const room = bundle && (bundle.room || bundle.aggregate && bundle.aggregate.room);
         const authAggregate = room ? { room, currentSession: null, facts: {} } : null;
@@ -4242,7 +4250,10 @@ var require_room_application = __commonJS({
         let projectedEphemeral = {};
         if (!hasMore) {
           const [rawEphemeral, touched] = await Promise.all([
-            ephemeral(roomId, authAggregate),
+            ephemeral(roomId, authAggregate, {
+              // 旧客户端未携带该字段时仍按原语义读取；新客户端可对 Presence 独立降频。
+              readPresence: actorContext.readPresence !== false
+            }),
             activityPromise
           ]);
           projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
@@ -4259,139 +4270,199 @@ var require_room_application = __commonJS({
         });
       }
       async function executeCommand(rawEnvelope, actorContext) {
-        const actorUserId = actorContext && actorContext.userId;
-        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-        const validated = validateCommandEnvelope(rawEnvelope);
-        if (!validated.ok) return validated;
-        const envelope = validated.envelope;
-        if (!isNonEmptyString(appOptions.serverSecret)) {
-          return fail(ERR.INTERNAL_ERROR, "ROOM_PROTOCOL_SERVER_SECRET \u672A\u914D\u7F6E");
-        }
-        const commandNow = now();
-        const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
-        const roomIdCandidates = isCreate ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === "function" ? repo.generateRoomId(envelope.commandId, actorUserId, attempt) : 1e7 + Math.floor(Math.random() * 9e7))) : [];
-        const commandRoomId = isCreate ? roomIdCandidates[0] : envelope.roomId;
-        const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
-        const transaction = await repo.transactCommand({
-          scopeKey,
-          commandId: envelope.commandId,
-          actorUserId,
-          roomId: commandRoomId,
-          type: envelope.type,
-          roomIdCandidates,
-          requestHash: requestHash(envelope),
-          createdAt: commandNow
-        }, ({ aggregate: current, activeRoomId, resolvedRoomId }) => {
-          if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
-          if (isCreate && !resolvedRoomId) {
-            return { accepted: false, error: fail(ERR.DEPENDENCY_UNAVAILABLE, "\u6682\u65F6\u65E0\u6CD5\u5206\u914D\u623F\u95F4\u53F7") };
+        const startedAt = performanceNow();
+        const observedType = rawEnvelope && typeof rawEnvelope.type === "string" ? rawEnvelope.type : "UNKNOWN";
+        const observedRoomId = rawEnvelope && typeof rawEnvelope.roomId === "string" ? rawEnvelope.roomId : "";
+        const observedCommandId = rawEnvelope && typeof rawEnvelope.commandId === "string" ? rawEnvelope.commandId : "";
+        const metrics = {
+          type: observedType,
+          roomId: observedRoomId,
+          commandIdHash: hash(observedCommandId).slice(0, 16),
+          status: "REJECTED",
+          replayed: false,
+          touchPresence: actorContext && actorContext.touchPresence === true,
+          syncSource: "NONE",
+          transactionMs: 0,
+          presenceMs: 0,
+          syncMs: 0
+        };
+        try {
+          const actorUserId = actorContext && actorContext.userId;
+          if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+          const validated = validateCommandEnvelope(rawEnvelope);
+          if (!validated.ok) return validated;
+          const envelope = validated.envelope;
+          metrics.type = envelope.type;
+          metrics.roomId = envelope.roomId;
+          metrics.commandIdHash = hash(envelope.commandId).slice(0, 16);
+          if (!isNonEmptyString(appOptions.serverSecret)) {
+            return fail(ERR.INTERNAL_ERROR, "ROOM_PROTOCOL_SERVER_SECRET \u672A\u914D\u7F6E");
           }
-          if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
-            return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
-          }
-          const effectiveRoomId = resolvedRoomId || commandRoomId;
-          const seed = deriveCommandSeed(
-            appOptions.serverSecret,
-            effectiveRoomId,
-            envelope.commandId,
-            "domain"
-          );
-          const beforePublic = projectPublicView(current);
-          const domain = reduceCommand({
-            aggregate: current,
-            command: { ...envelope, roomId: effectiveRoomId },
-            actorUserId,
-            deps: {
-              now: commandNow,
-              idFactory: deterministicIds(seed),
-              random: deterministicRandom(seed),
-              wordPairPicker: appOptions.wordPairPicker,
-              roomIdFactory: () => effectiveRoomId
-            }
-          });
-          if (!domain.ok) return { accepted: false, error: domain };
-          const next = domain.aggregate;
-          const storageError = validateSessionDocumentSize(next);
-          if (storageError) return { accepted: false, error: storageError };
-          next.room.signalScope = signalScopeFromSession(next);
-          const afterPublic = projectPublicView(next);
-          const eventGroup = buildEventGroup(
-            envelope,
-            domain.events,
-            next.room,
-            current,
-            next,
-            beforePublic,
-            afterPublic,
-            commandNow
-          );
-          next.room.stateVersion += 1;
-          next.room.eventSeq = eventGroup.seq;
-          next.room.updatedAt = commandNow;
-          markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
-          const archivedSession = next.archivedSession || null;
-          const archivedFacts = next.archivedFacts || null;
-          delete next.archivedSession;
-          delete next.archivedFacts;
-          return {
-            accepted: true,
-            aggregate: next,
-            events: [eventGroup],
-            dirtyFacts: domain.dirtyFacts || [],
-            archivedSession,
-            archivedFacts,
-            outcome: {
-              ...domain.outcome || { kind: "ACCEPTED" },
-              roomId: next.room.roomId,
-              committedThroughSeq: next.room.eventSeq
-            }
-          };
-        });
-        if (transaction.conflict) return fail(ERR.COMMAND_ID_CONFLICT, void 0, { commandId: envelope.commandId });
-        const receipt = transaction.receipt;
-        await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
-        if (!receipt.accepted) {
-          const rejected = { ...receipt.error, commandId: envelope.commandId };
-          if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
-            const catchup = await sync(
-              commandRoomId,
-              envelope.knownSeq,
-              { ...actorContext, touchPresence: false }
-            ).catch(() => null);
-            if (catchup && catchup.ok) rejected.sync = catchup;
-          }
-          return rejected;
-        }
-        const outcome = receipt.outcome;
-        const response = okResult({
-          commandId: envelope.commandId,
-          outcome,
-          traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}`
-        });
-        if (![
-          COMMAND_TYPES.CREATE_ROOM,
-          COMMAND_TYPES.JOIN_ROOM,
-          COMMAND_TYPES.LEAVE_ROOM,
-          COMMAND_TYPES.DISSOLVE_ROOM
-        ].includes(envelope.type)) {
+          const commandNow = now();
+          const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
+          const roomIdCandidates = isCreate ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === "function" ? repo.generateRoomId(envelope.commandId, actorUserId, attempt) : 1e7 + Math.floor(Math.random() * 9e7))) : [];
+          const commandRoomId = isCreate ? roomIdCandidates[0] : envelope.roomId;
+          const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
+          metrics.roomId = commandRoomId;
+          const transactionStartedAt = performanceNow();
+          let transaction;
           try {
-            const attached = !transaction.replayed && attachCommandSyncFromEvents({
-              events: transaction.events,
-              roomId: outcome.roomId,
-              currentSeq: outcome.committedThroughSeq,
-              knownSeq: envelope.knownSeq,
-              memberId: receipt.memberId,
-              serverTime: now()
+            transaction = await repo.transactCommand({
+              scopeKey,
+              commandId: envelope.commandId,
+              actorUserId,
+              roomId: commandRoomId,
+              type: envelope.type,
+              roomIdCandidates,
+              requestHash: requestHash(envelope),
+              createdAt: commandNow
+            }, ({ aggregate: current, activeRoomId, resolvedRoomId }) => {
+              if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+              if (isCreate && !resolvedRoomId) {
+                return { accepted: false, error: fail(ERR.DEPENDENCY_UNAVAILABLE, "\u6682\u65F6\u65E0\u6CD5\u5206\u914D\u623F\u95F4\u53F7") };
+              }
+              if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
+                return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+              }
+              const effectiveRoomId = resolvedRoomId || commandRoomId;
+              const seed = deriveCommandSeed(
+                appOptions.serverSecret,
+                effectiveRoomId,
+                envelope.commandId,
+                "domain"
+              );
+              const beforePublic = projectPublicView(current);
+              const domain = reduceCommand({
+                aggregate: current,
+                command: { ...envelope, roomId: effectiveRoomId },
+                actorUserId,
+                deps: {
+                  now: commandNow,
+                  idFactory: deterministicIds(seed),
+                  random: deterministicRandom(seed),
+                  wordPairPicker: appOptions.wordPairPicker,
+                  roomIdFactory: () => effectiveRoomId
+                }
+              });
+              if (!domain.ok) return { accepted: false, error: domain };
+              const next = domain.aggregate;
+              const storageError = validateSessionDocumentSize(next);
+              if (storageError) return { accepted: false, error: storageError };
+              next.room.signalScope = signalScopeFromSession(next);
+              const afterPublic = projectPublicView(next);
+              const eventGroup = buildEventGroup(
+                envelope,
+                domain.events,
+                next.room,
+                current,
+                next,
+                beforePublic,
+                afterPublic,
+                commandNow
+              );
+              next.room.stateVersion += 1;
+              next.room.eventSeq = eventGroup.seq;
+              next.room.updatedAt = commandNow;
+              markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
+              const archivedSession = next.archivedSession || null;
+              const archivedFacts = next.archivedFacts || null;
+              delete next.archivedSession;
+              delete next.archivedFacts;
+              return {
+                accepted: true,
+                aggregate: next,
+                events: [eventGroup],
+                dirtyFacts: domain.dirtyFacts || [],
+                archivedSession,
+                archivedFacts,
+                outcome: {
+                  ...domain.outcome || { kind: "ACCEPTED" },
+                  roomId: next.room.roomId,
+                  committedThroughSeq: next.room.eventSeq
+                }
+              };
             });
-            response.sync = attached || await sync(
-              outcome.roomId,
-              envelope.knownSeq,
-              { ...actorContext, touchPresence: false }
-            );
-          } catch (syncError) {
+          } finally {
+            metrics.transactionMs = Math.max(0, performanceNow() - transactionStartedAt);
+          }
+          metrics.replayed = transaction.replayed === true;
+          if (transaction.conflict) {
+            metrics.status = "CONFLICT";
+            return fail(ERR.COMMAND_ID_CONFLICT, void 0, { commandId: envelope.commandId });
+          }
+          const receipt = transaction.receipt;
+          metrics.status = receipt.accepted ? "ACCEPTED" : "REJECTED";
+          const presenceStartedAt = performanceNow();
+          try {
+            await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
+          } finally {
+            metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
+          }
+          if (!receipt.accepted) {
+            const rejected = { ...receipt.error, commandId: envelope.commandId };
+            if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
+              const syncStartedAt = performanceNow();
+              metrics.syncSource = "QUERY";
+              try {
+                const catchup = await sync(
+                  commandRoomId,
+                  envelope.knownSeq,
+                  { ...actorContext, touchPresence: false }
+                ).catch(() => null);
+                if (catchup && catchup.ok) rejected.sync = catchup;
+              } finally {
+                metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+              }
+            }
+            return rejected;
+          }
+          const outcome = receipt.outcome;
+          const response = okResult({
+            commandId: envelope.commandId,
+            outcome,
+            traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}`
+          });
+          if (![
+            COMMAND_TYPES.CREATE_ROOM,
+            COMMAND_TYPES.JOIN_ROOM,
+            COMMAND_TYPES.LEAVE_ROOM,
+            COMMAND_TYPES.DISSOLVE_ROOM
+          ].includes(envelope.type)) {
+            const syncStartedAt = performanceNow();
+            try {
+              const attached = !transaction.replayed && attachCommandSyncFromEvents({
+                events: transaction.events,
+                roomId: outcome.roomId,
+                currentSeq: outcome.committedThroughSeq,
+                knownSeq: envelope.knownSeq,
+                memberId: receipt.memberId,
+                serverTime: now()
+              });
+              metrics.syncSource = attached ? "INLINE_EVENTS" : "QUERY";
+              response.sync = attached || await sync(
+                outcome.roomId,
+                envelope.knownSeq,
+                { ...actorContext, touchPresence: false }
+              );
+            } catch (syncError) {
+              metrics.syncSource = "FAILED";
+            } finally {
+              metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+            }
+          }
+          return response;
+        } catch (error) {
+          metrics.status = "ERROR";
+          throw error;
+        } finally {
+          if (typeof appOptions.onCommandMetrics === "function") {
+            const completed = { ...metrics, totalMs: Math.max(0, performanceNow() - startedAt) };
+            try {
+              appOptions.onCommandMetrics(completed);
+            } catch (metricsError) {
+            }
           }
         }
-        return response;
       }
       return {
         executeCommand,
@@ -4472,8 +4543,8 @@ var require_room_cloudbase_adapter = __commonJS({
         throw error;
       }
     }
-    async function loadAggregate(store, roomId) {
-      const room = await safeGet(store, COLLECTIONS.rooms, roomId);
+    async function loadAggregate(store, roomId, preloadedRoom) {
+      const room = preloadedRoom ? cleanDoc(preloadedRoom) : await safeGet(store, COLLECTIONS.rooms, roomId);
       if (!compatibleRoom(room)) return null;
       const currentSession = room.currentSessionId ? await safeGet(store, COLLECTIONS.sessions, room.currentSessionId) : null;
       if (room.currentSessionId && (!currentSession || currentSession.roomId !== roomId)) {
@@ -4514,6 +4585,29 @@ var require_room_cloudbase_adapter = __commonJS({
     }
     function sameDocument(left, right) {
       return stableStringify(left) === stableStringify(right);
+    }
+    var PUBLIC_SIGNALS_RECORD_TYPE = "PUBLIC_SIGNALS";
+    function publicSignalsId(roomId) {
+      return docId(`${roomId}:PUBLIC_SIGNALS`);
+    }
+    function publicSignalsFromDocument(document) {
+      if (!document || document.recordType !== PUBLIC_SIGNALS_RECORD_TYPE || !document.signals || typeof document.signals !== "object" || Array.isArray(document.signals)) return {};
+      return document.signals;
+    }
+    async function readPublicSignals(store, roomId) {
+      const document = await safeGet(store, COLLECTIONS.signals, publicSignalsId(roomId));
+      return { document, signals: publicSignalsFromDocument(document) };
+    }
+    async function writePublicSignal(store, roomId, previousDocument, signalType, signal, now) {
+      const signals = { ...publicSignalsFromDocument(previousDocument), [signalType]: signal };
+      await store.collection(COLLECTIONS.signals).doc(publicSignalsId(roomId)).set({ data: {
+        roomId,
+        recordType: PUBLIC_SIGNALS_RECORD_TYPE,
+        signals,
+        // 聚合文档在最后一个槽位过期后即可整体清理；业务读取仍逐槽校验 expiresAt。
+        expiresAt: Math.max(...Object.values(signals).map((row) => Number(row && row.expiresAt) || 0)),
+        updatedAt: now
+      } });
     }
     function isSafeFactKey(id) {
       return typeof id === "string" && id.length > 0 && id.length <= 128 && !id.includes(".") && !id.includes("$");
@@ -4560,7 +4654,8 @@ var require_room_cloudbase_adapter = __commonJS({
             const conflict = existing.actorUserId !== input.actorUserId || existing.requestHash !== input.requestHash || existing.type !== input.type;
             return conflict ? { conflict: true } : { replayed: true, receipt: existing };
           }
-          const active = await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId));
+          const requiresActiveLookup = input.type === COMMAND_TYPES.CREATE_ROOM || input.type === COMMAND_TYPES.JOIN_ROOM;
+          const active = requiresActiveLookup ? await safeGet(transaction, COLLECTIONS.active, docId(input.actorUserId)) : null;
           let activeRoomId = active && active.roomId;
           let activeRoomDocument = null;
           let danglingActive = false;
@@ -4573,7 +4668,7 @@ var require_room_cloudbase_adapter = __commonJS({
             }
           }
           let resolvedRoomId = input.roomId;
-          if (input.type === "CREATE_ROOM") {
+          if (input.type === COMMAND_TYPES.CREATE_ROOM) {
             resolvedRoomId = null;
             for (const candidate of input.roomIdCandidates || [input.roomId]) {
               if (!await safeGet(transaction, COLLECTIONS.rooms, candidate)) {
@@ -4582,7 +4677,8 @@ var require_room_cloudbase_adapter = __commonJS({
               }
             }
           }
-          const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId) : null;
+          const reusableRoom = activeRoomId && activeRoomId === resolvedRoomId ? activeRoomDocument : null;
+          const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId, reusableRoom) : null;
           const beforeUsersSnapshot = openUsers(current);
           const beforeSessionSnapshot = persistedSession(current, resolvedRoomId);
           const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
@@ -4722,20 +4818,20 @@ var require_room_cloudbase_adapter = __commonJS({
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
         const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
         const presenceId = docId(`${roomId}:${memberId}:${row.deviceSessionId}`);
-        return db2.runTransaction(async (transaction) => {
-          const existing = await safeGet(transaction, COLLECTIONS.presence, presenceId);
-          if (existing && Number(existing.lastSeenAt) >= Number(lastSeenAt)) return existing;
-          await transaction.collection(COLLECTIONS.presence).doc(presenceId).set({ data: row });
-          return row;
+        await db2.collection(COLLECTIONS.presence).doc(presenceId).set({
+          data: { ...row, lastSeenAt: db2.command.max(lastSeenAt) }
         });
+        return row;
       }
-      async function listPresence(roomId) {
-        const result = await db2.collection(COLLECTIONS.presence).where({ roomId }).orderBy("lastSeenAt", "desc").limit(50).get();
+      async function listPresence(roomId, cutoff) {
+        const condition = { roomId };
+        if (Number.isFinite(Number(cutoff))) condition.lastSeenAt = db2.command.gte(Number(cutoff));
+        const result = await db2.collection(COLLECTIONS.presence).where(condition).orderBy("lastSeenAt", "desc").limit(50).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listSignals(roomId) {
-        const rows = await Promise.all(Object.values(SIGNAL_TYPES).map((signalType) => safeGet(db2, COLLECTIONS.signals, docId(`${roomId}:${signalType}`))));
-        return rows.filter(Boolean);
+        const state = await readPublicSignals(db2, roomId);
+        return Object.values(state.signals).filter((row) => row && Object.values(SIGNAL_TYPES).includes(row.signalType));
       }
       async function upsertSignal(input) {
         return db2.runTransaction(async (transaction) => {
@@ -4748,8 +4844,8 @@ var require_room_cloudbase_adapter = __commonJS({
             if (!scope || scope.sessionId !== input.sessionId || scope.turnId !== input.turnId || scope.memberId !== member.memberId || Number(scope.deadlineAt) <= input.now) {
               return { ok: false, errCode: "INVALID_TRANSITION", errMsg: "\u5F53\u524D\u4E0D\u80FD\u53D1\u5E03\u9759\u9ED8\u58F0\u8D1D" };
             }
-            const signalId = docId(`${input.roomId}:${input.signalType}`);
-            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+            const signalState = await readPublicSignals(transaction, input.roomId);
+            const existing = signalState.signals[input.signalType];
             if (existing && existing.sessionId === input.sessionId && existing.turnId === input.turnId && Number(existing.updatedAt) >= Number(input.now)) {
               return { ok: true, signal: existing };
             }
@@ -4763,7 +4859,14 @@ var require_room_cloudbase_adapter = __commonJS({
               updatedAt: input.now,
               expiresAt: Math.min(Number(scope.deadlineAt), input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.PARTNER_SILENT_SOUND])
             };
-            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            await writePublicSignal(
+              transaction,
+              input.roomId,
+              signalState.document,
+              input.signalType,
+              row,
+              input.now
+            );
             return { ok: true, signal: row };
           }
           if (input.signalType === SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE) {
@@ -4781,7 +4884,7 @@ var require_room_cloudbase_adapter = __commonJS({
             if (cooldown && Number(input.now) - Number(cooldown.updatedAt) < DESIGN_PROBLEM_NUDGE_COOLDOWN_MS && cooldown.signal) {
               return { ok: true, signal: cooldown.signal };
             }
-            const signalId = docId(`${input.roomId}:${input.signalType}`);
+            const signalState = await readPublicSignals(transaction, input.roomId);
             const row = {
               roomId: input.roomId,
               signalType: input.signalType,
@@ -4792,7 +4895,14 @@ var require_room_cloudbase_adapter = __commonJS({
               updatedAt: input.now,
               expiresAt: input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_NUDGE]
             };
-            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            await writePublicSignal(
+              transaction,
+              input.roomId,
+              signalState.document,
+              input.signalType,
+              row,
+              input.now
+            );
             await transaction.collection(COLLECTIONS.signals).doc(cooldownId).set({ data: {
               recordType: "MEMBER_SIGNAL_COOLDOWN",
               roomId: input.roomId,
@@ -4823,8 +4933,8 @@ var require_room_cloudbase_adapter = __commonJS({
               input.workflowRevision
             );
             if (denied) return { ok: false, errCode: denied.errCode, errMsg: denied.errMsg };
-            const signalId = docId(`${input.roomId}:${input.signalType}`);
-            const existing = await safeGet(transaction, COLLECTIONS.signals, signalId);
+            const signalState = await readPublicSignals(transaction, input.roomId);
+            const existing = signalState.signals[input.signalType];
             if (existing && existing.sessionId === input.sessionId && Number(existing.workflowRevision) === Number(input.workflowRevision) && String(existing.value || "") === contributionId && Number(existing.updatedAt) >= Number(input.now)) {
               return { ok: true, signal: existing };
             }
@@ -4839,7 +4949,14 @@ var require_room_cloudbase_adapter = __commonJS({
               updatedAt: input.now,
               expiresAt: contributionId ? input.now + SIGNAL_TTL_MS[SIGNAL_TYPES.DESIGN_PROBLEM_EDITING] : input.now
             };
-            await transaction.collection(COLLECTIONS.signals).doc(signalId).set({ data: row });
+            await writePublicSignal(
+              transaction,
+              input.roomId,
+              signalState.document,
+              input.signalType,
+              row,
+              input.now
+            );
             return { ok: true, signal: row };
           }
           return { ok: false, errCode: "INVALID_ARGUMENT", errMsg: "\u672A\u77E5\u77AC\u65F6\u4FE1\u53F7" };
@@ -4880,7 +4997,9 @@ exports.main = async (event) => {
   const actorContext = {
     userId,
     deviceSessionId: clientContext.deviceSessionId,
-    touchPresence: clientContext.touchPresence === true
+    touchPresence: clientContext.touchPresence === true,
+    // 缺省按 true 兼容旧客户端；新 RoomClient 会每 5 秒要求一次 Presence。
+    readPresence: clientContext.readPresence !== false
   };
   try {
     if (action === "current") return await app.readCurrentRoom(actorContext);

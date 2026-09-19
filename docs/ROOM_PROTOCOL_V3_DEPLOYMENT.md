@@ -61,8 +61,8 @@ flowchart LR
 | `roomV3Actions` | `_id=hash(scopeKey:commandId)`；Receipt | 建议 30 天归档/清理 |
 | `roomV3Events` | `_id=roomId_seq`；每个 Command 一个事件组，含 raw/public/Actor 扇出投影 | 建议保留 7 天 |
 | `roomV3Messages` | Partner 匿名表达 | 按产品周期清理 |
-| `roomV3Presence` | 任意房间协议顺带续租的设备在线租约 | 建议按 `lastSeenAt` 清理 |
-| `roomV3Signals` | 可丢失瞬时信号 | 按 `expiresAt` 清理 |
+| `roomV3Presence` | 任意房间协议顺带续租的设备在线租约 | 按 `lastSeenAt` 清理；查询已在索引层排除过期租约 |
+| `roomV3Signals` | 房间级公开信号聚合文档与成员级冷却凭证 | 按顶层 `expiresAt` 清理 |
 | `roomV3Media` | 房间二维码等可再生引用 | 可再生 |
 
 `inspirations` 继续独立存在，不属于房间协议集合。
@@ -85,12 +85,22 @@ flowchart TB
 | `roomV3Messages` | `roomId ASC, sessionId ASC, commitSeq DESC` | 是 |
 | `roomV3Presence` | `roomId ASC, lastSeenAt DESC` | 是 |
 
-`roomV3Signals` 当前按 `_id=hash(roomId:PARTNER_SILENT_SOUND)`、
-`_id=hash(roomId:DESIGN_PROBLEM_NUDGE)` 和 `_id=hash(roomId:DESIGN_PROBLEM_EDITING)`
-三点读；设计问题催促另按
+`roomV3Signals` 当前按 `_id=hash(roomId:PUBLIC_SIGNALS)` 一次点读房间公开信号聚合文档；
+设计问题催促另按
 `hash(roomId:sessionId:DESIGN_PROBLEM_NUDGE:cooldown:memberId)` 点写成员冷却凭证，
 该凭证不投影给客户端。两类文档都不需要组合索引。其余读取
 使用确定性 `_id`，不需要额外业务索引。
+
+独立的 `inspirations` 列表已把用户、房间、场次过滤和更新时间排序全部下推到数据库，需创建：
+
+| 查询范围 | `inspirations` 索引字段 |
+|---|---|
+| 当前用户全部 | `userId ASC, updateTime DESC` |
+| 当前工作坊全部场次 | `userId ASC, roomId ASC, updateTime DESC` |
+| 当前场次 | `userId ASC, roomId ASC, sessionId ASC, updateTime DESC` |
+
+删除旧的 `createTime` 唯一索引：时间戳不是业务唯一键，同一毫秒保存两条灵感不应冲突。以上索引应在
+部署新版 `listInspirations` 前创建完成；该云函数不再进行 `_openid` OR 查询或拉取 100 条后内存过滤。
 
 ## 4. 权限边界
 
@@ -216,6 +226,7 @@ Spy SETTLED 前 Public View/Event 不含 role/word/blurb
 | `delivery=SNAPSHOT` | 比例突增时检查 Event TTL、缺口、超过 25 条的积压或客户端生命周期 |
 | `COMMAND_ID_CONFLICT` | 检查客户端 commandId 生成与复用 |
 | 事务冲突/重试 | 按房间与命令类型观察热点 |
+| `[roomCommand:perf]` | 按 Command `type` 分别统计 `transactionMs/presenceMs/syncMs/totalMs` 的 P50/P95；`syncSource=QUERY/FAILED` 突增时检查客户端水位与 Event 连续性 |
 | `LIMIT_EXCEEDED` / RoomSession 文档大小 | 协议在 6 MiB 安全预算、500 消息、1000 素材、200 常规 Turn 前拒绝增长；引导结束场次，不得放宽到数据库硬上限 |
 | Presence stale | 检查云函数延迟和前后台生命周期 |
 

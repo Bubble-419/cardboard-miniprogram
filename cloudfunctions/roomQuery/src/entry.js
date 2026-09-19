@@ -18,7 +18,9 @@ exports.main = async (event) => {
   const clientContext = event && event.clientContext || {};
   const actorContext = { userId,
     deviceSessionId: clientContext.deviceSessionId,
-    touchPresence: clientContext.touchPresence === true };
+    touchPresence: clientContext.touchPresence === true,
+    // 缺省按 true 兼容旧客户端；新 RoomClient 会每 5 秒要求一次 Presence。
+    readPresence: clientContext.readPresence !== false };
 
   try {
     if (action === 'current') return await app.readCurrentRoom(actorContext);

@@ -3,9 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, createRoomClient, createCloudRoomGateway
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, PRESENCE_READ_INTERVAL_MS,
+  createRoomClient, createCloudRoomGateway
 } = require('@cardboard/room-client');
-const { VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION } = require('@cardboard/room-contracts');
+const {
+  VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS
+} = require('@cardboard/room-contracts');
 const { applyProjectedEvent } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
 
@@ -46,6 +49,16 @@ function recordingTimers() {
   };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function makeStableView(roomId, workshopName) {
   return {
     room: {
@@ -70,7 +83,7 @@ function makeStableView(roomId, workshopName) {
   };
 }
 
-test('RoomClient 统一使用 2 秒最小轮询间隔', async () => {
+test('RoomClient 在前一次请求完成后统一静默 2 秒再轮询', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   const gateway = {
@@ -83,10 +96,112 @@ test('RoomClient 统一使用 2 秒最小轮询间隔', async () => {
   const client = createRoomClient({ gateway, ...timers, intervalMs: 800 });
 
   await client.open();
-  assert.equal(timers.delays.at(-1), 0, '首次 Snapshot 后应立即追平事件');
+  assert.equal(timers.delays.at(-1), ROOM_POLL_INTERVAL_MS,
+    '首次 Snapshot 已经是一致视图，后续 poll 应从请求完成时重新计时');
   await timers.run();
   assert.equal(ROOM_POLL_INTERVAL_MS, 2000);
   assert.equal(timers.delays.at(-1), ROOM_POLL_INTERVAL_MS);
+  client.close();
+});
+
+test('Command 入队后废弃已到期 poll，并从 Command 结束重新计时', async () => {
+  const commandGate = deferred();
+  const timers = manualTimers();
+  let syncCalls = 0;
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const enter = () => {
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+  };
+  const leave = () => { activeRequests -= 1; };
+  const view = makeStableView('12345678');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
+    sync: async () => {
+      enter();
+      syncCalls += 1;
+      leave();
+      return { ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+        eventSchemaVersion: EVENT_SCHEMA_VERSION, afterSeq: 1, throughSeq: 1,
+        roomCurrentSeq: 1, hasMore: false, delivery: 'EVENTS', events: [], ephemeral: {} };
+    },
+    dispatch: async () => {
+      enter();
+      try {
+        await commandGate.promise;
+        return { ok: false, errCode: 'INVALID_TRANSITION', retryable: false };
+      } finally {
+        leave();
+      }
+    }
+  };
+  const client = createRoomClient({ gateway, ...timers });
+  await client.open();
+  await timers.run();
+  assert.equal(syncCalls, 1);
+
+  const command = client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
+  // 模拟 poll 回调和用户指令在同一轮 event loop 竞态；旧 poll 不得跟在指令后立即执行。
+  const expiredPoll = timers.run();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(activeRequests, 1);
+  commandGate.resolve();
+  await command;
+  await expiredPoll;
+
+  assert.equal(maxActiveRequests, 1, 'Command 与 Query 不得并发');
+  assert.equal(syncCalls, 1, '指令期间到期的 poll 必须废弃');
+  await timers.run();
+  assert.equal(syncCalls, 2, '下一次 poll 从 Command 结束后开始计时');
+  client.close();
+});
+
+test('所有 roomQuery 查询与 Command 共用一条串行请求通道', async () => {
+  const commandGate = deferred();
+  let historyStarted = false;
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const view = makeStableView('12345678');
+  const gateway = {
+    currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+    snapshot: async () => ({ ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+      roomId: '12345678', seq: 1, stateVersion: 1, view, ephemeral: {} }),
+    sync: async () => null,
+    dispatch: async () => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      try {
+        await commandGate.promise;
+        return { ok: false, errCode: 'INVALID_TRANSITION', retryable: false };
+      } finally {
+        activeRequests -= 1;
+      }
+    },
+    history: async () => {
+      historyStarted = true;
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      activeRequests -= 1;
+      return { ok: true, sessions: [] };
+    }
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+  await client.open();
+  const command = client.dispatch({ type: 'UPDATE_ROOM_PROFILE', payload: { workshopName: 'x' } });
+  await Promise.resolve();
+  const history = client.history({}, '12345678');
+  await Promise.resolve();
+
+  assert.equal(historyStarted, false, '指令未结束时不应发起 roomQuery');
+  commandGate.resolve();
+  await command;
+  await history;
+  assert.equal(historyStarted, true);
+  assert.equal(maxActiveRequests, 1);
   client.close();
 });
 
@@ -133,6 +248,67 @@ test('RoomClient 在任意协议中复用设备身份并按间隔请求 Presence
   assert.equal(PRESENCE_TOUCH_INTERVAL_MS, 5000);
   assert.deepEqual(first, { deviceSessionId: 'device-test', touchPresence: true });
   assert.deepEqual(second, { deviceSessionId: 'device-test', touchPresence: false });
+  client.close();
+});
+
+test('RoomClient 保持 2 秒业务 Sync，Presence 独立降频到 5 秒', async () => {
+  let now = 10000;
+  const syncContexts = [];
+  const syncLimits = [];
+  const timers = manualTimers();
+  const view = makeStableView('12345678');
+  const client = createRoomClient({
+    gateway: {
+      currentRoom: async () => ({ ok: true, roomId: '12345678' }),
+      snapshot: async (roomId, context) => ({ ok: true, protocolVersion: 3,
+        viewSchemaVersion: VIEW_SCHEMA_VERSION, roomId, seq: 1, stateVersion: 1,
+        view, ephemeral: { presenceByMemberId: {}, signals: {},
+          stale: { presence: false, signals: false } }, serverTime: now, context }),
+      sync: async (roomId, afterSeq, limit, context) => {
+        syncContexts.push(context);
+        syncLimits.push(limit);
+        const callNo = syncContexts.length;
+        const catchingUp = callNo === 3 || callNo === 4;
+        const nextSeq = catchingUp ? afterSeq + 1 : afterSeq;
+        return { ok: true, protocolVersion: 3, viewSchemaVersion: VIEW_SCHEMA_VERSION,
+          eventSchemaVersion: EVENT_SCHEMA_VERSION, afterSeq, throughSeq: nextSeq,
+          roomCurrentSeq: catchingUp ? 3 : afterSeq, hasMore: callNo === 3,
+          delivery: 'EVENTS',
+          events: catchingUp ? [{
+            roomId, seq: nextSeq, stateVersion: nextSeq,
+            eventSchemaVersion: EVENT_SCHEMA_VERSION,
+            viewSchemaVersion: VIEW_SCHEMA_VERSION,
+            commandId: `catch-up-${nextSeq}`,
+            publicEvents: [{ type: 'ROOM_PROFILE_UPDATED' }],
+            publicPatch: { set: [{ path: 'room.workshopName', value: `版本${nextSeq}` }],
+              remove: [], splice: [] },
+            actorPatch: null
+          }] : [],
+          ephemeral: context.readPresence && callNo !== 3
+            ? { presenceByMemberId: {}, signals: {}, stale: { presence: false, signals: false } }
+            : { signals: {}, stale: { presence: true, signals: false } },
+          serverTime: now };
+      },
+      dispatch: async () => null
+    },
+    ...timers,
+    nowFn: () => now
+  });
+
+  await client.open();
+  now += ROOM_POLL_INTERVAL_MS;
+  await timers.run();
+  now += ROOM_POLL_INTERVAL_MS;
+  await timers.run();
+  now += ROOM_POLL_INTERVAL_MS;
+  await timers.run();
+  now += ROOM_POLL_INTERVAL_MS;
+  await timers.run();
+
+  assert.equal(PRESENCE_READ_INTERVAL_MS, 5000);
+  assert.deepEqual(syncContexts.map((context) => context.readPresence), [false, false, true, true, false],
+    '追赶中的非最终批次不能提前消耗 Presence 读取额度');
+  assert.deepEqual(syncLimits, Array(5).fill(MAX_INCREMENTAL_SYNC_EVENTS));
   client.close();
 });
 

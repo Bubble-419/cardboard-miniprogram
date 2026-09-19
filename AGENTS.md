@@ -33,7 +33,7 @@
 - 房间写操作统一走 V3 `Command`；页面和组件不得直写数据库、直接调用房间云函数，或另建一套轮询/同步协议。接线统一经过 `modules/room-session`、`RoomClient` 和导航协调器。
 - 服务端以 Aggregate 为权威状态，并在同一事务提交 State、Event Group 与 Command Receipt。Event 是短期有序同步日志，不是服务端事实源；事件缺口、版本不兼容或水位矛盾时读取 Snapshot，禁止客户端猜测修补。
 - `Member View` 是客户端唯一的房间业务模型。正常增量使用公共 Patch 加按成员扇出的 Actor Patch；首次进入、断线恢复和异常恢复使用完整 Snapshot。两条路径必须得到等价 View。
-- 单个页面不得创建轮询器或缓存第二份房间状态。所有页面共享单一 `RoomClient`、串行请求队列和协议常量；轮询间隔、批量上限、响应预算等不得散落为魔法数字。
+- 单个页面不得创建轮询器或缓存第二份房间状态。所有页面共享单一 `RoomClient`、串行请求队列和协议常量；自动 Sync 从上一 Command/Query 完成后重新静默 2 秒，页面切换不得紧接着重复拉 Snapshot。Presence 可独立降频，但跳过读取时必须通过 stale 语义保留上次成功投影。轮询间隔、批量上限、响应预算等不得散落为魔法数字。
 - Command 重试必须复用原 `commandId`；指令结果携带的同步未追上提交水位时，先恢复权威 View 再导航。`roomSignal` 只承载有作用域、可过期的辅助瞬时信号，不得成为第二条状态同步通道。
 - 公共数据才进入 Public View/Event；私密信息必须在服务端按调用成员投影。新增字段时同时审查 Snapshot projector、Public/Actor Patch、客户端 reducer、权限与响应体积。
 

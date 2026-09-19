@@ -143,6 +143,51 @@ test('Snapshot 是可独立恢复的成员视图且不暴露 userId', async () =
   assert.equal((await h.snapshot('stranger')).errCode, 'NOT_MEMBER');
 });
 
+test('稳态 Sync 可跳过 Presence 读取并显式标记 stale', async () => {
+  const h = createHarness();
+  const seeded = await h.seedMembers(2);
+  const originalListPresence = h.repo.listPresence;
+  let presenceReads = 0;
+  h.repo.listPresence = async (...args) => {
+    presenceReads += 1;
+    return originalListPresence(...args);
+  };
+
+  const skipped = await h.app.sync('12345678', seeded.seq, {
+    userId: 'host', readPresence: false
+  });
+  assert.equal(skipped.ok, true);
+  assert.equal(presenceReads, 0);
+  assert.equal(skipped.ephemeral.stale.presence, true);
+
+  const refreshed = await h.app.sync('12345678', seeded.seq, {
+    userId: 'host', readPresence: true
+  });
+  assert.equal(refreshed.ok, true);
+  assert.equal(presenceReads, 1);
+  assert.equal(refreshed.ephemeral.stale.presence, false);
+});
+
+test('大厅没有活跃 Session 时不读取不可能生效的 Signal 文档', async () => {
+  const h = createHarness();
+  const seeded = await h.seedMembers(2);
+  const originalListSignals = h.repo.listSignals;
+  let signalReads = 0;
+  h.repo.listSignals = async (...args) => {
+    signalReads += 1;
+    return originalListSignals(...args);
+  };
+
+  const result = await h.app.sync('12345678', seeded.seq, {
+    userId: 'host', readPresence: false
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(signalReads, 0);
+  assert.deepEqual(result.ephemeral.signals, {});
+  assert.equal(result.ephemeral.stale.signals, false);
+});
+
 test('中途加入者留在大厅旁观，参玩者的游戏页只投影冻结 Participant', async () => {
   const h = createHarness();
   await h.seedMembers(3);
