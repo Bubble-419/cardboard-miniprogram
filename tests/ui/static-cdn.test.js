@@ -61,10 +61,10 @@ test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', 
 
 test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大图路径', () => {
   const subAwaitWxml = read('pages/sub-pages/subAwait/index.wxml');
-  const closingWxml = read('pages/main-pages/partnerMode/closingStatement/index.wxml');
+  const closingWxml = read('components/partner-closing-vote-screen/index.wxml');
   const homeWxml = read('pages/main-pages/aaa/index.wxml');
   const subAwaitJs = read('pages/sub-pages/subAwait/index.js');
-  const closingJs = read('pages/main-pages/partnerMode/closingStatement/index.js');
+  const closingJs = read('pages/main-pages/partnerMode/gamepage/index.js');
   const homeJs = read('pages/main-pages/aaa/index.js');
   const brainstormJs = read('pages/main-pages/brainstormMode/index.js');
   const halliJs = read('pages/main-pages/halliGalli/gamepage/index.js');

@@ -67,7 +67,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
 | `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | Host 确认 Partner 首位玩家 |
 | `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
-| `closingStatement` | `/pages/main-pages/partnerMode/closingStatement/index` | `closingStatement` | Partner 收尾表态 |
+| `closingStatement` | `/pages/main-pages/partnerMode/gamepage/index`（RoomShell 的 `closingVote` 屏幕） | `closingStatement` | Partner 收尾表态；与行动页共用稳定页面实例 |
 | `leaderboard` | `/pages/leaderboard/index` | `leaderboard` | Partner 已完成排行榜；Host 带 `from=closingEnd`，Player 另带 `isSubScreen=1` |
 | `halliGame` | `/pages/main-pages/halliGalli/gamepage/index` | `gamepage` | 德国心脏病规则和线下活动 |
 | `creativeInput` | `/pages/main-pages/creativeInput/index` | `creativeInput` | 德国心脏病填写创意 |
@@ -207,6 +207,11 @@ sequenceDiagram
 
 本地叠层只在仍属于同一权威 Route 时保留；一旦 `view.route` 改变，必须关闭叠层并跟随新页面。
 
+导航协调器只有在微信导航成功后才推进本地 Route 水位。`redirectTo` 失败、抛错或长时间没有
+任何回调时，本次导航必须视为失败并释放交互锁；后续 Event/Snapshot 可以用同一权威 Route
+继续重试，不能因为一次失败把成员永久留在旧等待页。除 Spy 运行页外，普通权威页的
+`redirectTo` 失败可降级为 `reLaunch`；Spy 保留原页面栈，避免整栈重建造成白屏。
+
 ## 3. 创建、加入与大厅
 
 ```mermaid
@@ -246,6 +251,10 @@ sequenceDiagram
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
 | “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
+
+大厅二维码属于房间邀请能力，不依赖完整 Room Snapshot 是否成功安装。Snapshot 暂时失败时，
+已知 `roomId` 的大厅仍可独立通过 `roomMedia` 补拉二维码；二维码请求失败也不能清除房间成员
+资格或阻断“退出房间 / 解散房间”。
 
 ```mermaid
 flowchart TD
@@ -341,7 +350,7 @@ stateDiagram-v2
 flowchart LR
   TURN[PARTNER_TURN<br/>partnerGame<br/>出牌/评分/匿名表达]
   STATEMENT[PARTNER_STATEMENT<br/>partnerGame<br/>表态与讨论]
-  VOTE[PARTNER_CLOSING_VOTE<br/>closingStatement<br/>通过/存在疑问]
+  VOTE[PARTNER_CLOSING_VOTE<br/>closingStatement<br/>gamepage Shell / closingVote 屏幕]
   RUNE[PARTNER_CLOSING_RUNE<br/>partnerGame<br/>补全符文]
   REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
   BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
@@ -354,6 +363,30 @@ flowchart LR
   RUNE -->|Host“下一步”| REVIEW
   REVIEW -->|Host“结束脑暴”| BOARD
 ```
+
+Partner 从行动到收尾投票使用同一个物理 `gamepage` RoomShell。`partnerGame` 与
+`closingStatement` 仍是两个独立的权威逻辑 Route，但只切换 Shell 内屏幕，不调用
+`redirectTo`，因此不会因为微信页面导航回调丢失、页面栈重建或本地交互锁而卡在上一屏。
+
+```mermaid
+flowchart LR
+  VIEW[完整 Member View]
+  ROUTE{view.route.name}
+  SHELL[Partner gamepage RoomShell]
+  GAME[game 屏幕<br/>行动 / 讨论 / Rune / Review]
+  VOTE_SCREEN[closingVote 屏幕<br/>通过 / 存在疑问]
+  NAV[全局导航协调器]
+
+  VIEW --> ROUTE
+  ROUTE -->|partnerGame| SHELL --> GAME
+  ROUTE -->|closingStatement| SHELL --> VOTE_SCREEN
+  ROUTE -->|leaderboard / 配置页| NAV
+```
+
+RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSnapshot 交给 Shell，再执行
+全局 Route 协调。同物理路径返回 `SAME_ROUTE` 只表示不需要微信导航，不代表忽略屏幕更新。
+卡片滑动、打分手势和输入草稿可以延迟普通游戏区刷新，但不得延迟 `game ↔ closingVote`
+权威屏幕切换。旧的独立 `closingStatement` 页面不再注册，也不保留第二套轮询或投票逻辑。
 
 | 页面操作 | Command | 约束 / 结果 |
 |---|---|---|
@@ -377,6 +410,15 @@ Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后�
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
 刷新丢失，也不能阻塞后续权威 View 应用。
+
+灵感输入、匿名表达和收尾复盘输入使用原生输入组件的 `adjust-position` 与
+`keyboardheightchange`。键盘高度只驱动聚焦态、Footer 显隐和局部可视区域，不再叠加
+`fixed/transform` 位移，避免系统顶页与手工顶起产生双重偏移。输入焦点、键盘高度、草稿、
+手势和动画均属于本地 UI 状态；无关 Event/Snapshot 不得重建输入节点或关闭键盘。
+
+静默模式的录音权限只在进入静默测声时通过运行时授权申请；拒绝后本页不重复弹出授权窗口。
+所有成员都使用本机麦克风判断 40dB 边框效果，房主广播的声级只作为无麦设备的回退，且只有
+当前特殊行动玩家可以结束静默。
 
 ### 5.2 收尾裁决
 
@@ -488,6 +530,9 @@ flowchart TD
 
 无人淘汰时，下一轮对存活成员重新随机洗牌；有人淘汰时，保留上轮随机顺序，移除淘汰者后从其下一位继续。
 
+平票加时的确认提示以“并列成员集合 + 加时轮起点”作为一次性键。同一加时轮切换发言者时
+不得重复弹出；只有进入新的平票加时轮才生成新的确认提示。
+
 隐私边界：
 
 - 本人身份、词语和说明只在本人的 `actor.privateModeState`。
@@ -576,7 +621,11 @@ flowchart LR
 | Halli 离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
 | Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
-| 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`room-navigation-concurrency.test.js`](../tests/ui/room-navigation-concurrency.test.js) |
+| 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js) |
+| 导航失败重试、等待页退出与无回调超时释放 | [`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js)、[`sub-await-scene.test.js`](../tests/ui/sub-await-scene.test.js)、[`page-interaction-lock.test.js`](../tests/ui/page-interaction-lock.test.js) |
+| Partner 输入键盘、草稿与原生焦点稳定性 | [`inspiration-keyboard-lift.test.js`](../tests/ui/inspiration-keyboard-lift.test.js)、[`room-local-draft.test.js`](../tests/ui/room-local-draft.test.js) |
+| Partner 低耦合组件、RoomShell 屏幕切换与同路径导航 | [`partner-game-components.test.js`](../tests/ui/partner-game-components.test.js)、[`partner-room-shell.test.js`](../tests/ui/partner-room-shell.test.js)、[`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
+| Spy 平票提示每轮只展示一次 | [`spy-tie-prompt.test.js`](../tests/ui/spy-tie-prompt.test.js) |
 
 手工多端验收每个关键 Step 至少覆盖：
 

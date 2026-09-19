@@ -1,0 +1,24 @@
+<view class="user-section">
+  <user-list
+    avatarList="{{avatarList}}"
+    actingUser="{{actingUser}}"
+    selectedUser="{{selectedUser}}"
+    indicatorUser="{{indicatorUser}}"
+    enableAdd="{{false}}"
+    isFold="{{true}}"
+    showName="{{false}}"
+    visualMode="partner-game"
+    onActionPage="{{actionPage}}"
+    specialMoveActive="{{specialMoveActive}}"
+    showActingFrame="{{interactive}}"
+    enableSelectedFrame="{{interactive}}"
+    enableAvatarTap="{{interactive}}"
+    roundStartedAt="{{roundStartedAt}}"
+    roundTimerActive="{{roundTimerActive}}"
+    roundTimerKey="{{roundTimerKey}}"
+    suppressTimerCanvas="{{suppressTimerCanvas}}"
+    bind:timerexpire="onTimerExpire"
+    bindavatartap="onAvatarTap"
+  />
+</view>
+<view class="divider-line"></view>

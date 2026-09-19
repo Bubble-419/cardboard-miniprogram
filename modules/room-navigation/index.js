@@ -9,7 +9,8 @@ const ROUTES = Object.freeze({
   selectPlayer: { path: '/pages/main-pages/selectPlayer/index', mode: 'redirectTo', pageKey: 'selectplayer' },
   confirmFirstPlayer: { path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index', mode: 'redirectTo', pageKey: 'confirmfirstplayer' },
   partnerGame: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
-  closingStatement: { path: '/pages/main-pages/partnerMode/closingStatement/index', mode: 'redirectTo', pageKey: 'closingstatement' },
+  // Partner 运行态使用稳定 RoomShell；route 只切换 Shell 内屏幕，不再重建页面实例。
+  closingStatement: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'closingstatement' },
   leaderboard: { path: '/pages/leaderboard/index', mode: 'redirectTo', pageKey: 'leaderboard' },
   halliGame: { path: '/pages/main-pages/halliGalli/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
   creativeInput: { path: '/pages/main-pages/creativeInput/index', mode: 'redirectTo', pageKey: 'creativeinput' },
@@ -66,7 +67,10 @@ function queryString(params) {
 function describeRoute(route, roomId) {
   if (!route || !ROUTES[route.name]) return null;
   const config = ROUTES[route.name];
-  const query = queryString({ roomId, ...(route.params || {}) });
+  const shellParams = route.name === 'closingStatement'
+    ? { roomShellScreen: 'closingVote' }
+    : {};
+  const query = queryString({ roomId, ...shellParams, ...(route.params || {}) });
   return { ...config, name: route.name, url: `${config.path}${query ? `?${query}` : ''}` };
 }
 

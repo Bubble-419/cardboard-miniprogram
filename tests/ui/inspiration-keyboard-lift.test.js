@@ -38,14 +38,14 @@ function makePage(definition, data = {}) {
 
 test('三个灵感/复盘输入入口只使用系统 adjust-position，不叠加 fixed 键盘位移', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const composerWxml = read('components/partner-inspiration-composer/index.wxml');
   const inspirationWxml = read('pages/inspiration/index.wxml');
 
-  const gameInspirationInputs = gameWxml.match(/<input[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/g) || [];
-  assert.equal(gameInspirationInputs.length, 2);
-  gameInspirationInputs.forEach((markup) => {
-    assert.match(markup, /adjust-position="\{\{true\}\}"/);
-    assert.match(markup, /cursor-spacing="24"/);
-  });
+  const composerInputs = composerWxml.match(/<input[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/g) || [];
+  assert.equal(composerInputs.length, 1);
+  assert.equal((gameWxml.match(/<partner-inspiration-composer/g) || []).length, 2);
+  assert.match(composerInputs[0], /adjust-position="\{\{true\}\}"/);
+  assert.match(composerInputs[0], /cursor-spacing="24"/);
 
   const inspirationTextarea = inspirationWxml.match(/<textarea[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/);
   assert.ok(inspirationTextarea);

@@ -15,7 +15,7 @@ const ROUTE_MATRIX = Object.freeze({
   selectPlayer: ['/pages/main-pages/selectPlayer/index', 'selectPlayer'],
   confirmFirstPlayer: ['/pages/main-pages/partnerMode/confirmFirstPlayer/index', 'confirmFirstPlayer'],
   partnerGame: ['/pages/main-pages/partnerMode/gamepage/index', 'gamepage'],
-  closingStatement: ['/pages/main-pages/partnerMode/closingStatement/index', 'closingStatement'],
+  closingStatement: ['/pages/main-pages/partnerMode/gamepage/index', 'closingStatement'],
   leaderboard: ['/pages/leaderboard/index', 'leaderboard'],
   halliGame: ['/pages/main-pages/halliGalli/gamepage/index', 'gamepage'],
   creativeInput: ['/pages/main-pages/creativeInput/index', 'creativeInput'],

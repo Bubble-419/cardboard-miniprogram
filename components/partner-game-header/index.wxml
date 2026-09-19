@@ -1,0 +1,30 @@
+<view
+  class="top-bar"
+  style="padding-top: {{topPadding}}px; padding-right: {{rightPadding}}px;"
+>
+  <view class="top-bar-inner" style="height: {{height}}px;">
+    <view
+      class="room-entry"
+      style="width: {{iconSize}}px; height: {{iconSize}}px;"
+      data-intent="{{historyReview ? 'GO_BACK' : 'OPEN_ROOM'}}"
+      bindtap="emitIntent"
+    >
+      <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
+    </view>
+    <view
+      class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
+      style="min-height: {{iconSize}}px;"
+      data-intent="VIEW_SITUATION"
+      bindtap="emitIntent"
+    >
+      <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
+      <view class="problem-text-wrap">
+        <text
+          id="problemText"
+          class="problem-text {{problemText ? '' : 'problem-text-empty'}} {{problemExpanded ? 'problem-text-expanded' : ''}}"
+        >{{problemText || '暂无设计问题'}}</text>
+        <text wx:if="{{problemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{problemText}}</text>
+      </view>
+    </view>
+  </view>
+</view>

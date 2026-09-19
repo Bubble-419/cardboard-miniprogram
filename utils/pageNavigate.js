@@ -15,7 +15,6 @@ const REGISTERED_ROUTES = new Set([
   'pages/main-pages/partnerMode/gamepage/index',
   'pages/main-pages/partnerMode/imageCrop/index',
   'pages/main-pages/partnerMode/specialMove/index',
-  'pages/main-pages/partnerMode/closingStatement/index',
   'pages/main-pages/selectBG/index',
   'pages/main-pages/modeIndex/index',
   'pages/main-pages/brainstormMode/index',

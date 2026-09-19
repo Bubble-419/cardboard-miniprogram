@@ -73,13 +73,15 @@ function makePage(definition, data = {}) {
 
 test('全局回顾展示全部纪要卡、允许横滑，并返回排行榜', () => {
   const wxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const headerWxml = read('components/partner-game-header/index.wxml');
   const js = read('pages/main-pages/partnerMode/gamepage/index.js');
   assert.match(wxml, /disable-touch="\{\{isHistoryReview \? reviewInnerScrolling/);
   assert.match(wxml, /scroll-y="\{\{!isHistoryReview \|\| reviewCardScrollY\}\}"/);
-  assert.match(wxml, /wx:if="\{\{isHistoryReview\}\}"[\s\S]*bindtap="handleGoBack"/);
+  assert.match(wxml, /historyReview="\{\{isHistoryReview\}\}"/);
+  assert.match(headerWxml, /historyReview \? 'GO_BACK' : 'OPEN_ROOM'/);
   assert.match(
-    wxml,
-    /wx:if="\{\{isHistoryReview\}\}"[\s\S]*?icon-room-entry-gp\.svg/,
+    headerWxml,
+    /icon-room-entry-gp\.svg/,
     '回顾态左上角应使用房间页入口图标，而不是返回箭头'
   );
   assert.doesNotMatch(wxml, /icon-special-back\.svg/);

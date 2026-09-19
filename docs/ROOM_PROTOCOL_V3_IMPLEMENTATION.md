@@ -399,6 +399,25 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 精确 context，成功后先跟随新的 `view.route`；选择模式这种本地叠层再按 `after=OPEN_MODE_PICKER`
 打开。运行期不可逆页面投影 `NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
 
+逻辑 Route 不要求与微信物理页面一一对应。连续运行且共享大量本地 UI 状态的屏幕可以由稳定
+RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
+Route 映射到同一路径时，协调器返回 `SAME_ROUTE`，Shell 仍必须按最新 `view.route.name` 原子切屏。
+Shell 不能用本地计时器、页面生命周期或临时叠层猜测屏幕，也不能维护第二份业务状态。
+
+```mermaid
+sequenceDiagram
+  participant RC as RoomClient
+  participant P as gamepage RoomShell
+  participant N as Navigation Coordinator
+
+  RC-->>P: PageSnapshot(route=closingStatement, revision=N)
+  P->>P: projectPartnerRoomShell → closingVote
+  RC->>N: reconcile(closingStatement@N)
+  N-->>RC: SAME_ROUTE（不调用 wx.redirectTo）
+  RC-->>P: PageSnapshot(route=partnerGame, revision=N+1)
+  P->>P: projectPartnerRoomShell → game
+```
+
 ## 5. Room 与公共配置状态
 
 ```mermaid
@@ -535,8 +554,8 @@ flowchart LR
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` |
 | `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
 | `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer` |
-| `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame` | `partnerGame` |
-| `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` |
+| `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame`（Partner RoomShell） | `partnerGame`（Partner RoomShell） |
+| `PARTNER_CLOSING_VOTE` | `closingStatement`（同一 Partner RoomShell） | `closingStatement`（同一 Partner RoomShell） |
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` |
 | `HALLI_CREATIVE` 未提交 | `creativeInput` | `creativeInput` |

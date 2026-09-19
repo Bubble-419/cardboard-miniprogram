@@ -65,10 +65,12 @@ test('开始表态发送指令并由 Member View 进入讨论页，不本地猜�
   const wxml = fs.readFileSync(path.resolve(
     __dirname, '../../pages/main-pages/partnerMode/gamepage/index.wxml'
   ), 'utf8');
+  const footerWxml = fs.readFileSync(path.resolve(
+    __dirname, '../../components/partner-game-footer/index.wxml'
+  ), 'utf8');
   assert.doesNotMatch(wxml, /statement-picker-mask/);
-  assert.match(wxml, /bindtap="handleAllPassFromDiscussion"/);
-  assert.match(wxml, /handleAllPassFromDiscussion[\s\S]*?没有疑问/);
-  assert.match(wxml, /handleEndDiscussion[\s\S]*?结束讨论/);
+  assert.match(footerWxml, /data-intent="DISCUSSION_ALL_PASS"[\s\S]*?没有疑问/);
+  assert.match(footerWxml, /data-intent="END_DISCUSSION"[\s\S]*?结束讨论/);
 
   const originalWx = global.wx;
   const originalGetApp = global.getApp;

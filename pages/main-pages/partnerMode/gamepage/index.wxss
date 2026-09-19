@@ -1,3 +1,5 @@
+.room-shell-loading { min-height: 100vh; background: #fafafa; }
+
 .container {
   height: 100vh;
   background: #fafafa;

@@ -66,7 +66,8 @@ function buildSpecialMoveUrl(roomId, currentPlayerIndex, options) {
 
 function buildClosingStatementUrl(roomId, options = {}) {
   const roomIdEnc = encodeURIComponent(roomId);
-  let url = `/pages/main-pages/partnerMode/closingStatement/index?roomId=${roomIdEnc}`;
+  // 收尾投票是 Partner RoomShell 内屏幕，与 gamepage 共用稳定页面实例。
+  let url = `/pages/main-pages/partnerMode/gamepage/index?roomId=${roomIdEnc}&roomShellScreen=closingVote`;
   if (options.closingVoteSessionId) {
     url += `&closingVoteSessionId=${encodeURIComponent(options.closingVoteSessionId)}`;
   }

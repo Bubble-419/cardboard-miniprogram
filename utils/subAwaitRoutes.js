@@ -127,7 +127,6 @@ const ROUTE_TO_PAGE = {
   'pages/main-pages/partnerMode/gamepage/index': 'gamepage',
   'pages/main-pages/creativeInput/index': 'creativeinput',
   'pages/main-pages/creativeSummary/index': 'creativesummary',
-  'pages/main-pages/partnerMode/closingStatement/index': 'closingstatement',
   'pages/leaderboard/index': 'leaderboard',
   'packageSpy/pages/modeIndex/index': 'spymodeindex',
   'packageSpy/pages/speak/index': 'spyspeak',

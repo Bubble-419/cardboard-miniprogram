@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   runPageInteraction,
   runPageNavigation,
+  waitForPageNavigation,
   withPageInteractionLock
 } = require('../../utils/pageInteractionLock');
 
@@ -148,6 +149,30 @@ test('finishes when navigation fails so the page can unlock', async () => {
       { ok: false, error: navigationError }
     );
     assert.equal(page.data.interactionLocked, false);
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
+test('导航运行时丢失所有回调后会超时释放，允许权威路由继续重试', async () => {
+  const originalWx = global.wx;
+  global.wx = {
+    redirectTo() {
+      // 模拟部分开发者工具窗口偶发丢失 success/fail/complete 回调。
+    }
+  };
+
+  try {
+    const result = await Promise.race([
+      waitForPageNavigation('redirectTo', {
+        url: '/next',
+        navigationTimeoutMs: 10
+      }),
+      wait(50).then(() => ({ testTimedOut: true }))
+    ]);
+    assert.equal(result.testTimedOut, undefined, '导航 Promise 不得永久悬挂');
+    assert.equal(result.ok, false);
+    assert.equal(result.error && result.error.code, 'NAVIGATION_TIMEOUT');
   } finally {
     global.wx = originalWx;
   }
