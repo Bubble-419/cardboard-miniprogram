@@ -1,5 +1,7 @@
 'use strict';
 
+const { buildKeyboardLiftStyle } = require('../../utils/keyboardAvoidance');
+
 Component({
   properties: {
     count: { type: Number, value: 0 },
@@ -14,6 +16,19 @@ Component({
     historyWithFooter: { type: Boolean, value: false },
     safeBottom: { type: Boolean, value: false },
     hiddenByKeyboard: { type: Boolean, value: false }
+  },
+
+  data: {
+    keyboardLiftStyle: ''
+  },
+
+  observers: {
+    keyboardHeight(height) {
+      const keyboardLiftStyle = buildKeyboardLiftStyle(height);
+      if (keyboardLiftStyle !== this.data.keyboardLiftStyle) {
+        this.setData({ keyboardLiftStyle });
+      }
+    }
   },
 
   methods: {

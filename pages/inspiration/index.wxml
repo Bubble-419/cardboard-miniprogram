@@ -16,7 +16,15 @@
     <view class="ai-input-container">
       <view class="ai-input-wrapper">
         <text class="ai-placeholder" wx:if="{{!aiPrompt}}">输入提示词，AI帮你生成灵感</text>
-        <input class="ai-input" type="text" value="{{aiPrompt}}" bindinput="onAIInput" confirm-type="done"></input>
+        <input
+          class="ai-input"
+          type="text"
+          value="{{aiPrompt}}"
+          bindinput="onAIInput"
+          confirm-type="done"
+          adjust-position="{{true}}"
+          cursor-spacing="24"
+        ></input>
       </view>
       <view class="ai-button {{isGenerating ? 'ai-button-disabled' : ''}}" bindtap="generateAIInspiration">
         <text class="ai-button-text">AI灵感</text>
@@ -84,7 +92,7 @@
     </view>
   </scroll-view>
 
-  <!-- 灵感输入：由原生 adjust-position 顶起；键盘高度只驱动聚焦态样式 -->
+  <!-- 贴底输入栏按原生键盘事件的 px 高度上移，避免固定一屏布局被键盘覆盖。 -->
   <view
     class="inspiration-focus-mask"
     wx:if="{{inspirationInputFocused || inspirationKeyboardHeight > 0}}"
@@ -138,7 +146,7 @@
           maxlength="2000"
           auto-height
           show-confirm-bar="{{false}}"
-          adjust-position="{{true}}"
+          adjust-position="{{false}}"
           cursor-spacing="24"
         />
         <view

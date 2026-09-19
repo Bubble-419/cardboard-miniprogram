@@ -28,6 +28,8 @@
         maxlength="60"
         auto-height="{{false}}"
         bindinput="onInput"
+        adjust-position="{{true}}"
+        cursor-spacing="32"
       />
     </view>
   </view>

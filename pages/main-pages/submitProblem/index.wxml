@@ -45,6 +45,7 @@
               value="{{problemText}}"
               maxlength="{{maxLength}}"
               adjust-position="{{true}}"
+              cursor-spacing="32"
               show-confirm-bar="{{false}}"
               bindfocus="onInputFocus"
               bindblur="onInputBlur"

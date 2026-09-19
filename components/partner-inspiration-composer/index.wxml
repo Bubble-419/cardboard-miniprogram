@@ -1,5 +1,6 @@
 <view
   class="inspiration-bar {{closing ? 'inspiration-bar-closing' : ''}} {{history ? 'inspiration-bar-history' : ''}} {{historyWithFooter ? 'inspiration-bar-history-with-footer' : ''}} {{safeBottom ? 'inspiration-bar-safe-bottom' : ''}} {{hiddenByKeyboard ? 'inspiration-bar-kb-hidden' : ''}}"
+  style="{{keyboardLiftStyle}}"
 >
   <view class="insp-icon-wrap" catchtap="onOpenCenter">
     <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
@@ -50,7 +51,7 @@
         placeholder-class="inspiration-placeholder"
         maxlength="2000"
         confirm-type="done"
-        adjust-position="{{true}}"
+        adjust-position="{{false}}"
         cursor-spacing="24"
       />
       <view

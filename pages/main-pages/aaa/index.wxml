@@ -58,6 +58,8 @@
         placeholder="微信用户"
         bindinput="onNickNameInput"
         bindblur="onNickNameInput"
+        adjust-position="{{true}}"
+        cursor-spacing="24"
       />
     </view>
   </view>
@@ -131,6 +133,8 @@
               bindinput="onDevJoinRoomIdInput"
               confirm-type="go"
               bindconfirm="handleDevJoinByRoomId"
+              adjust-position="{{true}}"
+              cursor-spacing="24"
             />
             <button class="dev-join-btn" bindtap="handleDevJoinByRoomId">加入</button>
           </view>
@@ -234,6 +238,8 @@
         placeholder="点击填写微信昵称"
         bindinput="onProfileAuthNickInput"
         bindblur="onProfileAuthNickInput"
+        adjust-position="{{true}}"
+        cursor-spacing="24"
       />
 
       <view class="profile-auth-confirm" bindtap="onConfirmProfileAuth">完成</view>

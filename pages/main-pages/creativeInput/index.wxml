@@ -21,6 +21,8 @@
       placeholder="请输入你印象最深的创意..."
       placeholder-class="idea-placeholder"
       auto-height="true"
+      adjust-position="{{true}}"
+      cursor-spacing="24"
     />
 
     <view class="action-row">

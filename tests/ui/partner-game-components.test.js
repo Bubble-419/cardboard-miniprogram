@@ -50,6 +50,17 @@ test('灵感输入模块通过小接口输出语义事件，不持有 RoomSessio
   assert.doesNotMatch(read('components/partner-inspiration-composer/index.js'), /room-session|dispatchRoomCommand|getApp\(/);
 });
 
+test('灵感输入模块按父页面传入的键盘 px 高度精确上移', () => {
+  const definition = loadComponent('components/partner-inspiration-composer/index.js');
+  const component = componentInstance(definition);
+
+  definition.observers.keyboardHeight.call(component, 318);
+  assert.equal(component.data.keyboardLiftStyle, 'transform: translate3d(0, -318px, 0);');
+
+  definition.observers.keyboardHeight.call(component, 0);
+  assert.equal(component.data.keyboardLiftStyle, '');
+});
+
 test('游戏底栏模块只输出业务意图，不执行命令或页面导航', () => {
   const definition = loadComponent('components/partner-game-footer/index.js');
   const component = componentInstance(definition);

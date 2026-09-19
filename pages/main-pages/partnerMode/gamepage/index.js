@@ -12,6 +12,7 @@ const {
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
+const { keyboardHeightFromEvent } = require('../../../../utils/keyboardAvoidance');
 const {
   storageKey: roomDraftStorageKey,
   readRoomLocalDraft,
@@ -247,8 +248,6 @@ Page(withPageInteractionLock({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
-    /** 保留空样式字段兼容模板；输入栏位置交给原生 adjust-position */
-    inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     /** 与微信胶囊垂直对齐 */
@@ -660,7 +659,6 @@ Page(withPageInteractionLock({
     this._flushInspirationKeyboardZero(true);
     if (
       this.data.inspirationKeyboardHeight
-      || this.data.inspirationLiftStyle
       || this.data.inspirationInputFocused
       || this.data.closingKeyboardHeight
       || this.data.closingCreativeEditFocus
@@ -669,7 +667,6 @@ Page(withPageInteractionLock({
       this.setData({
         inspirationInputFocused: false,
         inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: '',
         closingCreativeEditFocus: false,
         closingCreativeWantFocus: false,
         ...this._resetClosingKeyboardUi()
@@ -3232,6 +3229,39 @@ Page(withPageInteractionLock({
     });
   },
 
+  _dismissInputsBeforeCardNavigation() {
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
+    }
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+
+    // 头像会重建下方卡片。先撤销所有显式聚焦意图，避免真机原生 input
+    // 在第二次点击或 swiper 重绘后继承旧焦点并重新拉起软键盘。
+    this._expressComposerIgnoreBlurUntil = 0;
+    this._inspirationNativeFocused = false;
+    this.setData({
+      expressComposerOpen: false,
+      expressComposerNeedFocus: false,
+      inspirationInputFocused: false,
+      inspirationHoldKeyboard: false,
+      playDraftFocused: false,
+      discussionDraftFocused: false,
+      ...this._resetInspirationKeyboardUi()
+    });
+
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
+  },
+
   handleAvatarTap(e) {
     if (isClosingPhase(this.data.gamepagePhase)) return;
     const id = e.detail && (e.detail.playerIndex != null ? e.detail.playerIndex : e.detail.id);
@@ -3239,6 +3269,8 @@ Page(withPageInteractionLock({
 
     const playerIndex = parseInt(id, 10);
     if (Number.isNaN(playerIndex)) return;
+
+    this._dismissInputsBeforeCardNavigation();
 
     const {
       members,
@@ -5479,30 +5511,18 @@ Page(withPageInteractionLock({
     }
   },
 
-  _buildInspirationLiftStyle(keyboardHeight) {
-    // 只用 input 的 adjust-position；fixed/transform 会与系统顶页叠加并导致真机跳动。
-    return '';
-  },
-
   _resetInspirationKeyboardUi() {
-    return {
-      inspirationKeyboardHeight: 0,
-      inspirationLiftStyle: ''
-    };
+    return { inspirationKeyboardHeight: 0 };
   },
 
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
     if (
       height === this.data.inspirationKeyboardHeight
-      && !this.data.inspirationLiftStyle
     ) {
       return;
     }
-    this.setData({
-      inspirationKeyboardHeight: height,
-      inspirationLiftStyle: ''
-    });
+    this.setData({ inspirationKeyboardHeight: height });
   },
 
   _flushInspirationKeyboardZero(immediate) {
@@ -5554,7 +5574,7 @@ Page(withPageInteractionLock({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    const height = keyboardHeightFromEvent(e);
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height > 0) return;
     if (!active && height <= 0) {

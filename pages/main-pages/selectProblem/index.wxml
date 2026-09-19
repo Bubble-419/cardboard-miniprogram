@@ -51,6 +51,8 @@
                 cursor="{{editingCursor}}"
                 selection-start="{{editingCursor}}"
                 selection-end="{{editingCursor}}"
+                adjust-position="{{true}}"
+                cursor-spacing="32"
                 catchtap="stopPropagation"
                 bindinput="onProblemInput"
                 bindfocus="onProblemFocus"

@@ -36,7 +36,7 @@ function makePage(definition, data = {}) {
   };
 }
 
-test('三个灵感/复盘输入入口只使用系统 adjust-position，不叠加 fixed 键盘位移', () => {
+test('贴底灵感输入按键盘高度手动上移，卡内输入继续使用系统避让', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
   const composerWxml = read('components/partner-inspiration-composer/index.wxml');
   const inspirationWxml = read('pages/inspiration/index.wxml');
@@ -44,12 +44,13 @@ test('三个灵感/复盘输入入口只使用系统 adjust-position，不叠加
   const composerInputs = composerWxml.match(/<input[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/g) || [];
   assert.equal(composerInputs.length, 1);
   assert.equal((gameWxml.match(/<partner-inspiration-composer/g) || []).length, 2);
-  assert.match(composerInputs[0], /adjust-position="\{\{true\}\}"/);
+  assert.match(composerInputs[0], /adjust-position="\{\{false\}\}"/);
+  assert.match(composerWxml, /style="\{\{keyboardLiftStyle\}\}"/);
   assert.match(composerInputs[0], /cursor-spacing="24"/);
 
   const inspirationTextarea = inspirationWxml.match(/<textarea[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/);
   assert.ok(inspirationTextarea);
-  assert.match(inspirationTextarea[0], /adjust-position="\{\{true\}\}"/);
+  assert.match(inspirationTextarea[0], /adjust-position="\{\{false\}\}"/);
   assert.match(inspirationTextarea[0], /cursor-spacing="24"/);
   assert.match(
     inspirationWxml,
@@ -66,7 +67,7 @@ test('三个灵感/复盘输入入口只使用系统 adjust-position，不叠加
   assert.doesNotMatch(gameWxml, /style="\{\{closingComposeLiftStyle\}\}"/);
 });
 
-test('gamepage 键盘只监听 input 自身事件，高度变化不得生成 fixed 样式', () => {
+test('gamepage 只从输入事件接收精确键盘高度并交给贴底组件', () => {
   let globalKeyboardBindings = 0;
   const originalWx = global.wx;
   const wxMock = {
@@ -94,10 +95,9 @@ test('gamepage 键盘只监听 input 自身事件，高度变化不得生成 fix
 
   assert.equal(globalKeyboardBindings, 0, '全局监听与 input 事件双通道会产生高度抖动');
   assert.equal(page.data.inspirationKeyboardHeight, 320);
-  assert.equal(page.data.inspirationLiftStyle, '');
 });
 
-test('灵感空间键盘高度只记录状态，不得生成 fixed 样式', () => {
+test('灵感空间按输入事件的精确键盘高度上移输入栏', () => {
   let globalKeyboardBindings = 0;
   const originalWx = global.wx;
   const wxMock = {
@@ -125,7 +125,32 @@ test('灵感空间键盘高度只记录状态，不得生成 fixed 样式', () =
 
   assert.equal(globalKeyboardBindings, 0);
   assert.equal(page.data.inspirationKeyboardHeight, 300);
-  assert.equal(page.data.inspirationLiftStyle, '');
+  assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -300px, 0);');
+  assert.match(page.data.inspirationMaskStyle, /300px/);
+});
+
+test('特殊行动灵感栏和 AI 对话输入栏分别按自身键盘事件上移', () => {
+  const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
+  assert.match(specialWxml, /class="inspiration-bar"[\s\S]*?style="\{\{inspirationLiftStyle\}\}"/);
+  assert.match(specialWxml, /class="chat-input-bar"[\s\S]*?style="\{\{chatInputLiftStyle\}\}"/);
+
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/specialMove/index');
+  const page = makePage(definition, {
+    inspirationInputFocused: true,
+    inspirationKeyboardHeight: 0,
+    inspirationLiftStyle: '',
+    chatInputFocused: true,
+    chatKeyboardHeight: 0,
+    chatInputLiftStyle: ''
+  });
+  page._inspirationNativeFocused = true;
+  page._chatInputNativeFocused = true;
+
+  page.onInspirationKeyboardHeightChange({ detail: { height: 280 } });
+  page.onChatKeyboardHeightChange({ detail: { height: 260 } });
+
+  assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -280px, 0);');
+  assert.equal(page.data.chatInputLiftStyle, 'transform: translate3d(0, -260px, 0);');
 });
 
 test('收尾复盘键盘事件只记录高度，不重建焦点节点或生成停靠样式', () => {
@@ -243,6 +268,54 @@ test('收尾复盘瞬时失焦只保留草稿，不得自动提交', async () =>
     global.setTimeout = originalSetTimeout;
     global.clearTimeout = originalClearTimeout;
   }
+});
+
+test('双击玩家头像切换纪要卡时必须释放所有输入焦点，不得拉起软键盘', () => {
+  let hideKeyboardCalls = 0;
+  const wxMock = {
+    showToast() {},
+    hideKeyboard() { hideKeyboardCalls += 1; }
+  };
+  const definition = loadPageDefinition(
+    '../../pages/main-pages/partnerMode/gamepage/index',
+    wxMock
+  );
+  const page = makePage(definition, {
+    gamepagePhase: 'playing',
+    members: [
+      { playerIndex: 1, nickName: '玩家1' },
+      { playerIndex: 2, nickName: '玩家2' }
+    ],
+    roundSummaries: [
+      { round: 1, playerIndex: 1, playerName: '玩家1', playHistory: ['记录'] }
+    ],
+    displayRoundSummaries: [],
+    currentPlayerIndex: 2,
+    cardIndex: 0,
+    expressComposerOpen: true,
+    expressComposerNeedFocus: true,
+    inspirationInputFocused: true,
+    inspirationHoldKeyboard: true,
+    inspirationKeyboardHeight: 300
+  });
+  page._inspirationNativeFocused = true;
+
+  const originalWx = global.wx;
+  global.wx = wxMock;
+  try {
+    page.handleAvatarTap({ detail: { playerIndex: 1 } });
+    page.handleAvatarTap({ detail: { playerIndex: 1 } });
+  } finally {
+    global.wx = originalWx;
+  }
+
+  assert.equal(hideKeyboardCalls > 0, true, '头像导航必须主动释放原生键盘');
+  assert.equal(page.data.expressComposerOpen, false);
+  assert.equal(page.data.expressComposerNeedFocus, false);
+  assert.equal(page.data.inspirationInputFocused, false);
+  assert.equal(page.data.inspirationHoldKeyboard, false);
+  assert.equal(page.data.inspirationKeyboardHeight, 0);
+  assert.equal(page._inspirationNativeFocused, false);
 });
 
 test('收尾复盘追加 cloud:// 图片时保留 fileRef，避免同步成展示 HTTPS', () => {

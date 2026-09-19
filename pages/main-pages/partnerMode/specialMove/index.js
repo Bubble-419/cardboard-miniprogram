@@ -26,6 +26,10 @@ const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
 const { buildDisplaySummaries } = require('../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
+const {
+  buildKeyboardLiftStyle,
+  keyboardHeightFromEvent
+} = require('../../../../utils/keyboardAvoidance');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
@@ -99,6 +103,9 @@ Page(withPageInteractionLock({
     aiFeatureEnabled: isAiFeatureEnabled(),
     showChat: false,
     chatInput: '',
+    chatInputFocused: false,
+    chatKeyboardHeight: 0,
+    chatInputLiftStyle: '',
     chatMessages: [],
     wheelActions: WHEEL_ACTIONS,
     wheelPieces: WHEEL_PIECES,
@@ -207,9 +214,15 @@ Page(withPageInteractionLock({
   onHide() {
     this._unbindInspirationKeyboard();
     this._flushInspirationKeyboardZero(true);
+    this._chatInputNativeFocused = false;
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
     this.setData({
       inspirationKeyboardHeight: 0,
-      inspirationLiftStyle: ''
+      inspirationLiftStyle: '',
+      ...this._resetChatKeyboardUi()
     });
     this._stopStatePolling();
     this._stopSoundLevelSampling();
@@ -217,6 +230,10 @@ Page(withPageInteractionLock({
 
   onUnload() {
     this._unbindInspirationKeyboard();
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
     this.clearSilentTimer();
     this._stopStatePolling();
     this._stopSoundLevelSampling();
@@ -359,13 +376,20 @@ Page(withPageInteractionLock({
   },
 
   _resetInspirationKeyboardUi() {
-    return { inspirationKeyboardHeight: 0, inspirationLiftStyle: '' };
+    return {
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: buildKeyboardLiftStyle(0)
+    };
   },
 
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
-    if (height === this.data.inspirationKeyboardHeight && !this.data.inspirationLiftStyle) return;
-    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle: '' });
+    const inspirationLiftStyle = buildKeyboardLiftStyle(height);
+    if (
+      height === this.data.inspirationKeyboardHeight
+      && inspirationLiftStyle === this.data.inspirationLiftStyle
+    ) return;
+    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle });
   },
 
   _flushInspirationKeyboardZero(immediate) {
@@ -425,7 +449,7 @@ Page(withPageInteractionLock({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    const height = keyboardHeightFromEvent(e);
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height > 0) return;
     if (!active && height <= 0) {
@@ -1112,6 +1136,7 @@ Page(withPageInteractionLock({
   handleGoBack() {
     const { viewMode, showChat } = this.data;
     if (showChat) {
+      this._dismissChatKeyboard();
       this.setData({ showChat: false });
       return;
     }
@@ -1361,6 +1386,7 @@ Page(withPageInteractionLock({
   },
 
   handleCloseChat() {
+    this._dismissChatKeyboard();
     if (!isAiFeatureEnabled()) {
       this.setData({ showChat: false });
       return;
@@ -1373,6 +1399,56 @@ Page(withPageInteractionLock({
   onChatInput(e) {
     if (!isAiFeatureEnabled()) return;
     this.setData({ chatInput: e.detail.value || '' });
+  },
+
+  _resetChatKeyboardUi() {
+    return {
+      chatInputFocused: false,
+      chatKeyboardHeight: 0,
+      chatInputLiftStyle: ''
+    };
+  },
+
+  _dismissChatKeyboard() {
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
+    this._chatInputNativeFocused = false;
+    this.setData(this._resetChatKeyboardUi());
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
+  },
+
+  onChatInputFocus() {
+    this._chatInputNativeFocused = true;
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
+  },
+
+  onChatInputBlur() {
+    this._chatInputNativeFocused = false;
+    if (this._chatKeyboardZeroTimer) clearTimeout(this._chatKeyboardZeroTimer);
+    this._chatKeyboardZeroTimer = setTimeout(() => {
+      this._chatKeyboardZeroTimer = null;
+      if (this._chatInputNativeFocused) return;
+      this.setData(this._resetChatKeyboardUi());
+    }, 120);
+  },
+
+  onChatKeyboardHeightChange(e) {
+    const height = keyboardHeightFromEvent(e);
+    const active = this._chatInputNativeFocused || this.data.chatInputFocused;
+    if (!active && height > 0) return;
+    if (height <= 0 && active) return;
+    this.setData({
+      chatInputFocused: height > 0,
+      chatKeyboardHeight: height,
+      chatInputLiftStyle: buildKeyboardLiftStyle(height)
+    });
   },
 
   onTapSuggestion(e) {
@@ -1431,10 +1507,14 @@ Page(withPageInteractionLock({
   'onRoundHistoryPreview',
   'handleCloseChat',
   'onChatInput',
+  'onChatInputFocus',
+  'onChatInputBlur',
+  'onChatKeyboardHeightChange',
   'onTapSuggestion',
   'handleSendChat'
 ], {
   passthroughMethods: [
-    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange'
+    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange',
+    'onChatInputFocus', 'onChatInputBlur', 'onChatKeyboardHeightChange'
   ]
 }));

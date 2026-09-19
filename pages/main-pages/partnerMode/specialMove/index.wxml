@@ -333,7 +333,7 @@
               type="text"
               value="{{inspirationDraftText}}"
               maxlength="200"
-              adjust-position="{{true}}"
+              adjust-position="{{false}}"
               placeholder="记录您的灵感..."
               placeholder-class="inspiration-placeholder"
               bindinput="onInspirationInput"
@@ -442,7 +442,7 @@
         </view>
       </scroll-view>
 
-      <view class="chat-input-bar">
+      <view class="chat-input-bar" style="{{chatInputLiftStyle}}">
         <input
           class="chat-input"
           value="{{chatInput}}"
@@ -451,6 +451,11 @@
           confirm-type="send"
           bindinput="onChatInput"
           bindconfirm="handleSendChat"
+          bindfocus="onChatInputFocus"
+          bindblur="onChatInputBlur"
+          bindkeyboardheightchange="onChatKeyboardHeightChange"
+          adjust-position="{{false}}"
+          cursor-spacing="24"
         />
         <view class="chat-send" bindtap="handleSendChat">
           <image class="chat-send-icon" src="/assets/icons/submit-arrow.png" mode="aspectFit" />
