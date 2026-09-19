@@ -105,3 +105,41 @@ test('反面随机拼只在取消采用或采用卡组时消耗特殊行动', as
     assert.deepEqual(commands[0].payload, { kind: 'HELP_LUCK' });
   }
 });
+
+test('Master 完成后关闭本地叠层并复用下层 gamepage，不用 redirect 重建页面', async () => {
+  const { app, page } = fixture();
+  const definition = loadPageDefinition(app);
+  page._returnToGamepage = definition._returnToGamepage.bind(page);
+  page._redirectToGamepageFromRoom = definition._redirectToGamepageFromRoom.bind(page);
+
+  const calls = [];
+  const previousPages = global.getCurrentPages;
+  global.getCurrentPages = () => [
+    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} },
+    { route: 'pages/main-pages/partnerMode/specialMove/index', data: {} }
+  ];
+  try {
+    await withRuntime(app, async () => {
+      global.wx = {
+        showToast() {},
+        navigateBack(options) {
+          calls.push('navigateBack');
+          options.success({});
+        },
+        redirectTo(options) {
+          calls.push('redirectTo');
+          options.success({});
+        },
+        reLaunch(options) {
+          calls.push('reLaunch');
+          options.success({});
+        }
+      };
+      const result = await page._returnToGamepage();
+      assert.equal(result.ok, true);
+      assert.deepEqual(calls, ['navigateBack']);
+    });
+  } finally {
+    global.getCurrentPages = previousPages;
+  }
+});

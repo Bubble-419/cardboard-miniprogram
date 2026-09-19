@@ -4,6 +4,7 @@
   "disableSwipeBack": true,
   "disableScroll": true,
   "usingComponents": {
-    "page-footer": "/components/page-footer/index"
+    "page-footer": "/components/page-footer/index",
+    "room-wait-screen": "/components/room-wait-screen/index"
   }
 }

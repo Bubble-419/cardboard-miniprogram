@@ -17,6 +17,7 @@ const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
 const {
   runPageInteraction,
   runPageNavigation,
+  waitForPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
 const { isRoundTimerActive, buildPaginationDots } = require('../../../../utils/partnerRoundTimer');
@@ -255,7 +256,14 @@ Page(withPageInteractionLock({
     return buildGamepageUrl(roomId, idx, 'partner', urlOpts);
   },
 
-  _redirectToGamepageFromRoom(pollResult, options = {}) {
+  _hasUnderlyingGamepage() {
+    if (typeof getCurrentPages !== 'function') return false;
+    const pages = getCurrentPages();
+    const previous = pages.length >= 2 ? pages[pages.length - 2] : null;
+    return !!(previous && previous.route === 'pages/main-pages/partnerMode/gamepage/index');
+  },
+
+  async _redirectToGamepageFromRoom(pollResult, options = {}) {
     const target = this._buildGamepageUrlFromRoom(pollResult, options);
 
     if (this.data.viewMode === 'silent' || this.data.silentTimerActive) {
@@ -263,36 +271,22 @@ Page(withPageInteractionLock({
     }
     this._stopStatePolling();
 
-    return new Promise((resolve) => {
-      const finish = (ok, error) => resolve({ ok, error });
-      const reLaunch = () => {
-        wx.reLaunch({
-          url: target,
-          success: () => finish(true),
-          fail: (error) => {
-            this._startStatePolling();
-            wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
-            finish(false, error);
-          }
-        });
-      };
-      const redirect = () => {
-        wx.redirectTo({
-          url: target,
-          success: () => finish(true),
-          fail: reLaunch
-        });
-      };
+    // specialMove 是 gamepage 的本地叠层。正常路径只关闭叠层，保留下层稳定
+    // RoomShell；最新 Snapshot 会在 gamepage.onShow 恢复订阅后原地刷新屏幕。
+    if (this._hasUnderlyingGamepage()) {
+      const backed = await waitForPageNavigation('navigateBack', { delta: 1 });
+      if (backed.ok) return backed;
+    }
 
-      // 讨论/收尾须带 phase，不能返回旧出牌态，直接替换当前页。
-      if (target.indexOf('phase=') >= 0 || options.markUsed) {
-        redirect();
-        return;
-      }
-
-      // 未标记已使用时优先回退；失败则用明确 URL 恢复游戏页。
-      wx.navigateBack({ success: () => finish(true), fail: redirect });
-    });
+    // 页面栈异常或被系统回收时才按权威状态 URL 重建；所有导航都有超时，不会永久锁页。
+    const redirected = await waitForPageNavigation('redirectTo', { url: target });
+    if (redirected.ok) return redirected;
+    const relaunched = await waitForPageNavigation('reLaunch', { url: target });
+    if (!relaunched.ok) {
+      this._startStatePolling();
+      wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
+    }
+    return relaunched;
   },
 
   _returnToGamepage(markUsed = true) {

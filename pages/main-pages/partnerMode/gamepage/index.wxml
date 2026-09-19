@@ -1,5 +1,13 @@
+<room-wait-screen
+  wx:if="{{roomShellScreen === 'waiting' && waitingModel}}"
+  model="{{waitingModel}}"
+  waitHeroSrc="{{waitHeroSrc}}"
+/>
+
+<view wx:elif="{{roomShellScreen === 'waiting'}}" class="room-shell-loading"></view>
+
 <partner-closing-vote-screen
-  wx:if="{{roomShellScreen === 'closingVote' && closingVoteModel}}"
+  wx:elif="{{roomShellScreen === 'closingVote' && closingVoteModel}}"
   model="{{closingVoteModel}}"
   submitting="{{closingVoteSubmitting}}"
   waitHeroSrc="{{waitHeroSrc}}"

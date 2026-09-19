@@ -401,8 +401,17 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 
 逻辑 Route 不要求与微信物理页面一一对应。连续运行且共享大量本地 UI 状态的屏幕可以由稳定
 RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
-Route 映射到同一路径时，协调器返回 `SAME_ROUTE`，Shell 仍必须按最新 `view.route.name` 原子切屏。
+Route 映射到同一路径时，协调器返回 `SAME_ROUTE`，Shell 仍必须按最新 `view.route.name + params`
+原子切屏。
 Shell 不能用本地计时器、页面生命周期或临时叠层猜测屏幕，也不能维护第二份业务状态。
+
+当前有两个小而明确的 Shell 边界：`selectPlayer` Setup Shell 承载 Player 的情境等待与首位玩家
+等待，Partner `gamepage` RoomShell 承载确认首位等待、游戏和收尾投票。通用
+`room-wait-screen` 只渲染 Shell Model，不订阅 RoomSession，也不执行导航。
+
+本地叠层不是第二个业务页面。`specialMove` 正常完成时只关闭叠层并恢复下层 Partner RoomShell；
+Master / Silent 等不改变逻辑 Route 的 View 字段变化仍是强制可见的 Shell 刷新，不能因为 route
+相同或游戏区指纹相同而丢弃。页面栈异常时的 URL 重建仅是有超时的恢复路径。
 
 ```mermaid
 sequenceDiagram
@@ -410,11 +419,17 @@ sequenceDiagram
   participant P as gamepage RoomShell
   participant N as Navigation Coordinator
 
-  RC-->>P: PageSnapshot(route=closingStatement, revision=N)
-  P->>P: projectPartnerRoomShell → closingVote
-  RC->>N: reconcile(closingStatement@N)
+  RC-->>P: PageSnapshot(route=subAwait, scene=confirmFirstPlayer, revision=N)
+  P->>P: projectPartnerRoomShell → waiting
+  RC->>N: reconcile(subAwait@N)
   N-->>RC: SAME_ROUTE（不调用 wx.redirectTo）
   RC-->>P: PageSnapshot(route=partnerGame, revision=N+1)
+  P->>P: projectPartnerRoomShell → game
+  RC-->>P: PageSnapshot(route=closingStatement, revision=N+2)
+  P->>P: projectPartnerRoomShell → closingVote
+  RC->>N: reconcile(closingStatement@N+2)
+  N-->>RC: SAME_ROUTE（不调用 wx.redirectTo）
+  RC-->>P: PageSnapshot(route=partnerGame, revision=N+3)
   P->>P: projectPartnerRoomShell → game
 ```
 
@@ -549,11 +564,11 @@ flowchart LR
 |---|---|---|
 | 无当前 Session | `addPlayer` | `addPlayer` |
 | 非本场 Participant | `addPlayer?observing=true` | 同左 |
-| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg` |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg`（`selectPlayer` Setup Shell `waiting` 屏幕） |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` |
-| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
-| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer` |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player`（同一 Setup Shell `waiting` 屏幕） |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer`（Partner RoomShell `waiting` 屏幕） |
 | `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame`（Partner RoomShell） | `partnerGame`（Partner RoomShell） |
 | `PARTNER_CLOSING_VOTE` | `closingStatement`（同一 Partner RoomShell） | `closingStatement`（同一 Partner RoomShell） |
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |

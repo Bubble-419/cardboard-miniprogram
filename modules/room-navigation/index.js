@@ -66,11 +66,20 @@ function queryString(params) {
 
 function describeRoute(route, roomId) {
   if (!route || !ROUTES[route.name]) return null;
-  const config = ROUTES[route.name];
+  const params = route.params || {};
+  const isPartnerFirstPlayerWait = route.name === 'subAwait'
+    && params.scene === 'confirmFirstPlayer';
+  const isSelectPlayerSetupWait = route.name === 'subAwait'
+    && ['bg', 'player'].includes(params.scene);
+  const config = isPartnerFirstPlayerWait
+    ? ROUTES.partnerGame
+    : (isSelectPlayerSetupWait ? ROUTES.selectPlayer : ROUTES[route.name]);
   const shellParams = route.name === 'closingStatement'
     ? { roomShellScreen: 'closingVote' }
-    : {};
-  const query = queryString({ roomId, ...shellParams, ...(route.params || {}) });
+    : (isPartnerFirstPlayerWait || isSelectPlayerSetupWait
+      ? { roomShellScreen: 'waiting' }
+      : {});
+  const query = queryString({ roomId, ...shellParams, ...params });
   return { ...config, name: route.name, url: `${config.path}${query ? `?${query}` : ''}` };
 }
 

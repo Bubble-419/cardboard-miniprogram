@@ -99,12 +99,12 @@ test('提交设计问题回看情境叠层仍归属 submitProblem', async () => 
   );
 });
 
-test('情境等待页在进入收集问题后跟随到提交设计问题', async () => {
+test('情境等待 Setup Shell 在进入收集问题后跟随到提交设计问题', async () => {
   const opened = [];
   const navigation = createNavigationCoordinator({
     open: async (descriptor) => { opened.push(descriptor.url); }
   });
-  await withCurrentRoute('pages/sub-pages/subAwait/index', { scene: 'bg' }, async () => {
+  await withCurrentRoute('pages/main-pages/selectPlayer/index', { roomShellScreen: 'waiting', scene: 'bg' }, async () => {
     const stay = await navigation.reconcile(
       { name: 'subAwait', params: { scene: 'bg', phase: 'CHOOSE_SCENARIO' } },
       5,

@@ -111,6 +111,7 @@ const {
 const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
 const {
   PARTNER_SHELL_SCREEN,
+  projectPartnerWaiting,
   projectPartnerRoomShell
 } = require('../utils/partnerRoomShell');
 
@@ -128,6 +129,7 @@ Page(withPageInteractionLock({
     roomId: '',
     /** Partner 运行态固定留在本页，由权威 route 选择 Shell 内的屏幕。 */
     roomShellScreen: PARTNER_SHELL_SCREEN.GAME,
+    waitingModel: null,
     closingVoteModel: null,
     closingVoteSubmitting: false,
     waitHeroSrc: WAIT_HERO_SRC,
@@ -387,9 +389,10 @@ Page(withPageInteractionLock({
     const initialSessionId = options && options.sessionId
       ? String(options.sessionId)
       : '';
-    const initialShellScreen = options
-      && options.roomShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE
-      ? PARTNER_SHELL_SCREEN.CLOSING_VOTE
+    const requestedShellScreen = options && options.roomShellScreen;
+    const initialShellScreen = requestedShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE
+      || requestedShellScreen === PARTNER_SHELL_SCREEN.WAITING
+      ? requestedShellScreen
       : PARTNER_SHELL_SCREEN.GAME;
     this._isHistoryReview = isHistoryReview;
     this._reviewOpenedAsHost = false;
@@ -403,6 +406,9 @@ Page(withPageInteractionLock({
     this.setData({
       roomId,
       roomShellScreen: initialShellScreen,
+      waitingModel: initialShellScreen === PARTNER_SHELL_SCREEN.WAITING
+        ? projectPartnerWaiting(String(options && options.scene || 'confirmFirstPlayer'))
+        : null,
       closingVoteModel: null,
       currentPlayerIndex,
       currentRound: initialRound,
@@ -587,15 +593,16 @@ Page(withPageInteractionLock({
 
   onShow() {
     this._pageVisible = true;
-    this._bindInspirationKeyboard();
     if (this.data.isHistoryReview) {
+      this._bindInspirationKeyboard();
       // 历史回顾：只刷新灵感角标，不轮询房间状态/计时器
       this._refreshInspirationCount();
       return;
     }
     if (this.data.roomId) {
       this._startStatePolling();
-      if (this.data.roomShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE) return;
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) return;
+      this._bindInspirationKeyboard();
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
@@ -1982,6 +1989,25 @@ Page(withPageInteractionLock({
       });
   },
 
+  /** 切入稳定 Shell 的非游戏屏幕时，立即终止只属于 game 屏幕的局部副作用。 */
+  _suspendGameScreenEffects() {
+    this._unbindInspirationKeyboard();
+    this._stopRoundSpeech();
+    this._stopRoundTimerBurstPoll();
+    this._stopRoundTimer();
+    if (this._cardSwipeBusyTimer) {
+      clearTimeout(this._cardSwipeBusyTimer);
+      this._cardSwipeBusyTimer = null;
+    }
+    if (this._scoreUiBusyTimer) {
+      clearTimeout(this._scoreUiBusyTimer);
+      this._scoreUiBusyTimer = null;
+    }
+    this._cardSwipeBusy = false;
+    this._scoreUiBusy = false;
+    this._pendingRoomContext = null;
+  },
+
   _applyRoomContext(result, options = {}) {
     const incomingRevision = Number(
       result.revision
@@ -2005,6 +2031,41 @@ Page(withPageInteractionLock({
     }
 
     const shell = projectPartnerRoomShell(result);
+    if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.WAITING) {
+      if (incomingRevision) this._appliedRoomRevision = incomingRevision;
+      const model = shell.waiting || { scene: 'confirmFirstPlayer' };
+      const fingerprint = `${shell.key}#${model.scene || ''}`;
+      let applied = Promise.resolve();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.WAITING
+        || fingerprint !== this._roomShellFingerprint) {
+        this._roomShellFingerprint = fingerprint;
+        this._roomContextFingerprint = '';
+        this._suspendGameScreenEffects();
+        applied = new Promise((resolve) => {
+          this.setData({
+            roomShellScreen: PARTNER_SHELL_SCREEN.WAITING,
+            waitingModel: model,
+            closingVoteModel: null,
+            closingVoteSubmitting: false,
+            showHostStatementTip: false
+          }, resolve);
+        });
+      }
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase,
+        shellScreen: shell.screen,
+        applied
+      };
+    }
     if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.CLOSING_VOTE) {
       if (incomingRevision) this._appliedRoomRevision = incomingRevision;
       const model = shell.closingVote || {};
@@ -2019,11 +2080,11 @@ Page(withPageInteractionLock({
         || fingerprint !== this._roomShellFingerprint) {
         this._roomShellFingerprint = fingerprint;
         this._roomContextFingerprint = '';
-        this._stopRoundSpeech();
-        this._stopRoundTimerBurstPoll();
+        this._suspendGameScreenEffects();
         applied = new Promise((resolve) => {
           this.setData({
             roomShellScreen: PARTNER_SHELL_SCREEN.CLOSING_VOTE,
+            waitingModel: null,
             closingVoteModel: model,
             closingVoteSubmitting: false
           }, () => {
@@ -2068,12 +2129,12 @@ Page(withPageInteractionLock({
         applied: Promise.resolve()
       };
     }
-    const returningFromClosingVote = !this._isHistoryReviewMode()
-      && this.data.roomShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE;
+    const returningFromShellScreen = !this._isHistoryReviewMode()
+      && this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME;
 
     // 滑动/打分交互中勿整页 setData 改写 controlled swiper，否则会顶飞手势并左右晃动
     if ((this._cardSwipeBusy || this._scoreUiBusy)
-      && !returningFromClosingVote && !options.force && !options.resetTurnUi) {
+      && !returningFromShellScreen && !options.force && !options.resetTurnUi) {
       this._pendingRoomContext = { result, options };
       return {
         playerChanged: false,
@@ -2309,6 +2370,7 @@ Page(withPageInteractionLock({
 
     const patch = {
       roomShellScreen: PARTNER_SHELL_SCREEN.GAME,
+      waitingModel: null,
       closingVoteModel: null,
       closingVoteSubmitting: false,
       members,
@@ -2638,6 +2700,8 @@ Page(withPageInteractionLock({
       // 评分进度单独窄更新，勿并入整页指纹（否则会重建 swiper 导致横跳）
       options.resetTurnUi ? 1 : 0
     ].join('#');
+    const specialModeChanged = patch.isMasterMode !== this.data.isMasterMode
+      || patch.isSilentMode !== this.data.isSilentMode;
     const forcePatch = !!(
       options.resetTurnUi
       || playerChanged
@@ -2647,7 +2711,8 @@ Page(withPageInteractionLock({
       || closingStepChanged
       || becameMyTurn
       || leftMyTurn
-      || returningFromClosingVote
+      || specialModeChanged
+      || returningFromShellScreen
     );
     if (this._isLocalInputGuarding() && !forcePatch) {
       this._pendingRoomContext = { result, options };
@@ -2688,6 +2753,10 @@ Page(withPageInteractionLock({
           ? (closingStep === CLOSING_STEP_REVIEW ? 'PARTNER_CLOSING_REVIEW' : 'PARTNER_CLOSING_RUNE')
           : (isDiscussionPhase(roomPhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN')
       });
+      if (returningFromShellScreen && this._pageVisible !== false) {
+        this._bindInspirationKeyboard();
+        Promise.resolve(this._refreshInspirationCount()).catch(() => {});
+      }
       this._openSilentOverlayIfNeeded(roomState);
       this._hydrateCloudRoundMedia(
         roundContent,
@@ -2793,7 +2862,7 @@ Page(withPageInteractionLock({
           : null
       });
 
-      if (this.data.roomShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE) {
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) {
         this.setData({ isHost: result.isHost === true });
         this._startStatePolling();
         this._roomLoaded = true;

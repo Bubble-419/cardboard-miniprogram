@@ -188,6 +188,12 @@ function getSceneUI(scene) {
   return { ...ui, useHeroLayout: true };
 }
 
+/** 稳定 Shell 使用的受控等待屏幕模型；旧 subAwait 页面也复用同一份文案配置。 */
+function projectWaitScreenModel(scene) {
+  const normalizedScene = SCENE_UI[scene] ? scene : 'bg';
+  return { scene: normalizedScene, ...getSceneUI(normalizedScene) };
+}
+
 function isAwaitPage(page) {
   return Object.prototype.hasOwnProperty.call(AWAIT_PAGE_TO_SCENE, (page || '').toLowerCase());
 }
@@ -400,6 +406,7 @@ module.exports = {
   AWAIT_PAGE_TO_SCENE,
   SCENE_UI,
   getSceneUI,
+  projectWaitScreenModel,
   sceneFromWorkflowStep,
   sceneFromMemberView,
   isAwaitPage,

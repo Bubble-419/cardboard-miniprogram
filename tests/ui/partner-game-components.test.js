@@ -76,6 +76,14 @@ test('收尾投票屏幕只发出 vote 意图，Shell 负责提交 V3 Command', 
   assert.doesNotMatch(read('components/partner-closing-vote-screen/index.js'), /room-session|dispatchRoomCommand|getApp\(/);
 });
 
+test('等待屏幕是只消费 Shell Model 的无状态组件，不持有订阅或导航', () => {
+  const definition = loadComponent('components/room-wait-screen/index.js');
+  assert.equal(definition.properties.model.type, Object);
+
+  const source = read('components/room-wait-screen/index.js');
+  assert.doesNotMatch(source, /room-session|bindPageToRoomSession|getApp\(|wx\.(?:navigate|redirect|reLaunch)/);
+});
+
 test('游戏页头只输出返回、房间和情境语义意图', () => {
   const definition = loadComponent('components/partner-game-header/index.js');
   const component = componentInstance(definition);
@@ -107,12 +115,15 @@ test('gamepage 由低耦合模块拼接，并让 RoomShell 屏幕选择包住原
   const config = JSON.parse(read('pages/main-pages/partnerMode/gamepage/index.json'));
 
   assert.match(markup, /<partner-closing-vote-screen/);
+  assert.match(markup, /<room-wait-screen/);
   assert.match(markup, /<partner-game-header/);
   assert.match(markup, /<partner-player-strip/);
   assert.match(markup, /<partner-inspiration-composer/);
   assert.match(markup, /<partner-game-footer/);
   assert.match(markup, /roomShellScreen === 'closingVote'/);
+  assert.match(markup, /roomShellScreen === 'waiting'/);
   assert.equal(config.usingComponents['partner-closing-vote-screen'], '/components/partner-closing-vote-screen/index');
+  assert.equal(config.usingComponents['room-wait-screen'], '/components/room-wait-screen/index');
   assert.equal(config.usingComponents['partner-game-header'], '/components/partner-game-header/index');
   assert.equal(config.usingComponents['partner-player-strip'], '/components/partner-player-strip/index');
   assert.equal(config.usingComponents['partner-inspiration-composer'], '/components/partner-inspiration-composer/index');

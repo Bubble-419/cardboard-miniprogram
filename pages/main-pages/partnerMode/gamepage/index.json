@@ -5,6 +5,7 @@
     "game-card-timer": "/components/game-card-timer/index",
     "star-rating": "/components/star-rating/index",
     "earned-stars": "/components/earned-stars/index",
+    "room-wait-screen": "/components/room-wait-screen/index",
     "partner-closing-vote-screen": "/components/partner-closing-vote-screen/index",
     "partner-game-header": "/components/partner-game-header/index",
     "partner-player-strip": "/components/partner-player-strip/index",

@@ -39,7 +39,14 @@ async function assertRoutes(harness, expectedByUser, label) {
     assert.equal(snapshot.ok, true, `${label}/${userId} Snapshot 应成功`);
     assert.equal(snapshot.view.route.name, expectedRoute, `${label}/${userId} route`);
 
-    const [expectedPath, expectedPageKey] = ROUTE_MATRIX[expectedRoute];
+    const [registeredPath, expectedPageKey] = ROUTE_MATRIX[expectedRoute];
+    // Partner 确认首位等待态保持逻辑 route=subAwait，但与接下来的游戏态共用稳定 Shell。
+    const scene = snapshot.view.route.params.scene;
+    const expectedPath = expectedRoute !== 'subAwait'
+      ? registeredPath
+      : (scene === 'confirmFirstPlayer'
+        ? ROUTES.partnerGame.path
+        : (['bg', 'player'].includes(scene) ? ROUTES.selectPlayer.path : registeredPath));
     const descriptor = describeRoute(snapshot.view.route, snapshot.roomId);
     assert.equal(descriptor.path, expectedPath, `${label}/${userId} physical path`);
 
@@ -75,7 +82,7 @@ function assertBack(snapshot, commandType, after = 'FOLLOW_ROUTE') {
   }
 }
 
-test('权威 route 注册表与业务文档中的物理页面一一对应', () => {
+test('权威 route 默认物理页面注册完整，稳定 Shell 场景由 descriptor 进一步投影', () => {
   assert.deepEqual(Object.keys(ROUTES).sort(), Object.keys(ROUTE_MATRIX).sort());
   Object.entries(ROUTE_MATRIX).forEach(([routeName, [path]]) => {
     assert.equal(ROUTES[routeName].path, path, routeName);

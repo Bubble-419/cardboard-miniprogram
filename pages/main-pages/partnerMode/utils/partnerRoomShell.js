@@ -1,10 +1,13 @@
 'use strict';
 
+const { projectWaitScreenModel } = require('../../../../utils/subAwaitRoutes');
+
 /**
- * Partner 运行期 Shell 的稳定屏幕标识。
+ * Partner 稳定 Shell 的屏幕标识。
  * Shell 只解释服务端投影的 route，不从 workflow 或本地页面状态猜路由。
  */
 const PARTNER_SHELL_SCREEN = Object.freeze({
+  WAITING: 'waiting',
   GAME: 'game',
   CLOSING_VOTE: 'closingVote',
   EXTERNAL: 'external'
@@ -15,6 +18,16 @@ const PARTNER_SHELL_ROUTES = new Set(['partnerGame', 'closingStatement']);
 function routeNameOf(snapshot) {
   return String(snapshot && snapshot.view && snapshot.view.route
     && snapshot.view.route.name || '');
+}
+
+function routeParamsOf(snapshot) {
+  return snapshot && snapshot.view && snapshot.view.route
+    && snapshot.view.route.params || {};
+}
+
+function projectPartnerWaiting(scene) {
+  const normalizedScene = scene === 'confirmFirstPlayer' ? scene : 'confirmFirstPlayer';
+  return projectWaitScreenModel(normalizedScene);
 }
 
 function projectClosingVote(snapshot) {
@@ -38,6 +51,18 @@ function projectClosingVote(snapshot) {
 function projectPartnerRoomShell(snapshot) {
   const routeName = routeNameOf(snapshot);
   const revision = Number(snapshot && snapshot.revision) || 0;
+  const routeParams = routeParamsOf(snapshot);
+  if (routeName === 'subAwait' && routeParams.scene === 'confirmFirstPlayer') {
+    const scene = 'confirmFirstPlayer';
+    return {
+      screen: PARTNER_SHELL_SCREEN.WAITING,
+      routeName,
+      revision,
+      key: scene,
+      waiting: projectPartnerWaiting(scene),
+      closingVote: null
+    };
+  }
   if (routeName === 'partnerGame') {
     const sessionId = String(snapshot && snapshot.roomState && snapshot.roomState.sessionId || '');
     return {
@@ -45,6 +70,7 @@ function projectPartnerRoomShell(snapshot) {
       routeName,
       revision,
       key: sessionId || 'partnerGame',
+      waiting: null,
       closingVote: null
     };
   }
@@ -55,6 +81,7 @@ function projectPartnerRoomShell(snapshot) {
       routeName,
       revision,
       key: `${closingVote.sessionId}:${closingVote.closingVoteSessionId}`,
+      waiting: null,
       closingVote
     };
   }
@@ -63,6 +90,7 @@ function projectPartnerRoomShell(snapshot) {
     routeName,
     revision,
     key: routeName || 'external',
+    waiting: null,
     closingVote: null
   };
 }
@@ -75,6 +103,6 @@ module.exports = {
   PARTNER_SHELL_SCREEN,
   PARTNER_SHELL_ROUTES,
   isPartnerShellRoute,
+  projectPartnerWaiting,
   projectPartnerRoomShell
 };
-
