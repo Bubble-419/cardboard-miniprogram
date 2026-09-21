@@ -9,7 +9,7 @@
     <view class="avatar-row {{layout === 'stack' ? 'avatar-row-stack' : ''}}" style="{{stackRowStyle}}">
       <block wx:for="{{displayList}}" wx:key="id">
         <view
-          class="avatar-item {{item.id == resolvedIndicatorUser ? 'avatar-item-indicator' : ''}}"
+          class="avatar-item {{item.id == resolvedIndicatorUser ? 'avatar-item-indicator' : ''}} {{isPartnerGameVisual && resolvedSelectedUser != null && item.id != resolvedSelectedUser ? 'avatar-item-dimmed' : ''}}"
           bindtap="onAvatarTap"
           data-player-index="{{item.id}}"
         >

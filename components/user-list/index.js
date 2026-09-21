@@ -301,6 +301,12 @@ Component({
       return String(a) === String(b);
     },
 
+    /** gamepage 用 -1 表示未选中；0 是合法座位号，不能当假值丢掉 */
+    _hasSelectedUser(selected) {
+      if (selected == null || selected === '') return false;
+      return Number(selected) !== -1;
+    },
+
     _syncFrameUsers() {
       const acting = this.properties.actingUser != null
         ? this.properties.actingUser
@@ -310,7 +316,7 @@ Component({
       const showSelected = this.properties.enableSelectedFrame === true;
       const partnerGame = this._isPartnerGameVisual();
       // 合伙人游戏页：独立查看可叠加在行动者上，不因与 acting 相同而丢弃
-      const resolvedSelected = showSelected && selected != null
+      const resolvedSelected = showSelected && this._hasSelectedUser(selected)
         && (partnerGame || !this._sameUserId(selected, acting))
         ? selected
         : null;
