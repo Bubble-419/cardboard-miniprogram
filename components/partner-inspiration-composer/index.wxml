@@ -1,5 +1,5 @@
 <view
-  class="inspiration-bar {{closing ? 'inspiration-bar-closing' : ''}} {{history ? 'inspiration-bar-history' : ''}} {{historyWithFooter ? 'inspiration-bar-history-with-footer' : ''}} {{safeBottom ? 'inspiration-bar-safe-bottom' : ''}} {{hiddenByKeyboard ? 'inspiration-bar-kb-hidden' : ''}}"
+  class="inspiration-bar {{closing ? 'inspiration-bar-closing' : ''}} {{history ? 'inspiration-bar-history' : ''}} {{historyWithFooter ? 'inspiration-bar-history-with-footer' : ''}} {{safeBottom ? 'inspiration-bar-safe-bottom' : ''}} {{keyboardHeight > 0 ? 'inspiration-bar-keyboard-open' : ''}} {{hiddenByKeyboard ? 'inspiration-bar-kb-hidden' : ''}}"
   style="{{keyboardLiftStyle}}"
 >
   <view class="insp-icon-wrap" catchtap="onOpenCenter">

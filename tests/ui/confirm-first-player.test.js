@@ -162,3 +162,23 @@ test('确认首位页不再自己拼 gamepage URL，主副屏都跟 view.route',
     '快照不得把 proposedFirstMemberId 写成默认选中'
   );
 });
+
+test('首位玩家选中态保留数字 1，并使用头像级高亮与单选语义', () => {
+  const wxml = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/partnerMode/confirmFirstPlayer/index.wxml'),
+    'utf8'
+  );
+  const wxss = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/partnerMode/confirmFirstPlayer/index.wxss'),
+    'utf8'
+  );
+
+  assert.match(wxml, /aria-role="radio"/);
+  assert.match(wxml, /aria-checked="\{\{item\.member\.playerIndex === selectedPlayerIndex\}\}"/);
+  assert.match(wxml, /class="first-player-badge-num">1<\/text>/);
+  assert.match(wxss, /\.avatar-slot-selected \.avatar-wrap\s*\{/);
+  assert.match(wxss, /@keyframes first-player-select-pop/);
+  assert.match(wxss, /\.avatar-slot-selected \.avatar-name-wrap\s*\{/);
+  assert.match(wxss, /\.avatar-slot-selected\.avatar-slot-me::before\s*\{/);
+  assert.doesNotMatch(wxss, /\.avatar-slot-selected\s*\{[^}]*transform:/s);
+});

@@ -196,34 +196,71 @@
   flex-direction: column;
   align-items: center;
   z-index: 2;
-  transition: transform 0.18s ease;
 }
 
-/* 选中态：粗绿环 + 放大，压过「我」的常规描边 */
+/* 选中态只抬升头像，不缩放整个槽位，避免昵称和圆周位置跳动。 */
 .avatar-slot-selected {
   z-index: 5;
-  transform: scale(1.12);
+}
+
+.avatar-slot-selected .avatar-wrap {
+  transform: translateY(-6rpx);
+  animation: first-player-select-pop 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.avatar-slot-selected .avatar-wrap::before {
+  content: '';
+  position: absolute;
+  left: -6rpx;
+  right: -6rpx;
+  top: -6rpx;
+  bottom: -6rpx;
+  border: 4rpx solid #ffffff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 5rpx #5ec159,
+    0 10rpx 24rpx rgba(94, 193, 89, 0.34),
+    0 0 30rpx rgba(94, 193, 89, 0.22);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .avatar-slot-selected .avatar-img,
 .avatar-slot-selected .avatar-img.avatar-me {
-  border: 6rpx solid #5ec159;
-  box-shadow:
-    0 8rpx 18rpx rgba(94, 193, 89, 0.5),
-    0 0 28rpx rgba(94, 193, 89, 0.35);
+  border: none;
+  box-shadow: none;
   animation: none;
+  transform: none;
+}
+
+@keyframes first-player-select-pop {
+  0% { transform: translateY(0) scale(0.94); }
+  70% { transform: translateY(-7rpx) scale(1.04); }
+  100% { transform: translateY(-6rpx) scale(1); }
 }
 
 .avatar-slot-selected .first-player-badge {
-  width: 40rpx;
-  height: 40rpx;
-  right: -4rpx;
-  bottom: -4rpx;
-  box-shadow: 0 4rpx 14rpx rgba(94, 193, 89, 0.45);
+  width: 38rpx;
+  height: 38rpx;
+  right: -10rpx;
+  bottom: -10rpx;
+  border-width: 4rpx;
+  box-shadow: 0 5rpx 14rpx rgba(58, 174, 52, 0.38);
 }
 
 .avatar-slot-selected .first-player-badge-num {
   font-size: 22rpx;
+  font-weight: 700;
+}
+
+.avatar-slot-selected .avatar-name-wrap {
+  margin-top: 14rpx;
+  max-width: 148rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: #edf9ed;
+  box-shadow: inset 0 0 0 1rpx rgba(94, 193, 89, 0.22);
+  box-sizing: border-box;
 }
 
 .avatar-slot-selected .avatar-name {
@@ -249,6 +286,11 @@
   animation: avatar-me-ripple 2.2s ease-out infinite;
   pointer-events: none;
   z-index: 1;
+}
+
+.avatar-slot-selected.avatar-slot-me::before {
+  animation: none;
+  opacity: 0;
 }
 
 @keyframes avatar-me-ripple {

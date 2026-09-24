@@ -55,7 +55,13 @@
               data-index="{{item.index}}"
               bindtap="onSlotTap"
             >
-              <view class="avatar-wrap" wx:if="{{item.member && item.member.avatarImage}}">
+              <view
+                class="avatar-wrap"
+                wx:if="{{item.member && item.member.avatarImage}}"
+                aria-role="radio"
+                aria-checked="{{item.member.playerIndex === selectedPlayerIndex}}"
+                aria-label="{{item.member.nickName}}，{{item.member.playerIndex === selectedPlayerIndex ? '已选为首位出牌玩家' : '点击选为首位出牌玩家'}}"
+              >
                 <image
                   class="avatar-img avatar-circle-glow {{item.member.isMe ? 'avatar-me' : ''}}"
                   src="{{item.member.avatarImage}}"

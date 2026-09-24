@@ -106,8 +106,31 @@
                 src="{{qrcodeUrl}}"
                 mode="aspectFit"
               />
-              <view wx:elif="{{qrcodeStatus === 'loading'}}" class="qrcode-placeholder">
-                <text class="qrcode-placeholder-text">加载中…</text>
+              <view
+                wx:elif="{{qrcodeStatus === 'loading'}}"
+                class="qrcode-loading"
+                aria-role="img"
+                aria-label="二维码加载中"
+              >
+                <view class="qrcode-loading-visual">
+                  <view class="qrcode-loading-corner qrcode-loading-corner-tl"></view>
+                  <view class="qrcode-loading-corner qrcode-loading-corner-tr"></view>
+                  <view class="qrcode-loading-corner qrcode-loading-corner-bl"></view>
+                  <view class="qrcode-loading-pixel qrcode-loading-pixel-1"></view>
+                  <view class="qrcode-loading-pixel qrcode-loading-pixel-2"></view>
+                  <view class="qrcode-loading-pixel qrcode-loading-pixel-3"></view>
+                  <view class="qrcode-loading-pixel qrcode-loading-pixel-4"></view>
+                  <view class="qrcode-loading-pixel qrcode-loading-pixel-5"></view>
+                  <view class="qrcode-loading-sweep"></view>
+                </view>
+                <view class="qrcode-loading-caption">
+                  <text class="qrcode-loading-text">正在生成房间码</text>
+                  <view class="qrcode-loading-dots" aria-hidden="true">
+                    <view class="qrcode-loading-dot qrcode-loading-dot-1"></view>
+                    <view class="qrcode-loading-dot qrcode-loading-dot-2"></view>
+                    <view class="qrcode-loading-dot qrcode-loading-dot-3"></view>
+                  </view>
+                </view>
               </view>
               <view wx:elif="{{qrcodeStatus === 'no_qr'}}" class="qrcode-placeholder">
                 <text class="qrcode-placeholder-text">二维码未生成</text>

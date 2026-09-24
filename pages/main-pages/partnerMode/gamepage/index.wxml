@@ -226,8 +226,8 @@
         bindchange="onCardSwiperChange"
         bindtransition="onCardSwiperTransition"
         bindanimationfinish="onCardSwiperAnimationFinish"
-        previous-margin="56rpx"
-        next-margin="56rpx"
+        previous-margin="24rpx"
+        next-margin="24rpx"
         easing-function="easeOutCubic"
       >
         <!-- 已完成轮次的文字纪要（时间线：越左越早） -->

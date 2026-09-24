@@ -113,8 +113,8 @@
           current="{{cardIndex}}"
           disable-touch="{{innerScrollLocked}}"
           bindchange="onCardSwiperChange"
-          previous-margin="56rpx"
-          next-margin="56rpx"
+          previous-margin="24rpx"
+          next-margin="24rpx"
           easing-function="easeOutCubic"
         >
           <swiper-item
@@ -363,7 +363,7 @@
     </view>
   </view>
 
-  <!-- 底部按钮：键盘升起时留在底部被输入法盖住 -->
+  <!-- 键盘升起时收起底部按钮占位，让灵感输入栏紧贴键盘 -->
   <view class="page-footer {{inspirationKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}">
     <view class="silent-hint-section" wx:if="{{viewMode === 'wheel' && selectedAction === 'silent'}}">
       <text

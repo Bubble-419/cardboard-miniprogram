@@ -24,6 +24,8 @@
 .container-nav-freeze .orbit-wrap,
 .container-nav-freeze .orbit-dot,
 .container-nav-freeze .scan-line,
+.container-nav-freeze .qrcode-loading-sweep,
+.container-nav-freeze .qrcode-loading-dot,
 .container-nav-freeze .avatar-img,
 .container-nav-freeze .avatar-placeholder,
 .container-nav-freeze .primary-btn {
@@ -608,6 +610,121 @@
 .qrcode-img {
   width: 200rpx;
   height: 200rpx;
+}
+
+.qrcode-loading {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, #f7fff8 0%, #eefaf0 72%, #e8f7eb 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.qrcode-loading-visual {
+  position: relative;
+  width: 104rpx;
+  height: 104rpx;
+  overflow: hidden;
+}
+
+.qrcode-loading-corner {
+  position: absolute;
+  width: 28rpx;
+  height: 28rpx;
+  border: 7rpx solid #72cb6d;
+  border-radius: 5rpx;
+  box-sizing: border-box;
+  opacity: 0.78;
+}
+
+.qrcode-loading-corner::after {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  top: 5rpx;
+  width: 7rpx;
+  height: 7rpx;
+  border-radius: 2rpx;
+  background: #72cb6d;
+}
+
+.qrcode-loading-corner-tl { left: 4rpx; top: 4rpx; }
+.qrcode-loading-corner-tr { right: 4rpx; top: 4rpx; }
+.qrcode-loading-corner-bl { left: 4rpx; bottom: 4rpx; }
+
+.qrcode-loading-pixel {
+  position: absolute;
+  width: 9rpx;
+  height: 9rpx;
+  border-radius: 2rpx;
+  background: #a8dca5;
+}
+
+.qrcode-loading-pixel-1 { left: 43rpx; top: 8rpx; width: 16rpx; }
+.qrcode-loading-pixel-2 { left: 44rpx; top: 31rpx; }
+.qrcode-loading-pixel-3 { right: 13rpx; top: 48rpx; height: 17rpx; }
+.qrcode-loading-pixel-4 { left: 45rpx; bottom: 8rpx; width: 18rpx; }
+.qrcode-loading-pixel-5 { right: 14rpx; bottom: 16rpx; }
+
+.qrcode-loading-sweep {
+  position: absolute;
+  left: 2rpx;
+  right: 2rpx;
+  top: 0;
+  height: 3rpx;
+  border-radius: 999rpx;
+  background: #38b84a;
+  box-shadow: 0 0 12rpx rgba(56, 184, 74, 0.48);
+  animation: qrcode-loading-sweep 1.8s ease-in-out infinite;
+}
+
+.qrcode-loading-caption {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qrcode-loading-text {
+  font-size: 20rpx;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #4b8f51;
+}
+
+.qrcode-loading-dots {
+  width: 24rpx;
+  margin-left: 5rpx;
+  display: flex;
+  align-items: center;
+  gap: 3rpx;
+}
+
+.qrcode-loading-dot {
+  width: 4rpx;
+  height: 4rpx;
+  border-radius: 50%;
+  background: #5ec159;
+  animation: qrcode-loading-dot 1.2s ease-in-out infinite;
+}
+
+.qrcode-loading-dot-2 { animation-delay: 0.16s; }
+.qrcode-loading-dot-3 { animation-delay: 0.32s; }
+
+@keyframes qrcode-loading-sweep {
+  0% { transform: translateY(5rpx); opacity: 0; }
+  15% { opacity: 0.9; }
+  85% { opacity: 0.9; }
+  100% { transform: translateY(94rpx); opacity: 0; }
+}
+
+@keyframes qrcode-loading-dot {
+  0%, 60%, 100% { opacity: 0.28; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3rpx); }
 }
 
 .qrcode-placeholder {

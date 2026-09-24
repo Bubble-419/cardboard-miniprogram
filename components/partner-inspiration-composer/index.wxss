@@ -22,6 +22,10 @@
   padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
 }
 .inspiration-bar-history-with-footer { padding-bottom: 12rpx; }
+.inspiration-bar-keyboard-open {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
 .inspiration-bar-kb-hidden { opacity: 0; pointer-events: none; }
 
 .insp-icon-wrap {

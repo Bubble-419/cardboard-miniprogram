@@ -827,8 +827,7 @@
 }
 
 .page-footer-insp-hidden {
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .inspiration-action {
@@ -882,7 +881,7 @@
 
 .card-swiper-item {
   box-sizing: border-box;
-  padding: 0 8rpx;
+  padding: 0 6rpx;
   height: 100%;
   display: flex;
   flex-direction: column;

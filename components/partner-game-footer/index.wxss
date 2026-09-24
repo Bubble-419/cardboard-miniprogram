@@ -5,7 +5,7 @@
   padding: 18rpx 0 calc(16rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
-.page-footer-insp-hidden { opacity: 0; pointer-events: none; }
+.page-footer-insp-hidden { display: none; }
 .bottom-actions {
   display: flex;
   align-items: stretch;

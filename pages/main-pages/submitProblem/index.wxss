@@ -233,7 +233,7 @@
   align-items: center;
   justify-content: center;
   padding: 80rpx 40rpx calc(180rpx + env(safe-area-inset-bottom));
-  margin: 40rpx 0 0;
+  margin: 64rpx 0 0;
   gap: 44rpx;
   background: transparent;
 }
