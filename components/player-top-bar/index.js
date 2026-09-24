@@ -20,6 +20,14 @@ Component({
       type: Boolean,
       value: true
     },
+    showBack: {
+      type: Boolean,
+      value: false
+    },
+    backIcon: {
+      type: String,
+      value: '/assets/icons/icon-nav-back.svg'
+    },
     roomIcon: {
       type: String,
       value: '/assets/icons/icon-room-entry.svg'
@@ -139,6 +147,10 @@ Component({
 
     onGoRoom() {
       this.triggerEvent('goroom');
+    },
+
+    onBack() {
+      this.triggerEvent('back');
     },
 
     onAddTap() {

@@ -8,7 +8,15 @@
   >
     <view class="top-bar-left">
       <view
-        wx:if="{{showRoomEntry}}"
+        wx:if="{{showBack}}"
+        class="back-entry"
+        style="width: {{iconSize}}px; height: {{iconSize}}px;"
+        catchtap="onBack"
+      >
+        <image class="back-entry-icon" src="{{backIcon}}" mode="aspectFit" />
+      </view>
+      <view
+        wx:elif="{{showRoomEntry}}"
         class="room-entry"
         style="width: {{iconSize}}px; height: {{iconSize}}px;"
         catchtap="onGoRoom"

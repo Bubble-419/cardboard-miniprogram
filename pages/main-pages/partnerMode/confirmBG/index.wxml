@@ -1,9 +1,11 @@
 <view class="container {{isGameDetail ? 'container-game-detail' : ''}}">
-  <!-- 顶部：房间入口（游戏页回看详情时不展示） -->
+  <!-- 顶部：游戏详情展示返回图标，其余流程展示房间入口 -->
   <player-top-bar
     showAvatars="{{false}}"
     showRoomEntry="{{!isGameDetail}}"
+    showBack="{{isGameDetail}}"
     bind:goroom="handleGoRoom"
+    bind:back="handleGoBack"
   />
 
   <!-- 成员等待视图（回看情境时不展示） -->
@@ -51,9 +53,6 @@
       </view>
     </scroll-view>
 
-    <page-footer extClass="footer footer-compact" showPrev="{{false}}" fixed="{{false}}">
-      <button class="confirm-btn enabled" bindtap="handleReturnToGame">{{returnBtnText}}</button>
-    </page-footer>
   </block>
 
   <!-- 提交页回看 / 房主确认：原比例叠卡 -->

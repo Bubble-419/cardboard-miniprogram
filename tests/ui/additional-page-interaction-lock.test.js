@@ -329,6 +329,30 @@ test('游戏页设计问题详情隐藏房间入口，并用情境确认页同�
   assert.ok(!json.usingComponents['context-display']);
 });
 
+test('游戏页设计问题详情使用左上角返回图标，不再展示底部返回游戏按钮', () => {
+  const detailWxml = fs.readFileSync(path.join(
+    __dirname,
+    '../../pages/main-pages/partnerMode/confirmBG/index.wxml'
+  ), 'utf8');
+  const topBarWxml = fs.readFileSync(path.join(
+    __dirname,
+    '../../components/player-top-bar/index.wxml'
+  ), 'utf8');
+  const topBarJs = fs.readFileSync(path.join(
+    __dirname,
+    '../../components/player-top-bar/index.js'
+  ), 'utf8');
+  const detailBlock = detailWxml.match(
+    /<block wx:elif="\{\{isGameDetail\}\}">([\s\S]*?)<!-- 提交页回看/
+  );
+
+  assert.ok(detailBlock);
+  assert.match(detailWxml, /<player-top-bar[\s\S]*?showBack="\{\{isGameDetail\}\}"[\s\S]*?bind:back="handleGoBack"/);
+  assert.doesNotMatch(detailBlock[1], /<page-footer|handleReturnToGame|返回游戏/);
+  assert.match(topBarWxml, /wx:if="\{\{showBack\}\}"[\s\S]*?catchtap="onBack"[\s\S]*?src="\{\{backIcon\}\}"/);
+  assert.match(topBarJs, /backIcon:[\s\S]*?icon-nav-back\.svg[\s\S]*?onBack\(\)[\s\S]*?triggerEvent\('back'\)/);
+});
+
 test('共享玩家列表引用的小程序包内图标必须真实存在', () => {
   const componentPath = path.join(__dirname, '../../components/user-list/index.wxml');
   const wxml = fs.readFileSync(componentPath, 'utf8');

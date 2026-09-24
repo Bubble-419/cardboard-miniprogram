@@ -23,7 +23,8 @@
   gap: 12rpx;
 }
 
-.room-entry {
+.room-entry,
+.back-entry {
   border-radius: 9999rpx;
   display: flex;
   align-items: center;
@@ -32,11 +33,13 @@
   overflow: hidden;
 }
 
-.room-entry:active {
+.room-entry:active,
+.back-entry:active {
   opacity: 0.75;
 }
 
-.room-entry-icon {
+.room-entry-icon,
+.back-entry-icon {
   width: 100%;
   height: 100%;
   display: block;
