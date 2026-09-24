@@ -63,12 +63,13 @@
   flex-shrink: 0;
 }
 
-.back-chevron {
-  font-size: 64rpx;
-  color: #1a3d2e;
-  line-height: 1;
-  font-weight: 500;
+.back-icon {
+  width: 40rpx;
+  height: 40rpx;
+  display: block;
 }
+
+.back-icon-hover { opacity: 0.55; }
 
 .navbar-center {
   flex: 1;
@@ -314,8 +315,8 @@
 .inspiration-bar {
   position: relative;
   z-index: 60;
-  margin: 0 30rpx;
-  padding-bottom: calc(18rpx + env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0 30rpx calc(18rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
   justify-content: center;

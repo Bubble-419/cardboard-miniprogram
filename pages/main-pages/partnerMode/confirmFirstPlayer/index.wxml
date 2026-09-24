@@ -2,13 +2,15 @@
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left">
-        <image
+        <view
           wx:if="{{isHost}}"
-          class="back-icon"
-          src="/assets/icons/miniprogram-btn.png"
-          mode="aspectFit"
+          class="back-entry"
+          hover-class="back-icon-hover"
+          hover-stay-time="80"
           bindtap="handleGoBack"
-        ></image>
+        >
+          <image class="back-icon" src="/assets/icons/icon-nav-back.svg" mode="aspectFit" />
+        </view>
       </view>
       <view class="navbar-title"></view>
       <view class="navbar-right"></view>

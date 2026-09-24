@@ -37,9 +37,12 @@
 }
 
 .back-icon {
-  width: 32rpx;
-  height: 32rpx;
+  width: 40rpx;
+  height: 40rpx;
+  display: block;
 }
+
+.back-icon-hover { opacity: 0.55; }
 
 .navbar-title {
   font-size: 32rpx;

@@ -58,7 +58,9 @@
     <!-- 选择特殊行动：不展示历史卡片 -->
     <view class="main-content" wx:if="{{viewMode === 'wheel'}}">
       <view class="section-head">
-        <image class="section-back" src="/assets/partnerMode/icon-special-back.svg" mode="aspectFit" bindtap="handleGoBack" />
+        <view class="section-back" hover-class="back-icon-hover" hover-stay-time="80" bindtap="handleGoBack">
+          <image class="section-back-icon" src="/assets/icons/icon-nav-back.svg" mode="aspectFit" />
+        </view>
         <text class="section-title">选择特殊行动</text>
         <view class="section-head-spacer"></view>
       </view>

@@ -206,10 +206,16 @@
 }
 
 .section-back {
-  width: 36rpx;
-  height: 36rpx;
+  width: 72rpx;
+  height: 72rpx;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+.section-back-icon { width: 40rpx; height: 40rpx; display: block; }
+.back-icon-hover { opacity: 0.55; }
 
 .section-title {
   flex: 1;
@@ -221,8 +227,8 @@
 }
 
 .section-head-spacer {
-  width: 36rpx;
-  height: 36rpx;
+  width: 72rpx;
+  height: 72rpx;
   flex-shrink: 0;
 }
 

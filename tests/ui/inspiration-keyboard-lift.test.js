@@ -354,3 +354,15 @@ test('收尾复盘追加 cloud:// 图片时保留 fileRef，避免同步成展�
   const normalized = normalizeContentBlocks(blocks);
   assert.equal(normalized[0].fileRef, cloudId);
 });
+
+test('灵感空间输入栏抬升后灰底占满宽度，输入卡片继续保留左右边距', () => {
+  const inspirationWxss = read('pages/inspiration/index.wxss');
+  const barRule = inspirationWxss.match(/\.inspiration-bar\s*\{[\s\S]*?\}/);
+  const focusedRule = inspirationWxss.match(/\.inspiration-bar-focused\s*\{[\s\S]*?\}/);
+
+  assert.ok(barRule);
+  assert.match(barRule[0], /margin:\s*0;/);
+  assert.match(barRule[0], /padding:\s*0 30rpx calc\(18rpx \+ env\(safe-area-inset-bottom\)\);/);
+  assert.ok(focusedRule);
+  assert.match(focusedRule[0], /background:\s*rgba\(243, 250, 246, 0\.96\);/);
+});

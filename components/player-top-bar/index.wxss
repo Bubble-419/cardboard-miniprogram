@@ -33,15 +33,25 @@
   overflow: hidden;
 }
 
+.back-entry {
+  min-width: 72rpx;
+  min-height: 72rpx;
+}
+
 .room-entry:active,
 .back-entry:active {
   opacity: 0.75;
 }
 
-.room-entry-icon,
-.back-entry-icon {
+.room-entry-icon {
   width: 100%;
   height: 100%;
+  display: block;
+}
+
+.back-entry-icon {
+  width: 40rpx;
+  height: 40rpx;
   display: block;
 }
 

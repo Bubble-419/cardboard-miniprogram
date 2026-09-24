@@ -25,12 +25,8 @@
   align-items: center;
 }
 
-.back-chevron {
-  font-size: 48rpx;
-  font-weight: 300;
-  color: #000;
-  line-height: 1;
-}
+.back-icon { width: 40rpx; height: 40rpx; display: block; }
+.back-icon-hover { opacity: 0.55; }
 
 .navbar-title {
   font-size: 32rpx;
