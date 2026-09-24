@@ -323,7 +323,7 @@ Page(withPageInteractionLock({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 全员本机采麦测 40dB；无麦时再回退到房主广播的瞬时信号
+    // 当前行动者本机采麦测 40dB；无麦时再回退到房主广播的瞬时信号
     this._startSoundLevelSampling();
     if (!this._canEndSilent()) return;
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
@@ -918,7 +918,7 @@ Page(withPageInteractionLock({
     });
   },
 
-  /** 全员本机采麦驱动边框；房主额外广播瞬时 signal，给无麦端回退。 */
+  /** 当前行动者在静默页本机采麦驱动边框；若其同时为房主则广播瞬时 signal。 */
   async _startSoundLevelSampling() {
     if (this._recorderManager || this._silentRecordStarting) return;
     this._silentRecordStarting = true;
