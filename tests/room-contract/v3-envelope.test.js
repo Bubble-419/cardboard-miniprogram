@@ -3,7 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  PROTOCOL_VERSION, COMMAND_TYPES, COMMAND_CONTEXT, validateCommandEnvelope, validateMemberView
+  PROTOCOL_VERSION, COMMAND_TYPES, COMMAND_CONTEXT, MODE, normalizeMode,
+  validateCommandEnvelope, validateMemberView
 } = require('@cardboard/room-contracts');
 
 function envelope(type, fields) {
@@ -66,6 +67,12 @@ test('拒绝未知协议、未知命令和非法半星值', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.JOIN_ROOM, { protocolVersion: 2 })).ok, false);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.SUBMIT_PARTNER_SCORE,
     { payload: { scoreHalfSteps: 7.5 }, context: { sessionId: 's', turnId: 't' } })).ok, false);
+});
+
+test('干瞪眼使用独立模式枚举，兼容客户端 modeId', () => {
+  assert.equal(MODE.GAN_DENG_YAN, 'GAN_DENG_YAN');
+  assert.equal(normalizeMode('ganDengYan'), MODE.GAN_DENG_YAN);
+  assert.equal(normalizeMode('GAN_DENG_YAN'), MODE.GAN_DENG_YAN);
 });
 
 test('指令、context 与 payload 都拒绝未知或模糊结构', () => {

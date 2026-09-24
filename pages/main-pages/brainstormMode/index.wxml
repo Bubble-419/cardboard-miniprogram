@@ -24,26 +24,35 @@
     show-scrollbar="{{false}}"
     style="height: {{scrollHeight}}px"
   >
-    <view class="mode-list">
-      <view
-        class="mode-item {{selectedModeId === item.id ? 'selected' : ''}}"
-        wx:for="{{brainstormModes}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="onTapMode"
-      >
-        <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFill" />
-        <view class="mode-info">
-          <text class="mode-name {{selectedModeId === item.id ? 'active' : ''}}">{{item.title}}</text>
-          <text class="mode-desc">{{item.description}}</text>
+    <view class="mode-groups">
+      <view class="mode-group" wx:for="{{modeGroups}}" wx:key="id" wx:for-item="group">
+        <view class="mode-group-heading">
+          <view class="mode-group-mark"></view>
+          <text class="mode-group-title">{{group.title}}</text>
         </view>
-        <view class="status-wrap {{selectedModeId === item.id ? 'checked' : ''}}">
-          <image
-            wx:if="{{selectedModeId === item.id}}"
-            class="check-icon"
-            src="/assets/brainstormMode/icon-mode-check.svg"
-            mode="aspectFit"
-          />
+        <view class="mode-list">
+          <view
+            class="mode-item {{selectedModeId === item.id ? 'selected' : ''}}"
+            wx:for="{{group.modes}}"
+            wx:key="id"
+            wx:for-item="item"
+            data-id="{{item.id}}"
+            bindtap="onTapMode"
+          >
+            <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFill" />
+            <view class="mode-info">
+              <text class="mode-name {{selectedModeId === item.id ? 'active' : ''}}">{{item.title}}</text>
+              <text class="mode-desc">{{item.description}}</text>
+            </view>
+            <view class="status-wrap {{selectedModeId === item.id ? 'checked' : ''}}">
+              <image
+                wx:if="{{selectedModeId === item.id}}"
+                class="check-icon"
+                src="/assets/brainstormMode/icon-mode-check.svg"
+                mode="aspectFit"
+              />
+            </view>
+          </view>
         </view>
       </view>
     </view>

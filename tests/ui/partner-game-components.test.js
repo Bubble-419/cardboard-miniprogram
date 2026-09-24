@@ -140,3 +140,16 @@ test('gamepage 由低耦合模块拼接，并让 RoomShell 屏幕选择包住原
   assert.equal(config.usingComponents['partner-inspiration-composer'], '/components/partner-inspiration-composer/index');
   assert.equal(config.usingComponents['partner-game-footer'], '/components/partner-game-footer/index');
 });
+
+test('声音过大提示在游戏卡片中央放大显示', () => {
+  const markup = read('components/game-card-timer/index.wxml');
+  const styles = read('components/game-card-timer/index.wxss');
+  const warning = styles.match(/\.gct-sound-warn\s*\{[\s\S]*?\n\}/);
+
+  assert.match(markup, /gct-sound-warn[\s\S]*?声音过大，请降低音量/);
+  assert.ok(warning);
+  assert.match(warning[0], /top:\s*50%;/);
+  assert.match(warning[0], /left:\s*50%;/);
+  assert.match(warning[0], /transform:\s*translate\(-50%,\s*-50%\);/);
+  assert.match(warning[0], /font-size:\s*(?:3[6-9]|[4-9]\d)rpx;/);
+});

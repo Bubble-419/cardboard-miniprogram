@@ -36,6 +36,9 @@ const SPY_COMMANDS = new Set([
 ]);
 
 function minimumPlayers(mode) { return mode === MODE.SPY ? 3 : 2; }
+function isHalliLikeMode(mode) {
+  return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
+}
 
 function createCommand(aggregate, command, actorUserId, deps) {
   if (aggregate) return fail(ERR.INVALID_TRANSITION, '房间已经存在');
@@ -134,11 +137,12 @@ function removeMember(aggregate, target, kicked, deps) {
     markParticipantLeft(aggregate, target.memberId);
     if (session.status === SESSION_STATUS.CONFIGURING && activeParticipantIds(session).length < minimumPlayers(session.mode)) {
       cancelCurrentSession(aggregate, 'NOT_ENOUGH_PLAYERS', deps, events);
-    } else if ((session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI) && activeParticipantIds(session).length <= 1) {
+    } else if ((session.mode === MODE.PARTNER || isHalliLikeMode(session.mode))
+      && activeParticipantIds(session).length <= 1) {
       cancelCurrentSession(aggregate, 'NOT_ENOUGH_PLAYERS', deps, events);
     } else if (session.mode === MODE.PARTNER) {
       const side = handlePartnerParticipantLeft(aggregate, target.memberId, deps); events.push(...side.events); dirtyFacts.push(...side.dirtyFacts);
-    } else if (session.mode === MODE.HALLI_GALLI) {
+    } else if (isHalliLikeMode(session.mode)) {
       const side = handleHalliParticipantLeft(aggregate, target.memberId, deps); events.push(...side.events); dirtyFacts.push(...side.dirtyFacts);
     } else if (session.mode === MODE.SPY) {
       const side = handleSpyParticipantLeft(aggregate, target.memberId, deps); events.push(...side.events); dirtyFacts.push(...side.dirtyFacts);
@@ -300,7 +304,7 @@ function selectFirstPlayer(aggregate, command, actorUserId, deps) {
       turnId: null
     });
   }
-  else if (check.session.mode === MODE.HALLI_GALLI) {
+  else if (isHalliLikeMode(check.session.mode)) {
     check.session.status = SESSION_STATUS.RUNNING;
     transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
       activeMemberId: memberId,
@@ -365,7 +369,7 @@ function resetScenario(aggregate, command, actorUserId, deps) {
     steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
   });
   if (!check.ok) return check;
-  if (![MODE.PARTNER, MODE.HALLI_GALLI].includes(check.session.mode)) {
+  if (check.session.mode !== MODE.PARTNER && !isHalliLikeMode(check.session.mode)) {
     return fail(ERR.INVALID_TRANSITION);
   }
   const dirtyFacts = [];
@@ -440,7 +444,7 @@ function replaySession(aggregate, command, actorUserId, deps) {
     session.setup.proposedFirstMemberId = validFirst;
     const turn = startPartnerFlow(aggregate, validFirst, deps);
     events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: validFirst, roundNo: 1 }));
-  } else if (session.mode === MODE.HALLI_GALLI) {
+  } else if (isHalliLikeMode(session.mode)) {
     transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
       activeMemberId: null,
       turnId: null

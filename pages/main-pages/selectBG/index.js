@@ -27,6 +27,7 @@ const {
 
 Page({
   data: {
+    modeId: '',
     includePlatform: false,
     steps: STEPS_WITHOUT_PLATFORM,
     currentStep: 0,
@@ -51,9 +52,7 @@ Page({
     if (options && options.roomId) {
       getApp().globalData.roomId = options.roomId;
     }
-    if (includePlatform) {
-      getApp().globalData.gameMode = 'partner';
-    }
+    if (mode) getApp().globalData.gameMode = mode;
 
     // 从 confirmBG 点卡跳回时：恢复已填数据 + 定位到对应卡片
     const savedBG = getApp().globalData.selectedBG || {};
@@ -66,7 +65,7 @@ Page({
     const stepParam = parseInt((options && options.step) || '0', 10);
     const currentStep = (stepParam >= 0 && stepParam < steps.length) ? stepParam : 0;
 
-    this.setData({ includePlatform, steps, currentStep, bg });
+    this.setData({ modeId: mode, includePlatform, steps, currentStep, bg });
     this.updateCanConfirm();
     bindPageToRoomSession(this, {
       getRoomId: () => getApp().globalData.roomId || '',
@@ -82,9 +81,10 @@ Page({
     if (isPageInteractionLocked(this)) return;
     return runPageInteraction(this, async () => {
       const roomId = getApp().globalData.roomId || '';
+      const modeId = this.data.modeId || 'partner';
       const fallbackUrl = roomId
-        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=partner`
-        : '/pages/main-pages/modeIndex/index?modeId=partner';
+        ? `/pages/main-pages/modeIndex/index?roomId=${encodeURIComponent(roomId)}&modeId=${encodeURIComponent(modeId)}`
+        : `/pages/main-pages/modeIndex/index?modeId=${encodeURIComponent(modeId)}`;
       safeNavigateBack({
         expectedPrev: [
           'pages/main-pages/modeIndex/index',

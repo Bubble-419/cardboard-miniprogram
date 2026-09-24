@@ -275,9 +275,14 @@ Page(withPageInteractionLock({
       this._loadRoomDataAfterJoin(roomId).then((result) => {
         if (!this._pageAlive) return;
         this._joinInFlight = false;
-        this._startMemberPolling();
-        if (!result) return;
+        if (!result) {
+          this._startMemberPolling();
+          return;
+        }
+        // bindPageToRoomSession 会依据 membershipConfirmed 决定是否派发首次快照。
+        // 必须先确认成员身份再绑定，否则房主刚推进流程时，成员会丢掉唯一一次权威路由更新。
         this.setData({ membershipConfirmed: true });
+        this._startMemberPolling();
         if (result.isHost === true) {
           this._syncLobbyRoomState(result);
         } else {
@@ -587,9 +592,13 @@ Page(withPageInteractionLock({
       if (!this._pageAlive) return;
       this._joinInFlight = false;
       endScanJoin(roomId);
-      this._startMemberPolling();
-      if (!loaded) return;
+      if (!loaded) {
+        this._startMemberPolling();
+        return;
+      }
+      // 扫码加入同样要在订阅前确认身份，确保当前权威 route 会立即参与导航协调。
       this.setData({ membershipConfirmed: true });
+      this._startMemberPolling();
       if (loaded.isHost === true) {
         this._syncLobbyRoomState(loaded);
       } else {

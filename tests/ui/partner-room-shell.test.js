@@ -347,6 +347,25 @@ test('等待确认首位玩家和进入游戏在同一页面实例切换且不�
   assert.equal(gameBindings, 1, '同页进入游戏时必须显式恢复游戏输入副作用');
 });
 
+test('普通玩家从等待首位玩家原地进入游戏时同步显示设计问题', async () => {
+  const page = makeGamePage();
+  const waiting = waitingForFirstPlayerSnapshot();
+  waiting.selectedDesignProblem = {
+    contributionId: 'problem-1',
+    text: '如何改善团队协作体验？'
+  };
+  let applied = page._applyRoomContext(waiting);
+  await applied.applied;
+
+  const game = gameSnapshot(11);
+  game.selectedDesignProblem = waiting.selectedDesignProblem;
+  applied = page._applyRoomContext(game);
+  await applied.applied;
+
+  assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.GAME);
+  assert.equal(page.data.selectedProblemText, '如何改善团队协作体验？');
+});
+
 test('收尾存在疑问后可在同一页面实例恢复游戏屏幕', async () => {
   const page = makeGamePage();
   let applied = page._applyRoomContext(closingSnapshot());

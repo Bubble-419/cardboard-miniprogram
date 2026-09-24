@@ -12,9 +12,14 @@ function clone(value) {
 function clientModeId(mode) {
   return {
     [MODE.PARTNER]: 'partner',
+    [MODE.GAN_DENG_YAN]: 'ganDengYan',
     [MODE.HALLI_GALLI]: 'halliGalli',
     [MODE.SPY]: 'spy'
   }[mode] || '';
+}
+
+function isHalliLikeMode(mode) {
+  return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
 }
 
 function subAwaitScene(step) {
@@ -226,7 +231,7 @@ function projectPublicView(aggregate) {
           && !artifact.removed
         )).sort((a, b) => a.createdAt - b.createdAt).map(publicArtifact)
       }));
-  } else if (session.mode === MODE.HALLI_GALLI) {
+  } else if (isHalliLikeMode(session.mode)) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
     const halli = currentHalli(aggregate) || {};
     view.publicModeState = {
@@ -327,7 +332,7 @@ function projectCapabilities(aggregate, actor) {
     'INVALID_TRANSITION'
   );
   caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
-    isHost && session && [MODE.PARTNER, MODE.HALLI_GALLI].includes(session.mode)
+    isHost && session && (session.mode === MODE.PARTNER || isHalliLikeMode(session.mode))
       && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
     'INVALID_TRANSITION'
   );
@@ -434,10 +439,10 @@ function projectRoute(aggregate, actorView) {
           : { from: 'closingEnd', isSubScreen: 1 }
       };
     }
-    if (session.mode === MODE.HALLI_GALLI) return { name: 'creativeSummary', params: {} };
+    if (isHalliLikeMode(session.mode)) return { name: 'creativeSummary', params: {} };
     return { name: 'spySettle', params: {} };
   }
-  const revisingHalliIdea = session.mode === MODE.HALLI_GALLI
+  const revisingHalliIdea = isHalliLikeMode(session.mode)
     && actorView.contributionStatus.submitted
     && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA]
     && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;

@@ -43,7 +43,7 @@ stateDiagram-v2
   场次运行 --> 房间大厅: CANCEL_WORKSHOP_SESSION
   场次完成 --> 房间大厅: RETURN_TO_LOBBY
   场次完成 --> 新场次: REPLAY_WORKSHOP_SESSION
-  新场次 --> 场次配置: Halli / Spy
+  新场次 --> 场次配置: Gan Deng Yan / Halli / Spy
   新场次 --> 场次运行: Partner
   房间大厅 --> 无房间: LEAVE_ROOM
   房间大厅 --> 房间解散: DISSOLVE_ROOM
@@ -69,9 +69,9 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
 | `closingStatement` | `/pages/main-pages/partnerMode/gamepage/index`（RoomShell 的 `closingVote` 屏幕） | `closingStatement` | Partner 收尾表态；与行动页共用稳定页面实例 |
 | `leaderboard` | `/pages/leaderboard/index` | `leaderboard` | Partner 已完成排行榜；Host 带 `from=closingEnd`，Player 另带 `isSubScreen=1` |
-| `halliGame` | `/pages/main-pages/halliGalli/gamepage/index` | `gamepage` | 德国心脏病规则和线下活动 |
-| `creativeInput` | `/pages/main-pages/creativeInput/index` | `creativeInput` | 德国心脏病填写创意 |
-| `creativeSummary` | `/pages/main-pages/creativeSummary/index` | `creativeSummary` | 德国心脏病等待/汇总/完成 |
+| `halliGame` | `/pages/main-pages/halliGalli/gamepage/index` | `gamepage` | 德国心脏病或干瞪眼 baseline 的规则和线下活动 |
+| `creativeInput` | `/pages/main-pages/creativeInput/index` | `creativeInput` | 德国心脏病或干瞪眼 baseline 填写创意 |
+| `creativeSummary` | `/pages/main-pages/creativeSummary/index` | `creativeSummary` | 德国心脏病或干瞪眼 baseline 等待/汇总/完成 |
 | `spyIntro` | `/packageSpy/pages/modeIndex/index` | `spyModeIndex` | 谁是卧底规则与开局 |
 | `spySpeak` | `/packageSpy/pages/speak/index` | `spySpeak` | 谁是卧底发言或平票加时 |
 | `spyVote` | `/packageSpy/pages/vote/index` | `spyVote` | 谁是卧底投票 |
@@ -98,7 +98,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` | 只有 Host 显示“结束游戏” |
 | `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后投影为 `creativeSummary`；修改中回到 `creativeInput` |
 | `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | 任一成员修改自己的创意时，仅本人投影为 `creativeInput` |
-| Halli `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
+| Halli / Gan Deng Yan `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
 | `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
 | `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 当前发言者可结束发言；Host 可开票 |
 | `SPY_VOTE` | `spyVote` | `spyVote` | 仅存活且未投票成员可提交 |
@@ -164,7 +164,7 @@ flowchart LR
 | `CHOOSE_SCENARIO` / `SPY_INTRO` | Host | `CANCEL_WORKSHOP_SESSION` | 先回 `addPlayer`，再打开选模式叠层 |
 | `SELECT_DESIGN_PROBLEM` | Host（当前 UI 不展示按钮） | `RESET_SCENARIO` | 清空本场情境、问题与选择，回 `CHOOSE_SCENARIO` |
 | `SELECT_FIRST_PLAYER`，Partner 已选问题 | Host | `RESET_DESIGN_PROBLEM` | 保留问题列表，回 `SELECT_DESIGN_PROBLEM` |
-| `SELECT_FIRST_PLAYER`，Partner 线下或 Halli | Host | `RESET_SCENARIO` | 回 `CHOOSE_SCENARIO` |
+| `SELECT_FIRST_PLAYER`，Partner 线下、Halli 或 Gan Deng Yan | Host | `RESET_SCENARIO` | 回 `CHOOSE_SCENARIO` |
 | `CONFIRM_FIRST_PLAYER` | Host | `RESET_FIRST_PLAYER` | 清掉拟定首位，回 `SELECT_FIRST_PLAYER` |
 | 运行期、收尾、汇总、结算、Player 等待态 | 无 | `NONE` | 不展示伪后退；仅按后续业务 Command 前进 |
 
@@ -249,7 +249,7 @@ sequenceDiagram
 | 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
 | “退出房间” | `LEAVE_ROOM` | 非 Host |
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
-| “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Halli 至少 2 人，Spy 至少 3 人 |
+| “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
 大厅二维码属于房间邀请能力，不依赖完整 Room Snapshot 是否成功安装。Snapshot 暂时失败时，
@@ -288,8 +288,8 @@ flowchart TD
   SPY[SPY_INTRO<br/>全员: spyIntro]
 
   LOBBY --> PICK
-  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_H
-  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_P
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_H
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_P
   PICK -->|START_WORKSHOP_SESSION Spy| SPY
   CHOOSE_H -->|SET_SCENARIO Partner 非 OFFLINE| COLLECT
   CHOOSE_P -. Event / Snapshot .-> COLLECT
@@ -304,22 +304,22 @@ flowchart TD
   CONFIRM_H -->|CONFIRM_FIRST_PLAYER| PARTNER
   CONFIRM_P -. Event / Snapshot .-> PARTNER
   CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
-  CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
-  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli| HALLI
+  CHOOSE_H -->|SET_SCENARIO Halli / Gan Deng Yan 任意来源| SELECT_FIRST_H
+  SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli / Gan Deng Yan| HALLI
 ```
 
 | 页面操作 | Command | 业务状态变化 |
 |---|---|---|
-| 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位 |
+| 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli / Gan Deng Yan→选首位 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
 | 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
 | Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 通过 2 秒 idle Sync 的 ephemeral 更新 Member View，并在对应条目显示「房主编辑中…」，不依赖 Event |
 | Host 保存问题正文 | `UPDATE_DESIGN_PROBLEM` | 状态不变；`entityVersion + 1` |
 | Host “确认问题” | `SELECT_DESIGN_PROBLEM` | 进入选择首位玩家 |
-| “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli→活动开始 |
+| “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli / Gan Deng Yan→活动开始 |
 | Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |
 | Host 从确认首位点“上一页” | `RESET_FIRST_PLAYER` | 清掉拟定首位，回到 `SELECT_FIRST_PLAYER`；Host 回 `selectPlayer`，Player 回 `subAwait?scene=player` |
-| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` 或 `RESET_SCENARIO` | Partner 已选问题时回选问题；Partner 线下或 Halli 回选情境。副屏等待态没有上一页 |
+| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` 或 `RESET_SCENARIO` | Partner 已选问题时回选问题；Partner 线下、Halli 或 Gan Deng Yan 回选情境。副屏等待态没有上一页 |
 | Host 从选问题页执行协议后退 | `RESET_SCENARIO` | 清空旧情境、问题 Facts、选择和进度，回 `CHOOSE_SCENARIO`；当前页面未展示该按钮 |
 | Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 打开 `brainstormMode?isHost=1` 叠层，不走 `navigateBack` |
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
@@ -331,6 +331,11 @@ Player 的 `CHOOSE_SCENARIO → SELECT_FIRST_PLAYER` 使用稳定 `selectPlayer`
 View 将 `subAwait?scene=bg/player` 投影成受控 `waiting` 组件，Host 的 `selectPlayer` Route 投影成
 `selector`。首次进入时保持无交互加载态，不按 URL 猜测 Host/Player 屏幕；同路径变化只更新 Shell
 Model，不调用微信导航；进入其他流程页面时先冻结触摸与计时，再交还全局导航协调器。
+
+选择首位玩家的多人触摸抽取属于 Host 本地 UI 机制，不改变房间协议。iOS 且本场参与者超过
+5 人时，页面只保留前 5 个有效触点；第 6 次触摸事件到达后立即从这 5 个触点中抽取。
+考虑到部分 iOS 设备不会上报超出上限的触摸事件，5 个触点持续按住 800ms 后执行同一
+兜底抽取，避免页面停在 `5/N`。其他平台仍等待全部参与者触点后进入原倒计时流程。
 
 ## 5. Partner
 
@@ -455,7 +460,7 @@ flowchart TD
 
 多人同时选择 `question` 时，按本场冻结 Participant 座次升序选择下一位行动者；客户端提交先后和网络时延不参与裁决。
 
-## 6. 德国心脏病（Halli Galli）
+## 6. 德国心脏病（Halli Galli）与干瞪眼 baseline
 
 ```mermaid
 flowchart LR
@@ -488,6 +493,11 @@ flowchart LR
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
 线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 回到自己的输入页，修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
+
+干瞪眼以独立协议模式 `GAN_DENG_YAN`（客户端 modeId 为 `ganDengYan`）存在。首版 baseline
+完整复用本节流程与页面：选择情境、选择首位玩家、线下活动、全员提交创意、汇总、完成与重玩；
+其 Session 和历史记录仍保留独立模式值。模式选择页按产品卡牌类型分组：组件卡依次为
+“干瞪眼模式、创意合伙人”，模板卡依次为“谁是卧底模式、德国心脏病模式”。
 
 ## 7. 谁是卧底（Spy）
 
@@ -562,7 +572,7 @@ flowchart TD
   MODE{当前步骤}
   CANCEL[配置期人数不足<br/>取消 Session]
   PARTNER[Partner<br/>缩减评分/收尾 required<br/>行动者离开则归档 ABANDONED 并换人]
-  HALLI[Halli<br/>缩减创意 required<br/>首位离开则选下一有效参与者]
+  HALLI[Halli / Gan Deng Yan<br/>缩减创意 required<br/>首位离开则选下一有效参与者]
   SPY[Spy<br/>移出发言/投票<br/>重新判定推进与胜负]
   EVENT[同一事务提交状态与 Event]
 
@@ -584,7 +594,7 @@ flowchart TD
   REPLAY[REPLAY_WORKSHOP_SESSION]
   LOBBY[Room OPEN<br/>currentSessionId = null<br/>route: addPlayer]
   P[Partner 新 Session<br/>复用情境/问题/首位<br/>直接 PARTNER_TURN]
-  H[Halli 新 Session<br/>复用情境<br/>SELECT_FIRST_PLAYER]
+  H[Halli / Gan Deng Yan 新 Session<br/>复用情境<br/>SELECT_FIRST_PLAYER]
   S[Spy 新 Session<br/>SPY_INTRO]
   HISTORY[History / Session / Leaderboard]
 
@@ -627,9 +637,9 @@ flowchart LR
 
 | 范围 | 自动化验收 |
 |---|---|
-| 三种模式完整 Command 主链、Event 与 Snapshot 等价、Page Model 可还原 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
+| 四种模式完整 Command 主链、Event 与 Snapshot 等价、Page Model 可还原 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
 | `workflow.step → role-specific route → physical page` 矩阵 | [`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
-| Halli 离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
+| Halli / Gan Deng Yan baseline、离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
 | Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
 | 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js) |

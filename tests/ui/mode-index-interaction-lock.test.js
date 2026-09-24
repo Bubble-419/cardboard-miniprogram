@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let pageDefinition = null;
 
@@ -25,6 +27,31 @@ global.wx = {
 };
 
 require('../../pages/main-pages/modeIndex/index');
+
+test('选择情境房主页底栏参与纵向布局，不覆盖最后一张情境卡', () => {
+  const wxml = fs.readFileSync(path.resolve(
+    __dirname,
+    '../../pages/main-pages/modeIndex/index.wxml'
+  ), 'utf8');
+  const wxss = fs.readFileSync(path.resolve(
+    __dirname,
+    '../../pages/main-pages/modeIndex/index.wxss'
+  ), 'utf8');
+  const footers = [...wxml.matchAll(/<page-footer[\s\S]*?<\/page-footer>/g)];
+  const hostFooter = footers[footers.length - 1];
+  const containerRule = wxss.match(/\.container\s*\{[\s\S]*?\}/);
+  const hostPageRule = wxss.match(/\.host-page\s*\{[\s\S]*?\}/);
+
+  assert.ok(hostFooter);
+  assert.match(hostFooter[0], /fixed="\{\{false\}\}"/);
+  assert.ok(containerRule);
+  assert.match(containerRule[0], /display:\s*flex;/);
+  assert.match(containerRule[0], /flex-direction:\s*column;/);
+  assert.ok(hostPageRule);
+  assert.match(hostPageRule[0], /flex:\s*1;/);
+  assert.match(hostPageRule[0], /min-height:\s*0;/);
+  assert.doesNotMatch(hostPageRule[0], /padding-bottom:\s*160rpx/);
+});
 
 function makePage() {
   const page = {

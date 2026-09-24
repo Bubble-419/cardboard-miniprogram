@@ -142,4 +142,30 @@ test('提交问题页模板包含催促按钮、输入框抖动和内联提示',
   assert.match(wxml, /form-input-wrap-nudge/);
   assert.match(wxml, /小伙伴在催你提交啦/);
   assert.match(wxml, /form-input-wrap[\s\S]*nudge-hint/);
+
+  const hintIndex = wxml.indexOf('class="nudge-hint');
+  const textareaIndex = wxml.indexOf('class="textarea-box"');
+  assert.ok(hintIndex > -1 && hintIndex < textareaIndex, '催促提示应位于输入框上方');
+
+  const wxss = fs.readFileSync(
+    path.join(__dirname, '../../pages/main-pages/submitProblem/index.wxss'),
+    'utf8'
+  );
+  const hintRule = wxss.match(/\.nudge-hint\s*\{[\s\S]*?\}/);
+  assert.ok(hintRule);
+  assert.match(hintRule[0], /justify-content:\s*flex-end;/);
+});
+
+test('设计问题输入框使用紧凑高度并保留底部操作区', () => {
+  const wxss = fs.readFileSync(
+    path.join(__dirname, '../../pages/main-pages/submitProblem/index.wxss'),
+    'utf8'
+  );
+  const inputRule = wxss.match(/\.problem-input\s*\{[\s\S]*?\}/);
+  const boxRule = wxss.match(/\.textarea-box\s*\{[\s\S]*?\}/);
+
+  assert.ok(inputRule);
+  assert.match(inputRule[0], /height:\s*280rpx;/);
+  assert.ok(boxRule);
+  assert.match(boxRule[0], /padding-bottom:\s*96rpx;/);
 });

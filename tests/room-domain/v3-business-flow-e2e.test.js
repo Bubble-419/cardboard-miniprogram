@@ -145,6 +145,44 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
   assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeSummary');
 });
 
+test('E2E 干瞪眼 baseline：每个阶段的 Event 与 Snapshot 保持等价', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const viewers = ['host', 'u2'];
+
+  let state = await executeAndReduce(h, 'host', 'START_WORKSHOP_SESSION', {
+    payload: { mode: 'ganDengYan' }
+  }, viewers);
+  const sessionId = state.snapshot.view.session.sessionId;
+  assert.equal(state.snapshot.view.session.mode, 'GAN_DENG_YAN');
+  assert.equal(state.snapshot.view.route.params.modeId, 'ganDengYan');
+
+  state = await executeAndReduce(h, 'host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
+    payload: { source: 'OFFLINE' }
+  }, viewers);
+  state = await executeAndReduce(h, 'host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
+    payload: { memberId: state.snapshot.view.actor.memberId }
+  }, viewers);
+  assertScreen(state.snapshot, 'HALLI_ACTIVITY', 'halliGame');
+
+  await executeAndReduce(h, 'host', 'END_HALLI_ACTIVITY', { context: { sessionId } }, viewers);
+  await executeAndReduce(h, 'host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '方案一' }
+  }, viewers);
+  state = await executeAndReduce(h, 'u2', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '方案二' }
+  }, viewers);
+  assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeSummary');
+
+  state = await executeAndReduce(h, 'host', 'COMPLETE_HALLI_SESSION', {
+    context: { sessionId }
+  }, viewers);
+  assert.equal(state.snapshot.view.session.status, 'COMPLETED');
+  assert.equal(state.snapshot.view.session.result.mode, 'GAN_DENG_YAN');
+});
+
 test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与排行榜', async () => {
   const h = createHarness();
   await h.seedMembers(3);

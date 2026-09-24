@@ -38,6 +38,12 @@
 
         <!-- 输入框 + 字数计数 + 提交图标 -->
         <view class="form-input-wrap {{inputNudgeShake ? 'form-input-wrap-nudge' : ''}}">
+          <view
+            wx:if="{{showNudgeHint}}"
+            class="nudge-hint {{nudgeHintFading ? 'nudge-hint-out' : ''}}"
+          >
+            <text class="nudge-hint-text">小伙伴在催你提交啦</text>
+          </view>
           <view class="textarea-box">
             <textarea
               class="problem-input"
@@ -62,13 +68,6 @@
               bindtap="submitProblem"
             />
           </view>
-        </view>
-
-        <view
-          wx:if="{{showNudgeHint}}"
-          class="nudge-hint {{nudgeHintFading ? 'nudge-hint-out' : ''}}"
-        >
-          <text class="nudge-hint-text">小伙伴在催你提交啦</text>
         </view>
       </view>
     </view>

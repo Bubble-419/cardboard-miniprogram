@@ -42,6 +42,51 @@ test('Halli 从情境、首位、线下活动、全员创意到汇总和完成',
   assert.equal(reopenCompleted.errCode, 'INVALID_TRANSITION');
 });
 
+test('干瞪眼 baseline 复用 Halli 的情境、线下活动、创意与汇总流程', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const started = await h.command('host', 'START_WORKSHOP_SESSION', {
+    payload: { mode: 'GAN_DENG_YAN' }
+  });
+  assert.equal(started.ok, true);
+  let snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.mode, 'GAN_DENG_YAN');
+  assert.equal(snapshot.view.route.name, 'modeIndex');
+  assert.equal(snapshot.view.route.params.modeId, 'ganDengYan');
+  const sessionId = snapshot.view.session.sessionId;
+
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
+    payload: { source: 'OFFLINE' }
+  });
+  snapshot = await h.snapshot('host');
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
+    payload: { memberId: snapshot.view.actor.memberId }
+  });
+  assert.equal((await h.snapshot('u2')).view.route.name, 'halliGame');
+
+  await h.command('host', 'END_HALLI_ACTIVITY', { context: { sessionId } });
+  await h.command('host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '干瞪眼创意一' }
+  });
+  await h.command('u2', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '干瞪眼创意二' }
+  });
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'HALLI_SUMMARY');
+  assert.equal(snapshot.view.route.name, 'creativeSummary');
+  assert.equal(snapshot.view.session.publicModeState.ideas.length, 2);
+
+  const completed = await h.command('host', 'COMPLETE_HALLI_SESSION', {
+    context: { sessionId }
+  });
+  assert.equal(completed.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.status, 'COMPLETED');
+  assert.equal(snapshot.view.session.result.mode, 'GAN_DENG_YAN');
+});
+
 test('Halli 已提交成员可在收集期和汇总期返回修改自己的创意', async () => {
   const h = createHarness();
   await h.seedMembers(3);

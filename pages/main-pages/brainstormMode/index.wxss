@@ -73,11 +73,44 @@
   box-sizing: border-box;
 }
 
-.mode-list {
+.mode-groups {
   padding: 0 40rpx 32rpx;
   display: flex;
   flex-direction: column;
-  gap: 32rpx;
+  gap: 44rpx;
+}
+
+.mode-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.mode-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 0 8rpx;
+}
+
+.mode-group-mark {
+  width: 8rpx;
+  height: 32rpx;
+  border-radius: 999rpx;
+  background: #5EC159;
+}
+
+.mode-group-title {
+  color: #334155;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 44rpx;
+}
+
+.mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
 }
 
 /* ===== 模式卡片 ===== */

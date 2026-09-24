@@ -16,7 +16,16 @@ function partnerClosingStep(stage) {
 }
 
 function modeId(mode) {
-  return { PARTNER: 'partner', HALLI_GALLI: 'halliGalli', SPY: 'spy' }[mode] || null;
+  return {
+    PARTNER: 'partner',
+    GAN_DENG_YAN: 'ganDengYan',
+    HALLI_GALLI: 'halliGalli',
+    SPY: 'spy'
+  }[mode] || null;
+}
+
+function isHalliLikeMode(mode) {
+  return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
 }
 
 function routePageKey(routeName) {
@@ -285,7 +294,7 @@ function projectPageSnapshot(view, clientState) {
     roomState.partnerClosingCreativePoints = { blocks: closingContent.playBlocks,
       texts: closingContent.playHistory, images: closingContent.playImages };
     roomState.partnerSpecialMoveUsed = turn && turn.specialUsed || null;
-  } else if (session && session.mode === MODE.HALLI_GALLI) {
+  } else if (session && isHalliLikeMode(session.mode)) {
     roomState.currentPlayerIndex = memberSeat(view, session.publicModeState.firstMemberId);
     const first = members.find((item) => item.playerIndex === roomState.currentPlayerIndex);
     roomState.currentPlayerName = first && first.nickName || '';

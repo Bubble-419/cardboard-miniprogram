@@ -2,7 +2,7 @@
 
 const PROTOCOL_VERSION = 3;
 const SCHEMA_VERSION = 6;
-const VIEW_SCHEMA_VERSION = 7;
+const VIEW_SCHEMA_VERSION = 8;
 const EVENT_SCHEMA_VERSION = 4;
 const MAX_INCREMENTAL_SYNC_EVENTS = 25;
 const MAX_SEATS = 6;
@@ -18,7 +18,12 @@ const LIFECYCLE = Object.freeze({ OPEN: 'OPEN', DISSOLVED: 'DISSOLVED' });
 const SESSION_STATUS = Object.freeze({
   CONFIGURING: 'CONFIGURING', RUNNING: 'RUNNING', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED'
 });
-const MODE = Object.freeze({ PARTNER: 'PARTNER', HALLI_GALLI: 'HALLI_GALLI', SPY: 'SPY' });
+const MODE = Object.freeze({
+  PARTNER: 'PARTNER',
+  GAN_DENG_YAN: 'GAN_DENG_YAN',
+  HALLI_GALLI: 'HALLI_GALLI',
+  SPY: 'SPY'
+});
 const WORKFLOW_STEP = Object.freeze({
   CHOOSE_SCENARIO: 'CHOOSE_SCENARIO',
   COLLECT_DESIGN_PROBLEMS: 'COLLECT_DESIGN_PROBLEMS',
@@ -230,7 +235,8 @@ function okResult(fields) { return { ok: true, ...(fields || {}) }; }
 function isNonEmptyString(value) { return typeof value === 'string' && value.trim().length > 0; }
 function normalizeMode(value) {
   return ({ partner: MODE.PARTNER, PARTNER: MODE.PARTNER, halliGalli: MODE.HALLI_GALLI,
-    HALLI_GALLI: MODE.HALLI_GALLI, spy: MODE.SPY, SPY: MODE.SPY })[String(value || '').trim()] || null;
+    HALLI_GALLI: MODE.HALLI_GALLI, ganDengYan: MODE.GAN_DENG_YAN,
+    GAN_DENG_YAN: MODE.GAN_DENG_YAN, spy: MODE.SPY, SPY: MODE.SPY })[String(value || '').trim()] || null;
 }
 
 function isRecord(value) {
@@ -256,7 +262,7 @@ function validatePayload(type, payload) {
   if (unknownKey) return fail(ERR.INVALID_ARGUMENT, `payload.${unknownKey} 不属于 ${type}`);
 
   if (type === COMMAND_TYPES.START_WORKSHOP_SESSION && !normalizeMode(payload.mode)) {
-    return fail(ERR.INVALID_ARGUMENT, 'mode 必须是 PARTNER、HALLI_GALLI 或 SPY');
+    return fail(ERR.INVALID_ARGUMENT, 'mode 必须是 PARTNER、GAN_DENG_YAN、HALLI_GALLI 或 SPY');
   }
   if (type === COMMAND_TYPES.SUBMIT_PARTNER_SCORE) {
     const steps = payload.scoreHalfSteps;

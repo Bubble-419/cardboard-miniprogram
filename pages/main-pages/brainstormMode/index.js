@@ -20,36 +20,56 @@ const {
 } = require('../../../utils/pageInteractionLock');
 const { staticCdnUrl } = require('../../../utils/staticCdn');
 
-const BRAINSTORM_MODES = [
+const BRAINSTORM_MODE_GROUPS = [
   {
-    id: 'halliGalli',
-    title: '德国心脏病模式',
-    description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
-    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
-    pagePath: MODE_INDEX_PATH
+    id: 'component',
+    title: '组件卡',
+    modes: [{
+      id: 'ganDengYan',
+      title: '干瞪眼模式',
+      description: '组件卡快速组合，\n在线下对局中激发创意',
+      // baseline 阶段复用 Halli 流程及封面，后续规则独立演进时可替换专属素材。
+      coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
+      pagePath: MODE_INDEX_PATH
+    }, {
+      id: 'partner',
+      title: PARTNER_MODE_DISPLAY_TITLE,
+      description: '团队协作，\n共同打磨并提交最佳创意方案',
+      coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-partner.jpg'),
+      pagePath: MODE_INDEX_PATH
+    }]
   },
   {
-    id: 'partner',
-    title: PARTNER_MODE_DISPLAY_TITLE,
-    description: '团队协作，\n共同打磨并提交最佳创意方案',
-    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-partner.jpg'),
-    pagePath: MODE_INDEX_PATH
-  },
-  {
-    id: 'spy',
-    title: '谁是卧底模式',
-    description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
-    coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-spy.jpg'),
-    pagePath: '/packageSpy/pages/modeIndex/index'
+    id: 'template',
+    title: '模板卡',
+    modes: [{
+      id: 'spy',
+      title: '谁是卧底模式',
+      description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
+      coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-spy.jpg'),
+      pagePath: '/packageSpy/pages/modeIndex/index'
+    }, {
+      id: 'halliGalli',
+      title: '德国心脏病模式',
+      description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
+      coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
+      pagePath: MODE_INDEX_PATH
+    }]
   }
 ];
 
-function cloneModes() {
-  return BRAINSTORM_MODES.map((item) => ({ ...item }));
+function cloneModeGroups(includeCover = true) {
+  return BRAINSTORM_MODE_GROUPS.map((group) => ({
+    ...group,
+    modes: group.modes.map((item) => ({
+      ...item,
+      coverImage: includeCover ? item.coverImage : ''
+    }))
+  }));
 }
 
-function cloneModesWithoutCover() {
-  return BRAINSTORM_MODES.map((item) => ({ ...item, coverImage: '' }));
+function flattenModes(groups) {
+  return (groups || []).reduce((all, group) => all.concat(group.modes || []), []);
 }
 
 function parseIsHostOption(options) {
@@ -80,7 +100,7 @@ Page(withPageInteractionLock({
     workshopName: '脑暴工作坊',
     avatarList: [],
     currentUser: null,
-    brainstormModes: cloneModesWithoutCover(),
+    modeGroups: cloneModeGroups(false),
     selectedModeId: null,
     isSelecting: false,
     scrollHeight: 520
@@ -102,7 +122,7 @@ Page(withPageInteractionLock({
       roomId,
       isHost,
       scrollHeight: computeScrollHeight(),
-      brainstormModes: cloneModesWithoutCover()
+      modeGroups: cloneModeGroups(false)
     });
 
     if (!isHost) {
@@ -119,7 +139,7 @@ Page(withPageInteractionLock({
     this._coverLoadTimer = setTimeout(() => {
       this._coverLoadTimer = null;
       if (this._pageAlive) {
-        this.setData({ brainstormModes: cloneModes() });
+        this.setData({ modeGroups: cloneModeGroups(true) });
       }
     }, 280);
   },
@@ -241,7 +261,7 @@ Page(withPageInteractionLock({
       return;
     }
 
-    const mode = this.data.brainstormModes.find((item) => item.id === modeId);
+    const mode = flattenModes(this.data.modeGroups).find((item) => item.id === modeId);
     if (!mode) return;
 
     this.setData({ isSelecting: true });

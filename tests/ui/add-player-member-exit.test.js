@@ -127,3 +127,44 @@ test('静默刷新成功后仍会补拉二维码，快照失败也会尝试 room
   const silentBlock = source.split('if (silent) {')[1] || '';
   assert.match(silentBlock.slice(0, 1800), /_fillQrcodeIfNeeded\(roomId\)/);
 });
+
+test('非房主确认成员身份后才启动订阅，首次权威路由不会被跳过', async () => {
+  const definition = loadPageDefinition();
+  const originalWx = global.wx;
+  let membershipConfirmedWhenPollingStarts = null;
+  let followedInitialSnapshot = false;
+  global.wx = {
+    setStorageSync() {},
+    preloadPage() {}
+  };
+
+  const page = {
+    ...definition,
+    data: { ...definition.data },
+    setData(patch) {
+      Object.assign(this.data, patch);
+    },
+    _loadRoomDataAfterJoin: async () => ({
+      ok: true,
+      isHost: false,
+      view: { route: { name: 'modeIndex', params: { modeId: 'partner' } } }
+    }),
+    _startMemberPolling() {
+      membershipConfirmedWhenPollingStarts = this.data.membershipConfirmed;
+    },
+    _followRoomPageFromResult() {
+      followedInitialSnapshot = true;
+    },
+    _preloadBrainstormMode() {}
+  };
+
+  try {
+    page.onLoad({ roomId: '12345678' });
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    global.wx = originalWx;
+  }
+
+  assert.equal(membershipConfirmedWhenPollingStarts, true);
+  assert.equal(followedInitialSnapshot, true);
+});

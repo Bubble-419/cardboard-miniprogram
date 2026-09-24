@@ -53,9 +53,13 @@ test('返回图标统一为 40rpx，点击热区统一为至少 72rpx', () => {
   });
 });
 
-test('排行榜不展示返回入口', () => {
+test('排行榜左上角保留房间入口，但不展示页面返回入口', () => {
   const wxml = read('pages/leaderboard/index.wxml');
+  const wxss = read('pages/leaderboard/index.wxss');
   const js = read('pages/leaderboard/index.js');
+  assert.match(wxml, /class="navbar-room-entry"[\s\S]*?bindtap="handleReturnRoom"/);
+  assert.match(wxml, /src="\/assets\/partnerMode\/icon-room-entry-gp\.svg"/);
+  assert.match(wxss, /\.navbar-room-entry\s*\{[\s\S]*?width:\s*80rpx;[\s\S]*?height:\s*64rpx;/);
   assert.doesNotMatch(wxml, /icon-nav-back|bindtap="handleBack"/);
   assert.doesNotMatch(js, /handleBack\s*\(/);
 });

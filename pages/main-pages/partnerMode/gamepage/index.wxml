@@ -34,11 +34,11 @@
     <partner-player-strip
       avatarList="{{avatarList}}"
       actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
-      selectedUser="{{isHistoryReview || !isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
+      selectedUser="{{!isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
       indicatorUser="{{indicatorPlayerIndex}}"
       actionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
       specialMoveActive="{{cardBorderVariant === 'rainbow' || cardBorderVariant === 'sound'}}"
-      interactive="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+      interactive="{{gamepagePhase !== 'closing'}}"
       roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
       roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
       roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
@@ -564,7 +564,7 @@
                       value="{{expressDraftText}}"
                       maxlength="40"
                       confirm-type="send"
-                      hold-keyboard="{{true}}"
+                      hold-keyboard="{{false}}"
                       adjust-position="{{true}}"
                       cursor-spacing="24"
                       focus="{{expressComposerNeedFocus}}"
@@ -574,6 +574,7 @@
                       bindconfirm="onExpressConfirm"
                       bindinput="onExpressInput"
                       bindblur="onExpressComposerBlur"
+                      bindkeyboardheightchange="onExpressKeyboardHeightChange"
                     />
                     <button
                       class="spectator-express-send-btn {{expressHasText ? '' : 'spectator-express-send-disabled'}}"
@@ -785,7 +786,7 @@
                           value="{{expressDraftText}}"
                           maxlength="40"
                           confirm-type="send"
-                          hold-keyboard="{{true}}"
+                          hold-keyboard="{{false}}"
                           adjust-position="{{true}}"
                           cursor-spacing="24"
                           focus="{{expressComposerNeedFocus}}"
@@ -795,6 +796,7 @@
                           bindconfirm="onExpressConfirm"
                           bindinput="onExpressInput"
                           bindblur="onExpressComposerBlur"
+                          bindkeyboardheightchange="onExpressKeyboardHeightChange"
                         />
                         <button
                           class="spectator-express-send-btn {{expressHasText ? '' : 'spectator-express-send-disabled'}}"

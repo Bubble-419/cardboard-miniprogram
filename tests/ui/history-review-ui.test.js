@@ -78,18 +78,57 @@ test('全局回顾展示全部纪要卡、允许横滑，并返回排行榜', ()
   assert.match(wxml, /disable-touch="\{\{isHistoryReview \? reviewInnerScrolling/);
   assert.match(wxml, /scroll-y="\{\{!isHistoryReview \|\| reviewCardScrollY\}\}"/);
   assert.match(wxml, /historyReview="\{\{isHistoryReview\}\}"/);
+  assert.match(wxml, /selectedUser="\{\{!isPlayerFilterActive \? -1 : selectedPlayerIndex\}\}"/);
+  assert.match(wxml, /interactive="\{\{gamepagePhase !== 'closing'\}\}"/);
   assert.match(headerWxml, /historyReview \? 'GO_BACK' : 'OPEN_ROOM'/);
   assert.match(
     headerWxml,
-    /icon-room-entry-gp\.svg/,
-    '回顾态左上角应使用房间页入口图标，而不是返回箭头'
+    /wx:if="\{\{historyReview\}\}"[\s\S]*?icon-nav-back\.svg/,
+    '回顾态左上角应显示返回箭头'
   );
-  assert.doesNotMatch(wxml, /icon-special-back\.svg/);
+  assert.match(headerWxml, /aria-label="\{\{historyReview \? '返回排行榜' : '打开房间'\}\}"/);
   assert.match(js, /expectedPrev:\s*'pages\/leaderboard\/index'/);
   assert.match(js, /if \(isReview\) return true/);
   assert.match(js, /innerScrollLocked:\s*false/);
   assert.match(js, /onApplied:\s*isHistoryReview/);
   assert.match(js, /_finalizeHistoryReviewUi/);
+});
+
+test('全局回顾点击头像可仅看此人，再次点击恢复全部纪要', () => {
+  withPageWx(() => {
+    const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+    const roundSummaries = [
+      { round: 1, playerIndex: 1, playerName: '甲', playHistory: ['一'] },
+      { round: 2, playerIndex: 2, playerName: '乙', playHistory: ['二'] },
+      { round: 3, playerIndex: 1, playerName: '甲', playHistory: ['三'] }
+    ];
+    const members = [
+      { playerIndex: 1, nickName: '甲' },
+      { playerIndex: 2, nickName: '乙' }
+    ];
+    const page = makePage(definition, {
+      isHistoryReview: true,
+      gamepagePhase: 'play',
+      roomId: 'r1',
+      sessionId: 's1',
+      currentPlayerIndex: 1,
+      members,
+      roundSummaries,
+      displayRoundSummaries: roundSummaries,
+      cardIndex: 0,
+      cardCount: 3
+    });
+    page._isHistoryReview = true;
+
+    page.handleAvatarTap({ detail: { playerIndex: 2 } });
+    assert.equal(page.data.isPlayerFilterActive, true);
+    assert.equal(page.data.selectedPlayerIndex, 2);
+    assert.deepEqual(page.data.displayRoundSummaries.map((item) => item.playerIndex), [2]);
+
+    page.handleAvatarTap({ detail: { playerIndex: 2 } });
+    assert.equal(page.data.isPlayerFilterActive, false);
+    assert.deepEqual(page.data.displayRoundSummaries.map((item) => item.playerIndex), [1, 2, 1]);
+  });
 });
 
 test('收尾全局回顾绑定当前 Session，不猜测最近的历史场次', async () => {

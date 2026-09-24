@@ -7,10 +7,22 @@ const {
   activeParticipantIds, progressComplete, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR
 } = require('./model');
 
+function isHalliLikeMode(mode) {
+  return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
+}
+
+function assertHalliLikeSession(aggregate, context, steps) {
+  const check = assertSession(aggregate, context, { steps });
+  if (!check.ok) return check;
+  return isHalliLikeMode(check.session.mode)
+    ? check
+    : fail(ERR.INVALID_TRANSITION, '当前模式不匹配');
+}
+
 function reduceHalliCommand(aggregate, command, actorUserId, deps) {
   if (command.type === COMMAND_TYPES.END_HALLI_ACTIVITY) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
-    const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
+    const check = assertHalliLikeSession(aggregate, command.context, [WORKFLOW_STEP.HALLI_ACTIVITY]);
     if (!check.ok) return check;
     transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_CREATIVE, deps, {
       activeMemberId: null,
@@ -23,8 +35,8 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
 
   if (command.type === COMMAND_TYPES.REOPEN_HALLI_IDEA) {
     const actor = assertParticipant(aggregate, actorUserId); if (!actor.ok) return actor;
-    const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI,
-      steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY] });
+    const check = assertHalliLikeSession(aggregate, command.context,
+      [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]);
     if (!check.ok) return check;
     if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
     const key = `${check.session.sessionId}:HALLI_IDEA:${actor.member.memberId}`;
@@ -40,8 +52,8 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
 
   if (command.type === COMMAND_TYPES.SUBMIT_HALLI_IDEA) {
     const actor = assertParticipant(aggregate, actorUserId); if (!actor.ok) return actor;
-    const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI,
-      steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY] });
+    const check = assertHalliLikeSession(aggregate, command.context,
+      [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]);
     if (!check.ok) return check;
     if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
     const facts = ensureFacts(aggregate);
@@ -75,7 +87,7 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
 
   if (command.type === COMMAND_TYPES.COMPLETE_HALLI_SESSION) {
     const host = assertHost(aggregate, actorUserId); if (!host.ok) return host;
-    const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_SUMMARY] });
+    const check = assertHalliLikeSession(aggregate, command.context, [WORKFLOW_STEP.HALLI_SUMMARY]);
     if (!check.ok) return check;
     const revisingMemberIds = check.session.modeState.halli
       && check.session.modeState.halli.revisingMemberIds || [];
@@ -84,9 +96,9 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
       .filter((item) => item.sessionId === check.session.sessionId && item.kind === 'HALLI_IDEA');
     check.session.status = SESSION_STATUS.COMPLETED;
     check.session.completedAt = nowOf(deps);
-    check.session.result = { mode: MODE.HALLI_GALLI, ideaCount: ideas.length };
+    check.session.result = { mode: check.session.mode, ideaCount: ideas.length };
     return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_COMPLETED,
-      { sessionId: check.session.sessionId, mode: MODE.HALLI_GALLI })]);
+      { sessionId: check.session.sessionId, mode: check.session.mode })]);
   }
 
   return fail(ERR.INVALID_ARGUMENT, `未实现的 Halli 命令: ${command.type}`);
@@ -95,7 +107,7 @@ function reduceHalliCommand(aggregate, command, actorUserId, deps) {
 function handleHalliParticipantLeft(aggregate, memberId, deps) {
   const session = aggregate.currentSession;
   const events = [];
-  if (!session || session.mode !== MODE.HALLI_GALLI) return { events, dirtyFacts: [] };
+  if (!session || !isHalliLikeMode(session.mode)) return { events, dirtyFacts: [] };
   if (session.workflow.step === WORKFLOW_STEP.HALLI_ACTIVITY
     && session.setup.proposedFirstMemberId === memberId) {
     const replacement = activeParticipantIds(session)[0] || null;

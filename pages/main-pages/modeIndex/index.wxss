@@ -1,6 +1,8 @@
 /* ===== 全局容器 ===== */
 .container {
   height: 100vh;
+  display: flex;
+  flex-direction: column;
   background-color: #fafafa;
   box-sizing: border-box;
   overflow: hidden;
@@ -8,12 +10,12 @@
 
 /* 房主页：头/线下卡固定，仅脑暴列表滚动 */
 .host-page {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
-  padding-bottom: 160rpx;
 }
 
 /* ===== 等待视图 ===== */

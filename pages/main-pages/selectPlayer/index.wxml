@@ -24,7 +24,8 @@
   <block>
   <view class="instruction-text" wx:if="{{!selectedPlayerIndex}}">
     <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
-    <text class="instruction-line">由系统随机选出首位翻牌玩家</text>
+    <text class="instruction-line" wx:if="{{iosTouchLimitActive}}">第6位玩家触碰后，从前5个触点中立即抽取</text>
+    <text class="instruction-line" wx:else>由系统随机选出首位翻牌玩家</text>
   </view>
 
   <!-- 触摸交互区域（限制在文字和按钮之间） -->

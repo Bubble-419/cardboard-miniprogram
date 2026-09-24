@@ -25,7 +25,7 @@ flowchart TD
 |---|---|---|
 | [`CONTEXT.md`](../CONTEXT.md) | 业务词语到底指什么？ | 活跃 |
 | [协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md) | Command、Snapshot、Event、View 和恢复如何工作？ | 活跃、协议主文档 |
-| [房间业务流程](./ROOM_BUSINESS_FLOWS.md) | 三种模式和成员变化如何推进？ | 活跃 |
+| [房间业务流程](./ROOM_BUSINESS_FLOWS.md) | 四种模式和成员变化如何推进？ | 活跃 |
 | [房间模型与状态](./ROOM_MODEL_STATE.md) | 权威数据放在哪里、有哪些状态与不变量？ | 活跃 |
 | [部署与验收清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md) | 云端需要创建和发布什么？静态插图如何上传到云存储？ | 活跃 |
 | [ADR-0001](./adr/0001-room-snapshot-event-protocol.md) | 为什么不是全量轮询或完整事件溯源？ | Accepted |
@@ -61,7 +61,7 @@ flowchart LR
   end
 
   subgraph Core[协议核心]
-    DOMAIN[Room / Partner / Halli / Spy Reducer]
+    DOMAIN[Room / Partner / Gan Deng Yan / Halli / Spy Reducer]
     PROJ[Member View Projector]
     REPO[CloudBase Adapter]
     APP --> DOMAIN
@@ -123,7 +123,7 @@ Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 |---|---|
 | 协议版本、Command、Event、错误与校验 | [`packages/room-contracts/index.js`](../packages/room-contracts/index.js) |
 | Room 公共领域规则 | [`packages/room-domain/index.js`](../packages/room-domain/index.js) |
-| Partner / Halli / Spy 规则 | [`packages/room-domain/partner.js`](../packages/room-domain/partner.js)、[`halli.js`](../packages/room-domain/halli.js)、[`spy.js`](../packages/room-domain/spy.js) |
+| Partner / Gan Deng Yan / Halli / Spy 规则 | [`packages/room-domain/partner.js`](../packages/room-domain/partner.js)、[`halli.js`](../packages/room-domain/halli.js)（Gan Deng Yan baseline 共用）、[`spy.js`](../packages/room-domain/spy.js) |
 | Public / Actor / Route / Patch 投影 | [`packages/room-projection/index.js`](../packages/room-projection/index.js) |
 | Command、Snapshot、Sync 编排 | [`packages/room-application/index.js`](../packages/room-application/index.js) |
 | 测试专用内存 Repository | [`packages/room-application/testing.js`](../packages/room-application/testing.js)（不进入云函数构建） |

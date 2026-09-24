@@ -162,6 +162,137 @@ test('selectPlayer 页面消费 Shell Model 原地切换等待场景与 Host 选
   assert.equal(page.data.members.length, 1);
 });
 
+test('iOS 六人局第六个触摸到达时立即从已按下的五个触点中抽取', () => {
+  const page = makePage();
+  const previousWx = global.wx;
+  const previousGetApp = global.getApp;
+  const previousRandom = Math.random;
+  const touches = Array.from({ length: 5 }, (_, index) => ({
+    identifier: index + 1,
+    clientX: 40 + index * 50,
+    clientY: 300
+  }));
+  const members = Array.from({ length: 6 }, (_, index) => ({
+    memberId: `member-${index + 1}`,
+    playerIndex: index + 1,
+    nickName: `玩家${index + 1}`
+  }));
+  global.wx = { getSystemInfoSync: () => ({ platform: 'ios', system: 'iOS 18.0' }) };
+  global.getApp = () => ({ globalData: {} });
+  Math.random = () => 0.8;
+
+  try {
+    page._applyRoomContext({
+      ok: true,
+      revision: 7,
+      isHost: true,
+      selectedModeId: 'halliGalli',
+      members,
+      view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
+    });
+    assert.equal(page.data.iosTouchLimitActive, true);
+    page.data.activeTouches = touches.map((touch) => ({
+      id: touch.identifier,
+      x: touch.clientX,
+      y: touch.clientY,
+      timestamp: 1,
+      visible: true
+    }));
+    page.onTouchStart({
+      touches,
+      changedTouches: [{ identifier: 6, clientX: 320, clientY: 300 }]
+    });
+    assert.equal(page.data.selectedTouchId, 5);
+    assert.equal(page.data.selectedPlayerIndex, 5);
+    assert.equal(page.data.activeTouches.length, 5, '第六个触摸不加入抽取池');
+    assert.equal(page.data.countdown, 0, 'iOS 兜底抽取不再等待倒计时');
+  } finally {
+    if (page.animationDoneTimer) clearTimeout(page.animationDoneTimer);
+    global.wx = previousWx;
+    global.getApp = previousGetApp;
+    Math.random = previousRandom;
+  }
+});
+
+test('iOS 未上报第六个触摸事件时也会从五个触点中安全抽取', () => {
+  const page = makePage();
+  const previousGetApp = global.getApp;
+  const previousSetTimeout = global.setTimeout;
+  const previousClearTimeout = global.clearTimeout;
+  const scheduled = [];
+  page.data.members = Array.from({ length: 6 }, (_, index) => ({
+    memberId: `member-${index + 1}`,
+    playerIndex: index + 1
+  }));
+  page.data.minPlayers = 6;
+  page.data.iosTouchLimitActive = true;
+  page.data.activeTouches = Array.from({ length: 5 }, (_, index) => ({
+    id: index + 1,
+    x: 40 + index * 50,
+    y: 300
+  }));
+  global.getApp = () => ({ globalData: {} });
+  global.setTimeout = (callback, delay) => {
+    scheduled.push({ callback, delay });
+    return scheduled.length;
+  };
+  global.clearTimeout = () => {};
+
+  try {
+    page.updatePlayerCount();
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].delay >= 500, true, '应给第六位玩家留出触碰时间');
+    scheduled[0].callback();
+    assert.equal(page.data.selectedTouchId != null, true);
+    assert.equal(page.data.selectedPlayerIndex <= 5, true);
+  } finally {
+    global.getApp = previousGetApp;
+    global.setTimeout = previousSetTimeout;
+    global.clearTimeout = previousClearTimeout;
+  }
+});
+
+test('非 iOS 六人局仍按全部触点进入原倒计时流程', () => {
+  const page = makePage();
+  const previousWx = global.wx;
+  const members = Array.from({ length: 6 }, (_, index) => ({
+    memberId: `member-${index + 1}`,
+    playerIndex: index + 1
+  }));
+  const touches = members.map((_, index) => ({
+    identifier: index + 1,
+    clientX: 30 + index * 40,
+    clientY: 300
+  }));
+  global.wx = { getSystemInfoSync: () => ({ platform: 'android', system: 'Android 16' }) };
+
+  try {
+    page._applyRoomContext({
+      ok: true,
+      revision: 7,
+      isHost: true,
+      selectedModeId: 'halliGalli',
+      members,
+      view: { route: { name: 'selectPlayer', params: { phase: 'SELECT_FIRST_PLAYER' } } }
+    });
+    page.data.activeTouches = touches.slice(0, 5).map((touch) => ({
+      id: touch.identifier,
+      x: touch.clientX,
+      y: touch.clientY,
+      timestamp: 1,
+      visible: true
+    }));
+    page.onTouchStart({ touches, changedTouches: [touches[5]] });
+
+    assert.equal(page.data.iosTouchLimitActive, false);
+    assert.equal(page.data.activeTouches.length, 6);
+    assert.equal(page.data.selectedPlayerIndex == null, true);
+  } finally {
+    page._clearLongPressTimer();
+    global.wx = previousWx;
+  }
+});
+
 test('selectPlayer 首屏和离开 Shell 时都保持无交互加载态', () => {
   const page = makePage();
   assert.equal(page.data.roomShellScreen, SELECT_PLAYER_SHELL_SCREEN.LOADING);

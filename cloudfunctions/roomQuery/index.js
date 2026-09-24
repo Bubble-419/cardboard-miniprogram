@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 6;
-    var VIEW_SCHEMA_VERSION = 7;
+    var VIEW_SCHEMA_VERSION = 8;
     var EVENT_SCHEMA_VERSION = 4;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -28,7 +28,12 @@ var require_room_contracts = __commonJS({
       COMPLETED: "COMPLETED",
       CANCELLED: "CANCELLED"
     });
-    var MODE = Object.freeze({ PARTNER: "PARTNER", HALLI_GALLI: "HALLI_GALLI", SPY: "SPY" });
+    var MODE = Object.freeze({
+      PARTNER: "PARTNER",
+      GAN_DENG_YAN: "GAN_DENG_YAN",
+      HALLI_GALLI: "HALLI_GALLI",
+      SPY: "SPY"
+    });
     var WORKFLOW_STEP = Object.freeze({
       CHOOSE_SCENARIO: "CHOOSE_SCENARIO",
       COLLECT_DESIGN_PROBLEMS: "COLLECT_DESIGN_PROBLEMS",
@@ -335,6 +340,8 @@ var require_room_contracts = __commonJS({
         PARTNER: MODE.PARTNER,
         halliGalli: MODE.HALLI_GALLI,
         HALLI_GALLI: MODE.HALLI_GALLI,
+        ganDengYan: MODE.GAN_DENG_YAN,
+        GAN_DENG_YAN: MODE.GAN_DENG_YAN,
         spy: MODE.SPY,
         SPY: MODE.SPY
       }[String(value || "").trim()] || null;
@@ -360,7 +367,7 @@ var require_room_contracts = __commonJS({
       const unknownKey = Object.keys(payload).find((key) => !allowedKeys.includes(key));
       if (unknownKey) return fail(ERR.INVALID_ARGUMENT, `payload.${unknownKey} \u4E0D\u5C5E\u4E8E ${type}`);
       if (type === COMMAND_TYPES.START_WORKSHOP_SESSION && !normalizeMode(payload.mode)) {
-        return fail(ERR.INVALID_ARGUMENT, "mode \u5FC5\u987B\u662F PARTNER\u3001HALLI_GALLI \u6216 SPY");
+        return fail(ERR.INVALID_ARGUMENT, "mode \u5FC5\u987B\u662F PARTNER\u3001GAN_DENG_YAN\u3001HALLI_GALLI \u6216 SPY");
       }
       if (type === COMMAND_TYPES.SUBMIT_PARTNER_SCORE) {
         const steps = payload.scoreHalfSteps;
@@ -1644,11 +1651,19 @@ var require_halli = __commonJS({
       EVENT_TYPES,
       ERR
     } = require_model();
+    function isHalliLikeMode(mode) {
+      return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
+    }
+    function assertHalliLikeSession(aggregate, context, steps) {
+      const check = assertSession(aggregate, context, { steps });
+      if (!check.ok) return check;
+      return isHalliLikeMode(check.session.mode) ? check : fail(ERR.INVALID_TRANSITION, "\u5F53\u524D\u6A21\u5F0F\u4E0D\u5339\u914D");
+    }
     function reduceHalliCommand(aggregate, command, actorUserId, deps) {
       if (command.type === COMMAND_TYPES.END_HALLI_ACTIVITY) {
         const host = assertHost(aggregate, actorUserId);
         if (!host.ok) return host;
-        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_ACTIVITY] });
+        const check = assertHalliLikeSession(aggregate, command.context, [WORKFLOW_STEP.HALLI_ACTIVITY]);
         if (!check.ok) return check;
         transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_CREATIVE, deps, {
           activeMemberId: null,
@@ -1661,10 +1676,11 @@ var require_halli = __commonJS({
       if (command.type === COMMAND_TYPES.REOPEN_HALLI_IDEA) {
         const actor = assertParticipant(aggregate, actorUserId);
         if (!actor.ok) return actor;
-        const check = assertSession(aggregate, command.context, {
-          mode: MODE.HALLI_GALLI,
-          steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
-        });
+        const check = assertHalliLikeSession(
+          aggregate,
+          command.context,
+          [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
+        );
         if (!check.ok) return check;
         if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
         const key = `${check.session.sessionId}:HALLI_IDEA:${actor.member.memberId}`;
@@ -1682,10 +1698,11 @@ var require_halli = __commonJS({
       if (command.type === COMMAND_TYPES.SUBMIT_HALLI_IDEA) {
         const actor = assertParticipant(aggregate, actorUserId);
         if (!actor.ok) return actor;
-        const check = assertSession(aggregate, command.context, {
-          mode: MODE.HALLI_GALLI,
-          steps: [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
-        });
+        const check = assertHalliLikeSession(
+          aggregate,
+          command.context,
+          [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY]
+        );
         if (!check.ok) return check;
         if (check.session.status !== SESSION_STATUS.RUNNING) return fail(ERR.INVALID_TRANSITION);
         const facts = ensureFacts(aggregate);
@@ -1731,17 +1748,17 @@ var require_halli = __commonJS({
       if (command.type === COMMAND_TYPES.COMPLETE_HALLI_SESSION) {
         const host = assertHost(aggregate, actorUserId);
         if (!host.ok) return host;
-        const check = assertSession(aggregate, command.context, { mode: MODE.HALLI_GALLI, steps: [WORKFLOW_STEP.HALLI_SUMMARY] });
+        const check = assertHalliLikeSession(aggregate, command.context, [WORKFLOW_STEP.HALLI_SUMMARY]);
         if (!check.ok) return check;
         const revisingMemberIds = check.session.modeState.halli && check.session.modeState.halli.revisingMemberIds || [];
         if (revisingMemberIds.length) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u7B49\u5F85\u6210\u5458\u5B8C\u6210\u521B\u610F\u4FEE\u6539");
         const ideas = Object.values(ensureFacts(aggregate).contributions).filter((item) => item.sessionId === check.session.sessionId && item.kind === "HALLI_IDEA");
         check.session.status = SESSION_STATUS.COMPLETED;
         check.session.completedAt = nowOf(deps);
-        check.session.result = { mode: MODE.HALLI_GALLI, ideaCount: ideas.length };
+        check.session.result = { mode: check.session.mode, ideaCount: ideas.length };
         return domainOk(aggregate, [event(
           EVENT_TYPES.WORKSHOP_SESSION_COMPLETED,
-          { sessionId: check.session.sessionId, mode: MODE.HALLI_GALLI }
+          { sessionId: check.session.sessionId, mode: check.session.mode }
         )]);
       }
       return fail(ERR.INVALID_ARGUMENT, `\u672A\u5B9E\u73B0\u7684 Halli \u547D\u4EE4: ${command.type}`);
@@ -1749,7 +1766,7 @@ var require_halli = __commonJS({
     function handleHalliParticipantLeft(aggregate, memberId, deps) {
       const session = aggregate.currentSession;
       const events = [];
-      if (!session || session.mode !== MODE.HALLI_GALLI) return { events, dirtyFacts: [] };
+      if (!session || !isHalliLikeMode(session.mode)) return { events, dirtyFacts: [] };
       if (session.workflow.step === WORKFLOW_STEP.HALLI_ACTIVITY && session.setup.proposedFirstMemberId === memberId) {
         const replacement = activeParticipantIds(session)[0] || null;
         session.setup.proposedFirstMemberId = replacement;
@@ -2442,6 +2459,9 @@ var require_room_domain = __commonJS({
     function minimumPlayers(mode) {
       return mode === MODE.SPY ? 3 : 2;
     }
+    function isHalliLikeMode(mode) {
+      return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
+    }
     function createCommand(aggregate, command, actorUserId, deps) {
       if (aggregate) return fail(ERR.INVALID_TRANSITION, "\u623F\u95F4\u5DF2\u7ECF\u5B58\u5728");
       const roomId = command.roomId || deps && deps.roomIdFactory && deps.roomIdFactory();
@@ -2550,13 +2570,13 @@ var require_room_domain = __commonJS({
         markParticipantLeft(aggregate, target.memberId);
         if (session.status === SESSION_STATUS.CONFIGURING && activeParticipantIds(session).length < minimumPlayers(session.mode)) {
           cancelCurrentSession(aggregate, "NOT_ENOUGH_PLAYERS", deps, events);
-        } else if ((session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI) && activeParticipantIds(session).length <= 1) {
+        } else if ((session.mode === MODE.PARTNER || isHalliLikeMode(session.mode)) && activeParticipantIds(session).length <= 1) {
           cancelCurrentSession(aggregate, "NOT_ENOUGH_PLAYERS", deps, events);
         } else if (session.mode === MODE.PARTNER) {
           const side = handlePartnerParticipantLeft(aggregate, target.memberId, deps);
           events.push(...side.events);
           dirtyFacts.push(...side.dirtyFacts);
-        } else if (session.mode === MODE.HALLI_GALLI) {
+        } else if (isHalliLikeMode(session.mode)) {
           const side = handleHalliParticipantLeft(aggregate, target.memberId, deps);
           events.push(...side.events);
           dirtyFacts.push(...side.dirtyFacts);
@@ -2755,7 +2775,7 @@ var require_room_domain = __commonJS({
           activeMemberId: null,
           turnId: null
         });
-      } else if (check.session.mode === MODE.HALLI_GALLI) {
+      } else if (isHalliLikeMode(check.session.mode)) {
         check.session.status = SESSION_STATUS.RUNNING;
         transitionWorkflow(check.session, WORKFLOW_STEP.HALLI_ACTIVITY, deps, {
           activeMemberId: memberId,
@@ -2821,7 +2841,7 @@ var require_room_domain = __commonJS({
         steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
       });
       if (!check.ok) return check;
-      if (![MODE.PARTNER, MODE.HALLI_GALLI].includes(check.session.mode)) {
+      if (check.session.mode !== MODE.PARTNER && !isHalliLikeMode(check.session.mode)) {
         return fail(ERR.INVALID_TRANSITION);
       }
       const dirtyFacts = [];
@@ -2908,7 +2928,7 @@ var require_room_domain = __commonJS({
         session.setup.proposedFirstMemberId = validFirst;
         const turn = startPartnerFlow(aggregate, validFirst, deps);
         events.push(event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: validFirst, roundNo: 1 }));
-      } else if (session.mode === MODE.HALLI_GALLI) {
+      } else if (isHalliLikeMode(session.mode)) {
         transitionWorkflow(session, WORKFLOW_STEP.SELECT_FIRST_PLAYER, deps, {
           activeMemberId: null,
           turnId: null
@@ -3064,9 +3084,13 @@ var require_room_projection = __commonJS({
     function clientModeId(mode) {
       return {
         [MODE.PARTNER]: "partner",
+        [MODE.GAN_DENG_YAN]: "ganDengYan",
         [MODE.HALLI_GALLI]: "halliGalli",
         [MODE.SPY]: "spy"
       }[mode] || "";
+    }
+    function isHalliLikeMode(mode) {
+      return mode === MODE.HALLI_GALLI || mode === MODE.GAN_DENG_YAN;
     }
     function subAwaitScene(step) {
       if (step === WORKFLOW_STEP.SELECT_DESIGN_PROBLEM) return "selectProblem";
@@ -3264,7 +3288,7 @@ var require_room_projection = __commonJS({
           completedAt: item.completedAt,
           artifacts: allArtifacts.filter((artifact) => artifact.sessionId === session.sessionId && artifact.turnId === item.turnId && !artifact.removed).sort((a, b) => a.createdAt - b.createdAt).map(publicArtifact)
         }));
-      } else if (session.mode === MODE.HALLI_GALLI) {
+      } else if (isHalliLikeMode(session.mode)) {
         const ideas = contributions.filter((item) => item.kind === "HALLI_IDEA");
         const halli = currentHalli(aggregate) || {};
         view.publicModeState = {
@@ -3355,7 +3379,7 @@ var require_room_projection = __commonJS({
         "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
-        isHost && session && [MODE.PARTNER, MODE.HALLI_GALLI].includes(session.mode) && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
+        isHost && session && (session.mode === MODE.PARTNER || isHalliLikeMode(session.mode)) && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
         "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
@@ -3454,10 +3478,10 @@ var require_room_projection = __commonJS({
             params: host ? { from: "closingEnd" } : { from: "closingEnd", isSubScreen: 1 }
           };
         }
-        if (session.mode === MODE.HALLI_GALLI) return { name: "creativeSummary", params: {} };
+        if (isHalliLikeMode(session.mode)) return { name: "creativeSummary", params: {} };
         return { name: "spySettle", params: {} };
       }
-      const revisingHalliIdea = session.mode === MODE.HALLI_GALLI && actorView.contributionStatus.submitted && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA] && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
+      const revisingHalliIdea = isHalliLikeMode(session.mode) && actorView.contributionStatus.submitted && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA] && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
       if (revisingHalliIdea) return { name: "creativeInput", params: {} };
       if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
         return { name: "creativeSummary", params: {} };

@@ -107,7 +107,7 @@ sequenceDiagram
 - 缺口恢复不会把旧 staging View 与新 Snapshot 混用；
 - 页面只依赖最终 `Member View`，不感知本次更新来自 Snapshot 还是 Event。
 
-对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。三种模式从配置到完成的 Snapshot/Event 等价验收位于 [`tests/room-domain/v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js)。
+对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。四种模式从配置到完成的 Snapshot/Event 等价验收位于 [`tests/room-domain/v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js)。
 
 ## 1. 最终运行拓扑
 
@@ -470,16 +470,16 @@ stateDiagram-v2
 flowchart TD
   START[START_WORKSHOP_SESSION] --> MODE{mode}
   MODE -->|Spy| SI[SPY_INTRO]
-  MODE -->|Partner/Halli| CS[CHOOSE_SCENARIO]
+  MODE -->|Partner/Halli/Gan Deng Yan| CS[CHOOSE_SCENARIO]
   CS --> SRC{情境来源}
   SRC -->|Partner 且非 OFFLINE| COLLECT[COLLECT_DESIGN_PROBLEMS]
   COLLECT --> SELECT[SELECT_DESIGN_PROBLEM]
-  SRC -->|Partner OFFLINE / Halli| FIRST[SELECT_FIRST_PLAYER]
+  SRC -->|Partner OFFLINE / Halli / Gan Deng Yan| FIRST[SELECT_FIRST_PLAYER]
   SELECT --> FIRST
   FIRST -->|RESET_DESIGN_PROBLEM| SELECT
   FIRST -->|Partner| CONFIRM[CONFIRM_FIRST_PLAYER]
   CONFIRM -->|RESET_FIRST_PLAYER| FIRST
-  FIRST -->|Halli| HA[HALLI_ACTIVITY]
+  FIRST -->|Halli / Gan Deng Yan| HA[HALLI_ACTIVITY]
   CONFIRM --> PT[PARTNER_TURN]
 ```
 
@@ -522,7 +522,7 @@ flowchart LR
   SUM --> HISTORY[Session History]
 ```
 
-## 7. Halli Galli 状态机
+## 7. Halli Galli / Gan Deng Yan baseline 状态机
 
 ```mermaid
 stateDiagram-v2
@@ -541,6 +541,10 @@ stateDiagram-v2
 Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
 `REOPEN_HALLI_IDEA` 把修改意图写入 Session，只将修改者的 Actor Route 投影为
 `creativeInput`；断线恢复后仍可从 Snapshot 还原编辑页和已提交文本。
+
+Gan Deng Yan 使用独立的 `GAN_DENG_YAN` 模式值和客户端 `ganDengYan` modeId。首版 baseline
+复用上述 `HALLI_*` Workflow、Command、Route 与创意事实结构，因此可以独立识别、恢复和重玩，
+但暂不复制一套同构状态机；后续规则分化时再新增专属步骤和 Command。
 
 Spy 的 `START_NEXT_SPY_ROUND` 在无淘汰时重新洗牌；有淘汰时则保留上轮发言顺序，
 移除淘汰者并从其后一位开始。
@@ -603,7 +607,7 @@ flowchart TD
   MODE -->|Partner 行动者离开| ARCHIVE[归档 ABANDONED Turn]
   ARCHIVE --> NEXT[推进下一有效成员]
   MODE -->|Partner 评分/收尾票| SHRINK1[缩减 required 集合并判定完成]
-  MODE -->|Halli 投稿| SHRINK2[缩减 required 集合并判定汇总]
+  MODE -->|Halli / Gan Deng Yan 投稿| SHRINK2[缩减 required 集合并判定汇总]
   MODE -->|Spy| SHRINK3[移出发言/投票并重新判定胜负]
 ```
 
@@ -661,7 +665,7 @@ sequenceDiagram
 | 边界 | 实现 |
 |---|---|
 | Schema / Command / Event / Error | `packages/room-contracts` |
-| Room / Partner / Halli / Spy Reducer | `packages/room-domain` |
+| Room / Partner / Gan Deng Yan / Halli / Spy Reducer | `packages/room-domain` |
 | Public / Actor / Route / Navigation / Capability / Event Reduce | `packages/room-projection` |
 | 事务编排 / Snapshot / Sync / History | `packages/room-application` |
 | CloudBase 事务仓储 | `packages/room-cloudbase-adapter` |

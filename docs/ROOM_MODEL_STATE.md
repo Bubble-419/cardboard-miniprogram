@@ -122,7 +122,7 @@ erDiagram
 RoomSession
 ├── sessionId / roomId / ordinal
 ├── status: CONFIGURING | RUNNING | COMPLETED | CANCELLED
-├── mode: PARTNER | HALLI_GALLI | SPY
+├── mode: PARTNER | GAN_DENG_YAN | HALLI_GALLI | SPY
 ├── participants[]
 │   ├── memberId / userId
 │   ├── seatNoAtStart
@@ -180,7 +180,7 @@ Partner 常规行动最多 200 Turn；达到上限后只能发起收尾，不能
 Session + Facts 序列化文档不得超过 6 MiB 安全预算
 ```
 
-## 4. 三种模式的状态轴
+## 4. 四种模式的状态轴
 
 ```mermaid
 flowchart LR
@@ -231,6 +231,12 @@ result.ideaCount
 ```
 
 创意是公共协作事实；每次 `SUBMIT_HALLI_IDEA` 都会将已提交内容增量投影给全员。`HALLI_SUMMARY` 表示全员提交完成，不是内容首次解封点。`revisingMemberIds` 是权威修改意图：本人 Actor View 由此恢复输入页，Public View 只投影 `revisingCount`，不公开修改者身份。修改未保存时不允许完成场次。
+
+### Gan Deng Yan
+
+`GAN_DENG_YAN` 是独立的持久化与 Member View 模式值。baseline 暂时与 Halli Galli 共用
+`modeState.halli`、`HALLI_*` Workflow、`HALLI_IDEA` Contribution 和同一组完成/重玩不变量；
+模式值始终保留为 `GAN_DENG_YAN`，避免未来拆分规则时无法区分历史场次。
 
 ### Spy
 

@@ -108,6 +108,7 @@
     </view>
 
     <page-footer
+      fixed="{{false}}"
       extClass="footer"
       showPrimary="{{false}}"
       bind:prev="handleGoBack"

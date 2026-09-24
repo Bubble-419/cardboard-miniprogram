@@ -1,7 +1,7 @@
 /**
  * 共用模式首页 - 情境选择
  * 路径：pages/main-pages/modeIndex/
- * 入口参数：roomId, modeId (halliGalli | partner | spy)
+ * 入口参数：roomId, modeId (ganDengYan | halliGalli | partner | spy)
  */
 const { getScenariosForMode } = require('../../../utils/partnerScenarios');
 const { buildScenarioTagsForMode } = require('../../../utils/scenarioCategories');
@@ -23,6 +23,7 @@ const {
 } = require('../../../utils/pageInteractionLock');
 
 const MODE_META = {
+  ganDengYan: { title: '干瞪眼模式', gameMode: 'ganDengYan' },
   halliGalli: { title: '德国心脏病模式', gameMode: 'halliGalli' },
   partner: { title: PARTNER_MODE_DISPLAY_TITLE, gameMode: 'partner' },
   spy: { title: '谁是卧底模式', gameMode: 'spy' }
@@ -220,7 +221,7 @@ Page({
   async _goAddScenario() {
     return runPageNavigation(this, async () => {
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
-      const mode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+      const mode = this.data.modeId === 'partner' ? 'partner' : this.data.modeId;
       getApp().globalData.gameMode = mode;
       getApp().globalData.selectedBGSource = 'custom';
       const query = roomId
@@ -260,7 +261,7 @@ Page({
       try {
         // 线下情境：跳过情境填写，直接进入选玩家
         if (scenario.isOffline || scenario.id === 'offline') {
-          const offlineMode = this.data.modeId === 'partner' ? 'partner' : 'halliGalli';
+          const offlineMode = this.data.modeId === 'partner' ? 'partner' : this.data.modeId;
           app.globalData.gameMode = offlineMode;
           const result = await dispatchRoomCommand('SET_SCENARIO', { source: 'OFFLINE' });
           if (!result || result.ok !== true) {
@@ -286,9 +287,9 @@ Page({
           };
         }
 
-        // 其他模式（含 halliGalli 案例/历史）：带入情境后进入选玩家
+        // 其他线下模式（Halli / Gan Deng Yan 案例或历史）：带入情境后进入选玩家
         const bg = { ...scenario.bg };
-        if (this.data.modeId === 'halliGalli') {
+        if (this.data.modeId !== 'partner') {
           delete bg.platform;
         }
         app.globalData.selectedBG = bg;

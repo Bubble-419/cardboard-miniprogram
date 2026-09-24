@@ -2244,6 +2244,13 @@ Page(withPageInteractionLock({
     this._refreshCloudAvatarsIfNeeded(result.members || members, members);
     this._captureReviewMyPlayerIndex(members);
     const roomState = result.roomState || {};
+    const selectedProblem = result.selectedDesignProblem
+      || (result.view && result.view.session && result.view.session.setup
+        && result.view.session.setup.selectedProblem)
+      || null;
+    const selectedProblemText = selectedProblem && typeof selectedProblem.text === 'string'
+      ? selectedProblem.text
+      : '';
     const player = resolveCurrentPlayerFromRoom(
       members,
       roomState,
@@ -2459,6 +2466,7 @@ Page(withPageInteractionLock({
       members,
       workshopName: result.workshopName || '',
       selectedBG: result.selectedBG || null,
+      selectedProblemText,
       avatarList: isClosingPhase(roomPhase)
         ? buildPartnerAvatarList(members, closingQuestionPlayers)
         : buildPartnerAvatarList(members),
@@ -2759,6 +2767,8 @@ Page(withPageInteractionLock({
       roomPhase,
       currentRound,
       sessionId,
+      selectedProblem && (selectedProblem.contributionId || selectedProblem.id) || '',
+      selectedProblemText,
       closingStep,
       partnerRoundStartedAt || 0,
       avatarRoundStartedAt || 0,
@@ -3309,6 +3319,7 @@ Page(withPageInteractionLock({
     // 头像会重建下方卡片。先撤销所有显式聚焦意图，避免真机原生 input
     // 在第二次点击或 swiper 重绘后继承旧焦点并重新拉起软键盘。
     this._expressComposerIgnoreBlurUntil = 0;
+    this._expressKeyboardWasVisible = false;
     this._inspirationNativeFocused = false;
     this.setData({
       expressComposerOpen: false,
@@ -4760,6 +4771,7 @@ Page(withPageInteractionLock({
     }
     const draft = this._expressDraftText || this.data.expressDraftText || '';
     this._expressDraftText = draft;
+    this._expressKeyboardWasVisible = false;
     this._expressComposerIgnoreBlurUntil = Date.now() + 1200;
     if (this._expressFocusTimer) {
       clearTimeout(this._expressFocusTimer);
@@ -4789,6 +4801,7 @@ Page(withPageInteractionLock({
 
   closeExpressComposer() {
     if (this.data.expressSending) return;
+    this._expressKeyboardWasVisible = false;
     if (this._expressBlurTimer) {
       clearTimeout(this._expressBlurTimer);
       this._expressBlurTimer = null;
@@ -4799,6 +4812,9 @@ Page(withPageInteractionLock({
     }
     const draft = this._expressDraftText || this.data.expressDraftText || '';
     this._expressDraftText = draft;
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
     this.setData({
       expressComposerOpen: false,
       expressComposerNeedFocus: false,
@@ -4811,6 +4827,20 @@ Page(withPageInteractionLock({
   onExpressComposerFocus() {
     this._expressComposerIgnoreBlurUntil = Date.now() + 400;
     // 聚焦中禁止立刻 setData(focus=false)，真机会把输入法打掉
+  },
+
+  onExpressKeyboardHeightChange(e) {
+    const keyboardHeight = keyboardHeightFromEvent(e);
+    if (keyboardHeight > 0) {
+      this._expressKeyboardWasVisible = true;
+      return;
+    }
+    // 原生 input 挂载时也可能先派发一次 height=0，只有键盘实际显示过后
+    // 再降为 0 才代表用户收起了键盘。
+    if (!this._expressKeyboardWasVisible) return;
+    this._expressKeyboardWasVisible = false;
+    if (!this.data.expressComposerOpen || this.data.expressSending) return;
+    this.closeExpressComposer();
   },
 
   onExpressComposerBlur() {
@@ -6553,6 +6583,7 @@ Page(withPageInteractionLock({
   'onClosingCreativeTitleTap',
   'onExpressComposerBlur',
   'onExpressComposerFocus',
+  'onExpressKeyboardHeightChange',
   'onExpressConfirm',
   'onExpressFormSubmit',
   'onExpressInput',
@@ -6587,7 +6618,7 @@ Page(withPageInteractionLock({
 ], {
   passthroughMethods: [
     'onClosingCreativeFocus', 'onClosingCreativeBlur', 'onClosingCreativeKeyboardHeightChange',
-    'onExpressComposerBlur', 'onExpressComposerFocus',
+    'onExpressComposerBlur', 'onExpressComposerFocus', 'onExpressKeyboardHeightChange',
     'onInspirationBlur', 'onInspirationFocus', 'onInspirationKeyboardHeightChange',
     'onGameHeaderIntent', 'onGameFooterIntent'
   ]
