@@ -2841,7 +2841,6 @@ Page(withPageInteractionLock({
         this._bindInspirationKeyboard();
         Promise.resolve(this._refreshInspirationCount()).catch(() => {});
       }
-      this._openSilentOverlayIfNeeded(roomState);
       this._hydrateCloudRoundMedia(
         roundContent,
         patch.displayRoundSummaries,
@@ -3018,27 +3017,6 @@ Page(withPageInteractionLock({
     } catch (e) {
       console.warn('refreshScoreStatus', e);
     }
-  },
-
-  _openSilentOverlayIfNeeded(roomState) {
-    if (this._isHistoryReviewMode() || this._pageVisible === false) return;
-    if (!roomState || roomState.partnerSilentMode !== true) {
-      this._openedSilentOverlay = false;
-      return;
-    }
-    if (this._openedSilentOverlay) return;
-    this._openedSilentOverlay = true;
-    const url = buildSpecialMoveUrl(
-      this.data.roomId,
-      this.data.currentPlayerIndex || 1,
-      this.data.isCurrentPlayer ? {} : { silent: 1 }
-    );
-    wx.navigateTo({
-      url,
-      fail: () => {
-        this._openedSilentOverlay = false;
-      }
-    });
   },
 
   _startStatePolling() {

@@ -135,7 +135,7 @@ flowchart TD
 | `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式时其他成员以 `specialMove?silent=1` 叠入；全员本机采麦测 40dB，边框用本地声级。`PARTNER_SILENT_SOUND` 仍仅房主可写，给无麦端回退 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式仅当前行动者停留在特殊行动叠层；其他成员留在 `gamepage`，使用相同的静默徽标与声浪边框，同时保留匿名表达和打分功能。`PARTNER_SILENT_SOUND` 继续作为所有成员卡片声浪效果的共享瞬时信号 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
 | `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
@@ -409,7 +409,7 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 | Host 选“部分通过/全部疑问” | `START_PARTNER_STATEMENT(partialPass/allQuestion)` | 将结果保存在 Active Turn，进入 `PARTNER_STATEMENT` 讨论 |
 | Host “没有疑问” | `ADVANCE_PARTNER_TURN(allPass)` | 覆盖讨论期结果为全部通过，归档 Turn，创建下一 Turn |
 | Host “结束讨论” | `ADVANCE_PARTNER_TURN(allQuestion)` | 按疑问结果归档 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员叠入 `specialMove?silent=1`；全员本机采麦测 40dB。房主仍可写 `PARTNER_SILENT_SOUND`，给无麦端回退 |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员继续停留在游戏卡片，通过 Member View 同步静默徽标、声浪边框和 `PARTNER_SILENT_SOUND` 效果，并继续使用匿名表达与打分 |
 | 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |

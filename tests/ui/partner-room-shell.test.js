@@ -59,7 +59,6 @@ function makeGamePage() {
   page._refreshCloudAvatarsIfNeeded = () => {};
   page._captureReviewMyPlayerIndex = () => {};
   page._ingestExpressMessages = () => {};
-  page._openSilentOverlayIfNeeded = () => {};
   page._hydrateCloudRoundMedia = () => {};
   page._persistHistoryReviewSnapshot = () => {};
   page._syncRoundSpeech = () => {};
@@ -377,6 +376,24 @@ test('Master Event 刷新不会让非当前玩家离开 game 屏幕或丢失打�
   assert.equal(page.data.isCurrentPlayer, false);
   assert.equal(page.data.isMasterMode, true);
   assert.equal(page.data.specialActionBadge, 'Master模式');
+  assert.equal(page.data.starRatingCollapsed, false);
+});
+
+test('静默特殊行动让其他玩家留在游戏卡片并保留打分资格 UI', async () => {
+  const page = makeGamePage();
+  const snapshot = nonCurrentPlayerGameSnapshot(false, 22);
+  snapshot.roomState.partnerSilentMode = true;
+  snapshot.roomState.partnerSilentSoundLevel = 0.6;
+
+  const applied = page._applyRoomContext(snapshot);
+  await applied.applied;
+
+  assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.GAME);
+  assert.equal(page.data.isCurrentPlayer, false);
+  assert.equal(page.data.isSilentMode, true);
+  assert.equal(page.data.specialActionBadge, '静默模式');
+  assert.equal(page.data.cardBorderVariant, 'sound');
+  assert.equal(page.data.silentSoundLevel, 0.6);
   assert.equal(page.data.starRatingCollapsed, false);
 });
 
