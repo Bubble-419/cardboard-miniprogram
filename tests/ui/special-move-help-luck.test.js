@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function loadPageDefinition(app) {
   const originalPage = global.Page;
@@ -165,4 +167,71 @@ test('进入收尾阶段后关闭本地叠层，由下层 RoomShell 消费权威
   assert.equal(commands[0].type, 'USE_PARTNER_SPECIAL');
   assert.deepEqual(commands[0].payload, { kind: 'CLOSING' });
   assert.deepEqual(returnedState, { partnerGamePhase: 'closing' });
+});
+
+test('特殊行动页点击设计问题进入详情并传递当前情境', async () => {
+  const { app, page } = fixture();
+  const selectedBG = { title: '通勤途中', content: '用户正在赶时间' };
+  app.globalData.roomSession.getView = () => ({
+    session: {
+      setup: {
+        selectedProblem: { contributionId: 'problem-1' },
+        scenario: selectedBG
+      }
+    }
+  });
+  page.setData({ selectedProblemText: '如何改善通勤体验？' });
+
+  let navigationOptions = null;
+  let channelEvent = null;
+  await withRuntime(app, async () => {
+    global.wx = {
+      showToast() {},
+      navigateTo(options) {
+        navigationOptions = options;
+        options.success({
+          eventChannel: {
+            emit(name, payload) {
+              channelEvent = { name, payload };
+            }
+          }
+        });
+      }
+    };
+    const result = await page.handleViewSituation();
+    assert.equal(result.ok, true);
+  });
+
+  assert.match(navigationOptions.url, /partnerMode\/confirmBG\/index/);
+  assert.match(navigationOptions.url, /from=specialMove/);
+  assert.match(navigationOptions.url, /currentPlayerIndex=1/);
+  assert.match(navigationOptions.url, /problemText=/);
+  assert.deepEqual(channelEvent, {
+    name: 'initGameDetail',
+    payload: {
+      problemText: '如何改善通勤体验？',
+      problemId: 'problem-1',
+      selectedBG
+    }
+  });
+  assert.deepEqual(app.globalData.selectedProblem, {
+    id: 'problem-1',
+    text: '如何改善通勤体验？'
+  });
+  assert.equal(app.globalData.selectedBG, selectedBG);
+});
+
+test('特殊行动页设计问题区域绑定详情导航', () => {
+  const wxml = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/partnerMode/specialMove/index.wxml'),
+    'utf8'
+  );
+  assert.match(wxml, /class="problem-chip[^\"]*"[\s\S]*?bindtap="handleViewSituation"/);
+
+  const detailPageJs = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/partnerMode/confirmBG/index.js'),
+    'utf8'
+  );
+  assert.match(detailPageJs, /from === 'specialMove'/);
+  assert.match(detailPageJs, /expectedPrev: 'pages\/main-pages\/partnerMode\/specialMove\/index'/);
 });

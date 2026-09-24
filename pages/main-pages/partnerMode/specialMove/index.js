@@ -1096,6 +1096,58 @@ Page(withPageInteractionLock({
     });
   },
 
+  /** 点击设计问题：进入情境详情，navigateTo 保留特殊行动页实例与当前进度。 */
+  handleViewSituation() {
+    return runPageNavigation(this, async () => {
+      const app = getApp();
+      const roomId = this.data.roomId || (app.globalData && app.globalData.roomId) || '';
+      if (!roomId) {
+        wx.showToast({ title: '缺少房间信息', icon: 'none' });
+        return null;
+      }
+
+      this._stopStatePolling();
+      const problemText = (this.data.selectedProblemText || '').trim();
+      const roomSession = getActiveRoomSession();
+      const view = roomSession && roomSession.getView();
+      const setup = view && view.session && view.session.setup;
+      const selectedProblem = setup && setup.selectedProblem;
+      const selectedBG = setup && setup.scenario;
+
+      if (problemText && app.globalData) {
+        app.globalData.selectedProblem = {
+          id: selectedProblem && selectedProblem.contributionId || '',
+          text: problemText
+        };
+        app.globalData.selectedBG = selectedBG || null;
+      }
+
+      let url = `/pages/main-pages/partnerMode/confirmBG/index?roomId=${encodeURIComponent(roomId)}&from=specialMove`;
+      url += `&currentPlayerIndex=${encodeURIComponent(this.data.currentPlayerIndex || 1)}`;
+      if (this.data.viewMode === 'silent') url += '&silent=1';
+      if (problemText) url += `&problemText=${encodeURIComponent(problemText)}`;
+      return {
+        method: 'navigateTo',
+        url,
+        success: (res) => {
+          try {
+            const eventChannel = res && res.eventChannel;
+            if (eventChannel && typeof eventChannel.emit === 'function') {
+              eventChannel.emit('initGameDetail', {
+                problemText,
+                problemId: selectedProblem && selectedProblem.contributionId || '',
+                selectedBG: selectedBG || null
+              });
+            }
+          } catch (e) {
+            console.warn('emit initGameDetail', e);
+          }
+        },
+        fail: () => this._startStatePolling()
+      };
+    }, { loadingText: '正在查看设计问题…' });
+  },
+
   handleToggleProblemExpand() {
     const text = this.data.selectedProblemText;
     if (!text) return;
@@ -1492,6 +1544,7 @@ Page(withPageInteractionLock({
 
 }, [
   'handleGoRoom',
+  'handleViewSituation',
   'handleToggleProblemExpand',
   'handleGoBack',
   'onSelectAction',

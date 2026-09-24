@@ -54,11 +54,14 @@ Page(withPageInteractionLock({
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
     const from = (options && options.from) || '';
     // game：游戏页回看；submit/select：提交/选择设计问题页回看 —— 均为只读确认情境
-    const fromGameView = from === 'game' || from === 'submit' || from === 'select'
+    const fromGameView = from === 'game' || from === 'specialMove' || from === 'submit' || from === 'select'
       || options.fromGame === '1'
       || options.fromGame === true;
-    const isGameDetail = from === 'game' || options.fromGame === '1' || options.fromGame === true;
-    const returnBtnText = (from === 'submit' || from === 'select') ? '返回' : '返回游戏';
+    const isGameDetail = from === 'game' || from === 'specialMove'
+      || options.fromGame === '1' || options.fromGame === true;
+    const returnBtnText = from === 'specialMove'
+      ? '返回特殊行动'
+      : ((from === 'submit' || from === 'select') ? '返回' : '返回游戏');
     // 游戏页传入的最终选定设计问题（URL / eventChannel / globalData）
     let passedProblemText = '';
     try {
@@ -71,6 +74,10 @@ Page(withPageInteractionLock({
     this._passedProblemText = String(passedProblemText || '').trim();
     this._fromGameView = fromGameView;
     this._fromSource = from || (fromGameView ? 'game' : '');
+    this._specialMoveReturnParams = {
+      currentPlayerIndex: (options && options.currentPlayerIndex) || '',
+      silent: !!(options && (options.silent === '1' || options.silent === true))
+    };
     this.setData({ from: this._fromSource, isGameDetail });
 
     if (roomId) {
@@ -310,6 +317,21 @@ Page(withPageInteractionLock({
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     const roomEnc = roomId ? encodeURIComponent(roomId) : '';
     const from = this._fromSource || '';
+    if (from === 'specialMove') {
+      const params = this._specialMoveReturnParams || {};
+      let fallbackUrl = roomEnc
+        ? `/pages/main-pages/partnerMode/specialMove/index?roomId=${roomEnc}`
+        : '';
+      if (fallbackUrl && params.currentPlayerIndex) {
+        fallbackUrl += `&currentPlayerIndex=${encodeURIComponent(params.currentPlayerIndex)}`;
+      }
+      if (fallbackUrl && params.silent) fallbackUrl += '&silent=1';
+      safeNavigateBack({
+        expectedPrev: 'pages/main-pages/partnerMode/specialMove/index',
+        fallbackUrl
+      });
+      return;
+    }
     if (from === 'submit') {
       safeNavigateBack({
         expectedPrev: 'pages/main-pages/submitProblem/index',

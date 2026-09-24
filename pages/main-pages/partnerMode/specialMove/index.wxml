@@ -17,9 +17,9 @@
           <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
         </view>
         <view
-          class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{problemTextOverflow || problemExpanded ? 'problem-chip-tappable' : ''}}"
+          class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{selectedProblemText ? 'problem-chip-tappable' : ''}}"
           style="min-height: {{topBarIconSize}}px;"
-          bindtap="handleToggleProblemExpand"
+          bindtap="handleViewSituation"
         >
           <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
           <view class="problem-text-wrap">
