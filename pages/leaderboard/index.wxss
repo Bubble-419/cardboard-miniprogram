@@ -18,15 +18,10 @@
   padding: 0 32rpx;
 }
 
-.navbar-left {
+.navbar-spacer {
   width: 80rpx;
   height: 64rpx;
-  display: flex;
-  align-items: center;
 }
-
-.back-icon { width: 40rpx; height: 40rpx; display: block; }
-.back-icon-hover { opacity: 0.55; }
 
 .navbar-title {
   font-size: 32rpx;

@@ -1,9 +1,7 @@
 <view class="container">
   <view class="custom-navbar">
     <view class="navbar-content">
-      <view class="navbar-left" hover-class="back-icon-hover" hover-stay-time="80" bindtap="handleBack">
-        <image class="back-icon" src="/assets/icons/icon-nav-back.svg" mode="aspectFit" />
-      </view>
+      <view class="navbar-spacer" aria-hidden="true" />
       <view class="navbar-title"></view>
       <view class="navbar-right" />
     </view>

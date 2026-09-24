@@ -12,7 +12,6 @@ function read(relativePath) {
 test('自定义导航页面统一使用标准返回图标资源，不再混用字符和旧图标', () => {
   const pageTemplates = [
     'pages/inspiration/index.wxml',
-    'pages/leaderboard/index.wxml',
     'pages/main-pages/selectPlayer/index.wxml',
     'pages/main-pages/partnerMode/confirmFirstPlayer/index.wxml',
     'pages/main-pages/partnerMode/specialMove/index.wxml'
@@ -30,7 +29,6 @@ test('返回图标统一为 40rpx，点击热区统一为至少 72rpx', () => {
     ['components/custom-navbar/index.wxss', 'navbar-back', 'navbar-back-icon'],
     ['components/player-top-bar/index.wxss', 'back-entry', 'back-entry-icon'],
     ['pages/inspiration/index.wxss', 'navbar-left', 'back-icon'],
-    ['pages/leaderboard/index.wxss', 'navbar-left', 'back-icon'],
     ['pages/main-pages/selectPlayer/index.wxss', 'navbar-left', 'back-icon'],
     ['pages/main-pages/partnerMode/confirmFirstPlayer/index.wxss', 'navbar-left', 'back-icon'],
     ['pages/main-pages/partnerMode/specialMove/index.wxss', 'section-back', 'section-back-icon']
@@ -53,4 +51,11 @@ test('返回图标统一为 40rpx，点击热区统一为至少 72rpx', () => {
     assert.match(iconRules, /width:\s*40rpx;/);
     assert.match(iconRules, /height:\s*40rpx;/);
   });
+});
+
+test('排行榜不展示返回入口', () => {
+  const wxml = read('pages/leaderboard/index.wxml');
+  const js = read('pages/leaderboard/index.js');
+  assert.doesNotMatch(wxml, /icon-nav-back|bindtap="handleBack"/);
+  assert.doesNotMatch(js, /handleBack\s*\(/);
 });
