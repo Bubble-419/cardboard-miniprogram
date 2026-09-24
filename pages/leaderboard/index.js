@@ -99,6 +99,12 @@ Page(withPageInteractionLock({
     }), { loadingText: '正在打开回顾…' });
   },
 
+  handleGoRoom() {
+    return runPageInteraction(this, () => goRoomPage(this.data.roomId), {
+      loadingText: '正在返回房间…'
+    });
+  },
+
   handleNewGame() { return this.handleAnotherRound(); },
 
   handleAnotherRound() {
@@ -152,4 +158,4 @@ Page(withPageInteractionLock({
       if (this._pageAlive !== false) this.setData({ actioning: false });
     }
   }
-}, ['handleGlobalReview', 'handleReturnRoom', 'handleAnotherRound', 'handleNewGame']));
+}, ['handleGlobalReview', 'handleGoRoom', 'handleReturnRoom', 'handleAnotherRound', 'handleNewGame']));

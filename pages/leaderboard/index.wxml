@@ -3,7 +3,7 @@
     <view class="navbar-content">
       <view
         class="navbar-room-entry"
-        bindtap="handleReturnRoom"
+        bindtap="handleGoRoom"
         role="button"
         aria-label="打开房间"
       >
