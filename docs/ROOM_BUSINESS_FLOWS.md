@@ -61,13 +61,13 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
-| `subAwait` | `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；`params.scene` 区分情境 / 首位玩家 / 确认首位 |
+| `subAwait` | `scene=bg/player` 由 `/pages/main-pages/selectPlayer/index` Setup Shell 承载；Partner `scene=confirmFirstPlayer` 由 `/pages/main-pages/partnerMode/gamepage/index` RoomShell 承载；其他场景保留 `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；逻辑 Route 不因稳定 Shell 改名 |
 | `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题；已提交者可催促未提交者 |
 | `selectProblem` | `/pages/main-pages/selectProblem/index` | `selectProblem` | 全员查看设计问题；Host 可选择/编辑，Player 只读并显示「房主编辑中」 |
 | `selectPlayer` | `/pages/main-pages/selectPlayer/index` | `selectPlayer` | Host 抽取/选择首位玩家 |
 | `confirmFirstPlayer` | `/pages/main-pages/partnerMode/confirmFirstPlayer/index` | `confirmFirstPlayer` | Host 确认 Partner 首位玩家 |
 | `partnerGame` | `/pages/main-pages/partnerMode/gamepage/index` | `gamepage` | Partner 行动、讨论、Rune、Review |
-| `closingStatement` | `/pages/main-pages/partnerMode/closingStatement/index` | `closingStatement` | Partner 收尾表态 |
+| `closingStatement` | `/pages/main-pages/partnerMode/gamepage/index`（RoomShell 的 `closingVote` 屏幕） | `closingStatement` | Partner 收尾表态；与行动页共用稳定页面实例 |
 | `leaderboard` | `/pages/leaderboard/index` | `leaderboard` | Partner 已完成排行榜；Host 带 `from=closingEnd`，Player 另带 `isSubScreen=1` |
 | `halliGame` | `/pages/main-pages/halliGalli/gamepage/index` | `gamepage` | 德国心脏病规则和线下活动 |
 | `creativeInput` | `/pages/main-pages/creativeInput/index` | `creativeInput` | 德国心脏病填写创意 |
@@ -84,11 +84,11 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 |---|---|---|---|
 | 无 Session | `addPlayer` | `addPlayer` | — |
 | 任意进行中 Session | 对应下表 | 对应下表 | 非本场参与者固定为 `addPlayer?observing=true` |
-| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | Player `params.scene=bg` |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | Player `params.scene=bg`；物理页面为 Setup Shell 的 `waiting` 屏幕 |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` | Player 只读；可通过 `roomSignal` `DESIGN_PROBLEM_EDITING` 看到房主正在编辑 |
-| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | Player `params.scene=player` |
-| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait` | Player `params.scene=confirmFirstPlayer` |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait` | Player `params.scene=player`；Host 选择器与 Player 等待屏幕共用 Setup Shell |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait` | Player `params.scene=confirmFirstPlayer`；物理页面已进入 Partner RoomShell 的 `waiting` 屏幕 |
 | `PARTNER_TURN` | `partnerGame` | `partnerGame` | 当前行动者、Host、其他玩家能力不同 |
 | `PARTNER_STATEMENT` | `partnerGame` | `partnerGame` | — |
 | `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` | 发起者自动通过，其余玩家可投票 |
@@ -96,8 +96,8 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `PARTNER_CLOSING_REVIEW` | `partnerGame` | `partnerGame` | `roomState.partnerClosingStep = review` |
 | Partner `COMPLETED` | `leaderboard?from=closingEnd` | `leaderboard?from=closingEnd&isSubScreen=1` | Host 显示“返回房间/再来一轮”，Player 仅展示排行榜 |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` | 只有 Host 显示“结束游戏” |
-| `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后立即投影为 `creativeSummary` |
-| `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | — |
+| `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后投影为 `creativeSummary`；修改中回到 `creativeInput` |
+| `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | 任一成员修改自己的创意时，仅本人投影为 `creativeInput` |
 | Halli `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
 | `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
 | `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 当前发言者可结束发言；Host 可开票 |
@@ -135,7 +135,7 @@ flowchart TD
 | `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后按新状态跟随。静默模式时其他成员以 `specialMove?silent=1` 叠入；全员本机采麦测 40dB，边框用本地声级。`PARTNER_SILENT_SOUND` 仍仅房主可写，给无麦端回退 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式时其他成员以 `specialMove?silent=1` 叠入；全员本机采麦测 40dB，边框用本地声级。`PARTNER_SILENT_SOUND` 仍仅房主可写，给无麦端回退 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
 | `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
@@ -207,6 +207,11 @@ sequenceDiagram
 
 本地叠层只在仍属于同一权威 Route 时保留；一旦 `view.route` 改变，必须关闭叠层并跟随新页面。
 
+导航协调器只有在微信导航成功后才推进本地 Route 水位。`redirectTo` 失败、抛错或长时间没有
+任何回调时，本次导航必须视为失败并释放交互锁；后续 Event/Snapshot 可以用同一权威 Route
+继续重试，不能因为一次失败把成员永久留在旧等待页。除 Spy 运行页外，普通权威页的
+`redirectTo` 失败可降级为 `reLaunch`；Spy 保留原页面栈，避免整栈重建造成白屏。
+
 ## 3. 创建、加入与大厅
 
 ```mermaid
@@ -247,6 +252,10 @@ sequenceDiagram
 | “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
+大厅二维码属于房间邀请能力，不依赖完整 Room Snapshot 是否成功安装。Snapshot 暂时失败时，
+已知 `roomId` 的大厅仍可独立通过 `roomMedia` 补拉二维码；二维码请求失败也不能清除房间成员
+资格或阻断“退出房间 / 解散房间”。
+
 ```mermaid
 flowchart TD
   JOIN[JOIN_ROOM] --> ACTIVE{已有开放房间?}
@@ -267,13 +276,13 @@ flowchart TD
   LOBBY[大厅 addPlayer]
   PICK[选模式叠层 brainstormMode]
   CHOOSE_H[CHOOSE_SCENARIO<br/>Host: modeIndex]
-  CHOOSE_P[Player: subAwait]
+  CHOOSE_P[Player: subAwait<br/>selectPlayer Setup Shell / waiting]
   COLLECT[COLLECT_DESIGN_PROBLEMS<br/>全员: submitProblem]
   SELECT_PROBLEM[SELECT_DESIGN_PROBLEM<br/>全员: selectProblem]
   SELECT_FIRST_H[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
-  SELECT_FIRST_P[Player: subAwait]
+  SELECT_FIRST_P[Player: subAwait<br/>同一 Setup Shell / waiting]
   CONFIRM_H[CONFIRM_FIRST_PLAYER<br/>Host: confirmFirstPlayer]
-  CONFIRM_P[Player: subAwait]
+  CONFIRM_P[Player: subAwait<br/>gamepage Shell / waiting 屏幕]
   PARTNER[PARTNER_TURN<br/>全员: partnerGame]
   HALLI[HALLI_ACTIVITY<br/>全员: halliGame]
   SPY[SPY_INTRO<br/>全员: spyIntro]
@@ -318,6 +327,11 @@ flowchart TD
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。
 
+Player 的 `CHOOSE_SCENARIO → SELECT_FIRST_PLAYER` 使用稳定 `selectPlayer` Setup Shell：完整 Member
+View 将 `subAwait?scene=bg/player` 投影成受控 `waiting` 组件，Host 的 `selectPlayer` Route 投影成
+`selector`。首次进入时保持无交互加载态，不按 URL 猜测 Host/Player 屏幕；同路径变化只更新 Shell
+Model，不调用微信导航；进入其他流程页面时先冻结触摸与计时，再交还全局导航协调器。
+
 ## 5. Partner
 
 ### 5.1 主循环与页面
@@ -341,7 +355,7 @@ stateDiagram-v2
 flowchart LR
   TURN[PARTNER_TURN<br/>partnerGame<br/>出牌/评分/匿名表达]
   STATEMENT[PARTNER_STATEMENT<br/>partnerGame<br/>表态与讨论]
-  VOTE[PARTNER_CLOSING_VOTE<br/>closingStatement<br/>通过/存在疑问]
+  VOTE[PARTNER_CLOSING_VOTE<br/>closingStatement<br/>gamepage Shell / closingVote 屏幕]
   RUNE[PARTNER_CLOSING_RUNE<br/>partnerGame<br/>补全符文]
   REVIEW[PARTNER_CLOSING_REVIEW<br/>partnerGame<br/>创意点复盘]
   BOARD[COMPLETED<br/>Host: leaderboard + 操作区<br/>Player: leaderboard 副屏]
@@ -354,6 +368,36 @@ flowchart LR
   RUNE -->|Host“下一步”| REVIEW
   REVIEW -->|Host“结束脑暴”| BOARD
 ```
+
+Partner Player 从“等待房主确认首位玩家”开始进入同一个物理 `gamepage` RoomShell。
+`subAwait?scene=confirmFirstPlayer`、`partnerGame` 与 `closingStatement` 仍是独立的权威逻辑
+Route，但它们只切换 Shell 内的 `waiting / game / closingVote` 屏幕，不调用 `redirectTo`。
+因此确认开局、收尾表态返回等连续切屏不依赖微信导航回调，也不重建页面实例。
+
+```mermaid
+flowchart LR
+  VIEW[完整 Member View]
+  ROUTE{view.route.name}
+  SHELL[Partner gamepage RoomShell]
+  WAIT[waiting 屏幕<br/>等待 Host 确认首位]
+  GAME[game 屏幕<br/>行动 / 讨论 / Rune / Review]
+  VOTE_SCREEN[closingVote 屏幕<br/>通过 / 存在疑问]
+  NAV[全局导航协调器]
+
+  VIEW --> ROUTE
+  ROUTE -->|subAwait + confirmFirstPlayer| SHELL --> WAIT
+  ROUTE -->|partnerGame| SHELL --> GAME
+  ROUTE -->|closingStatement| SHELL --> VOTE_SCREEN
+  ROUTE -->|leaderboard / 配置页| NAV
+```
+
+RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSnapshot 交给 Shell，再执行
+全局 Route 协调。同物理路径返回 `SAME_ROUTE` 只表示不需要微信导航，不代表忽略屏幕更新。
+卡片滑动、打分手势和输入草稿可以延迟普通游戏区刷新，但不得延迟
+`waiting ↔ game ↔ closingVote` 权威屏幕切换。每个稳定屏幕都只消费 Shell Model；切入非游戏
+屏幕时停止计时、语音和输入副作用，切回 `game` 时由 Shell 显式恢复。从本地叠层返回触发
+`onShow` 时，必须先消费 RoomSession 已提交的当前 View，再决定恢复哪个屏幕的副作用，不能先按旧屏幕启动游戏。
+旧的独立 `closingStatement` 页面不再注册，也不保留第二套轮询或投票逻辑。
 
 | 页面操作 | Command | 约束 / 结果 |
 |---|---|---|
@@ -371,12 +415,21 @@ flowchart LR
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
 | Host “结束脑暴” | `COMPLETE_PARTNER_SESSION` | 完成并生成排行榜；每个客户端按自己的 `view.route.params` 决定主屏/副屏 |
 
-Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。
+Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。若整轮末 `firstMemberId` 被选为 question 回答者，该回答 Turn 直接计入新轮，完成后继续到下一座位。
 排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
 刷新丢失，也不能阻塞后续权威 View 应用。
+
+灵感输入、匿名表达和收尾复盘输入使用原生输入组件的 `adjust-position` 与
+`keyboardheightchange`。键盘高度只驱动聚焦态、Footer 显隐和局部可视区域，不再叠加
+`fixed/transform` 位移，避免系统顶页与手工顶起产生双重偏移。输入焦点、键盘高度、草稿、
+手势和动画均属于本地 UI 状态；无关 Event/Snapshot 不得重建输入节点或关闭键盘。
+
+静默模式的录音权限只在进入静默测声时通过运行时授权申请；拒绝后本页不重复弹出授权窗口。
+所有成员都使用本机麦克风判断 40dB 边框效果，房主广播的声级只作为无麦设备的回退，且只有
+当前特殊行动玩家可以结束静默。
 
 ### 5.2 收尾裁决
 
@@ -412,6 +465,7 @@ flowchart LR
   INPUT[HALLI_CREATIVE<br/>未提交: creativeInput]
   WAIT[HALLI_CREATIVE<br/>已提交: creativeSummary]
   SUMMARY[HALLI_SUMMARY<br/>全员: creativeSummary]
+  EDIT[HALLI_CREATIVE / HALLI_SUMMARY<br/>仅修改者: creativeInput]
   COMPLETE[COMPLETED<br/>全员: creativeSummary]
   REPLAY[新 Session<br/>SELECT_FIRST_PLAYER]
   LOBBY[大厅<br/>addPlayer]
@@ -422,6 +476,10 @@ flowchart LR
   INPUT -->|SUBMIT_HALLI_IDEA| WAIT
   INPUT -->|最后一人提交| SUMMARY
   WAIT -->|最后一人提交| SUMMARY
+  WAIT -->|REOPEN_HALLI_IDEA| EDIT
+  SUMMARY -->|REOPEN_HALLI_IDEA| EDIT
+  EDIT -->|SUBMIT_HALLI_IDEA| WAIT
+  EDIT -->|汇总期保存| SUMMARY
   SUMMARY -->|COMPLETE_HALLI_SESSION| COMPLETE
   COMPLETE -->|REPLAY_WORKSHOP_SESSION| REPLAY
   COMPLETE -->|RETURN_TO_LOBBY| LOBBY
@@ -429,7 +487,7 @@ flowchart LR
 
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
-线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。
+线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 回到自己的输入页，修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
 
 ## 7. 谁是卧底（Spy）
 
@@ -480,6 +538,11 @@ flowchart TD
   WIN -->|否| NEXT --> SPEAK
   WIN -->|是| SETTLED
 ```
+
+无人淘汰时，下一轮对存活成员重新随机洗牌；有人淘汰时，保留上轮随机顺序，移除淘汰者后从其下一位继续。
+
+平票加时的确认提示以“并列成员集合 + 加时轮起点”作为一次性键。同一加时轮切换发言者时
+不得重复弹出；只有进入新的平票加时轮才生成新的确认提示。
 
 隐私边界：
 
@@ -569,7 +632,12 @@ flowchart LR
 | Halli 离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
 | Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
-| 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`room-navigation-concurrency.test.js`](../tests/ui/room-navigation-concurrency.test.js) |
+| 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js) |
+| 导航失败重试、等待页退出与无回调超时释放 | [`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js)、[`sub-await-scene.test.js`](../tests/ui/sub-await-scene.test.js)、[`page-interaction-lock.test.js`](../tests/ui/page-interaction-lock.test.js) |
+| Partner 输入键盘、草稿与原生焦点稳定性 | [`inspiration-keyboard-lift.test.js`](../tests/ui/inspiration-keyboard-lift.test.js)、[`room-local-draft.test.js`](../tests/ui/room-local-draft.test.js) |
+| Setup Shell 等待/抽取切换、乱序 View 防回退 | [`select-player-shell.test.js`](../tests/ui/select-player-shell.test.js)、[`select-player-back.test.js`](../tests/ui/select-player-back.test.js) |
+| Partner 低耦合组件、RoomShell 屏幕切换、特殊行动返回与同路径导航 | [`partner-game-components.test.js`](../tests/ui/partner-game-components.test.js)、[`partner-room-shell.test.js`](../tests/ui/partner-room-shell.test.js)、[`special-move-help-luck.test.js`](../tests/ui/special-move-help-luck.test.js)、[`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
+| Spy 平票提示每轮只展示一次 | [`spy-tie-prompt.test.js`](../tests/ui/spy-tie-prompt.test.js) |
 
 手工多端验收每个关键 Step 至少覆盖：
 

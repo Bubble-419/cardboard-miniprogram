@@ -12,7 +12,7 @@ const {
   clone, projectPublicView, projectMemberView, createPublicPatch, projectActorPatches
 } = require('@cardboard/room-projection');
 
-const DEFAULT_SYNC_LIMIT = 100;
+const DEFAULT_SYNC_LIMIT = MAX_INCREMENTAL_SYNC_EVENTS;
 const PRESENCE_TTL_MS = 15000;
 
 function isRoomId(value) {
@@ -185,6 +185,9 @@ function createRoomApplication(repo, options) {
   if (!repo || typeof repo.transactCommand !== 'function') throw new Error('RoomRepository required');
   const appOptions = options || {};
   const now = () => Number(typeof appOptions.now === 'function' ? appOptions.now() : (appOptions.now || Date.now()));
+  const performanceNow = typeof appOptions.performanceNow === 'function'
+    ? appOptions.performanceNow
+    : Date.now;
   const requestedSessionLimit = Number(appOptions.maxSessionDocumentBytes);
   const sessionDocumentByteLimit = Number.isFinite(requestedSessionLimit) && requestedSessionLimit > 0
     ? Math.min(MAX_SESSION_DOCUMENT_BYTES, requestedSessionLimit)
@@ -241,14 +244,20 @@ function createRoomApplication(repo, options) {
       || null;
   }
 
-  async function ephemeral(roomId, aggregate) {
+  async function ephemeral(roomId, aggregate, options) {
+    const shouldReadPresence = !options || options.readPresence !== false;
+    const cutoff = now() - (appOptions.presenceTtlMs || PRESENCE_TTL_MS);
+    const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId
+      || aggregate && aggregate.room && aggregate.room.currentSessionId
+      || null;
     const [presenceResult, signalResult] = await Promise.allSettled([
-      typeof repo.listPresence === 'function' ? repo.listPresence(roomId) : Promise.resolve([]),
-      typeof repo.listSignals === 'function' ? repo.listSignals(roomId) : Promise.resolve([])
+      shouldReadPresence && typeof repo.listPresence === 'function'
+        ? repo.listPresence(roomId, cutoff) : Promise.resolve([]),
+      currentSessionId && typeof repo.listSignals === 'function'
+        ? repo.listSignals(roomId) : Promise.resolve([])
     ]);
     const rows = presenceResult.status === 'fulfilled' ? presenceResult.value : [];
     const signalRows = signalResult.status === 'fulfilled' ? signalResult.value : [];
-    const cutoff = now() - (appOptions.presenceTtlMs || PRESENCE_TTL_MS);
     const currentMemberIds = new Set((aggregate && aggregate.room && aggregate.room.members || [])
       .map((member) => member.memberId));
     const byMemberId = {};
@@ -259,9 +268,6 @@ function createRoomApplication(repo, options) {
     });
     const signals = {};
     const scope = signalScope(aggregate);
-    const currentSessionId = aggregate && aggregate.currentSession && aggregate.currentSession.sessionId
-      || aggregate && aggregate.room && aggregate.room.currentSessionId
-      || null;
     (signalRows || []).filter((row) => {
       if (Number(row.expiresAt) <= now()) return false;
       if (row.signalType === SIGNAL_TYPES.PARTNER_SILENT_SOUND) {
@@ -290,7 +296,8 @@ function createRoomApplication(repo, options) {
       }
     });
     return { presenceByMemberId: byMemberId, signals,
-      stale: { presence: presenceResult.status === 'rejected', signals: signalResult.status === 'rejected' } };
+      stale: { presence: !shouldReadPresence || presenceResult.status === 'rejected',
+        signals: signalResult.status === 'rejected' } };
   }
 
   function mergeTouchedPresence(projectedEphemeral, touched) {
@@ -515,7 +522,8 @@ function createRoomApplication(repo, options) {
     if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
     const baseSeq = Number(afterSeq);
     if (!Number.isInteger(baseSeq) || baseSeq < 0) return fail(ERR.INVALID_ARGUMENT, 'afterSeq 必须是非负整数');
-    const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
+    const limit = Math.min(MAX_INCREMENTAL_SYNC_EVENTS,
+      Math.max(1, Number(requestOptions && requestOptions.limit) || DEFAULT_SYNC_LIMIT));
     const bundle = await repo.readSyncState(roomId, baseSeq, limit);
     const room = bundle && (bundle.room || (bundle.aggregate && bundle.aggregate.room));
     const authAggregate = room ? { room, currentSession: null, facts: {} } : null;
@@ -570,7 +578,10 @@ function createRoomApplication(repo, options) {
     let projectedEphemeral = {};
     if (!hasMore) {
       const [rawEphemeral, touched] = await Promise.all([
-        ephemeral(roomId, authAggregate),
+        ephemeral(roomId, authAggregate, {
+          // 旧客户端未携带该字段时仍按原语义读取；新客户端可对 Presence 独立降频。
+          readPresence: actorContext.readPresence !== false
+        }),
         activityPromise
       ]);
       projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
@@ -582,102 +593,164 @@ function createRoomApplication(repo, options) {
   }
 
   async function executeCommand(rawEnvelope, actorContext) {
-    const actorUserId = actorContext && actorContext.userId;
-    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
-    const validated = validateCommandEnvelope(rawEnvelope);
-    if (!validated.ok) return validated;
-    const envelope = validated.envelope;
-    if (!isNonEmptyString(appOptions.serverSecret)) {
-      return fail(ERR.INTERNAL_ERROR, 'ROOM_PROTOCOL_SERVER_SECRET 未配置');
-    }
-    const commandNow = now();
-    const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
-    const roomIdCandidates = isCreate
-      ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === 'function'
-        ? repo.generateRoomId(envelope.commandId, actorUserId, attempt)
-        : (10000000 + Math.floor(Math.random() * 90000000))))
-      : [];
-    const commandRoomId = isCreate ? roomIdCandidates[0] : envelope.roomId;
-    const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
-    const transaction = await repo.transactCommand({
-      scopeKey, commandId: envelope.commandId, actorUserId, roomId: commandRoomId, type: envelope.type,
-      roomIdCandidates, requestHash: requestHash(envelope), createdAt: commandNow
-    }, ({ aggregate: current, activeRoomId, resolvedRoomId }) => {
-      if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
-      if (isCreate && !resolvedRoomId) {
-        return { accepted: false, error: fail(ERR.DEPENDENCY_UNAVAILABLE, '暂时无法分配房间号') };
+    const startedAt = performanceNow();
+    const observedType = rawEnvelope && typeof rawEnvelope.type === 'string' ? rawEnvelope.type : 'UNKNOWN';
+    const observedRoomId = rawEnvelope && typeof rawEnvelope.roomId === 'string' ? rawEnvelope.roomId : '';
+    const observedCommandId = rawEnvelope && typeof rawEnvelope.commandId === 'string' ? rawEnvelope.commandId : '';
+    const metrics = {
+      type: observedType,
+      roomId: observedRoomId,
+      commandIdHash: hash(observedCommandId).slice(0, 16),
+      status: 'REJECTED',
+      replayed: false,
+      touchPresence: actorContext && actorContext.touchPresence === true,
+      syncSource: 'NONE',
+      transactionMs: 0,
+      presenceMs: 0,
+      syncMs: 0
+    };
+    try {
+      const actorUserId = actorContext && actorContext.userId;
+      if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+      const validated = validateCommandEnvelope(rawEnvelope);
+      if (!validated.ok) return validated;
+      const envelope = validated.envelope;
+      metrics.type = envelope.type;
+      metrics.roomId = envelope.roomId;
+      metrics.commandIdHash = hash(envelope.commandId).slice(0, 16);
+      if (!isNonEmptyString(appOptions.serverSecret)) {
+        return fail(ERR.INTERNAL_ERROR, 'ROOM_PROTOCOL_SERVER_SECRET 未配置');
       }
-      if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
-        return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
-      }
-      const effectiveRoomId = resolvedRoomId || commandRoomId;
-      const seed = deriveCommandSeed(
-        appOptions.serverSecret,
-        effectiveRoomId,
-        envelope.commandId,
-        'domain'
-      );
-      const beforePublic = projectPublicView(current);
-      const domain = reduceCommand({ aggregate: current, command: { ...envelope, roomId: effectiveRoomId }, actorUserId,
-        deps: { now: commandNow, idFactory: deterministicIds(seed), random: deterministicRandom(seed),
-          wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => effectiveRoomId } });
-      if (!domain.ok) return { accepted: false, error: domain };
-      const next = domain.aggregate;
-      const storageError = validateSessionDocumentSize(next);
-      if (storageError) return { accepted: false, error: storageError };
-      // SignalScope 是 Room 上的轻量派生投影，与 Session 在同一事务中更新。
-      next.room.signalScope = signalScopeFromSession(next);
-      const afterPublic = projectPublicView(next);
-      const eventGroup = buildEventGroup(envelope, domain.events, next.room, current, next,
-        beforePublic, afterPublic, commandNow);
-      next.room.stateVersion += 1;
-      next.room.eventSeq = eventGroup.seq;
-      next.room.updatedAt = commandNow;
-      markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
-      const archivedSession = next.archivedSession || null;
-      const archivedFacts = next.archivedFacts || null;
-      delete next.archivedSession;
-      delete next.archivedFacts;
-      return { accepted: true, aggregate: next, events: [eventGroup], dirtyFacts: domain.dirtyFacts || [],
-        archivedSession,
-        archivedFacts,
-        outcome: { ...(domain.outcome || { kind: 'ACCEPTED' }), roomId: next.room.roomId,
-          committedThroughSeq: next.room.eventSeq } };
-    });
-
-    if (transaction.conflict) return fail(ERR.COMMAND_ID_CONFLICT, undefined, { commandId: envelope.commandId });
-    const receipt = transaction.receipt;
-    await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
-    if (!receipt.accepted) {
-      const rejected = { ...receipt.error, commandId: envelope.commandId };
-      if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
-        const catchup = await sync(commandRoomId, envelope.knownSeq,
-          { ...actorContext, touchPresence: false }).catch(() => null);
-        if (catchup && catchup.ok) rejected.sync = catchup;
-      }
-      return rejected;
-    }
-    const outcome = receipt.outcome;
-    const response = okResult({ commandId: envelope.commandId, outcome,
-      traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}` });
-    if (![COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM,
-      COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+      const commandNow = now();
+      const isCreate = envelope.type === COMMAND_TYPES.CREATE_ROOM;
+      const roomIdCandidates = isCreate
+        ? Array.from({ length: 5 }, (_, attempt) => String(typeof repo.generateRoomId === 'function'
+          ? repo.generateRoomId(envelope.commandId, actorUserId, attempt)
+          : (10000000 + Math.floor(Math.random() * 90000000))))
+        : [];
+      const commandRoomId = isCreate ? roomIdCandidates[0] : envelope.roomId;
+      const scopeKey = isCreate ? `actor:${hash(actorUserId)}` : commandRoomId;
+      metrics.roomId = commandRoomId;
+      const transactionStartedAt = performanceNow();
+      let transaction;
       try {
-        const attached = !transaction.replayed && attachCommandSyncFromEvents({
-          events: transaction.events,
-          roomId: outcome.roomId,
-          currentSeq: outcome.committedThroughSeq,
-          knownSeq: envelope.knownSeq,
-          memberId: receipt.memberId,
-          serverTime: now()
+        transaction = await repo.transactCommand({
+          scopeKey, commandId: envelope.commandId, actorUserId, roomId: commandRoomId, type: envelope.type,
+          roomIdCandidates, requestHash: requestHash(envelope), createdAt: commandNow
+        }, ({ aggregate: current, activeRoomId, resolvedRoomId }) => {
+          if (isCreate && activeRoomId) return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+          if (isCreate && !resolvedRoomId) {
+            return { accepted: false, error: fail(ERR.DEPENDENCY_UNAVAILABLE, '暂时无法分配房间号') };
+          }
+          if (envelope.type === COMMAND_TYPES.JOIN_ROOM && activeRoomId && activeRoomId !== commandRoomId) {
+            return { accepted: false, error: fail(ERR.ALREADY_IN_ROOM) };
+          }
+          const effectiveRoomId = resolvedRoomId || commandRoomId;
+          const seed = deriveCommandSeed(
+            appOptions.serverSecret,
+            effectiveRoomId,
+            envelope.commandId,
+            'domain'
+          );
+          const beforePublic = projectPublicView(current);
+          const domain = reduceCommand({ aggregate: current,
+            command: { ...envelope, roomId: effectiveRoomId }, actorUserId,
+            deps: { now: commandNow, idFactory: deterministicIds(seed), random: deterministicRandom(seed),
+              wordPairPicker: appOptions.wordPairPicker, roomIdFactory: () => effectiveRoomId } });
+          if (!domain.ok) return { accepted: false, error: domain };
+          const next = domain.aggregate;
+          const storageError = validateSessionDocumentSize(next);
+          if (storageError) return { accepted: false, error: storageError };
+          // SignalScope 是 Room 上的轻量派生投影，与 Session 在同一事务中更新。
+          next.room.signalScope = signalScopeFromSession(next);
+          const afterPublic = projectPublicView(next);
+          const eventGroup = buildEventGroup(envelope, domain.events, next.room, current, next,
+            beforePublic, afterPublic, commandNow);
+          next.room.stateVersion += 1;
+          next.room.eventSeq = eventGroup.seq;
+          next.room.updatedAt = commandNow;
+          markCommittedFacts(next, domain.dirtyFacts, next.room.eventSeq);
+          const archivedSession = next.archivedSession || null;
+          const archivedFacts = next.archivedFacts || null;
+          delete next.archivedSession;
+          delete next.archivedFacts;
+          return { accepted: true, aggregate: next, events: [eventGroup], dirtyFacts: domain.dirtyFacts || [],
+            archivedSession,
+            archivedFacts,
+            outcome: { ...(domain.outcome || { kind: 'ACCEPTED' }), roomId: next.room.roomId,
+              committedThroughSeq: next.room.eventSeq } };
         });
-        response.sync = attached || await sync(outcome.roomId, envelope.knownSeq,
-          { ...actorContext, touchPresence: false });
-      } catch (syncError) {
-        // Command 已原子提交；附带同步失败不能把成功伪装成写失败，客户端按下一轮正常同步恢复。
+      } finally {
+        metrics.transactionMs = Math.max(0, performanceNow() - transactionStartedAt);
+      }
+
+      metrics.replayed = transaction.replayed === true;
+      if (transaction.conflict) {
+        metrics.status = 'CONFLICT';
+        return fail(ERR.COMMAND_ID_CONFLICT, undefined, { commandId: envelope.commandId });
+      }
+      const receipt = transaction.receipt;
+      metrics.status = receipt.accepted ? 'ACCEPTED' : 'REJECTED';
+      const presenceStartedAt = performanceNow();
+      try {
+        await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
+      } finally {
+        metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
+      }
+      if (!receipt.accepted) {
+        const rejected = { ...receipt.error, commandId: envelope.commandId };
+        if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
+          const syncStartedAt = performanceNow();
+          metrics.syncSource = 'QUERY';
+          try {
+            const catchup = await sync(commandRoomId, envelope.knownSeq,
+              { ...actorContext, touchPresence: false }).catch(() => null);
+            if (catchup && catchup.ok) rejected.sync = catchup;
+          } finally {
+            metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+          }
+        }
+        return rejected;
+      }
+      const outcome = receipt.outcome;
+      const response = okResult({ commandId: envelope.commandId, outcome,
+        traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}` });
+      if (![COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM,
+        COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
+        const syncStartedAt = performanceNow();
+        try {
+          const attached = !transaction.replayed && attachCommandSyncFromEvents({
+            events: transaction.events,
+            roomId: outcome.roomId,
+            currentSeq: outcome.committedThroughSeq,
+            knownSeq: envelope.knownSeq,
+            memberId: receipt.memberId,
+            serverTime: now()
+          });
+          metrics.syncSource = attached ? 'INLINE_EVENTS' : 'QUERY';
+          response.sync = attached || await sync(outcome.roomId, envelope.knownSeq,
+            { ...actorContext, touchPresence: false });
+        } catch (syncError) {
+          metrics.syncSource = 'FAILED';
+          // Command 已原子提交；附带同步失败不能把成功伪装成写失败，客户端按下一轮正常同步恢复。
+        } finally {
+          metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+        }
+      }
+      return response;
+    } catch (error) {
+      metrics.status = 'ERROR';
+      throw error;
+    } finally {
+      if (typeof appOptions.onCommandMetrics === 'function') {
+        const completed = { ...metrics, totalMs: Math.max(0, performanceNow() - startedAt) };
+        try {
+          appOptions.onCommandMetrics(completed);
+        } catch (metricsError) {
+          // 观测链路不得改变 Command 语义。
+        }
       }
     }
-    return response;
   }
 
   return { executeCommand, readCurrentRoom, readSnapshot, readSessionSnapshot,

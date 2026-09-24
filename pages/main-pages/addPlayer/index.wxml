@@ -20,6 +20,8 @@
         placeholder-class="room-name-placeholder"
         bindinput="onRoomNameInput"
         bindconfirm="confirmEditRoomName"
+        adjust-position="{{true}}"
+        cursor-spacing="24"
       />
       <image
         class="room-name-confirm-icon"

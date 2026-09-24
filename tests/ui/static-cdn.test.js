@@ -12,7 +12,8 @@ const {
   WAIT_HERO_SRC,
   EMPTY_HISTORY_SRC,
   PACK_IGNORE_FOR_CDN,
-  staticCdnUrl
+  staticCdnUrl,
+  staticFileName
 } = require('../../utils/staticCdn');
 const { getWordCardAssets, CARD_BACK_WEBP } = require('../../packageSpy/utils/spyWordCardAssets');
 
@@ -20,14 +21,21 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
-test('CDN URL 编码中文文件名，并使用云存储公有域名', () => {
+test('CDN URL 使用 miniprogram-static 根下的文件名，并编码中文', () => {
   const url = staticCdnUrl('/packageSpy/assets/interactionCards/webp/开关3x.webp');
   assert.equal(
     url,
-    `${CDN_HOST}/${STATIC_PREFIX}/packageSpy/assets/interactionCards/webp/${encodeURIComponent('开关3x.webp')}`
+    `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent('开关3x.webp')}`
   );
-  assert.match(WAIT_HERO_SRC, /^https:\/\//);
-  assert.match(EMPTY_HISTORY_SRC, /empty-history-6f27f1\.webp$/);
+  assert.equal(
+    WAIT_HERO_SRC,
+    `${CDN_HOST}/${STATIC_PREFIX}/wait-hero-5a8ea5.webp`
+  );
+  assert.equal(
+    EMPTY_HISTORY_SRC,
+    `${CDN_HOST}/${STATIC_PREFIX}/empty-history-6f27f1.webp`
+  );
+  assert.equal(staticFileName('assets/halliGalli/step-deal.webp'), 'step-deal.webp');
 });
 
 test('Spy 交互卡与牌背改为 CDN URL，不再引用代码包路径', () => {
@@ -36,6 +44,7 @@ test('Spy 交互卡与牌背改为 CDN URL，不再引用代码包路径', () =>
   assert.equal(assets.word1Src, staticCdnUrl('packageSpy/assets/interactionCards/webp/开关13x.webp'));
   assert.equal(CARD_BACK_WEBP, staticCdnUrl('packageSpy/assets/interactionCards/webp/背面3x.webp'));
   assert.doesNotMatch(assets.assignedWordSrc, /^\/packageSpy\//);
+  assert.match(assets.assignedWordSrc, /^https:\/\//);
 });
 
 test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', () => {
@@ -52,10 +61,10 @@ test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', 
 
 test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大图路径', () => {
   const subAwaitWxml = read('pages/sub-pages/subAwait/index.wxml');
-  const closingWxml = read('pages/main-pages/partnerMode/closingStatement/index.wxml');
+  const closingWxml = read('components/partner-closing-vote-screen/index.wxml');
   const homeWxml = read('pages/main-pages/aaa/index.wxml');
   const subAwaitJs = read('pages/sub-pages/subAwait/index.js');
-  const closingJs = read('pages/main-pages/partnerMode/closingStatement/index.js');
+  const closingJs = read('pages/main-pages/partnerMode/gamepage/index.js');
   const homeJs = read('pages/main-pages/aaa/index.js');
   const brainstormJs = read('pages/main-pages/brainstormMode/index.js');
   const halliJs = read('pages/main-pages/halliGalli/gamepage/index.js');
@@ -84,4 +93,23 @@ test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
   assert.equal((halliWxml.match(/data-key=/g) || []).length, 6);
   assert.ok(!ignore.some((item) => item.value === 'assets/halliGalli/*.png'),
     '随包 PNG 不能被 packOptions 排除');
+});
+
+test('平铺到云存储根目录的文件名互不冲突', () => {
+  const names = new Map();
+  const add = (rel) => {
+    const name = staticFileName(rel);
+    assert.ok(name, `empty name for ${rel}`);
+    assert.equal(names.has(name), false, `duplicate cloud key ${name}`);
+    names.set(name, rel);
+  };
+  add('assets/subAwait/wait-hero-5a8ea5.webp');
+  add('assets/home/empty-history-6f27f1.webp');
+  ['halligalli', 'partner', 'spy'].forEach((id) => add(`assets/brainstormMode/mode-cover-${id}.jpg`));
+  ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => add(`assets/halliGalli/step-${key}.webp`));
+  const spyDir = path.join(ROOT, 'packageSpy/assets/interactionCards/webp');
+  fs.readdirSync(spyDir).forEach((name) => {
+    const abs = path.join(spyDir, name);
+    if (fs.statSync(abs).isFile()) add(`packageSpy/assets/interactionCards/webp/${name}`);
+  });
 });

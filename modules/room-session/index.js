@@ -203,7 +203,13 @@ async function getRoomPageSnapshot(roomId, options) {
   let session;
   try {
     session = await openRoomSession(roomId);
-    if (options && options.refresh) await session.refresh();
+    const state = session.getState();
+    const completedAt = Number(state && state.lastRequestCompletedAt);
+    // 页面跳转经常紧跟 Command/Event 发布；此时内存 View 已是提交后的权威状态，
+    // 立即再读 Snapshot 只会放大冷启动和串行等待。静默窗口到期后才允许显式补读。
+    const quietWindowElapsed = !Number.isFinite(completedAt)
+      || Date.now() - completedAt >= ROOM_POLL_INTERVAL_MS;
+    if (options && options.refresh && quietWindowElapsed) await session.refresh();
   } catch (error) {
     return { ok: false, roomId, errCode: error.code || error.errCode || 'DEPENDENCY_UNAVAILABLE',
       errMsg: error.message || error.errMsg || '读取房间失败', members: [], memberCount: 0,
@@ -428,4 +434,4 @@ module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSessio
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, followRoomRouteAfterCommand,
-  executeProjectedBack, canRoomCommand, commandContext };
+  getCommittedSnapshotAfterCommand, executeProjectedBack, canRoomCommand, commandContext };

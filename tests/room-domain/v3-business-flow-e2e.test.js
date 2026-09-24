@@ -109,19 +109,36 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
   });
   assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeSummary');
   assert.deepEqual(state.snapshot.view.session.publicModeState.ideas.map((item) => item.text), ['创意 A']);
+  state = await executeAndReduce(h, 'host', 'REOPEN_HALLI_IDEA', {
+    context: { sessionId }
+  });
+  assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeInput');
+  state = await executeAndReduce(h, 'host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意 A2' }
+  });
+  assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeSummary');
   state = await executeAndReduce(h, 'u2', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 B' }
   });
   assert.deepEqual(state.snapshot.view.session.publicModeState.ideas.map((item) => item.text), [
-    '创意 A', '创意 B'
+    '创意 A2', '创意 B'
   ]);
   state = await executeAndReduce(h, 'u3', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 C' }
   });
   assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeSummary');
   assert.deepEqual(state.snapshot.view.session.publicModeState.ideas.map((item) => item.text), [
-    '创意 A', '创意 B', '创意 C'
+    '创意 A2', '创意 B', '创意 C'
   ]);
+
+  state = await executeAndReduce(h, 'host', 'REOPEN_HALLI_IDEA', {
+    context: { sessionId }
+  });
+  assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeInput');
+  state = await executeAndReduce(h, 'host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意 A3' }
+  });
+  assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeSummary');
 
   state = await executeAndReduce(h, 'host', 'COMPLETE_HALLI_SESSION', { context: { sessionId } });
   assert.equal(state.snapshot.view.session.status, 'COMPLETED');

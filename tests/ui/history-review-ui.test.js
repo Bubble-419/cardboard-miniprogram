@@ -73,13 +73,15 @@ function makePage(definition, data = {}) {
 
 test('全局回顾展示全部纪要卡、允许横滑，并返回排行榜', () => {
   const wxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const headerWxml = read('components/partner-game-header/index.wxml');
   const js = read('pages/main-pages/partnerMode/gamepage/index.js');
   assert.match(wxml, /disable-touch="\{\{isHistoryReview \? reviewInnerScrolling/);
   assert.match(wxml, /scroll-y="\{\{!isHistoryReview \|\| reviewCardScrollY\}\}"/);
-  assert.match(wxml, /wx:if="\{\{isHistoryReview\}\}"[\s\S]*bindtap="handleGoBack"/);
+  assert.match(wxml, /historyReview="\{\{isHistoryReview\}\}"/);
+  assert.match(headerWxml, /historyReview \? 'GO_BACK' : 'OPEN_ROOM'/);
   assert.match(
-    wxml,
-    /wx:if="\{\{isHistoryReview\}\}"[\s\S]*?icon-room-entry-gp\.svg/,
+    headerWxml,
+    /icon-room-entry-gp\.svg/,
     '回顾态左上角应使用房间页入口图标，而不是返回箭头'
   );
   assert.doesNotMatch(wxml, /icon-special-back\.svg/);
@@ -180,6 +182,24 @@ test('全局回顾 _buildDisplayCardState 保留全部纪要卡并可横滑', ()
     assert.equal(state.showCurrentActionCard, false);
     assert.equal(state.cardIndex, 0);
   });
+});
+
+test('旧本地回顾只有 statementResult 时仍能还原表态文案', () => {
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+  const page = makePage(definition);
+
+  assert.deepEqual(
+    page._decorateTurnRecords([
+      { playerIndex: 1, statementResult: 'allPass' },
+      { playerIndex: 2, statementResult: 'partialPass' },
+      { playerIndex: 3, statementResult: 'allQuestion' }
+    ], []),
+    [
+      { playerIndex: 1, playerLabel: '玩家1', avgScoreText: '', statementResult: 'allPass', statementLabel: '没有疑问' },
+      { playerIndex: 2, playerLabel: '玩家2', avgScoreText: '', statementResult: 'partialPass', statementLabel: '部分通过' },
+      { playerIndex: 3, playerLabel: '玩家3', avgScoreText: '', statementResult: 'allQuestion', statementLabel: '有疑问进入讨论' }
+    ]
+  );
 });
 
 test('全局回顾 finalize 使用已经落地的纪要数量，不会把 cardCount 打成 1', () => {

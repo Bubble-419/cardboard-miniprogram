@@ -103,9 +103,10 @@ test('selectPlayer 等待态和 subAwait 都不展示上一页', () => {
     path.resolve(__dirname, '../../pages/sub-pages/subAwait/index.wxml'),
     'utf8'
   );
-  assert.match(selectPlayer, /empty-wait-state" wx:if="\{\{isWaiting\}\}"/);
+  assert.match(selectPlayer, /<room-wait-screen/);
+  assert.match(selectPlayer, /roomShellScreen === 'waiting'/);
   assert.match(selectPlayer, /navbar-left" wx:if="\{\{isHost\}\}"/);
-  assert.doesNotMatch(selectPlayer, /empty-wait-state[\s\S]{0,240}page-footer/);
+  assert.doesNotMatch(selectPlayer, /empty-wait-state/);
   assert.doesNotMatch(subAwait, /page-footer/);
   assert.doesNotMatch(subAwait, /bindtap="goBack"/);
   assert.doesNotMatch(subAwait, /back-icon/);

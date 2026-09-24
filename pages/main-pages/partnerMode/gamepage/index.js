@@ -12,6 +12,7 @@ const {
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
+const { keyboardHeightFromEvent } = require('../../../../utils/keyboardAvoidance');
 const {
   storageKey: roomDraftStorageKey,
   readRoomLocalDraft,
@@ -108,6 +109,11 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
+const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
+const {
+  PARTNER_SHELL_SCREEN,
+  projectPartnerRoomShell
+} = require('../utils/partnerRoomShell');
 
 /** 房主首次进入 gamepage 的「开始表态」引导，设备级只展示一次 */
 const HOST_STATEMENT_TIP_KEY = 'partnerHostGamepageTipSeen';
@@ -121,6 +127,12 @@ const STAR_PANEL_COLLAPSE_DELAY_MS = 120;
 Page(withPageInteractionLock({
   data: {
     roomId: '',
+    /** Partner 运行态固定留在本页，由权威 route 选择 Shell 内的屏幕。 */
+    roomShellScreen: PARTNER_SHELL_SCREEN.LOADING,
+    waitingModel: null,
+    closingVoteModel: null,
+    closingVoteSubmitting: false,
+    waitHeroSrc: WAIT_HERO_SRC,
     isHost: false,
     avatarList: [],
     currentPlayerIndex: 1,
@@ -235,8 +247,6 @@ Page(withPageInteractionLock({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
-    /** 保留空样式字段兼容模板；输入栏位置交给原生 adjust-position */
-    inspirationLiftStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     /** 与微信胶囊垂直对齐 */
@@ -330,8 +340,6 @@ Page(withPageInteractionLock({
     this._appliedRoomRevision = 0;
     this._roomDataReady = false;
     this._cloudAvatarResolving = false;
-    // 仅用于“服务端缺字段时的临时兜底”；新页面实例必须从空开始，避免带入旧会话纪要
-    this._lastRawRoundSummaries = [];
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const currentPlayerIndex = options.currentPlayerIndex != null
       ? parseInt(options.currentPlayerIndex, 10)
@@ -379,6 +387,10 @@ Page(withPageInteractionLock({
     const initialSessionId = options && options.sessionId
       ? String(options.sessionId)
       : '';
+    // 在线业务页只相信完整 PageSnapshot；URL 只负责把客户端送到物理 Shell。
+    const initialShellScreen = isHistoryReview
+      ? PARTNER_SHELL_SCREEN.GAME
+      : PARTNER_SHELL_SCREEN.LOADING;
     this._isHistoryReview = isHistoryReview;
     this._reviewOpenedAsHost = false;
     this._reviewEnterPlayed = false;
@@ -390,6 +402,9 @@ Page(withPageInteractionLock({
     this._reviewSwitchDir = 'next';
     this.setData({
       roomId,
+      roomShellScreen: initialShellScreen,
+      waitingModel: null,
+      closingVoteModel: null,
       currentPlayerIndex,
       currentRound: initialRound,
       sessionId: initialSessionId,
@@ -445,7 +460,13 @@ Page(withPageInteractionLock({
   _measureHostStatementTip(retry) {
     if (!this.data.showHostStatementTip) return;
     const attempt = retry || 0;
-    wx.createSelectorQuery()
+    const footer = typeof this.selectComponent === 'function'
+      ? this.selectComponent('#partnerGameFooter')
+      : null;
+    const query = footer && typeof footer.createSelectorQuery === 'function'
+      ? footer.createSelectorQuery()
+      : wx.createSelectorQuery();
+    query
       .select('#hostStatementBtn')
       .boundingClientRect((rect) => {
         if (!rect || !rect.width) {
@@ -567,14 +588,26 @@ Page(withPageInteractionLock({
 
   onShow() {
     this._pageVisible = true;
-    this._bindInspirationKeyboard();
     if (this.data.isHistoryReview) {
+      this._bindInspirationKeyboard();
       // 历史回顾：只刷新灵感角标，不轮询房间状态/计时器
       this._refreshInspirationCount();
       return;
     }
     if (this.data.roomId) {
+      // 从本地叠层返回时先消费 RoomSession 已提交的 View，再恢复订阅与屏幕副作用。
+      // 这样 Command 改变 route 后无需等待下一轮网络查询。
+      const session = typeof getApp === 'function' ? getActiveRoomSession() : null;
+      const snapshot = session && typeof session.getSnapshot === 'function'
+        ? session.getSnapshot()
+        : null;
+      if (snapshot && snapshot.ok !== false
+        && (!snapshot.roomId || snapshot.roomId === this.data.roomId)) {
+        this._applyRoomContext(snapshot);
+      }
       this._startStatePolling();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) return;
+      this._bindInspirationKeyboard();
       // 角标独立刷新，不依赖倒计时同步链路
       this._refreshInspirationCount();
     }
@@ -632,7 +665,6 @@ Page(withPageInteractionLock({
     this._flushInspirationKeyboardZero(true);
     if (
       this.data.inspirationKeyboardHeight
-      || this.data.inspirationLiftStyle
       || this.data.inspirationInputFocused
       || this.data.closingKeyboardHeight
       || this.data.closingCreativeEditFocus
@@ -641,7 +673,6 @@ Page(withPageInteractionLock({
       this.setData({
         inspirationInputFocused: false,
         inspirationKeyboardHeight: 0,
-        inspirationLiftStyle: '',
         closingCreativeEditFocus: false,
         closingCreativeWantFocus: false,
         ...this._resetClosingKeyboardUi()
@@ -1515,6 +1546,8 @@ Page(withPageInteractionLock({
       return {
         ...turn,
         playerLabel,
+        // 本地历史快照可能只保存语义枚举；展示文案始终由同一映射恢复。
+        statementLabel: turn.statementLabel || getStatementLabel(turn.statementResult) || '',
         avgScoreText: Number.isFinite(avg) ? formatScoreDisplay(avg) : ''
       };
     });
@@ -1688,6 +1721,15 @@ Page(withPageInteractionLock({
     if (scoreFingerprint === this._scoreFingerprint) return;
     this._scoreFingerprint = scoreFingerprint;
     this.setData(narrow);
+  },
+
+  /** 静默音量是高频瞬时信号，只窄刷卡片效果，不能重建整个 swiper。 */
+  _applySilentEffectPatch(patch) {
+    const level = patch && patch.isSilentMode === true
+      ? Math.min(1, Math.max(0, Number(patch.silentSoundLevel) || 0))
+      : 0;
+    if (level === this.data.silentSoundLevel) return;
+    this.setData({ silentSoundLevel: level });
   },
 
   _markScoreUiBusy() {
@@ -1961,6 +2003,32 @@ Page(withPageInteractionLock({
       });
   },
 
+  /** 切入稳定 Shell 的非游戏屏幕时，立即终止只属于 game 屏幕的局部副作用。 */
+  _suspendGameScreenEffects() {
+    this._dismissInputsBeforeCardNavigation();
+    this._unbindInspirationKeyboard();
+    this._closingNativeFocused = false;
+    this.setData({
+      closingCreativeEditFocus: false,
+      closingCreativeWantFocus: false,
+      ...this._resetClosingKeyboardUi()
+    });
+    this._stopRoundSpeech();
+    this._stopRoundTimerBurstPoll();
+    this._stopRoundTimer();
+    if (this._cardSwipeBusyTimer) {
+      clearTimeout(this._cardSwipeBusyTimer);
+      this._cardSwipeBusyTimer = null;
+    }
+    if (this._scoreUiBusyTimer) {
+      clearTimeout(this._scoreUiBusyTimer);
+      this._scoreUiBusyTimer = null;
+    }
+    this._cardSwipeBusy = false;
+    this._scoreUiBusy = false;
+    this._pendingRoomContext = null;
+  },
+
   _applyRoomContext(result, options = {}) {
     const incomingRevision = Number(
       result.revision
@@ -1983,8 +2051,126 @@ Page(withPageInteractionLock({
       };
     }
 
+    const shell = projectPartnerRoomShell(result);
+    if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.WAITING) {
+      if (incomingRevision) this._appliedRoomRevision = incomingRevision;
+      const model = shell.waiting || { scene: 'confirmFirstPlayer' };
+      const fingerprint = `${shell.key}#${model.scene || ''}`;
+      let applied = Promise.resolve();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.WAITING
+        || fingerprint !== this._roomShellFingerprint) {
+        this._roomShellFingerprint = fingerprint;
+        this._roomContextFingerprint = '';
+        this._suspendGameScreenEffects();
+        applied = new Promise((resolve) => {
+          this.setData({
+            roomShellScreen: PARTNER_SHELL_SCREEN.WAITING,
+            waitingModel: model,
+            closingVoteModel: null,
+            closingVoteSubmitting: false,
+            showHostStatementTip: false
+          }, resolve);
+        });
+      }
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase,
+        shellScreen: shell.screen,
+        applied
+      };
+    }
+    if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.CLOSING_VOTE) {
+      if (incomingRevision) this._appliedRoomRevision = incomingRevision;
+      const model = shell.closingVote || {};
+      const fingerprint = [
+        shell.key,
+        model.isInitiator ? 1 : 0,
+        model.hasVoted ? 1 : 0,
+        model.voteResult || ''
+      ].join('#');
+      let applied = Promise.resolve();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.CLOSING_VOTE
+        || fingerprint !== this._roomShellFingerprint) {
+        this._roomShellFingerprint = fingerprint;
+        this._roomContextFingerprint = '';
+        this._suspendGameScreenEffects();
+        applied = new Promise((resolve) => {
+          this.setData({
+            roomShellScreen: PARTNER_SHELL_SCREEN.CLOSING_VOTE,
+            waitingModel: null,
+            closingVoteModel: model,
+            closingVoteSubmitting: false
+          }, () => {
+            this._renderedClosingVoteContext = Object.freeze({
+              sessionId: model.sessionId || '',
+              closingVoteSessionId: model.closingVoteSessionId || ''
+            });
+            resolve();
+          });
+        });
+      }
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase,
+        shellScreen: shell.screen,
+        applied
+      };
+    }
+    if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.EXTERNAL) {
+      if (incomingRevision) this._appliedRoomRevision = incomingRevision;
+      let applied = Promise.resolve();
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.LEAVING) {
+        this._roomShellFingerprint = `external#${shell.routeName}`;
+        this._roomContextFingerprint = '';
+        this._suspendGameScreenEffects();
+        applied = new Promise((resolve) => {
+          this.setData({
+            roomShellScreen: PARTNER_SHELL_SCREEN.LEAVING,
+            waitingModel: null,
+            closingVoteModel: null,
+            closingVoteSubmitting: false,
+            showHostStatementTip: false
+          }, resolve);
+        });
+      }
+      // 外部 Route 由统一导航协调器处理；跳转失败时保持无交互过渡态，后续同步仍会重试。
+      return {
+        playerChanged: false,
+        phaseChanged: false,
+        roundChanged: false,
+        members: this.data.members,
+        player: {
+          currentPlayerIndex: this.data.currentPlayerIndex,
+          currentPlayerName: this.data.currentPlayerName,
+          isCurrentPlayer: this.data.isCurrentPlayer
+        },
+        roomPhase: this.data.gamepagePhase,
+        shellScreen: shell.screen,
+        applied
+      };
+    }
+    const returningFromShellScreen = !this._isHistoryReviewMode()
+      && this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME;
+
     // 滑动/打分交互中勿整页 setData 改写 controlled swiper，否则会顶飞手势并左右晃动
-    if ((this._cardSwipeBusy || this._scoreUiBusy) && !options.force && !options.resetTurnUi) {
+    if ((this._cardSwipeBusy || this._scoreUiBusy)
+      && !returningFromShellScreen && !options.force && !options.resetTurnUi) {
       this._pendingRoomContext = { result, options };
       return {
         playerChanged: false,
@@ -2074,16 +2260,10 @@ Page(withPageInteractionLock({
       ? roomState.partnerExpressMessages
       : [];
     this._expressMessagesAll = expressMessages;
-    // 服务端 partnerRoundSummaries 缺失时可短暂兜底，但新会话必须清缓存，防止旧纪要串入新局
-    if (sessionChanged && !Array.isArray(roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = [];
-    }
-    if (Array.isArray(roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
-    }
+    // Member View 必须完整携带纪要；缺失时不用旧 View 伪造当前状态。
     const rawRoundSummaries = Array.isArray(roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
-      : (sessionChanged ? [] : (this._lastRawRoundSummaries || []));
+      : [];
     let normalizedRawRoundSummaries = Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [];
     // 新局首回合保护：第1轮玩家1出牌时不应出现任何历史纪要，强制忽略旧缓存/旧会话残留
     if (
@@ -2094,7 +2274,6 @@ Page(withPageInteractionLock({
       && normalizedRawRoundSummaries.length > 0
     ) {
       normalizedRawRoundSummaries = [];
-      this._lastRawRoundSummaries = [];
     }
     const roundSummaries = normalizedRawRoundSummaries
       .slice()
@@ -2226,6 +2405,10 @@ Page(withPageInteractionLock({
     });
 
     const patch = {
+      roomShellScreen: PARTNER_SHELL_SCREEN.GAME,
+      waitingModel: null,
+      closingVoteModel: null,
+      closingVoteSubmitting: false,
       members,
       workshopName: result.workshopName || '',
       selectedBG: result.selectedBG || null,
@@ -2553,6 +2736,8 @@ Page(withPageInteractionLock({
       // 评分进度单独窄更新，勿并入整页指纹（否则会重建 swiper 导致横跳）
       options.resetTurnUi ? 1 : 0
     ].join('#');
+    const specialModeChanged = patch.isMasterMode !== this.data.isMasterMode
+      || patch.isSilentMode !== this.data.isSilentMode;
     const forcePatch = !!(
       options.resetTurnUi
       || playerChanged
@@ -2562,13 +2747,16 @@ Page(withPageInteractionLock({
       || closingStepChanged
       || becameMyTurn
       || leftMyTurn
+      || specialModeChanged
+      || returningFromShellScreen
     );
     if (this._isLocalInputGuarding() && !forcePatch) {
       this._pendingRoomContext = { result, options };
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
     if (!forcePatch && contextFingerprint === this._roomContextFingerprint) {
-      // 仅评分进度变化：窄 setData，不动 displayRoundSummaries / cardIndex
+      // 高频瞬时效果与评分进度都窄 setData，不动 displayRoundSummaries / cardIndex。
+      this._applySilentEffectPatch(patch);
       this._applyScoreProgressPatch(patch);
       return { playerChanged, phaseChanged, roundChanged, members, player, roomPhase };
     }
@@ -2602,6 +2790,10 @@ Page(withPageInteractionLock({
           ? (closingStep === CLOSING_STEP_REVIEW ? 'PARTNER_CLOSING_REVIEW' : 'PARTNER_CLOSING_RUNE')
           : (isDiscussionPhase(roomPhase) ? 'PARTNER_STATEMENT' : 'PARTNER_TURN')
       });
+      if (returningFromShellScreen && this._pageVisible !== false) {
+        this._bindInspirationKeyboard();
+        Promise.resolve(this._refreshInspirationCount()).catch(() => {});
+      }
       this._openSilentOverlayIfNeeded(roomState);
       this._hydrateCloudRoundMedia(
         roundContent,
@@ -2706,6 +2898,14 @@ Page(withPageInteractionLock({
           ? () => this._finalizeHistoryReviewUi(selectedProblemText)
           : null
       });
+
+      if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) {
+        this.setData({ isHost: result.isHost === true });
+        this._startStatePolling();
+        this._roomLoaded = true;
+        this._roomDataReady = true;
+        return;
+      }
 
       if (isHistoryReview) {
         this._reviewOpenedAsHost = result.isHost === true;
@@ -3067,6 +3267,39 @@ Page(withPageInteractionLock({
     });
   },
 
+  _dismissInputsBeforeCardNavigation() {
+    if (this._expressBlurTimer) {
+      clearTimeout(this._expressBlurTimer);
+      this._expressBlurTimer = null;
+    }
+    if (this._expressFocusTimer) {
+      clearTimeout(this._expressFocusTimer);
+      this._expressFocusTimer = null;
+    }
+    if (this._inspirationBlurTimer) {
+      clearTimeout(this._inspirationBlurTimer);
+      this._inspirationBlurTimer = null;
+    }
+
+    // 头像会重建下方卡片。先撤销所有显式聚焦意图，避免真机原生 input
+    // 在第二次点击或 swiper 重绘后继承旧焦点并重新拉起软键盘。
+    this._expressComposerIgnoreBlurUntil = 0;
+    this._inspirationNativeFocused = false;
+    this.setData({
+      expressComposerOpen: false,
+      expressComposerNeedFocus: false,
+      inspirationInputFocused: false,
+      inspirationHoldKeyboard: false,
+      playDraftFocused: false,
+      discussionDraftFocused: false,
+      ...this._resetInspirationKeyboardUi()
+    });
+
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
+  },
+
   handleAvatarTap(e) {
     if (isClosingPhase(this.data.gamepagePhase)) return;
     const id = e.detail && (e.detail.playerIndex != null ? e.detail.playerIndex : e.detail.id);
@@ -3074,6 +3307,8 @@ Page(withPageInteractionLock({
 
     const playerIndex = parseInt(id, 10);
     if (Number.isNaN(playerIndex)) return;
+
+    this._dismissInputsBeforeCardNavigation();
 
     const {
       members,
@@ -5023,6 +5258,74 @@ Page(withPageInteractionLock({
     this.onTapSpecialMove();
   },
 
+  onGameHeaderIntent(e) {
+    const type = e && e.detail && e.detail.type;
+    const handlers = {
+      GO_BACK: 'handleGoBack',
+      OPEN_ROOM: 'handleGoRoom',
+      VIEW_SITUATION: 'handleViewSituation'
+    };
+    const method = handlers[type];
+    if (method && typeof this[method] === 'function') return this[method]();
+    return undefined;
+  },
+
+  /** 底部组件只上报语义意图；命令、导航和交互锁仍由页面编排。 */
+  onGameFooterIntent(e) {
+    const type = e && e.detail && e.detail.type;
+    const handlers = {
+      REVIEW_BACK: 'handleReviewBack',
+      CLOSING_NEXT: 'handleClosingNextStep',
+      END_BRAINSTORM: 'handleEndBrainstorm',
+      GLOBAL_REVIEW: 'handleGlobalReview',
+      DISCUSSION_ALL_PASS: 'handleAllPassFromDiscussion',
+      END_DISCUSSION: 'handleEndDiscussion',
+      SPECIAL_MOVE: 'handleSpecialMove',
+      START_STATEMENT: 'handleStartStatement'
+    };
+    const method = handlers[type];
+    if (method && typeof this[method] === 'function') return this[method]();
+    return undefined;
+  },
+
+  handleClosingVote(e) {
+    return runPageInteraction(this, () => this._submitClosingVote(e), {
+      loadingText: '正在提交表态…'
+    });
+  },
+
+  async _submitClosingVote(e) {
+    const model = this.data.closingVoteModel || {};
+    if (model.hasVoted || model.isInitiator || this.data.closingVoteSubmitting) return;
+    const vote = e && e.detail && e.detail.vote;
+    if (!['pass', 'question'].includes(vote)) return;
+    this.setData({ closingVoteSubmitting: true });
+    try {
+      const context = this._renderedClosingVoteContext || {};
+      const result = await dispatchRoomCommand('SUBMIT_PARTNER_CLOSING_VOTE', { vote }, {
+        sessionId: context.sessionId || model.sessionId || this.data.sessionId || '',
+        closingVoteSessionId:
+          context.closingVoteSessionId || model.closingVoteSessionId || ''
+      });
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '提交失败', icon: 'none' });
+        return;
+      }
+      const snapshot = await getRoomPageSnapshot(this.data.roomId, { refresh: false });
+      if (snapshot && snapshot.ok === true) {
+        await this._awaitRoomContext(snapshot, { force: true });
+      }
+      await followRoomRouteAfterCommand(result, this.data.roomId);
+    } catch (error) {
+      console.warn('SUBMIT_PARTNER_CLOSING_VOTE', error);
+      wx.showToast({ title: '提交失败', icon: 'none' });
+    } finally {
+      if (this.data.roomShellScreen === PARTNER_SHELL_SCREEN.CLOSING_VOTE) {
+        this.setData({ closingVoteSubmitting: false });
+      }
+    }
+  },
+
   handleStartStatement() {
     return runPageInteraction(this, () => this._startStatement(), {
       loadingText: '正在开始讨论…'
@@ -5037,14 +5340,9 @@ Page(withPageInteractionLock({
     this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
-
-    // 先切到疑问讨论页，避免等 Command 回来才跳。
     this.setData({
-      statementSwitching: false,
-      canStartStatement: false,
-      gamepagePhase: PHASE_DISCUSSION
-    }, () => {
-      this._syncRoundSpeech();
+      statementSwitching: true,
+      statementSwitchAction: STATEMENT_ALL_QUESTION
     });
 
     try {
@@ -5052,42 +5350,25 @@ Page(withPageInteractionLock({
         statementResult: STATEMENT_ALL_QUESTION
       });
       if (!cmd || cmd.ok !== true) {
-        this.setData({
-          gamepagePhase: PHASE_PLAY,
-          canStartStatement: true
-        });
         wx.showToast({ title: (cmd && cmd.errMsg) || '状态同步失败', icon: 'none' });
-        this._startStatePolling();
         return;
       }
-      this._startStatePolling();
+      // Command 成功后只消费 RoomClient 投影的完整 Member View，不在页面猜测阶段。
+      this.setData({ statementSwitching: false, statementSwitchAction: '' });
+      const session = this._boundRoomSession || getActiveRoomSession();
+      const snapshot = session && session.getSnapshot && session.getSnapshot();
+      if (snapshot) this._applyRoomContext(snapshot, { resetTurnUi: true, force: true });
     } catch (err) {
       console.warn('handleStartStatement', err);
-      this.setData({
-        gamepagePhase: PHASE_PLAY,
-        canStartStatement: true
-      });
       wx.showToast({ title: '开始讨论失败', icon: 'none' });
-      this._startStatePolling();
     } finally {
       this._startingStatement = false;
+      if (this.data.statementSwitching) {
+        this.setData({ statementSwitching: false, statementSwitchAction: '' });
+      }
+      this._syncRoundSpeech();
+      this._startStatePolling();
     }
-  },
-
-  _mergeStatementTurnRecord(result) {
-    const idx = this.data.currentPlayerIndex;
-    const record = {
-      statementResult: result,
-      statementLabel: getStatementLabel(result),
-      recordedAt: Date.now(),
-      playerIndex: idx
-    };
-    const prev = Array.isArray(this.data.turnRecords) ? this.data.turnRecords.slice() : [];
-    const found = prev.findIndex((item) => item && item.playerIndex === idx);
-    if (found >= 0) prev[found] = { ...prev[found], ...record };
-    else prev.push(record);
-    this.setData({ turnRecords: prev });
-    return prev;
   },
 
   handleAllPassFromDiscussion() {
@@ -5230,7 +5511,13 @@ Page(withPageInteractionLock({
       return;
     }
     const run = () => {
-      this.createSelectorQuery()
+      const header = typeof this.selectComponent === 'function'
+        ? this.selectComponent('#partnerGameHeader')
+        : null;
+      const query = header && typeof header.createSelectorQuery === 'function'
+        ? header.createSelectorQuery()
+        : this.createSelectorQuery();
+      query
         .select('#problemText')
         .boundingClientRect()
         .select('#problemTextMeasure')
@@ -5262,30 +5549,18 @@ Page(withPageInteractionLock({
     }
   },
 
-  _buildInspirationLiftStyle(keyboardHeight) {
-    // 只用 input 的 adjust-position；fixed/transform 会与系统顶页叠加并导致真机跳动。
-    return '';
-  },
-
   _resetInspirationKeyboardUi() {
-    return {
-      inspirationKeyboardHeight: 0,
-      inspirationLiftStyle: ''
-    };
+    return { inspirationKeyboardHeight: 0 };
   },
 
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
     if (
       height === this.data.inspirationKeyboardHeight
-      && !this.data.inspirationLiftStyle
     ) {
       return;
     }
-    this.setData({
-      inspirationKeyboardHeight: height,
-      inspirationLiftStyle: ''
-    });
+    this.setData({ inspirationKeyboardHeight: height });
   },
 
   _flushInspirationKeyboardZero(immediate) {
@@ -5337,7 +5612,7 @@ Page(withPageInteractionLock({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    const height = keyboardHeightFromEvent(e);
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height > 0) return;
     if (!active && height <= 0) {
@@ -5427,7 +5702,9 @@ Page(withPageInteractionLock({
   },
 
   onInspirationRemovePhoto(e) {
-    const index = e.currentTarget.dataset.index;
+    const index = e && e.detail && e.detail.index != null
+      ? e.detail.index
+      : e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.index;
     if (index == null) return;
     const photos = (this.data.inspirationDraftPhotos || []).slice();
     photos.splice(index, 1);
@@ -5435,7 +5712,8 @@ Page(withPageInteractionLock({
   },
 
   onInspirationPreviewPhoto(e) {
-    const url = e.currentTarget.dataset.url;
+    const url = e && e.detail && e.detail.url
+      || e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url;
     const urls = this.data.inspirationDraftPhotos || [];
     if (!url) return;
     wx.previewImage({ current: url, urls });
@@ -6219,6 +6497,7 @@ Page(withPageInteractionLock({
   'dismissHostStatementTip',
   'handleAvatarTap',
   'handleClosingNextStep',
+  'handleClosingVote',
   'handleEndBrainstorm',
   'handleEndDiscussion',
   'handleAllPassFromDiscussion',
@@ -6265,6 +6544,8 @@ Page(withPageInteractionLock({
   'onInspirationKeyboardHeightChange',
   'onInspirationPreviewPhoto',
   'onInspirationRemovePhoto',
+  'onGameHeaderIntent',
+  'onGameFooterIntent',
   'onRoundPrivateInsertPreview',
   'onStarChipTouchEnd',
   'onStarChipTouchMove',
@@ -6282,6 +6563,7 @@ Page(withPageInteractionLock({
   passthroughMethods: [
     'onClosingCreativeFocus', 'onClosingCreativeBlur', 'onClosingCreativeKeyboardHeightChange',
     'onExpressComposerBlur', 'onExpressComposerFocus',
-    'onInspirationBlur', 'onInspirationFocus', 'onInspirationKeyboardHeightChange'
+    'onInspirationBlur', 'onInspirationFocus', 'onInspirationKeyboardHeightChange',
+    'onGameHeaderIntent', 'onGameFooterIntent'
   ]
 }));

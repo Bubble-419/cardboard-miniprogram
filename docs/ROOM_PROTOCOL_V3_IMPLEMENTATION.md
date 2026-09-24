@@ -38,7 +38,7 @@ V3 遵循以下不可拆分的原则：
 7. **隐私在投影前收口**：公共补丁可以共享，Actor 补丁在 Command 提交时按成员扇出；查询只返回调用成员自己的补丁。Spy 秘密不得进入公共 View 或公共 Event。
 8. **不可信就重置**：事件缺口、版本不兼容、状态版本不连续、矛盾水位或无进展批次都必须丢弃 staging View 并读取 Snapshot，禁止客户端猜测修补。
 9. **业务与瞬时状态分离**：Presence、Signal 和本地输入状态不改变 `stateVersion/eventSeq`，也不能决定成员资格或业务流程。
-10. **单一客户端连接**：房间页面共享一个 `RoomClient`、一个请求队列和一个最短 2 秒轮询器；页面不得再创建业务轮询或第二份房间状态。
+10. **单一客户端连接**：房间页面共享一个 `RoomClient`、一条 `roomCommand/roomQuery` 串行请求队列和一个最短 2 秒轮询器；页面不得再创建业务轮询或第二份房间状态。自动 Sync 从前一请求结束后重新计算完整静默窗口，不能与 Command 并发或在 Command 后紧接着补发。
 
 ### 0.2 View 必须同时支持 Snapshot 与 Event
 
@@ -238,7 +238,7 @@ sequenceDiagram
   C->>F: protocolVersion + commandId + knownSeq
   F->>A: actorUserId 只取云函数上下文
   A->>T: transactCommand
-  T->>T: 查 Receipt / ActiveRoom / Aggregate
+  T->>T: 查 Receipt / Aggregate<br/>Create/Join 才查 ActiveRoom
   T->>D: 最新 Aggregate + Command
   D-->>T: Next Aggregate + Domain Events + Dirty Facts
   T->>P: Before/After Public View + Actor View
@@ -250,7 +250,15 @@ sequenceDiagram
   C-->>U: 发布新 View
 ```
 
-`roomCommand` 在 `exports.main` 内才加载 `wx-server-sdk` 并创建 Application。依赖缺失、`database()` 初始化失败或事务抛错都会返回结构化 `{ ok: false, errCode, errMsg }`，避免平台把未捕获异常显示成 `cloud.callFunction:fail errCode: -504002`。数据库 `TransactionBusy`（`-501001`）标记为 `retryable`。
+`roomCommand` 在模块初始化阶段预热 `wx-server-sdk`、Repository 和 Application，缩短首次业务处理的关键路径；初始化异常会被捕获并在 `exports.main` 返回结构化 `{ ok: false, errCode, errMsg }`，不会因为预热重新退化为未捕获的 `cloud.callFunction:fail errCode: -504002`。数据库 `TransactionBusy`（`-501001`）标记为 `retryable`。
+
+`roomV3ActiveByUser` 只参与 `CREATE_ROOM/JOIN_ROOM` 的“是否已在其他开放房间”裁决。
+普通业务 Command 直接以目标 Room Aggregate 校验成员资格，不读 Active 索引；
+Join 的 Active Room 与目标 Room 相同时复用已读文档，不在同一事务内重复点读。
+
+每个调用在云函数日志输出一条 `[roomCommand:perf]` 结构化记录，包含
+`transactionMs/presenceMs/syncMs/totalMs`、`syncSource`、重放标志与脱敏 `commandIdHash`。
+观测回调失败不得改变 Command 成功或失败语义，日志中不记录 Payload 或 OpenID。
 
 对会跨步骤复用同一 `turnId` 的写操作，Envelope 额外冻结 `workflowStep`：
 
@@ -310,6 +318,7 @@ sequenceDiagram
   Q-->>C: Snapshot(view, seq=N, stateVersion, ephemeral)
 
   loop 单一短轮询计时器
+    Note over C: 前一 Command/Query 完成后静默 2 秒<br/>期间有新请求则废弃旧 timer 并重新计时
     C->>Q: sync(afterSeq=N)
     Q->>DB: 点读 Room，固定 roomCurrentSeq
     alt afterSeq 已追平
@@ -399,6 +408,46 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 精确 context，成功后先跟随新的 `view.route`；选择模式这种本地叠层再按 `after=OPEN_MODE_PICKER`
 打开。运行期不可逆页面投影 `NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
 
+逻辑 Route 不要求与微信物理页面一一对应。连续运行且共享大量本地 UI 状态的屏幕可以由稳定
+RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
+Route 映射到同一路径时，协调器返回 `SAME_ROUTE`，Shell 仍必须按最新 `view.route.name + params`
+原子切屏。
+Shell 不能用本地计时器、页面生命周期、URL 参数或临时叠层猜测屏幕，也不能维护第二份业务状态。
+在线 Shell 首屏必须先显示无交互 `loading`，收到完整 PageSnapshot 后才能进入业务屏幕；投影到 Shell
+边界外的 Route 时立即进入无交互 `leaving`，停止当前屏幕副作用，再由导航协调器跳转。导航失败时
+继续保持 `leaving`，且不得抬高导航水位，以便后续同步重试。
+
+当前有两个小而明确的 Shell 边界：`selectPlayer` Setup Shell 承载 Player 的情境等待与首位玩家
+等待，Partner `gamepage` RoomShell 承载确认首位等待、游戏和收尾投票。通用
+`room-wait-screen` 只渲染 Shell Model，不订阅 RoomSession，也不执行导航。导航描述器与两个 Shell
+projector 共用同一个纯 Route 分类器，不能各自重复解释 `subAwait.params.scene`。
+
+本地叠层不是第二个业务页面。`specialMove` 正常完成时只关闭叠层并恢复下层 Partner RoomShell；
+Master / Silent 等不改变逻辑 Route 的 View 字段变化仍是强制可见的 Shell 刷新，不能因为 route
+相同或游戏区指纹相同而丢弃。静默声级属于高频瞬时字段，应窄刷新对应效果，不能为它重建卡片
+swiper。从叠层返回时，下层页面先消费 RoomSession 内已提交的当前 View，再恢复订阅和屏幕副作用，
+无需等待下一次网络轮询。页面栈异常时的 URL 重建仅是有超时的恢复路径。
+
+```mermaid
+sequenceDiagram
+  participant RC as RoomClient
+  participant P as gamepage RoomShell
+  participant N as Navigation Coordinator
+
+  RC-->>P: PageSnapshot(route=subAwait, scene=confirmFirstPlayer, revision=N)
+  P->>P: projectPartnerRoomShell → waiting
+  RC->>N: reconcile(subAwait@N)
+  N-->>RC: SAME_ROUTE（不调用 wx.redirectTo）
+  RC-->>P: PageSnapshot(route=partnerGame, revision=N+1)
+  P->>P: projectPartnerRoomShell → game
+  RC-->>P: PageSnapshot(route=closingStatement, revision=N+2)
+  P->>P: projectPartnerRoomShell → closingVote
+  RC->>N: reconcile(closingStatement@N+2)
+  N-->>RC: SAME_ROUTE（不调用 wx.redirectTo）
+  RC-->>P: PageSnapshot(route=partnerGame, revision=N+3)
+  P->>P: projectPartnerRoomShell → game
+```
+
 ## 5. Room 与公共配置状态
 
 ```mermaid
@@ -481,14 +530,20 @@ stateDiagram-v2
   CHOOSE_SCENARIO --> SELECT_FIRST_PLAYER: SET_SCENARIO
   SELECT_FIRST_PLAYER --> HALLI_ACTIVITY: SELECT_FIRST_PLAYER
   HALLI_ACTIVITY --> HALLI_CREATIVE: END_HALLI_ACTIVITY
-  HALLI_CREATIVE --> HALLI_CREATIVE: 成员提交/更新自己的创意
+  HALLI_CREATIVE --> HALLI_CREATIVE: 提交 / REOPEN / 保存自己的创意
   HALLI_CREATIVE --> HALLI_SUMMARY: 所有有效参与者已提交
-  HALLI_SUMMARY --> COMPLETED: COMPLETE_HALLI_SESSION
+  HALLI_SUMMARY --> HALLI_SUMMARY: REOPEN / 保存自己的创意
+  HALLI_SUMMARY --> COMPLETED: 无修改中成员 + COMPLETE_HALLI_SESSION
 ```
 
 成员离开会在同一事务内缩减 `requiredMemberIds`；若剩余提交已经齐全，立即进入汇总。
 已提交的 Halli 创意在 `HALLI_CREATIVE` 阶段就进入公共 View，每次提交产生的
 Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
+`REOPEN_HALLI_IDEA` 把修改意图写入 Session，只将修改者的 Actor Route 投影为
+`creativeInput`；断线恢复后仍可从 Snapshot 还原编辑页和已提交文本。
+
+Spy 的 `START_NEXT_SPY_ROUND` 在无淘汰时重新洗牌；有淘汰时则保留上轮发言顺序，
+移除淘汰者并从其后一位开始。
 
 ## 8. Spy 状态机与秘密边界
 
@@ -524,17 +579,17 @@ flowchart LR
 |---|---|---|
 | 无当前 Session | `addPlayer` | `addPlayer` |
 | 非本场 Participant | `addPlayer?observing=true` | 同左 |
-| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg` |
+| `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg`（`selectPlayer` Setup Shell `waiting` 屏幕） |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |
 | `SELECT_DESIGN_PROBLEM` | `selectProblem` | `selectProblem` |
-| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player` |
-| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer` |
-| `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame` | `partnerGame` |
-| `PARTNER_CLOSING_VOTE` | `closingStatement` | `closingStatement` |
+| `SELECT_FIRST_PLAYER` | `selectPlayer` | `subAwait?scene=player`（同一 Setup Shell `waiting` 屏幕） |
+| `CONFIRM_FIRST_PLAYER` | `confirmFirstPlayer` | `subAwait?scene=confirmFirstPlayer`（Partner RoomShell `waiting` 屏幕） |
+| `PARTNER_TURN / STATEMENT / CLOSING_RUNE / CLOSING_REVIEW` | `partnerGame`（Partner RoomShell） | `partnerGame`（Partner RoomShell） |
+| `PARTNER_CLOSING_VOTE` | `closingStatement`（同一 Partner RoomShell） | `closingStatement`（同一 Partner RoomShell） |
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` |
 | `HALLI_CREATIVE` 未提交 | `creativeInput` | `creativeInput` |
-| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary` |
+| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary`；本人修改中为 `creativeInput` |
 | `SPY_INTRO / SPEAK / VOTE / RESULT / SETTLED` | 对应 Spy 页面 | 对应 Spy 页面 |
 
 ## 10. 成员变化的原子副作用
@@ -573,7 +628,18 @@ flowchart TD
 
 RoomClient 的最小轮询间隔为 **2 秒**。所有房间调用复用同一个 `deviceSessionId`；距离上次续租
 达到 **5 秒**时携带 `touchPresence=true`，服务端以自身时间写租约。在线投影窗口为 **15 秒**，
-写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。
+写入失败只影响在线提示，不得让 Command、Snapshot 或 Sync 失败。Presence 续租使用
+事务外单次点写，`db.command.max(lastSeenAt)` 原子防止延迟到达的旧请求回退时间戳；
+它不与业务 Aggregate 共用事务。
+`roomCommand` 与所有 `roomQuery` action 共用一条串行通道；用户显式打开历史等前台读取可立即排队，
+但自动 Sync 只有在上一请求结束后连续静默 2 秒才会发起。页面切换紧跟刚完成的 Command/Query 时
+直接消费内存中的权威 View，不重复读取 Snapshot；前台请求完成后同样重新开始静默窗口。
+
+业务 Sync 仍按 2 秒检查事件，Presence 列表独立降频为每 **5 秒**最多读取一次；其他 Sync 将
+`ephemeral.stale.presence=true`，客户端保留上次成功在线投影。Presence 查询在数据库索引层使用
+`lastSeenAt >= cutoff` 排除过期租约。三种公开 Signal 聚合在一个
+`_id=hash(roomId:PUBLIC_SIGNALS)` 文档中，活跃场次的最终 Sync 只需一次点读；大厅没有活跃
+Session 时不读取 Signal 文档。成员级催促冷却凭证仍独立保存。
 Presence 或 Signal 读取失败时，响应在 `ephemeral.stale` 标记对应通道；客户端保留该通道
 最后一次成功值，直到后续成功响应替换，不能把依赖故障误显示为全员离线或信号归零。
 

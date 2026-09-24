@@ -36,11 +36,14 @@ flowchart TD
 flowchart LR
   subgraph Client[微信小程序]
     PAGE[业务页面]
+    SHELL[Setup / Partner RoomShell<br/>waiting / selector / game / closingVote]
+    WIDGET[低耦合展示组件]
     PM[Page Model]
     RC[RoomClient<br/>唯一房间连接]
     VR[View Reducer]
     NAV[Route Projector]
     PAGE --> PM --> RC
+    PAGE --> SHELL --> WIDGET
     RC --> VR
     RC --> NAV
   end
@@ -100,14 +103,8 @@ flowchart LR
 
 ## 版本与运行参数
 
-版本值必须从 [`packages/room-contracts/index.js`](../packages/room-contracts/index.js) 核对：
-
-```text
-protocolVersion = 3
-schemaVersion = 3
-viewSchemaVersion = 1
-eventSchemaVersion = 3
-```
+协议、持久化、View 与 Event Schema 的当前版本值只从
+[`packages/room-contracts/index.js`](../packages/room-contracts/index.js) 核对，文档不复制第二份可能过期的数字。
 
 ```text
 RoomClient 最小轮询间隔 = 2000ms
@@ -134,6 +131,7 @@ Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 | 客户端 View 状态机 | [`packages/room-client/index.js`](../packages/room-client/index.js) |
 | 小程序接线与页面模型 | [`modules/room-session/index.js`](../modules/room-session/index.js)、[`page-model.js`](../modules/room-session/page-model.js) |
 | 导航协调 | [`modules/room-navigation/index.js`](../modules/room-navigation/index.js) |
+| Setup / Partner 稳定 RoomShell 与页面组件 | [`selectPlayer/shell.js`](../pages/main-pages/selectPlayer/shell.js)、[`partnerRoomShell.js`](../pages/main-pages/partnerMode/utils/partnerRoomShell.js)、[`gamepage`](../pages/main-pages/partnerMode/gamepage)、[`room-wait-screen`](../components/room-wait-screen)、[`components/partner-*`](../components) |
 | 云函数薄入口 | [`cloudfunctions/roomCommand/src/entry.js`](../cloudfunctions/roomCommand/src/entry.js)、[`roomQuery/src/entry.js`](../cloudfunctions/roomQuery/src/entry.js) |
 | 协议与业务验收 | [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)、[`tests/room-domain`](../tests/room-domain) |
 | Legacy 清理门禁 | [`tests/room-contract/no-legacy-room-api.test.js`](../tests/room-contract/no-legacy-room-api.test.js) |

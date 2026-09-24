@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  ROOM_SHELL_OWNER,
+  ROOM_SHELL_SCREEN,
+  classifyRoomShellRoute
+} = require('./roomShellRoute');
+
 const ROUTES = Object.freeze({
   addPlayer: { path: '/pages/main-pages/addPlayer/index', mode: 'reLaunch', pageKey: 'addplayer' },
   modeIndex: { path: '/pages/main-pages/modeIndex/index', mode: 'redirectTo', pageKey: 'modeindex' },
@@ -9,7 +15,8 @@ const ROUTES = Object.freeze({
   selectPlayer: { path: '/pages/main-pages/selectPlayer/index', mode: 'redirectTo', pageKey: 'selectplayer' },
   confirmFirstPlayer: { path: '/pages/main-pages/partnerMode/confirmFirstPlayer/index', mode: 'redirectTo', pageKey: 'confirmfirstplayer' },
   partnerGame: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
-  closingStatement: { path: '/pages/main-pages/partnerMode/closingStatement/index', mode: 'redirectTo', pageKey: 'closingstatement' },
+  // Partner 运行态使用稳定 RoomShell；route 只切换 Shell 内屏幕，不再重建页面实例。
+  closingStatement: { path: '/pages/main-pages/partnerMode/gamepage/index', mode: 'redirectTo', pageKey: 'closingstatement' },
   leaderboard: { path: '/pages/leaderboard/index', mode: 'redirectTo', pageKey: 'leaderboard' },
   halliGame: { path: '/pages/main-pages/halliGalli/gamepage/index', mode: 'redirectTo', pageKey: 'gamepage' },
   creativeInput: { path: '/pages/main-pages/creativeInput/index', mode: 'redirectTo', pageKey: 'creativeinput' },
@@ -65,8 +72,17 @@ function queryString(params) {
 
 function describeRoute(route, roomId) {
   if (!route || !ROUTES[route.name]) return null;
-  const config = ROUTES[route.name];
-  const query = queryString({ roomId, ...(route.params || {}) });
+  const params = route.params || {};
+  const shell = classifyRoomShellRoute(route);
+  const config = shell.owner === ROOM_SHELL_OWNER.PARTNER
+    ? ROUTES.partnerGame
+    : (shell.owner === ROOM_SHELL_OWNER.SELECT_PLAYER ? ROUTES.selectPlayer : ROUTES[route.name]);
+  const shellParams = shell.screen === ROOM_SHELL_SCREEN.CLOSING_VOTE
+    ? { roomShellScreen: 'closingVote' }
+    : (shell.screen === ROOM_SHELL_SCREEN.WAITING
+      ? { roomShellScreen: 'waiting' }
+      : {});
+  const query = queryString({ roomId, ...shellParams, ...params });
   return { ...config, name: route.name, url: `${config.path}${query ? `?${query}` : ''}` };
 }
 

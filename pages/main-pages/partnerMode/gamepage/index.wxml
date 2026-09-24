@@ -1,73 +1,51 @@
+<room-wait-screen
+  wx:if="{{roomShellScreen === 'waiting' && waitingModel}}"
+  model="{{waitingModel}}"
+  waitHeroSrc="{{waitHeroSrc}}"
+/>
+
+<view wx:elif="{{roomShellScreen === 'waiting'}}" class="room-shell-loading"></view>
+
+<partner-closing-vote-screen
+  wx:elif="{{roomShellScreen === 'closingVote' && closingVoteModel}}"
+  model="{{closingVoteModel}}"
+  submitting="{{closingVoteSubmitting}}"
+  waitHeroSrc="{{waitHeroSrc}}"
+  bind:vote="handleClosingVote"
+/>
+
+<view wx:elif="{{roomShellScreen === 'closingVote'}}" class="room-shell-loading"></view>
+
+<block wx:elif="{{roomShellScreen === 'game'}}">
 <view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}">
   <view class="page-body">
-    <!-- 顶部：房间入口 + 设计问题（与微信胶囊垂直齐平） -->
-    <view
-      class="top-bar"
-      style="padding-top: {{topBarPadTop}}px; padding-right: {{topBarPaddingRight}}px;"
-    >
-      <view
-        class="top-bar-inner"
-        style="height: {{topBarHeight}}px;"
-      >
-        <view
-          wx:if="{{isHistoryReview}}"
-          class="room-entry"
-          style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
-          bindtap="handleGoBack"
-        >
-          <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
-        </view>
-        <view
-          wx:else
-          class="room-entry"
-          style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
-          bindtap="handleGoRoom"
-        >
-          <image class="room-entry-icon" src="/assets/partnerMode/icon-room-entry-gp.svg" mode="aspectFit" />
-        </view>
-        <view
-          class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
-          style="min-height: {{topBarIconSize}}px;"
-          bindtap="handleViewSituation"
-        >
-          <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
-          <view class="problem-text-wrap">
-            <text
-              id="problemText"
-              class="problem-text {{selectedProblemText ? '' : 'problem-text-empty'}} {{problemExpanded ? 'problem-text-expanded' : ''}}"
-            >{{selectedProblemText || '暂无设计问题'}}</text>
-            <text wx:if="{{selectedProblemText && !problemExpanded}}" id="problemTextMeasure" class="problem-text-measure">{{selectedProblemText}}</text>
-          </view>
-        </view>
-      </view>
-    </view>
+    <partner-game-header
+      id="partnerGameHeader"
+      historyReview="{{isHistoryReview}}"
+      topPadding="{{topBarPadTop}}"
+      rightPadding="{{topBarPaddingRight}}"
+      height="{{topBarHeight}}"
+      iconSize="{{topBarIconSize}}"
+      problemText="{{selectedProblemText}}"
+      problemExpanded="{{problemExpanded}}"
+      bind:intent="onGameHeaderIntent"
+    />
 
-    <!-- 玩家列表：使用 partner-avatar 展示六种头像状态 -->
-    <view class="user-section">
-      <user-list
-        avatarList="{{avatarList}}"
-        actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
-        selectedUser="{{isHistoryReview || !isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
-        indicatorUser="{{indicatorPlayerIndex}}"
-        enableAdd="{{false}}"
-        isFold="{{true}}"
-        showName="{{false}}"
-        visualMode="partner-game"
-        onActionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
-        specialMoveActive="{{cardBorderVariant === 'rainbow' || cardBorderVariant === 'sound'}}"
-        showActingFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        enableSelectedFrame="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        enableAvatarTap="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
-        roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
-        roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
-        roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
-        suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
-        bind:timerexpire="handleRoundTimerExpire"
-        bindavatartap="handleAvatarTap"
-      />
-    </view>
-
-    <view class="divider-line"></view>
+    <partner-player-strip
+      avatarList="{{avatarList}}"
+      actingUser="{{isHistoryReview ? -1 : currentPlayerIndex}}"
+      selectedUser="{{isHistoryReview || !isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
+      indicatorUser="{{indicatorPlayerIndex}}"
+      actionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
+      specialMoveActive="{{cardBorderVariant === 'rainbow' || cardBorderVariant === 'sound'}}"
+      interactive="{{!isHistoryReview && gamepagePhase !== 'closing'}}"
+      roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
+      roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
+      roundTimerKey="{{currentRound}}-{{currentPlayerIndex}}"
+      suppressTimerCanvas="{{showHostStatementTip || isHistoryReview}}"
+      bind:timerexpire="handleRoundTimerExpire"
+      bind:avatartap="handleAvatarTap"
+    />
 
     <!-- 收尾阶段：全员通过后先补全符文，房主点下一步后再创意点复盘 -->
     <block wx:if="{{!isHistoryReview && gamepagePhase === 'closing'}}">
@@ -215,83 +193,27 @@
         </view>
       </view>
 
-      <!-- 勿绑 focus=false：真机会锁死原生聚焦；点击交给 input 原生拉起输入法 -->
-      <view
-        class="inspiration-bar inspiration-bar-closing {{isHost || closingStep === 'review' ? '' : 'inspiration-bar-safe-bottom'}} {{closingKeyboardHeight > 0 ? 'inspiration-bar-kb-hidden' : ''}}"
-        style="{{inspirationLiftStyle}}"
-      >
-        <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
-          <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
-          <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
-            <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
-          </view>
-        </view>
-        <view class="inspiration-composer {{inspirationDraftPhotos.length ? 'inspiration-composer-with-photos' : ''}}">
-          <scroll-view
-            wx:if="{{inspirationDraftPhotos.length}}"
-            class="inspiration-photo-strip"
-            scroll-x
-            enhanced
-            show-scrollbar="{{false}}"
-          >
-            <view class="inspiration-photo-strip-inner">
-              <view
-                class="inspiration-photo-thumb-wrap"
-                wx:for="{{inspirationDraftPhotos}}"
-                wx:key="*this"
-              >
-                <image
-                  class="inspiration-photo-thumb"
-                  src="{{item}}"
-                  mode="aspectFill"
-                  catchtap="onInspirationPreviewPhoto"
-                  data-url="{{item}}"
-                />
-                <view
-                  class="inspiration-photo-remove"
-                  catchtap="onInspirationRemovePhoto"
-                  data-index="{{index}}"
-                >×</view>
-              </view>
-            </view>
-          </scroll-view>
-          <view class="inspiration-row">
-            <input
-              class="inspiration-textarea"
-              type="text"
-              value="{{inspirationDraftText}}"
-              hold-keyboard="{{inspirationHoldKeyboard}}"
-              bindfocus="onInspirationFocus"
-              bindblur="onInspirationBlur"
-              bindinput="onInspirationInput"
-              bindkeyboardheightchange="onInspirationKeyboardHeightChange"
-              placeholder="记录您的灵感..."
-              placeholder-class="inspiration-placeholder"
-              maxlength="2000"
-              confirm-type="done"
-              adjust-position="{{true}}"
-              cursor-spacing="24"
-            />
-            <view
-              class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
-              catchtap="onInspirationActionTap"
-            >
-              <image
-                wx:if="{{inspirationHasText || inspirationDraftPhotos.length}}"
-                class="inspiration-action-icon"
-                src="/assets/partnerMode/icon-insp-send.svg"
-                mode="aspectFit"
-              />
-              <image
-                wx:else
-                class="inspiration-action-icon"
-                src="/assets/partnerMode/icon-insp-plus.svg"
-                mode="aspectFit"
-              />
-            </view>
-          </view>
-        </view>
-      </view>
+      <!-- 输入模块拥有键盘与原生输入节点；房间 View 刷新不重建其局部状态。 -->
+      <partner-inspiration-composer
+        count="{{inspirationCount}}"
+        draftText="{{inspirationDraftText}}"
+        draftPhotos="{{inspirationDraftPhotos}}"
+        hasText="{{inspirationHasText}}"
+        holdKeyboard="{{inspirationHoldKeyboard}}"
+        saving="{{inspirationSaving}}"
+        keyboardHeight="{{inspirationKeyboardHeight}}"
+        closing="{{true}}"
+        safeBottom="{{!isHost && closingStep !== 'review'}}"
+        hiddenByKeyboard="{{closingKeyboardHeight > 0}}"
+        bind:opencenter="handleGoInspirationCenter"
+        bind:focus="onInspirationFocus"
+        bind:blur="onInspirationBlur"
+        bind:input="onInspirationInput"
+        bind:keyboardheightchange="onInspirationKeyboardHeightChange"
+        bind:action="onInspirationActionTap"
+        bind:previewphoto="onInspirationPreviewPhoto"
+        bind:removephoto="onInspirationRemovePhoto"
+      />
     </block>
 
     <!-- 常规出牌 / 讨论 -->
@@ -942,185 +864,48 @@
       </view>
     </view>
 
-    <!-- 灵感记录：图标进灵感空间 + 底栏快捷输入 -->
-    <view
-      class="inspiration-bar {{isHistoryReview ? 'inspiration-bar-history' : ''}} {{isHistoryReview && reviewCanGoBack ? 'inspiration-bar-history-with-footer' : ''}} {{inspirationKeyboardHeight > 0 && isHistoryReview ? 'inspiration-bar-history-lifted' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'inspiration-bar-safe-bottom' : ''}}"
-      style="{{inspirationLiftStyle}}"
-    >
-      <view class="insp-icon-wrap" catchtap="handleGoInspirationCenter">
-        <image class="insp-icon-img" src="/assets/partnerMode/icon-inspiration-gp.svg" mode="aspectFit" />
-        <view class="insp-badge" wx:if="{{inspirationCount > 0}}">
-          <text class="insp-badge-num">{{inspirationCount > 99 ? '99' : inspirationCount}}</text>
-        </view>
-      </view>
-      <view class="inspiration-composer {{inspirationDraftPhotos.length ? 'inspiration-composer-with-photos' : ''}}">
-        <scroll-view
-          wx:if="{{inspirationDraftPhotos.length}}"
-          class="inspiration-photo-strip"
-          scroll-x
-          enhanced
-          show-scrollbar="{{false}}"
-        >
-          <view class="inspiration-photo-strip-inner">
-            <view
-              class="inspiration-photo-thumb-wrap"
-              wx:for="{{inspirationDraftPhotos}}"
-              wx:key="*this"
-            >
-              <image
-                class="inspiration-photo-thumb"
-                src="{{item}}"
-                mode="aspectFill"
-                catchtap="onInspirationPreviewPhoto"
-                data-url="{{item}}"
-              />
-              <view
-                class="inspiration-photo-remove"
-                catchtap="onInspirationRemovePhoto"
-                data-index="{{index}}"
-              >×</view>
-            </view>
-          </view>
-        </scroll-view>
-        <view class="inspiration-row">
-          <input
-            class="inspiration-textarea"
-            type="text"
-            value="{{inspirationDraftText}}"
-            hold-keyboard="{{inspirationHoldKeyboard}}"
-            bindfocus="onInspirationFocus"
-            bindblur="onInspirationBlur"
-            bindinput="onInspirationInput"
-            bindkeyboardheightchange="onInspirationKeyboardHeightChange"
-            placeholder="记录您的灵感..."
-            placeholder-class="inspiration-placeholder"
-            maxlength="2000"
-            confirm-type="done"
-            adjust-position="{{true}}"
-            cursor-spacing="24"
-          />
-          <view
-            class="inspiration-action {{inspirationSaving ? 'inspiration-action-disabled' : ''}}"
-            catchtap="onInspirationActionTap"
-          >
-            <image
-              wx:if="{{inspirationHasText || inspirationDraftPhotos.length}}"
-              class="inspiration-action-icon"
-              src="/assets/partnerMode/icon-insp-send.svg"
-              mode="aspectFit"
-            />
-            <image
-              wx:else
-              class="inspiration-action-icon"
-              src="/assets/partnerMode/icon-insp-plus.svg"
-              mode="aspectFit"
-            />
-          </view>
-        </view>
-      </view>
-    </view>
+    <partner-inspiration-composer
+      count="{{inspirationCount}}"
+      draftText="{{inspirationDraftText}}"
+      draftPhotos="{{inspirationDraftPhotos}}"
+      hasText="{{inspirationHasText}}"
+      holdKeyboard="{{inspirationHoldKeyboard}}"
+      saving="{{inspirationSaving}}"
+      keyboardHeight="{{inspirationKeyboardHeight}}"
+      history="{{isHistoryReview}}"
+      historyWithFooter="{{isHistoryReview && reviewCanGoBack}}"
+      safeBottom="{{!isHistoryReview && !isHost && gamepagePhase === 'discussion'}}"
+      bind:opencenter="handleGoInspirationCenter"
+      bind:focus="onInspirationFocus"
+      bind:blur="onInspirationBlur"
+      bind:input="onInspirationInput"
+      bind:keyboardheightchange="onInspirationKeyboardHeightChange"
+      bind:action="onInspirationActionTap"
+      bind:previewphoto="onInspirationPreviewPhoto"
+      bind:removephoto="onInspirationRemovePhoto"
+    />
   </block>
   </view>
 
-  <!-- 底部操作：键盘升起时留在原位被盖住，并用透明度隐藏避免「浮在键盘上」 -->
-  <view
-    class="page-footer {{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0 ? 'page-footer-insp-hidden' : ''}}"
-    wx:if="{{(isHistoryReview && reviewCanGoBack) || (!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review')))}}"
-  >
-    <view class="bottom-actions" wx:if="{{isHistoryReview && reviewCanGoBack}}">
-      <button
-        class="end-brainstorm-btn"
-        bindtap="handleReviewBack"
-      >
-        返回
-      </button>
-    </view>
-    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'rune' && isHost}}">
-      <button
-        class="closing-next-btn"
-        bindtap="handleClosingNextStep"
-      >
-        下一步
-      </button>
-    </view>
-    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'review' && isHost}}">
-      <button
-        class="end-brainstorm-btn"
-        bindtap="handleEndBrainstorm"
-      >
-        结束脑暴
-      </button>
-    </view>
-    <view class="bottom-actions" wx:elif="{{gamepagePhase === 'closing' && closingStep === 'review'}}">
-      <button
-        class="end-brainstorm-btn"
-        bindtap="handleGlobalReview"
-      >
-        全局回顾
-      </button>
-    </view>
-    <view class="bottom-actions bottom-actions-discussion" wx:elif="{{gamepagePhase === 'discussion' && isHost}}">
-      <button
-        class="end-discussion-btn end-discussion-btn-secondary {{discussionSwitching && discussionSwitchAction === 'allPass' ? 'end-discussion-btn-loading' : ''}}"
-        disabled="{{discussionSwitching}}"
-        loading="{{discussionSwitching && discussionSwitchAction === 'allPass'}}"
-        hover-class="none"
-        bindtap="handleAllPassFromDiscussion"
-      >
-        {{discussionSwitching && discussionSwitchAction === 'allPass' ? '处理中' : '没有疑问'}}
-      </button>
-      <button
-        class="end-discussion-btn {{discussionSwitching && discussionSwitchAction === 'end' ? 'end-discussion-btn-loading' : ''}}"
-        disabled="{{discussionSwitching}}"
-        loading="{{discussionSwitching && discussionSwitchAction === 'end'}}"
-        hover-class="none"
-        bindtap="handleEndDiscussion"
-      >
-        {{discussionSwitching && discussionSwitchAction === 'end' ? '处理中' : '结束讨论'}}
-      </button>
-    </view>
-    <view class="bottom-actions" wx:elif="{{showSpecialMoveBtn || isHost || (isCurrentPlayer && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing')}}">
-      <!-- 特殊行动：出牌阶段轮到谁，谁显示；房主非本人出牌时不显示 -->
-      <view
-        wx:if="{{showSpecialMoveBtn || (isCurrentPlayer && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing')}}"
-        class="special-btn-wrap {{isHost ? '' : 'special-btn-wrap-alone'}}"
-      >
-        <view
-          wx:if="{{specialMoveUsedThisTurn || isMasterMode}}"
-          class="special-btn special-btn-used"
-        >
-          <text class="special-btn-line">特殊</text>
-          <text class="special-btn-line">行动</text>
-          <image
-            class="special-btn-used-check"
-            src="/assets/partnerMode/icon-special-used-check.svg"
-            mode="aspectFit"
-          />
-        </view>
-        <button
-          wx:else
-          class="special-btn"
-          hover-class="none"
-          catchtap="onTapSpecialMove"
-        >
-          <text class="special-btn-line">特殊</text>
-          <text class="special-btn-line">行动</text>
-        </button>
-      </view>
-      <view class="bottom-actions-gap" wx:if="{{(showSpecialMoveBtn || isCurrentPlayer) && isHost && gamepagePhase !== 'discussion' && gamepagePhase !== 'closing'}}"></view>
-      <view class="statement-btn-wrap" wx:if="{{isHost}}" id="hostStatementBtn">
-        <button
-          class="statement-btn {{canStartStatement && !statementSwitching ? 'statement-btn-enabled' : ''}} {{statementSwitching ? 'statement-btn-loading' : ''}}"
-          disabled="{{!canStartStatement || statementSwitching}}"
-          loading="{{statementSwitching}}"
-          hover-class="none"
-          bindtap="handleStartStatement"
-        >
-          {{statementSwitching ? '进入中' : '开始表态'}}
-        </button>
-      </view>
-    </view>
-  </view>
+  <partner-game-footer
+    id="partnerGameFooter"
+    visible="{{(isHistoryReview && reviewCanGoBack) || (!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review')))}}"
+    keyboardOpen="{{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
+    historyReview="{{isHistoryReview}}"
+    reviewCanGoBack="{{reviewCanGoBack}}"
+    phase="{{gamepagePhase}}"
+    closingStep="{{closingStep}}"
+    isHost="{{isHost}}"
+    isCurrentPlayer="{{isCurrentPlayer}}"
+    showSpecialMove="{{showSpecialMoveBtn}}"
+    specialMoveUsed="{{specialMoveUsedThisTurn}}"
+    masterMode="{{isMasterMode}}"
+    canStartStatement="{{canStartStatement}}"
+    statementSwitching="{{statementSwitching}}"
+    discussionSwitching="{{discussionSwitching}}"
+    discussionSwitchAction="{{discussionSwitchAction}}"
+    bind:intent="onGameFooterIntent"
+  />
 
   <!-- 房主首次进入：轻量单行提示（透明热区，任意处可关） -->
   <view
@@ -1141,6 +926,9 @@
   </view>
 
 </view>
+</block>
+
+<view wx:else class="room-shell-loading"></view>
 
 <interaction-lock-layer
   locked="{{interactionLocked}}"

@@ -65,6 +65,13 @@ function fixture() {
   app.globalData.roomId = '12345678';
   app.globalData.roomSession = {
     roomId: '12345678',
+    getSnapshot: () => ({
+      ok: true,
+      revision: 2,
+      roomId: '12345678',
+      roomState: { partnerGamePhase: 'closing' },
+      view: { route: { name: 'closingStatement', params: {} } }
+    }),
     getView: () => ({
       actor: { capabilities: { USE_PARTNER_SPECIAL: { allowed: true } } },
       session: { sessionId: 's1', activeTurn: { turnId: 't1' } }
@@ -104,4 +111,58 @@ test('反面随机拼只在取消采用或采用卡组时消耗特殊行动', as
     assert.equal(commands[0].type, 'USE_PARTNER_SPECIAL');
     assert.deepEqual(commands[0].payload, { kind: 'HELP_LUCK' });
   }
+});
+
+test('Master 完成后关闭本地叠层并复用下层 gamepage，不用 redirect 重建页面', async () => {
+  const { app, page } = fixture();
+  const definition = loadPageDefinition(app);
+  page._returnToGamepage = definition._returnToGamepage.bind(page);
+  page._redirectToGamepageFromRoom = definition._redirectToGamepageFromRoom.bind(page);
+
+  const calls = [];
+  const previousPages = global.getCurrentPages;
+  global.getCurrentPages = () => [
+    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} },
+    { route: 'pages/main-pages/partnerMode/specialMove/index', data: {} }
+  ];
+  try {
+    await withRuntime(app, async () => {
+      global.wx = {
+        showToast() {},
+        navigateBack(options) {
+          calls.push('navigateBack');
+          options.success({});
+        },
+        redirectTo(options) {
+          calls.push('redirectTo');
+          options.success({});
+        },
+        reLaunch(options) {
+          calls.push('reLaunch');
+          options.success({});
+        }
+      };
+      const result = await page._returnToGamepage();
+      assert.equal(result.ok, true);
+      assert.deepEqual(calls, ['navigateBack']);
+    });
+  } finally {
+    global.getCurrentPages = previousPages;
+  }
+});
+
+test('进入收尾阶段后关闭本地叠层，由下层 RoomShell 消费权威 View', async () => {
+  const { app, page, commands } = fixture();
+  let returnedState = null;
+  page._redirectToGamepageFromRoom = async (snapshot) => {
+    returnedState = snapshot.roomState;
+    return { ok: true };
+  };
+
+  await withRuntime(app, async () => page.activateClosing());
+
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].type, 'USE_PARTNER_SPECIAL');
+  assert.deepEqual(commands[0].payload, { kind: 'CLOSING' });
+  assert.deepEqual(returnedState, { partnerGamePhase: 'closing' });
 });

@@ -3,19 +3,10 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
-const _ = db.command;
 const COLLECTION = 'inspirations';
 
 function isWorkshopScope(workshopOnly) {
   return workshopOnly === true || workshopOnly === 'true' || workshopOnly === 1 || workshopOnly === '1';
-}
-
-function isOwnInspiration(item, userId) {
-  if (!item || !userId) return false;
-  // 兼容显式 userId 与云库默认 _openid
-  if (item.userId && String(item.userId) === String(userId)) return true;
-  if (item._openid && String(item._openid) === String(userId)) return true;
-  return false;
 }
 
 /**
@@ -38,39 +29,15 @@ exports.main = async (event) => {
   }
 
   try {
-    // 先按本人拉取（兼容 userId / _openid），再按房间/对局过滤
-    let rows = [];
-    try {
-      const res = await db.collection(COLLECTION).where(_.or([
-        { userId },
-        { _openid: userId }
-      ])).limit(100).get();
-      rows = res.data || [];
-    } catch (queryErr) {
-      // 无复合查询权限时降级：按房间拉再内存过滤
-      console.warn('listInspirations or-query fallback', queryErr);
-      if (roomId) {
-        const res = await db.collection(COLLECTION).where({ roomId }).limit(100).get();
-        rows = (res.data || []).filter((item) => isOwnInspiration(item, userId));
-      } else {
-        const res = await db.collection(COLLECTION).limit(100).get();
-        rows = (res.data || []).filter((item) => isOwnInspiration(item, userId));
-      }
-    }
-
-    rows = rows.filter((item) => isOwnInspiration(item, userId));
-
+    // 所有过滤与排序都下推到数据库，避免先扫描 100 条再在云函数内丢弃大部分结果。
+    const condition = { userId };
     if (roomId) {
-      if (isWorkshopScope(workshopOnly)) {
-        rows = rows.filter((item) => item && item.roomId === roomId);
-      } else {
-        const normalizedSessionId = String(sessionId || '');
-        rows = rows.filter((item) => {
-          if (!item || item.roomId !== roomId) return false;
-          return String(item.sessionId || '') === normalizedSessionId;
-        });
-      }
+      condition.roomId = String(roomId);
+      if (!isWorkshopScope(workshopOnly)) condition.sessionId = String(sessionId || '');
     }
+    const res = await db.collection(COLLECTION).where(condition)
+      .orderBy('updateTime', 'desc').limit(100).get();
+    const rows = res.data || [];
 
     const list = rows
       .map((item) => {
@@ -88,8 +55,7 @@ exports.main = async (event) => {
           createTime: item.createTime || item.updateTime || 0,
           updateTime: item.updateTime || item.createTime || 0
         };
-      })
-      .sort((a, b) => (b.updateTime || b.createTime || 0) - (a.updateTime || a.createTime || 0));
+      });
 
     return {
       ok: true,

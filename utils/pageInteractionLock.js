@@ -1,4 +1,6 @@
 const DEFAULT_LOADING_DELAY_MS = 500;
+// 微信导航在极少数运行时窗口中可能不触发任何回调；必须释放导航锁，让下一次 View 同步能够重试。
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 6000;
 const INTERACTION_LOCK_DATA = Object.freeze({
   interactionLocked: false,
   interactionLoading: false,
@@ -57,7 +59,7 @@ function withPageInteractionLock(pageDefinition, interactionMethods = [], option
 
 /**
  * 将微信小程序的回调式导航 API 转成 Promise。
- * Promise 只会在导航 API 明确成功或失败后结束，避免页面锁在过渡期间提前释放。
+ * 正常等待导航 API 明确成功或失败；运行时丢失全部回调时按超时失败释放，供权威路由重试。
  */
 function waitForPageNavigation(method, options = {}) {
   return new Promise((resolve) => {
@@ -73,16 +75,30 @@ function waitForPageNavigation(method, options = {}) {
     const originalSuccess = options.success;
     const originalFail = options.fail;
     const originalComplete = options.complete;
+    const requestedTimeoutMs = Number(options.navigationTimeoutMs);
+    const navigationTimeoutMs = Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
+      ? requestedTimeoutMs
+      : DEFAULT_NAVIGATION_TIMEOUT_MS;
+    const navigationOptions = { ...options };
+    delete navigationOptions.navigationTimeoutMs;
     let settled = false;
+    let timeoutTimer = null;
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
       resolve(result);
     };
 
+    timeoutTimer = setTimeout(() => {
+      const error = new Error(`wx.${method} 导航超时`);
+      error.code = 'NAVIGATION_TIMEOUT';
+      finish({ ok: false, error });
+    }, navigationTimeoutMs);
+
     try {
       navigation.call(wx, {
-        ...options,
+        ...navigationOptions,
         success(result) {
           try {
             if (typeof originalSuccess === 'function') originalSuccess(result);
@@ -183,6 +199,7 @@ function runPageInteraction(page, task, options = {}) {
 
 module.exports = {
   DEFAULT_LOADING_DELAY_MS,
+  DEFAULT_NAVIGATION_TIMEOUT_MS,
   INTERACTION_LOCK_DATA,
   isPageInteractionLocked,
   waitForPageNavigation,

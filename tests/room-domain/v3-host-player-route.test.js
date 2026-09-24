@@ -71,3 +71,46 @@ test('有人打分后主屏和副屏看到同一份评分人数', async () => {
   assert.equal(hostPage.roomState.progress.turnId, turnId);
   assert.notEqual(hostPage.roomState.progress.turnId, `turn_r${hostPage.roomState.currentRound}_s${hostPage.roomState.currentPlayerIndex}`);
 });
+
+test('Master 特殊行动后所有非当前玩家仍在 gamepage 并保持打分能力', async () => {
+  const { h, sessionId } = await startPartnerTurn('u2');
+  const actorSnapshot = await h.snapshot('u2');
+  const turnId = actorSnapshot.view.session.activeTurn.turnId;
+
+  const used = await h.command('u2', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId },
+    payload: { kind: 'MASTER' }
+  });
+  assert.equal(used.ok, true);
+
+  for (const userId of ['host', 'u2', 'u3']) {
+    const snapshot = await h.snapshot(userId);
+    const page = projectPageSnapshot(snapshot.view, { seq: snapshot.seq });
+    assert.equal(snapshot.view.route.name, 'partnerGame');
+    assert.equal(page.roomState.partnerMasterMode, true);
+
+    const canScore = snapshot.view.actor.capabilities.SUBMIT_PARTNER_SCORE.allowed;
+    if (userId === 'u2') {
+      assert.equal(canScore, false, '当前行动者不能给自己打分');
+    } else {
+      assert.equal(canScore, true, `${userId} 应继续看到并可使用打分界面`);
+      assert.equal(page.roomState.myScore, null);
+    }
+  }
+
+  await h.command('host', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId },
+    payload: { scoreHalfSteps: 7 }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId },
+    payload: { scoreHalfSteps: 8 }
+  });
+
+  const completed = await h.snapshot('u2');
+  assert.equal(completed.view.session.activeTurn.scoredCount, 2);
+  assert.equal(completed.view.session.activeTurn.requiredScoreCount, 2);
+  assert.equal(completed.view.actor.capabilities.START_PARTNER_STATEMENT.allowed, false,
+    '非房主行动者不能代替房主开始表态');
+  assert.equal((await h.snapshot('host')).view.actor.capabilities.START_PARTNER_STATEMENT.allowed, true);
+});

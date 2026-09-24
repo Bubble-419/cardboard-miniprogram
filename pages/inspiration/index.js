@@ -5,6 +5,11 @@ const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
 const {
+  buildKeyboardLiftStyle,
+  buildKeyboardMaskBottomStyle,
+  keyboardHeightFromEvent
+} = require('../../utils/keyboardAvoidance');
+const {
   runPageInteraction,
   withPageInteractionLock
 } = require('../../utils/pageInteractionLock');
@@ -28,7 +33,7 @@ Page(withPageInteractionLock({
     inspirationAutoFocus: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
-    /** 仅记录键盘可见状态；位置统一交给 input 的 adjust-position */
+    /** 贴底输入栏关闭系统上推，只按原生事件给出的键盘 px 高度移动一次。 */
     inspirationLiftStyle: '',
     inspirationMaskStyle: '',
     inspirationSaving: false,
@@ -426,7 +431,7 @@ Page(withPageInteractionLock({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    const height = keyboardHeightFromEvent(e);
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height > 0) return;
     this._setInspirationKeyboardHeight(height);
@@ -436,8 +441,8 @@ Page(withPageInteractionLock({
     const height = Math.max(0, Number(keyboardHeight) || 0);
     return {
       inspirationKeyboardHeight: height,
-      inspirationLiftStyle: '',
-      inspirationMaskStyle: 'bottom: calc(180rpx + env(safe-area-inset-bottom))'
+      inspirationLiftStyle: buildKeyboardLiftStyle(height),
+      inspirationMaskStyle: buildKeyboardMaskBottomStyle(height)
     };
   },
 

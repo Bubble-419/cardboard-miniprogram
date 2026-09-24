@@ -19,6 +19,7 @@ Page(withPageInteractionLock({
     members: [],
     isHost: false,
     summaryList: [],
+    canEditIdea: false,
     canRestartRound: false
   },
 
@@ -100,19 +101,25 @@ Page(withPageInteractionLock({
       });
 
       const progress = session && session.progress && session.progress.contributionProgress || {};
+      const capabilities = actor && actor.capabilities || {};
+      const canEditIdea = !!(capabilities.REOPEN_HALLI_IDEA
+        && capabilities.REOPEN_HALLI_IDEA.allowed);
+      const canComplete = !!(capabilities.COMPLETE_HALLI_SESSION
+        && capabilities.COMPLETE_HALLI_SESSION.allowed);
       const allFilled = Number(progress.requiredCount) > 0
         && Number(progress.submittedCount) >= Number(progress.requiredCount)
         && summaryList.every((item) => (item.ideaText || '').trim().length > 0);
 
       const fingerprint = summaryList
         .map((item) => `${item.playerIndex || ''}:${item.ideaText || ''}`)
-        .join('|') + `#${allFilled ? 1 : 0}`;
+        .join('|') + `#${allFilled ? 1 : 0}:${canEditIdea ? 1 : 0}:${canComplete ? 1 : 0}`;
       if (fingerprint === this._summaryFingerprint) return;
       this._summaryFingerprint = fingerprint;
 
       this.setData({
         summaryList,
-        canRestartRound: allFilled
+        canEditIdea,
+        canRestartRound: allFilled && (!result.isHost || canComplete)
       });
   },
 
@@ -140,6 +147,19 @@ Page(withPageInteractionLock({
       return dispatchRoomCommand('COMPLETE_HALLI_SESSION', {});
     }
     return { ok: true };
+  },
+
+  handleEditIdea() {
+    if (!this.data.canEditIdea) return;
+    return runPageNavigation(this, async () => {
+      const result = await dispatchRoomCommand('REOPEN_HALLI_IDEA', {});
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '无法修改创意', icon: 'none' });
+        return null;
+      }
+      await followRoomRouteAfterCommand(result, this.data.roomId);
+      return null;
+    }, { loadingText: '正在打开创意…' });
   },
 
   handleFinish() {
@@ -174,4 +194,4 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在返回房间…' });
   },
 
-}, ['handleFinish', 'handleGoRoom']));
+}, ['handleEditIdea', 'handleFinish', 'handleGoRoom']));

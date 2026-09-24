@@ -4,7 +4,7 @@ const {
   bindPageToRoomSession,
   unbindPageFromRoomSession,
   dispatchRoomCommand,
-  followRoomRouteAfterCommand,
+  getCommittedSnapshotAfterCommand,
   getRoomPageSnapshot,
   getActiveRoomSession,
   getRoomRequestContext
@@ -17,6 +17,7 @@ const { isAiFeatureEnabled } = require('../../../../utils/aiFeature');
 const {
   runPageInteraction,
   runPageNavigation,
+  waitForPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
 const { isRoundTimerActive, buildPaginationDots } = require('../../../../utils/partnerRoundTimer');
@@ -25,6 +26,10 @@ const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
 const { buildDisplaySummaries } = require('../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
+const {
+  buildKeyboardLiftStyle,
+  keyboardHeightFromEvent
+} = require('../../../../utils/keyboardAvoidance');
 
 // AI_TEMP_DISABLED: 恢复 AI 后改回 label: '求助AI或运气'
 const WHEEL_ACTIONS = [
@@ -98,6 +103,9 @@ Page(withPageInteractionLock({
     aiFeatureEnabled: isAiFeatureEnabled(),
     showChat: false,
     chatInput: '',
+    chatInputFocused: false,
+    chatKeyboardHeight: 0,
+    chatInputLiftStyle: '',
     chatMessages: [],
     wheelActions: WHEEL_ACTIONS,
     wheelPieces: WHEEL_PIECES,
@@ -206,9 +214,15 @@ Page(withPageInteractionLock({
   onHide() {
     this._unbindInspirationKeyboard();
     this._flushInspirationKeyboardZero(true);
+    this._chatInputNativeFocused = false;
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
     this.setData({
       inspirationKeyboardHeight: 0,
-      inspirationLiftStyle: ''
+      inspirationLiftStyle: '',
+      ...this._resetChatKeyboardUi()
     });
     this._stopStatePolling();
     this._stopSoundLevelSampling();
@@ -216,6 +230,10 @@ Page(withPageInteractionLock({
 
   onUnload() {
     this._unbindInspirationKeyboard();
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
     this.clearSilentTimer();
     this._stopStatePolling();
     this._stopSoundLevelSampling();
@@ -255,7 +273,14 @@ Page(withPageInteractionLock({
     return buildGamepageUrl(roomId, idx, 'partner', urlOpts);
   },
 
-  _redirectToGamepageFromRoom(pollResult, options = {}) {
+  _hasUnderlyingGamepage() {
+    if (typeof getCurrentPages !== 'function') return false;
+    const pages = getCurrentPages();
+    const previous = pages.length >= 2 ? pages[pages.length - 2] : null;
+    return !!(previous && previous.route === 'pages/main-pages/partnerMode/gamepage/index');
+  },
+
+  async _redirectToGamepageFromRoom(pollResult, options = {}) {
     const target = this._buildGamepageUrlFromRoom(pollResult, options);
 
     if (this.data.viewMode === 'silent' || this.data.silentTimerActive) {
@@ -263,36 +288,22 @@ Page(withPageInteractionLock({
     }
     this._stopStatePolling();
 
-    return new Promise((resolve) => {
-      const finish = (ok, error) => resolve({ ok, error });
-      const reLaunch = () => {
-        wx.reLaunch({
-          url: target,
-          success: () => finish(true),
-          fail: (error) => {
-            this._startStatePolling();
-            wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
-            finish(false, error);
-          }
-        });
-      };
-      const redirect = () => {
-        wx.redirectTo({
-          url: target,
-          success: () => finish(true),
-          fail: reLaunch
-        });
-      };
+    // specialMove 是 gamepage 的本地叠层。正常路径只关闭叠层，保留下层稳定
+    // RoomShell；最新 Snapshot 会在 gamepage.onShow 恢复订阅后原地刷新屏幕。
+    if (this._hasUnderlyingGamepage()) {
+      const backed = await waitForPageNavigation('navigateBack', { delta: 1 });
+      if (backed.ok) return backed;
+    }
 
-      // 讨论/收尾须带 phase，不能返回旧出牌态，直接替换当前页。
-      if (target.indexOf('phase=') >= 0 || options.markUsed) {
-        redirect();
-        return;
-      }
-
-      // 未标记已使用时优先回退；失败则用明确 URL 恢复游戏页。
-      wx.navigateBack({ success: () => finish(true), fail: redirect });
-    });
+    // 页面栈异常或被系统回收时才按权威状态 URL 重建；所有导航都有超时，不会永久锁页。
+    const redirected = await waitForPageNavigation('redirectTo', { url: target });
+    if (redirected.ok) return redirected;
+    const relaunched = await waitForPageNavigation('reLaunch', { url: target });
+    if (!relaunched.ok) {
+      this._startStatePolling();
+      wx.showToast({ title: '跳转失败，请稍候', icon: 'none' });
+    }
+    return relaunched;
   },
 
   _returnToGamepage(markUsed = true) {
@@ -365,13 +376,20 @@ Page(withPageInteractionLock({
   },
 
   _resetInspirationKeyboardUi() {
-    return { inspirationKeyboardHeight: 0, inspirationLiftStyle: '' };
+    return {
+      inspirationKeyboardHeight: 0,
+      inspirationLiftStyle: buildKeyboardLiftStyle(0)
+    };
   },
 
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
-    if (height === this.data.inspirationKeyboardHeight && !this.data.inspirationLiftStyle) return;
-    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle: '' });
+    const inspirationLiftStyle = buildKeyboardLiftStyle(height);
+    if (
+      height === this.data.inspirationKeyboardHeight
+      && inspirationLiftStyle === this.data.inspirationLiftStyle
+    ) return;
+    this.setData({ inspirationKeyboardHeight: height, inspirationLiftStyle });
   },
 
   _flushInspirationKeyboardZero(immediate) {
@@ -431,7 +449,7 @@ Page(withPageInteractionLock({
   },
 
   onInspirationKeyboardHeightChange(e) {
-    const height = (e && e.detail && e.detail.height) || (e && e.height) || 0;
+    const height = keyboardHeightFromEvent(e);
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
     if (!active && height > 0) return;
     if (!active && height <= 0) {
@@ -603,10 +621,7 @@ Page(withPageInteractionLock({
       : Number(this.data.currentRound || 1);
     const raw = Array.isArray(roomState && roomState.partnerRoundSummaries)
       ? roomState.partnerRoundSummaries
-      : (this._lastRawRoundSummaries || []);
-    if (Array.isArray(roomState && roomState.partnerRoundSummaries)) {
-      this._lastRawRoundSummaries = roomState.partnerRoundSummaries;
-    }
+      : [];
     const filtered = raw.filter((item) => {
       const rd = Number(item && item.round);
       if (!Number.isFinite(rd) || rd <= 0) return false;
@@ -869,12 +884,20 @@ Page(withPageInteractionLock({
                 }
                 wx.openSetting({
                   success: (settingRes) => {
-                    resolve(!!(settingRes.authSetting && settingRes.authSetting['scope.record']));
+                    const granted = !!(settingRes.authSetting && settingRes.authSetting['scope.record']);
+                    if (!granted) this._silentRecordDenied = true;
+                    resolve(granted);
                   },
-                  fail: () => resolve(false)
+                  fail: () => {
+                    this._silentRecordDenied = true;
+                    resolve(false);
+                  }
                 });
               },
-              fail: () => resolve(false)
+              fail: () => {
+                this._silentRecordDenied = true;
+                resolve(false);
+              }
             });
             return;
           }
@@ -887,7 +910,10 @@ Page(withPageInteractionLock({
             }
           });
         },
-        fail: () => resolve(false)
+        fail: () => {
+          this._silentRecordDenied = true;
+          resolve(false);
+        }
       });
     });
   },
@@ -1110,6 +1136,7 @@ Page(withPageInteractionLock({
   handleGoBack() {
     const { viewMode, showChat } = this.data;
     if (showChat) {
+      this._dismissChatKeyboard();
       this.setData({ showChat: false });
       return;
     }
@@ -1223,7 +1250,14 @@ Page(withPageInteractionLock({
         wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
         return;
       }
-      await followRoomRouteAfterCommand(result, roomId);
+      const committed = await getCommittedSnapshotAfterCommand(result);
+      if (!committed.ok) {
+        wx.showToast({ title: '房间状态正在同步，请稍后重试', icon: 'none' });
+        return;
+      }
+      // specialMove 是稳定 gamepage 上的本地叠层；权威 route 已由 Command 提交，
+      // 正常页面栈只需关闭叠层，由下层 RoomShell 立即消费当前 Session View。
+      await this._redirectToGamepageFromRoom(committed.snapshot);
     } finally {
       this._activatingClosing = false;
     }
@@ -1359,6 +1393,7 @@ Page(withPageInteractionLock({
   },
 
   handleCloseChat() {
+    this._dismissChatKeyboard();
     if (!isAiFeatureEnabled()) {
       this.setData({ showChat: false });
       return;
@@ -1371,6 +1406,56 @@ Page(withPageInteractionLock({
   onChatInput(e) {
     if (!isAiFeatureEnabled()) return;
     this.setData({ chatInput: e.detail.value || '' });
+  },
+
+  _resetChatKeyboardUi() {
+    return {
+      chatInputFocused: false,
+      chatKeyboardHeight: 0,
+      chatInputLiftStyle: ''
+    };
+  },
+
+  _dismissChatKeyboard() {
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
+    this._chatInputNativeFocused = false;
+    this.setData(this._resetChatKeyboardUi());
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
+  },
+
+  onChatInputFocus() {
+    this._chatInputNativeFocused = true;
+    if (this._chatKeyboardZeroTimer) {
+      clearTimeout(this._chatKeyboardZeroTimer);
+      this._chatKeyboardZeroTimer = null;
+    }
+  },
+
+  onChatInputBlur() {
+    this._chatInputNativeFocused = false;
+    if (this._chatKeyboardZeroTimer) clearTimeout(this._chatKeyboardZeroTimer);
+    this._chatKeyboardZeroTimer = setTimeout(() => {
+      this._chatKeyboardZeroTimer = null;
+      if (this._chatInputNativeFocused) return;
+      this.setData(this._resetChatKeyboardUi());
+    }, 120);
+  },
+
+  onChatKeyboardHeightChange(e) {
+    const height = keyboardHeightFromEvent(e);
+    const active = this._chatInputNativeFocused || this.data.chatInputFocused;
+    if (!active && height > 0) return;
+    if (height <= 0 && active) return;
+    this.setData({
+      chatInputFocused: height > 0,
+      chatKeyboardHeight: height,
+      chatInputLiftStyle: buildKeyboardLiftStyle(height)
+    });
   },
 
   onTapSuggestion(e) {
@@ -1429,10 +1514,14 @@ Page(withPageInteractionLock({
   'onRoundHistoryPreview',
   'handleCloseChat',
   'onChatInput',
+  'onChatInputFocus',
+  'onChatInputBlur',
+  'onChatKeyboardHeightChange',
   'onTapSuggestion',
   'handleSendChat'
 ], {
   passthroughMethods: [
-    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange'
+    'onInspirationFocus', 'onInspirationBlur', 'onInspirationKeyboardHeightChange',
+    'onChatInputFocus', 'onChatInputBlur', 'onChatKeyboardHeightChange'
   ]
 }));

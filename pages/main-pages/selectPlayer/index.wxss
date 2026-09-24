@@ -1,3 +1,8 @@
+.room-shell-loading {
+  min-height: 100vh;
+  background: #f7f9f5;
+}
+
 .container {
   height: 100vh;
   background-color: #f8fbfa;
@@ -420,4 +425,3 @@
   width: 100%;
   height: 100%;
 }
-

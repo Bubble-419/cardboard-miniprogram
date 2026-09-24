@@ -48,6 +48,12 @@ function currentSpy(aggregate) {
     : null;
 }
 
+function currentHalli(aggregate) {
+  return aggregate.currentSession && aggregate.currentSession.modeState
+    ? aggregate.currentSession.modeState.halli || null
+    : null;
+}
+
 function projectPublicView(aggregate) {
   if (!aggregate || !aggregate.room) return null;
   const room = aggregate.room;
@@ -222,9 +228,11 @@ function projectPublicView(aggregate) {
       }));
   } else if (session.mode === MODE.HALLI_GALLI) {
     const ideas = contributions.filter((item) => item.kind === 'HALLI_IDEA');
+    const halli = currentHalli(aggregate) || {};
     view.publicModeState = {
       firstMemberId: session.setup.proposedFirstMemberId || null,
       submittedMemberIds: ideas.map((item) => item.memberId),
+      revisingCount: (halli.revisingMemberIds || []).length,
       // 延续 V2 的协作反馈：提交后立即进入公共 View，其他成员可以逐条看到进展。
       ideas: ideas.map((item) => ({ memberId: item.memberId, text: item.text }))
     };
@@ -275,6 +283,11 @@ function projectCapabilities(aggregate, actor) {
   const partner = currentPartner(aggregate);
   const turn = partner && partner.activeTurn;
   const facts = aggregate.facts || {};
+  const halliContribution = session && actor ? Object.values(facts.contributions || {})
+    .find((item) => item.sessionId === session.sessionId && item.kind === 'HALLI_IDEA'
+      && item.memberId === actor.memberId) : null;
+  const halliRevising = !!(session && actor && currentHalli(aggregate)
+    && (currentHalli(aggregate).revisingMemberIds || []).includes(actor.memberId));
   const canAppendArtifact = Object.keys(facts.artifacts || {}).length < MAX_SESSION_ARTIFACTS;
   const canPostMessage = (facts.messages || []).length < MAX_SESSION_MESSAGES;
   const isActorTurn = !!(turn && actor && turn.activeMemberId === actor.memberId);
@@ -362,8 +375,17 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.ADVANCE_PARTNER_CLOSING] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_RUNE, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.COMPLETE_PARTNER_SESSION] = capability(isHost && step === WORKFLOW_STEP.PARTNER_CLOSING_REVIEW, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_HALLI_ACTIVITY] = capability(isHost && step === WORKFLOW_STEP.HALLI_ACTIVITY, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.SUBMIT_HALLI_IDEA] = capability(isParticipant && step === WORKFLOW_STEP.HALLI_CREATIVE, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.COMPLETE_HALLI_SESSION] = capability(isHost && step === WORKFLOW_STEP.HALLI_SUMMARY, 'INVALID_TRANSITION');
+  const activeHalli = !!(session && session.status === SESSION_STATUS.RUNNING);
+  caps[COMMAND_TYPES.REOPEN_HALLI_IDEA] = capability(activeHalli && isParticipant && !!halliContribution
+    && !halliRevising && [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY].includes(step),
+  'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SUBMIT_HALLI_IDEA] = capability(activeHalli && isParticipant
+    && ((step === WORKFLOW_STEP.HALLI_CREATIVE && !halliContribution)
+      || (halliRevising && [WORKFLOW_STEP.HALLI_CREATIVE, WORKFLOW_STEP.HALLI_SUMMARY].includes(step))),
+  'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.COMPLETE_HALLI_SESSION] = capability(isHost && step === WORKFLOW_STEP.HALLI_SUMMARY
+    && !(currentHalli(aggregate) && (currentHalli(aggregate).revisingMemberIds || []).length),
+  'INVALID_TRANSITION');
   const spy = currentSpy(aggregate);
   const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
   caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, 'INVALID_TRANSITION');
@@ -415,6 +437,11 @@ function projectRoute(aggregate, actorView) {
     if (session.mode === MODE.HALLI_GALLI) return { name: 'creativeSummary', params: {} };
     return { name: 'spySettle', params: {} };
   }
+  const revisingHalliIdea = session.mode === MODE.HALLI_GALLI
+    && actorView.contributionStatus.submitted
+    && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA]
+    && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
+  if (revisingHalliIdea) return { name: 'creativeInput', params: {} };
   if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
     return { name: 'creativeSummary', params: {} };
   }

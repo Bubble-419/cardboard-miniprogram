@@ -1,4 +1,12 @@
-<view class="container">
+<room-wait-screen
+  wx:if="{{roomShellScreen === 'waiting' && waitingModel}}"
+  model="{{waitingModel}}"
+  waitHeroSrc="{{waitHeroSrc}}"
+/>
+
+<view wx:elif="{{roomShellScreen === 'waiting'}}" class="room-shell-loading"></view>
+
+<view wx:elif="{{roomShellScreen === 'selector'}}" class="container">
   <view class="custom-navbar">
     <view class="navbar-content">
       <view class="navbar-left" wx:if="{{isHost}}">
@@ -12,13 +20,8 @@
     </view>
   </view>
 
-  <!-- 普通玩家：等待房主在主屏抽取首位翻牌玩家 -->
-  <view class="empty-wait-state" wx:if="{{isWaiting}}">
-    <text class="empty-wait-text">请在主屏上参与抽取首位翻牌玩家</text>
-  </view>
-
   <!-- 房主：触摸交互区域 -->
-  <block wx:else>
+  <block>
   <view class="instruction-text" wx:if="{{!selectedPlayerIndex}}">
     <text class="instruction-line">请所有人把手指持续放到屏幕上</text>
     <text class="instruction-line">由系统随机选出首位翻牌玩家</text>
@@ -100,6 +103,8 @@
   </view>
   </block>
 </view>
+
+<view wx:else class="room-shell-loading"></view>
 
 <interaction-lock-layer
   locked="{{interactionLocked}}"

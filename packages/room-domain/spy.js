@@ -247,11 +247,22 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
     if (alive.length < 2) return fail(ERR.INVALID_TRANSITION, '存活人数不足');
     const previousResult = check.spy.lastResult;
     check.spy.roundNo += 1; check.spy.lastResult = null; check.spy.voteProgress = null; check.spy.tieBreak = false;
-    let order = alive.slice().sort((a, b) => a.seatNoAtStart - b.seatNoAtStart).map((player) => player.memberId);
+    const aliveMemberIds = alive.map((player) => player.memberId);
+    let order = shuffle(aliveMemberIds, randomOf(deps));
     const eliminated = check.spy.players.find((player) => !player.alive && previousResult && player.memberId === previousResult.eliminatedMemberId);
     if (eliminated) {
-      const index = order.findIndex((memberId) => playerByMemberId(check.spy, memberId).seatNoAtStart > eliminated.seatNoAtStart);
-      if (index > 0) order = order.slice(index).concat(order.slice(0, index));
+      // 有人淘汰时保留上轮随机顺序，从被淘汰者之后继续；
+      // 无人淘汰才重新洗牌，避免后续轮次退化为固定座次。
+      const aliveSet = new Set(aliveMemberIds);
+      const eliminatedIndex = check.spy.speakOrder.indexOf(eliminated.memberId);
+      if (eliminatedIndex >= 0) {
+        const rotated = [];
+        for (let offset = 1; offset <= check.spy.speakOrder.length; offset += 1) {
+          const memberId = check.spy.speakOrder[(eliminatedIndex + offset) % check.spy.speakOrder.length];
+          if (aliveSet.has(memberId)) rotated.push(memberId);
+        }
+        if (rotated.length === aliveMemberIds.length) order = rotated;
+      }
     }
     const events = [event(EVENT_TYPES.SPY_ROUND_STARTED, { roundNo: check.spy.roundNo }), startSpeaker(aggregate, order, deps, false)];
     return domainOk(aggregate, events);

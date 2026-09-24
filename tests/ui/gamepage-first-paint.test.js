@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createRoomClient } = require('@cardboard/room-client');
-const { VIEW_SCHEMA_VERSION } = require('@cardboard/room-contracts');
+const { VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION } = require('@cardboard/room-contracts');
 
 function inertTimers() {
   let id = 0;
@@ -50,7 +50,7 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
       ok: true,
       protocolVersion: 3,
       viewSchemaVersion: VIEW_SCHEMA_VERSION,
-      eventSchemaVersion: 3,
+      eventSchemaVersion: EVENT_SCHEMA_VERSION,
       afterSeq: snapshotCalls,
       throughSeq: snapshotCalls,
       roomCurrentSeq: snapshotCalls,
@@ -67,7 +67,7 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
   assert.equal(snapshotCalls, 2, 'refresh() 在已有 READY View 时仍走完整 Snapshot');
 });
 
-test('gamepage 首屏把正确状态挡在多次 Snapshot 和串行云调用之后', () => {
+test('gamepage 首屏读取统一经过 RoomSession，由请求静默窗口合并重复 Snapshot', () => {
   const source = fs.readFileSync(
     path.resolve(__dirname, '../../pages/main-pages/partnerMode/gamepage/index.js'),
     'utf8'

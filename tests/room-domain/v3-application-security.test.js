@@ -108,6 +108,49 @@ test('水位已跟上时 Command 用事务内 Event 内联 Sync，不再二次�
   assert.equal((await h.snapshot('host')).view.room.workshopName, '内联同步');
 });
 
+test('Command 上报事务、Presence、Sync 和总耗时，且观测失败不影响业务', async () => {
+  const repo = createInMemoryRoomRepository({ generateRoomId: () => '12345678' });
+  const samples = [];
+  let performanceClock = 0;
+  const app = createRoomApplication(repo, {
+    now: () => 1000,
+    performanceNow: () => ++performanceClock,
+    serverSecret: 'test-secret',
+    onCommandMetrics(metric) {
+      samples.push(metric);
+      if (metric.type === 'UPDATE_ROOM_PROFILE') throw new Error('模拟日志依赖失败');
+    }
+  });
+  const create = await app.executeCommand({
+    protocolVersion: PROTOCOL_VERSION, commandId: 'metrics-create', roomId: '', knownSeq: 0,
+    type: 'CREATE_ROOM', context: {}, payload: { nickName: '房主' }
+  }, { userId: 'host', deviceSessionId: 'device-1', touchPresence: true });
+  assert.equal(create.ok, true);
+
+  const updated = await app.executeCommand({
+    protocolVersion: PROTOCOL_VERSION, commandId: 'metrics-update', roomId: '12345678',
+    knownSeq: create.outcome.committedThroughSeq,
+    type: 'UPDATE_ROOM_PROFILE', context: {}, payload: { workshopName: '性能观测' }
+  }, { userId: 'host', deviceSessionId: 'device-1', touchPresence: true });
+
+  assert.equal(updated.ok, true, '性能日志回调失败不得改变 Command 结果');
+  assert.equal(samples.length, 2);
+  assert.deepEqual(samples[1], {
+    type: 'UPDATE_ROOM_PROFILE',
+    roomId: '12345678',
+    commandIdHash: samples[1].commandIdHash,
+    status: 'ACCEPTED',
+    replayed: false,
+    touchPresence: true,
+    syncSource: 'INLINE_EVENTS',
+    transactionMs: 1,
+    presenceMs: 1,
+    syncMs: 1,
+    totalMs: 7
+  });
+  assert.match(samples[1].commandIdHash, /^[a-f0-9]{16}$/);
+});
+
 test('客户端水位落后时 Command 仍走完整 Sync', async () => {
   const h = createHarness();
   await h.seedMembers(2);

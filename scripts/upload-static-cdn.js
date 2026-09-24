@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 把代码包忽略的插图上传到云存储 miniprogram-static/，供 HTTPS 引入。
+ * 把代码包忽略的插图上传到云存储 miniprogram-static/ 根下（按文件名平铺），供 HTTPS 引入。
  *
  * 优先使用本机已登录的 `tcb` CLI；也可设置 TENCENTCLOUD_SECRETID / TENCENTCLOUD_SECRETKEY
  * 后配合 @cloudbase/manager-node。两者都没有时打印控制台手工上传步骤。
@@ -13,7 +13,7 @@ const { spawnSync } = require('child_process');
 const {
   CLOUD_ENV_ID,
   STATIC_PREFIX,
-  staticCdnUrl
+  cloudStaticUrl
 } = require('../utils/staticCdn');
 
 const ROOT = path.join(__dirname, '..');
@@ -55,14 +55,15 @@ function listFiles() {
 }
 
 function cloudPathFor(rel) {
-  return `${STATIC_PREFIX}/${rel.replace(/\\/g, '/')}`;
+  const name = rel.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+  return `${STATIC_PREFIX}/${name}`;
 }
 
 function printManual(files) {
-  const sample = staticCdnUrl(files[0]);
+  const sample = cloudStaticUrl(files[0]);
   console.log(`需要把 ${files.length} 个插图上传到云环境 ${CLOUD_ENV_ID}`);
-  console.log('云开发控制台 → 云存储 → 上传，保持相对路径，前缀为：');
-  console.log(`  ${STATIC_PREFIX}/`);
+  console.log('云开发控制台 → 云存储 → 上传到 miniprogram-static/ 根目录，只保留文件名：');
+  console.log(`  ${STATIC_PREFIX}/<filename>`);
   console.log('存储安全规则需允许读取该前缀（所有用户可读，或等价公开读）。');
   console.log('示例 URL：');
   console.log(`  ${sample}`);

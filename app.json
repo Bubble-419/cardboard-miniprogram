@@ -26,8 +26,7 @@
         "confirmFirstPlayer/index",
         "gamepage/index",
         "imageCrop/index",
-        "specialMove/index",
-        "closingStatement/index"
+        "specialMove/index"
       ]
     },
     {
@@ -65,10 +64,5 @@
   },
   "style": "v2",
   "lazyCodeLoading": "requiredComponents",
-  "sitemapLocation": "sitemap.json",
-  "permission": {
-    "scope.record": {
-      "desc": "用于静默模式监测现场音量和语音纪要"
-    }
-  }
+  "sitemapLocation": "sitemap.json"
 }

@@ -1,0 +1,106 @@
+:host { display: block; flex-shrink: 0; }
+
+.inspiration-bar {
+  margin: 18rpx 30rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18rpx;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 60;
+  min-height: 92rpx;
+  box-sizing: border-box;
+  background: #fafafa;
+}
+
+.inspiration-bar-closing { margin-top: 32rpx; }
+.inspiration-bar-safe-bottom { margin-bottom: calc(24rpx + env(safe-area-inset-bottom)); }
+.inspiration-bar-history {
+  margin-top: 12rpx;
+  margin-bottom: 0;
+  padding-bottom: calc(12rpx + env(safe-area-inset-bottom));
+}
+.inspiration-bar-history-with-footer { padding-bottom: 12rpx; }
+.inspiration-bar-kb-hidden { opacity: 0; pointer-events: none; }
+
+.insp-icon-wrap {
+  width: 92rpx;
+  height: 92rpx;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 2;
+}
+.insp-icon-img { width: 92rpx; height: 92rpx; }
+.insp-badge {
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 6rpx;
+  border-radius: 50%;
+  background: #5ec159;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.insp-badge-num { font-size: 20rpx; font-weight: 500; color: #fff; line-height: 1.3; }
+
+.inspiration-composer {
+  flex: 1;
+  min-width: 0;
+  height: 92rpx;
+  min-height: 92rpx;
+  padding: 0 24rpx;
+  background: #fff;
+  border: 1rpx solid #d7d7d7;
+  border-radius: 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.inspiration-composer-with-photos { height: auto; min-height: 92rpx; padding: 16rpx 24rpx; }
+.inspiration-photo-strip { width: 100%; margin-bottom: 8rpx; white-space: nowrap; }
+.inspiration-photo-strip-inner { display: inline-flex; gap: 12rpx; }
+.inspiration-photo-thumb-wrap { position: relative; width: 96rpx; height: 72rpx; flex-shrink: 0; }
+.inspiration-photo-thumb { width: 100%; height: 100%; border-radius: 10rpx; background: #eee; }
+.inspiration-photo-remove {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 30rpx;
+  text-align: center;
+}
+.inspiration-row { display: flex; align-items: center; gap: 16rpx; width: 100%; }
+.inspiration-textarea {
+  flex: 1;
+  min-width: 0;
+  height: 48rpx;
+  min-height: 48rpx;
+  max-height: 48rpx;
+  font-size: 30rpx;
+  color: #333;
+  line-height: 48rpx;
+  padding: 0;
+}
+.inspiration-placeholder { font-size: 30rpx; color: #aeaeae; line-height: 48rpx; }
+.inspiration-action {
+  width: 44rpx;
+  height: 44rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inspiration-action-disabled { opacity: 0.55; }
+.inspiration-action-icon { width: 44rpx; height: 44rpx; }

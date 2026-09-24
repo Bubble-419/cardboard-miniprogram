@@ -13,7 +13,9 @@ function getTiePromptKey(spyGame) {
   const ids = Array.isArray(last.tiedIndexes)
     ? last.tiedIndexes.map((idx) => Number(idx)).filter((n) => Number.isFinite(n)).join(',')
     : '';
-  return `${ids}:${spyGame.speakTurnStartedAt || spyGame.speakRoundStartedAt || 0}`;
+  // 一次平票加时只确认一次；单个玩家结束发言会更新 speakTurnStartedAt，
+  // 不能用它优先生成 key，否则每切换一位发言者都会再次弹窗。
+  return `${ids}:${spyGame.speakRoundStartedAt || spyGame.speakTurnStartedAt || 0}`;
 }
 
 function buildTiedNames(spyGame) {

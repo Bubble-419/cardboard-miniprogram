@@ -1,0 +1,44 @@
+<view class="container {{model.hasVoted || model.isInitiator ? 'container-hero-scene' : ''}}">
+  <view class="custom-navbar" wx:if="{{!model.hasVoted && !model.isInitiator}}">
+    <view class="navbar-content">
+      <view class="navbar-left"></view>
+      <view class="navbar-title"></view>
+      <view class="navbar-right"></view>
+    </view>
+  </view>
+
+  <view class="hero-wait-page" wx:if="{{model.hasVoted || model.isInitiator}}">
+    <image class="bg-pattern" src="/assets/subAwait/bg-dotted-lines.svg" mode="widthFix" />
+    <view class="hero-wait-content">
+      <view class="hero-section">
+        <image class="hero-image" src="{{waitHeroSrc}}" mode="widthFix" />
+      </view>
+      <view class="text-section">
+        <text class="heading">{{model.isInitiator ? '您已发起收尾，默认通过' : (model.voteResult === 'question' ? '您选择了存在疑问' : '您选择了通过')}}</text>
+        <view class="desc-group">
+          <text class="desc-line">{{model.isInitiator ? '等待其他玩家表态' : '其他玩家正在进行收尾表态'}}</text>
+          <text class="desc-line">请稍作等待，精彩即将开始~</text>
+        </view>
+      </view>
+      <view class="status-pill">
+        <image class="status-icon" src="/assets/subAwait/icon-waiting.png" mode="aspectFit" />
+        <text class="status-text">正在等待中...</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="host-content" wx:else>
+    <view class="instruction">
+      <text class="instruction-line">收尾阶段表态</text>
+      <text class="instruction-line instruction-line-sub">是否同意结束本次脑暴？</text>
+    </view>
+    <view class="result-stack">
+      <view class="result-item" bindtap="onVoteTap" data-vote="pass">
+        <view class="result-circle result-circle-pass"><text class="result-label">通过</text></view>
+      </view>
+      <view class="result-item" bindtap="onVoteTap" data-vote="question">
+        <view class="result-circle result-circle-question"><text class="result-label">存在疑问</text></view>
+      </view>
+    </view>
+  </view>
+</view>

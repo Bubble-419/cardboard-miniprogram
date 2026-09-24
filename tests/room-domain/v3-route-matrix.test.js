@@ -15,7 +15,7 @@ const ROUTE_MATRIX = Object.freeze({
   selectPlayer: ['/pages/main-pages/selectPlayer/index', 'selectPlayer'],
   confirmFirstPlayer: ['/pages/main-pages/partnerMode/confirmFirstPlayer/index', 'confirmFirstPlayer'],
   partnerGame: ['/pages/main-pages/partnerMode/gamepage/index', 'gamepage'],
-  closingStatement: ['/pages/main-pages/partnerMode/closingStatement/index', 'closingStatement'],
+  closingStatement: ['/pages/main-pages/partnerMode/gamepage/index', 'closingStatement'],
   leaderboard: ['/pages/leaderboard/index', 'leaderboard'],
   halliGame: ['/pages/main-pages/halliGalli/gamepage/index', 'gamepage'],
   creativeInput: ['/pages/main-pages/creativeInput/index', 'creativeInput'],
@@ -39,7 +39,14 @@ async function assertRoutes(harness, expectedByUser, label) {
     assert.equal(snapshot.ok, true, `${label}/${userId} Snapshot 应成功`);
     assert.equal(snapshot.view.route.name, expectedRoute, `${label}/${userId} route`);
 
-    const [expectedPath, expectedPageKey] = ROUTE_MATRIX[expectedRoute];
+    const [registeredPath, expectedPageKey] = ROUTE_MATRIX[expectedRoute];
+    // Partner 确认首位等待态保持逻辑 route=subAwait，但与接下来的游戏态共用稳定 Shell。
+    const scene = snapshot.view.route.params.scene;
+    const expectedPath = expectedRoute !== 'subAwait'
+      ? registeredPath
+      : (scene === 'confirmFirstPlayer'
+        ? ROUTES.partnerGame.path
+        : (['bg', 'player'].includes(scene) ? ROUTES.selectPlayer.path : registeredPath));
     const descriptor = describeRoute(snapshot.view.route, snapshot.roomId);
     assert.equal(descriptor.path, expectedPath, `${label}/${userId} physical path`);
 
@@ -75,7 +82,7 @@ function assertBack(snapshot, commandType, after = 'FOLLOW_ROUTE') {
   }
 }
 
-test('权威 route 注册表与业务文档中的物理页面一一对应', () => {
+test('权威 route 默认物理页面注册完整，稳定 Shell 场景由 descriptor 进一步投影', () => {
   assert.deepEqual(Object.keys(ROUTES).sort(), Object.keys(ROUTE_MATRIX).sort());
   Object.entries(ROUTE_MATRIX).forEach(([routeName, [path]]) => {
     assert.equal(ROUTES[routeName].path, path, routeName);
@@ -124,6 +131,12 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
     context: { sessionId }, payload: { text: '创意 A' }
   });
   await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeInput' }, '房主已提交');
+  await runCommand(h, 'host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
+  await assertRoutes(h, { host: 'creativeInput', u2: 'creativeInput', u3: 'creativeInput' }, '房主修改创意');
+  await runCommand(h, 'host', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意 A2' }
+  });
+  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeInput' }, '房主保存修改');
 
   await runCommand(h, 'u2', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 B' }
@@ -134,6 +147,12 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
     context: { sessionId }, payload: { text: '创意 C' }
   });
   await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeSummary', u3: 'creativeSummary' }, '创意汇总');
+  await runCommand(h, 'u2', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
+  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeSummary' }, '汇总期修改');
+  await runCommand(h, 'u2', 'SUBMIT_HALLI_IDEA', {
+    context: { sessionId }, payload: { text: '创意 B2' }
+  });
+  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeSummary', u3: 'creativeSummary' }, '汇总期保存');
 
   await runCommand(h, 'host', 'COMPLETE_HALLI_SESSION', { context: { sessionId } });
   await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeSummary', u3: 'creativeSummary', u4: 'addPlayer' }, 'Halli 完成');

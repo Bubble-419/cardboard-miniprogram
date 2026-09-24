@@ -4,7 +4,13 @@
     "partner-avatar": "/components/partner-avatar/index",
     "game-card-timer": "/components/game-card-timer/index",
     "star-rating": "/components/star-rating/index",
-    "earned-stars": "/components/earned-stars/index"
+    "earned-stars": "/components/earned-stars/index",
+    "room-wait-screen": "/components/room-wait-screen/index",
+    "partner-closing-vote-screen": "/components/partner-closing-vote-screen/index",
+    "partner-game-header": "/components/partner-game-header/index",
+    "partner-player-strip": "/components/partner-player-strip/index",
+    "partner-inspiration-composer": "/components/partner-inspiration-composer/index",
+    "partner-game-footer": "/components/partner-game-footer/index"
   },
   "navigationStyle": "custom",
   "disableSwipeBack": true,

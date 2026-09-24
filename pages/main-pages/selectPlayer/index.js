@@ -11,6 +11,11 @@ const {
   runPageInteraction,
   runPageNavigation
 } = require('../../../utils/pageInteractionLock');
+const { WAIT_HERO_SRC } = require('../../../utils/staticCdn');
+const {
+  SELECT_PLAYER_SHELL_SCREEN,
+  projectSelectPlayerShell
+} = require('./shell');
 
 Page({
   data: {
@@ -24,16 +29,17 @@ Page({
     members: [],
     selectedModeId: '',
     isHost: false,
-    isWaiting: false, // 普通玩家等待房主在主屏抽取首位玩家
+    roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
+    waitingModel: null,
+    waitHeroSrc: WAIT_HERO_SRC,
     interactionLocked: false,
     interactionLoading: false,
     interactionLoadingText: '加载中…'
   },
 
   onLoad(options) {
+    this._appliedRoomRevision = 0;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
-    const forceHost = options && (options.isHost === '1' || options.isHost === true);
     const modeId = (options && options.modeId) || '';
     const from = (options && options.from) || '';
     this._fromModeIndex = from === 'modeIndex' || from === 'offline';
@@ -42,7 +48,8 @@ Page({
     }
     this.setData({
       roomId,
-      isWaiting: !!isWaiting,
+      roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
+      waitingModel: null,
       selectedModeId: modeId || this.data.selectedModeId
     });
     if (!roomId) {
@@ -51,16 +58,10 @@ Page({
     }
     getApp().globalData.roomId = roomId;
 
-    if (isWaiting && !forceHost) {
-      this.setData({ isHost: false, isWaiting: true });
-      this._startStatePolling();
-      return;
-    }
-
-    this._bootstrapAsHostOrWait(roomId, { forceHost: !!forceHost });
+    this._bootstrapAsHostOrWait(roomId);
   },
 
-  async _bootstrapAsHostOrWait(roomId, options = {}) {
+  async _bootstrapAsHostOrWait(roomId) {
     try {
       const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok !== true) {
@@ -68,27 +69,7 @@ Page({
         return;
       }
 
-      const isHost = result.isHost === true;
-      if (!isHost) {
-        this.setData({ isHost: false, isWaiting: true });
-        this._startStatePolling();
-        return;
-      }
-
-      const selectedModeId = result.selectedModeId || '';
-      if (selectedModeId === 'partner') {
-        getApp().globalData.gameMode = 'partner';
-      }
-      const update = {
-        isHost: true,
-        isWaiting: false,
-        selectedModeId
-      };
-      if (result.members && result.members.length) {
-        update.members = result.members;
-        update.minPlayers = result.members.length;
-      }
-      this.setData(update);
+      this._applyRoomContext(result);
       this._startStatePolling();
     } catch (e) {
       console.warn('selectPlayer bootstrap', e);
@@ -117,7 +98,10 @@ Page({
     this._stopStatePolling();
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || getApp().globalData.roomId || '',
-      followNavigation: true
+      followNavigation: true,
+      onSnapshot(snapshot) {
+        this._applyRoomContext(snapshot);
+      }
     }).catch((e) => console.warn('selectPlayer roomSession', e));
   },
 
@@ -125,20 +109,72 @@ Page({
     unbindPageFromRoomSession(this);
   },
 
+  _applyRoomContext(result) {
+    const incomingRevision = Number(result && result.revision) || 0;
+    if (incomingRevision && incomingRevision < (Number(this._appliedRoomRevision) || 0)) {
+      return { screen: this.data.roomShellScreen, skipped: true, reason: 'STALE_REVISION' };
+    }
+    if (incomingRevision) this._appliedRoomRevision = incomingRevision;
+    const shell = projectSelectPlayerShell(result);
+    if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.EXTERNAL) {
+      this._clearLongPressTimer();
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+      }
+      if (this.selectionTimer) {
+        clearTimeout(this.selectionTimer);
+        this.selectionTimer = null;
+      }
+      this.setData({
+        roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
+        waitingModel: null,
+        activeTouches: [],
+        isSelecting: false
+      });
+      return shell;
+    }
+
+    if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.WAITING) {
+      this._clearLongPressTimer();
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+      }
+      if (this.selectionTimer) {
+        clearTimeout(this.selectionTimer);
+        this.selectionTimer = null;
+      }
+      this.setData({
+        roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.WAITING,
+        waitingModel: shell.waiting,
+        isHost: false,
+        activeTouches: [],
+        isSelecting: false
+      });
+      return shell;
+    }
+
+    const selector = shell.selector || {};
+    const selectedModeId = selector.selectedModeId || '';
+    if (selectedModeId === 'partner') getApp().globalData.gameMode = 'partner';
+    const members = selector.members || [];
+    this.setData({
+      roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.SELECTOR,
+      waitingModel: null,
+      isHost: selector.isHost === true,
+      selectedModeId,
+      members,
+      minPlayers: members.length || this.data.minPlayers
+    });
+    return shell;
+  },
+
   async loadMembers(roomId) {
     try {
       const result = await getRoomPageSnapshot(roomId, { refresh: true });
       if (result.ok === true) {
-        const selectedModeId = result.selectedModeId || '';
-        if (selectedModeId === 'partner') {
-          getApp().globalData.gameMode = 'partner';
-        }
-        const update = { selectedModeId };
-        if (result.members && result.members.length) {
-          update.members = result.members;
-          update.minPlayers = result.members.length;
-        }
-        this.setData(update);
+        this._applyRoomContext(result);
       }
     } catch (e) {
       console.warn('loadMembers', e);

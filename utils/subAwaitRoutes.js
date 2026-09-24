@@ -127,7 +127,6 @@ const ROUTE_TO_PAGE = {
   'pages/main-pages/partnerMode/gamepage/index': 'gamepage',
   'pages/main-pages/creativeInput/index': 'creativeinput',
   'pages/main-pages/creativeSummary/index': 'creativesummary',
-  'pages/main-pages/partnerMode/closingStatement/index': 'closingstatement',
   'pages/leaderboard/index': 'leaderboard',
   'packageSpy/pages/modeIndex/index': 'spymodeindex',
   'packageSpy/pages/speak/index': 'spyspeak',
@@ -187,6 +186,12 @@ function sceneFromMemberView(view, fallback) {
 function getSceneUI(scene) {
   const ui = SCENE_UI[scene] || SCENE_UI.bg;
   return { ...ui, useHeroLayout: true };
+}
+
+/** 稳定 Shell 使用的受控等待屏幕模型；旧 subAwait 页面也复用同一份文案配置。 */
+function projectWaitScreenModel(scene) {
+  const normalizedScene = SCENE_UI[scene] ? scene : 'bg';
+  return { scene: normalizedScene, ...getSceneUI(normalizedScene) };
 }
 
 function isAwaitPage(page) {
@@ -401,6 +406,7 @@ module.exports = {
   AWAIT_PAGE_TO_SCENE,
   SCENE_UI,
   getSceneUI,
+  projectWaitScreenModel,
   sceneFromWorkflowStep,
   sceneFromMemberView,
   isAwaitPage,
