@@ -67,6 +67,18 @@ test('贴底灵感输入按键盘高度手动上移，卡内输入继续使用�
   assert.doesNotMatch(gameWxml, /style="\{\{closingComposeLiftStyle\}\}"/);
 });
 
+test('游戏页键盘打开时从父布局移除底栏组件，不保留一整块按钮高度', () => {
+  const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const footer = gameWxml.match(/<partner-game-footer[\s\S]*?\/>/);
+
+  assert.ok(footer, '游戏页应继续使用统一底栏组件');
+  assert.match(
+    footer[0],
+    /wx:if="\{\{inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
+    '仅隐藏组件内部内容仍会让自定义组件宿主占据底栏高度'
+  );
+});
+
 test('gamepage 只从输入事件接收精确键盘高度并交给贴底组件', () => {
   let globalKeyboardBindings = 0;
   const originalWx = global.wx;
@@ -127,6 +139,22 @@ test('灵感空间按输入事件的精确键盘高度上移输入栏', () => {
   assert.equal(page.data.inspirationKeyboardHeight, 300);
   assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -300px, 0);');
   assert.match(page.data.inspirationMaskStyle, /300px/);
+});
+
+test('灵感空间键盘高度早于 focus 回调时仍立即顶起输入栏', () => {
+  const definition = loadPageDefinition('../../pages/inspiration/index');
+  const page = makePage(definition, {
+    inspirationInputFocused: false,
+    inspirationKeyboardHeight: 0,
+    inspirationLiftStyle: ''
+  });
+  page._inspirationNativeFocused = false;
+
+  page.onInspirationKeyboardHeightChange({ detail: { height: 286 } });
+
+  assert.equal(page.data.inspirationKeyboardHeight, 286);
+  assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -286px, 0);');
+  assert.match(page.data.inspirationMaskStyle, /286px/);
 });
 
 test('特殊行动灵感栏和 AI 对话输入栏分别按自身键盘事件上移', () => {

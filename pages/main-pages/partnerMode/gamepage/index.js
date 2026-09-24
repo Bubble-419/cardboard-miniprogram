@@ -280,11 +280,12 @@ Page(withPageInteractionLock({
     expressChatAnchor: '',
     discussionExpressChatAnchor: '',
     expressViewRound: 0,
-    /** 房主首次进入：开始表态按钮引导蒙层 */
+    /** 房主首次进入：开始表态按钮聚光引导 */
     showHostStatementTip: false,
     hostStatementTipReady: false,
     hostStatementTipSpotStyle: '',
     hostStatementTipTextStyle: '',
+    hostStatementTipArrowStyle: '',
     statementSwitching: false,
     statementSwitchAction: '',
     discussionSwitching: false,
@@ -440,9 +441,10 @@ Page(withPageInteractionLock({
     wx.showToast({ title, icon: 'none', duration: 2500 });
   },
 
-  /** 房主首次进入出牌页：轻量提示「开始表态」需全员打分后才亮起 */
+  /** 房主首次进入出牌页：聚光提示「开始表态」需全员打分后才亮起 */
   _maybeShowHostStatementTip() {
     if (this.data.showHostStatementTip) return;
+    if (this._hostStatementTipMeasureFailed) return;
     if (!this.data.isHost) return;
     if (isDiscussionPhase(this.data.gamepagePhase) || isClosingPhase(this.data.gamepagePhase)) {
       return;
@@ -469,27 +471,71 @@ Page(withPageInteractionLock({
     query
       .select('#hostStatementBtn')
       .boundingClientRect((rect) => {
+        if (!this.data.showHostStatementTip
+          || !this.data.isHost
+          || isDiscussionPhase(this.data.gamepagePhase)
+          || isClosingPhase(this.data.gamepagePhase)) {
+          this.setData({
+            showHostStatementTip: false,
+            hostStatementTipReady: false,
+            hostStatementTipSpotStyle: '',
+            hostStatementTipTextStyle: '',
+            hostStatementTipArrowStyle: ''
+          });
+          return;
+        }
         if (!rect || !rect.width) {
           if (attempt < 8) {
             setTimeout(() => this._measureHostStatementTip(attempt + 1), 80);
+          } else {
+            this._hostStatementTipMeasureFailed = true;
+            this.setData({
+              showHostStatementTip: false,
+              hostStatementTipReady: false,
+              hostStatementTipSpotStyle: '',
+              hostStatementTipTextStyle: '',
+              hostStatementTipArrowStyle: ''
+            });
           }
           return;
         }
         let windowHeight = 667;
+        let windowWidth = 375;
         try {
           const sys = typeof wx.getWindowInfo === 'function'
             ? wx.getWindowInfo()
             : wx.getSystemInfoSync();
           windowHeight = (sys && sys.windowHeight) || windowHeight;
+          windowWidth = (sys && sys.windowWidth) || windowWidth;
         } catch (e) {
           // keep default
         }
+        const spotPadding = 6;
+        const viewportInset = 8;
+        const spotLeft = Math.max(viewportInset, rect.left - spotPadding);
+        const spotTop = Math.max(viewportInset, rect.top - spotPadding);
+        const spotRight = Math.min(
+          windowWidth - viewportInset,
+          rect.left + rect.width + spotPadding
+        );
+        const spotWidth = Math.max(0, spotRight - spotLeft);
+        const spotHeight = Math.max(0, rect.height + spotPadding * 2);
+        const bubbleInset = (48 * windowWidth) / 750;
+        const bubbleWidth = Math.max(0, windowWidth - bubbleInset * 2);
+        const buttonCenter = rect.left + rect.width / 2;
+        const arrowLeft = Math.min(
+          Math.max(20, buttonCenter - bubbleInset),
+          Math.max(20, bubbleWidth - 20)
+        );
         const tipBottomGap = 12;
+        this._hostStatementTipMeasureFailed = false;
         this.setData({
           hostStatementTipReady: true,
-          hostStatementTipSpotStyle: '',
+          hostStatementTipSpotStyle:
+            `left:${spotLeft}px;top:${spotTop}px;width:${spotWidth}px;height:${spotHeight}px;`,
           hostStatementTipTextStyle:
-            `bottom:${Math.max(12, windowHeight - rect.top + tipBottomGap)}px;`
+            `bottom:${Math.max(12, windowHeight - spotTop + tipBottomGap)}px;`,
+          hostStatementTipArrowStyle: `left:${arrowLeft}px;`
         });
       })
       .exec();
@@ -501,7 +547,8 @@ Page(withPageInteractionLock({
       showHostStatementTip: false,
       hostStatementTipReady: false,
       hostStatementTipSpotStyle: '',
-      hostStatementTipTextStyle: ''
+      hostStatementTipTextStyle: '',
+      hostStatementTipArrowStyle: ''
     });
     try {
       wx.setStorageSync(HOST_STATEMENT_TIP_KEY, '1');

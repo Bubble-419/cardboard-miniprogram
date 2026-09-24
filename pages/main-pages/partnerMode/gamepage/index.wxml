@@ -888,6 +888,7 @@
   </view>
 
   <partner-game-footer
+    wx:if="{{inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0}}"
     id="partnerGameFooter"
     visible="{{(isHistoryReview && reviewCanGoBack) || (!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review')))}}"
     keyboardOpen="{{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
@@ -907,21 +908,32 @@
     bind:intent="onGameFooterIntent"
   />
 
-  <!-- 房主首次进入：轻量单行提示（透明热区，任意处可关） -->
+  <!-- 房主首次进入：聚光提示“全员打分后才可开始表态”，点击任意处关闭 -->
   <view
     class="host-statement-tip-layer"
-    wx:if="{{showHostStatementTip}}"
+    wx:if="{{showHostStatementTip && hostStatementTipReady}}"
     catchtouchmove="preventMove"
     catchtap="dismissHostStatementTip"
   >
     <view
+      class="host-statement-tip-spot"
+      style="{{hostStatementTipSpotStyle}}"
+    ></view>
+    <view
       class="host-statement-tip-bubble"
-      wx:if="{{hostStatementTipReady}}"
       style="{{hostStatementTipTextStyle}}"
-      catchtap="dismissHostStatementTip"
     >
-      <text class="host-statement-tip-text">全员打分后，「开始表态」才会亮起</text>
-      <view class="host-statement-tip-arrow"></view>
+      <view class="host-statement-tip-kicker">
+        <view class="host-statement-tip-icon">!</view>
+        <text class="host-statement-tip-kicker-text">操作提示</text>
+      </view>
+      <text class="host-statement-tip-title">先完成全员打分</text>
+      <text class="host-statement-tip-text">全部完成后，「开始表态」按钮会亮起</text>
+      <view class="host-statement-tip-meta">
+        <text class="host-statement-tip-progress">已打分 {{scoredCount}}/{{totalRequired}} 人</text>
+        <text class="host-statement-tip-dismiss">点击任意处继续</text>
+      </view>
+      <view class="host-statement-tip-arrow" style="{{hostStatementTipArrowStyle}}"></view>
     </view>
   </view>
 

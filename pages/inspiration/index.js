@@ -432,8 +432,8 @@ Page(withPageInteractionLock({
 
   onInspirationKeyboardHeightChange(e) {
     const height = keyboardHeightFromEvent(e);
-    const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
-    if (!active && height > 0) return;
+    // 事件直接绑定在本页 textarea；部分真机会先上报键盘高度、随后才触发 focus。
+    // 正高度必须立即采用，否则首次弹键盘时输入栏会留在原位。
     this._setInspirationKeyboardHeight(height);
   },
 
