@@ -40,6 +40,7 @@ const {
 const {
   runPageInteraction,
   runPageNavigation,
+  waitForPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
 const {
@@ -598,25 +599,19 @@ Page(withPageInteractionLock({
     return this.loadJoinedRoomState();
   },
 
-  _goToRoomPage(roomId) {
-    if (!roomId) return;
+  async _goToRoomPage(roomId, options = {}) {
+    if (!roomId) return { ok: false, error: new Error('缺少房间号') };
     getApp().globalData.roomId = roomId;
     wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
     const url = `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`;
-    return new Promise((resolve) => {
-      wx.redirectTo({
-        url,
-        success: (result) => resolve({ ok: true, result }),
-        fail: (err) => {
-          console.warn('redirectTo addPlayer failed, try reLaunch', err);
-          wx.reLaunch({
-            url,
-            success: (result) => resolve({ ok: true, result }),
-            fail: (error) => resolve({ ok: false, error })
-          });
-        }
-      });
-    });
+    const navigationOptions = { url };
+    if (options.navigationTimeoutMs != null) {
+      navigationOptions.navigationTimeoutMs = options.navigationTimeoutMs;
+    }
+    const redirected = await waitForPageNavigation('redirectTo', navigationOptions);
+    if (redirected.ok) return redirected;
+    console.warn('redirectTo addPlayer failed, try reLaunch', redirected.error);
+    return waitForPageNavigation('reLaunch', navigationOptions);
   },
 
   handleCreateRoom() {
@@ -631,8 +626,8 @@ Page(withPageInteractionLock({
     try {
       const current = await getRoomPageSnapshot('', { refresh: true });
       if (current && current.ok === true && current.roomId) {
-        await this._goToRoomPage(current.roomId);
-        return true;
+        const opened = await this._goToRoomPage(current.roomId);
+        return !!(opened && opened.ok);
       }
     } catch (error) {
       console.warn('recover existing room fail', error);
@@ -668,7 +663,10 @@ Page(withPageInteractionLock({
         creator: this.data.userNickName,
         time: formatHistoryTime(Date.now())
       });
-      await this._goToRoomPage(roomId);
+      const opened = await this._goToRoomPage(roomId);
+      if (!opened || opened.ok !== true) {
+        wx.showToast({ title: '进入房间失败，请重试', icon: 'none' });
+      }
     } catch (err) {
       console.error('roomCreate fail', { errMsg: err.errMsg, errCode: err.errCode });
       if (await this._recoverExistingRoom()) return;

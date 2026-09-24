@@ -228,3 +228,37 @@ test('创建房间遇到 -504002 且没有当前房间时提示重新部署，�
 
   assert.deepEqual(toasts, ['云函数执行失败，请重新部署']);
 });
+
+test('创建成功后导航丢失全部回调时会超时释放，不会一直加载', async () => {
+  let redirectCalls = 0;
+  let relaunchCalls = 0;
+  const toasts = [];
+  global.wx = {
+    getStorageSync: (key) => storage.get(key),
+    setStorageSync: (key, value) => storage.set(key, value),
+    removeStorageSync: (key) => storage.delete(key),
+    showToast: (options) => toasts.push(options.title),
+    redirectTo() { redirectCalls += 1; },
+    reLaunch() { relaunchCalls += 1; }
+  };
+
+  const page = loadHomePage({
+    dispatchRoomCommand: async () => ({
+      ok: true,
+      outcome: { kind: 'ROOM_CREATED', roomId: '87654321' }
+    }),
+    getCurrentRoomPageSnapshot: async () => ({ ok: true, roomId: null }),
+    getRoomPageSnapshot: async () => ({ ok: true, roomId: null })
+  });
+  const goToRoomPage = page._goToRoomPage.bind(page);
+  page._goToRoomPage = (roomId) => goToRoomPage(roomId, { navigationTimeoutMs: 5 });
+
+  await page.handleCreateRoom();
+
+  assert.equal(redirectCalls, 1);
+  assert.equal(relaunchCalls, 1);
+  assert.equal(page.data.loading, false);
+  assert.equal(page.data.interactionLocked, false);
+  assert.equal(page.data.interactionLoading, false);
+  assert.deepEqual(toasts, ['进入房间失败，请重试']);
+});
