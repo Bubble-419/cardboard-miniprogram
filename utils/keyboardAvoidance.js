@@ -20,12 +20,22 @@ function buildKeyboardLiftStyle(height) {
   return px > 0 ? `transform: translate3d(0, -${px}px, 0);` : '';
 }
 
+/**
+ * iOS 原生 textarea 位于 transform 容器中时可能重复合成并产生残影。
+ * 对 position: relative/fixed 的单层输入栏改用 bottom 位移，仍只消费原生 px 高度。
+ */
+function buildKeyboardBottomStyle(height) {
+  const px = normalizeKeyboardHeight(height);
+  return px > 0 ? `bottom: ${px}px;` : '';
+}
+
 function buildKeyboardMaskBottomStyle(height, baseInset = '180rpx + env(safe-area-inset-bottom)') {
   const px = normalizeKeyboardHeight(height);
   return `bottom: calc(${px}px + ${baseInset});`;
 }
 
 module.exports = {
+  buildKeyboardBottomStyle,
   buildKeyboardLiftStyle,
   buildKeyboardMaskBottomStyle,
   keyboardHeightFromEvent,

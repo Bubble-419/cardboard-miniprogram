@@ -5,7 +5,7 @@ const { goRoomPage } = require('../../utils/goRoomPage');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveCloudDisplayUrls, invalidateCloudDisplayUrl, isCloudFileId } = require('../../utils/cloudDisplayUrl');
 const {
-  buildKeyboardLiftStyle,
+  buildKeyboardBottomStyle,
   buildKeyboardMaskBottomStyle,
   keyboardHeightFromEvent
 } = require('../../utils/keyboardAvoidance');
@@ -441,7 +441,7 @@ Page(withPageInteractionLock({
     const height = Math.max(0, Number(keyboardHeight) || 0);
     return {
       inspirationKeyboardHeight: height,
-      inspirationLiftStyle: buildKeyboardLiftStyle(height),
+      inspirationLiftStyle: buildKeyboardBottomStyle(height),
       inspirationMaskStyle: buildKeyboardMaskBottomStyle(height)
     };
   },

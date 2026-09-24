@@ -137,7 +137,7 @@ test('灵感空间按输入事件的精确键盘高度上移输入栏', () => {
 
   assert.equal(globalKeyboardBindings, 0);
   assert.equal(page.data.inspirationKeyboardHeight, 300);
-  assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -300px, 0);');
+  assert.equal(page.data.inspirationLiftStyle, 'bottom: 300px;');
   assert.match(page.data.inspirationMaskStyle, /300px/);
 });
 
@@ -153,7 +153,7 @@ test('灵感空间键盘高度早于 focus 回调时仍立即顶起输入栏', (
   page.onInspirationKeyboardHeightChange({ detail: { height: 286 } });
 
   assert.equal(page.data.inspirationKeyboardHeight, 286);
-  assert.equal(page.data.inspirationLiftStyle, 'transform: translate3d(0, -286px, 0);');
+  assert.equal(page.data.inspirationLiftStyle, 'bottom: 286px;');
   assert.match(page.data.inspirationMaskStyle, /286px/);
 });
 
@@ -355,7 +355,7 @@ test('收尾复盘追加 cloud:// 图片时保留 fileRef，避免同步成展�
   assert.equal(normalized[0].fileRef, cloudId);
 });
 
-test('灵感空间输入栏抬升后灰底占满宽度，输入卡片继续保留左右边距', () => {
+test('灵感空间输入栏抬升后不显示灰底，输入卡片继续保留左右边距', () => {
   const inspirationWxss = read('pages/inspiration/index.wxss');
   const barRule = inspirationWxss.match(/\.inspiration-bar\s*\{[\s\S]*?\}/);
   const focusedRule = inspirationWxss.match(/\.inspiration-bar-focused\s*\{[\s\S]*?\}/);
@@ -363,6 +363,7 @@ test('灵感空间输入栏抬升后灰底占满宽度，输入卡片继续保�
   assert.ok(barRule);
   assert.match(barRule[0], /margin:\s*0;/);
   assert.match(barRule[0], /padding:\s*0 30rpx calc\(18rpx \+ env\(safe-area-inset-bottom\)\);/);
+  assert.doesNotMatch(barRule[0], /transition:/);
   assert.ok(focusedRule);
-  assert.match(focusedRule[0], /background:\s*rgba\(243, 250, 246, 0\.96\);/);
+  assert.doesNotMatch(focusedRule[0], /background:/);
 });
