@@ -314,6 +314,21 @@ test('Halli Galli 活动页保持原业务语义：房主使用短文案“结�
   assert.doesNotMatch(wxml, /完成线下游戏，进入创意/);
 });
 
+test('游戏页设计问题详情隐藏房间入口，并用情境确认页同款叠卡', () => {
+  const wxml = fs.readFileSync(path.join(
+    __dirname,
+    '../../pages/main-pages/partnerMode/confirmBG/index.wxml'
+  ), 'utf8');
+  const json = JSON.parse(fs.readFileSync(path.join(
+    __dirname,
+    '../../pages/main-pages/partnerMode/confirmBG/index.json'
+  ), 'utf8'));
+  assert.match(wxml, /showRoomEntry="\{\{!isGameDetail\}\}"/);
+  assert.match(wxml, /isGameDetail[\s\S]*cards-deck/);
+  assert.doesNotMatch(wxml, /context-display/);
+  assert.ok(!json.usingComponents['context-display']);
+});
+
 test('共享玩家列表引用的小程序包内图标必须真实存在', () => {
   const componentPath = path.join(__dirname, '../../components/user-list/index.wxml');
   const wxml = fs.readFileSync(componentPath, 'utf8');

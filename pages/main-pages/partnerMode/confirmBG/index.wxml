@@ -1,7 +1,8 @@
 <view class="container {{isGameDetail ? 'container-game-detail' : ''}}">
-  <!-- 顶部：房间入口 + 堆叠头像（与胶囊水平居中对齐） -->
+  <!-- 顶部：房间入口（游戏页回看详情时不展示） -->
   <player-top-bar
     showAvatars="{{false}}"
+    showRoomEntry="{{!isGameDetail}}"
     bind:goroom="handleGoRoom"
   />
 
@@ -17,7 +18,7 @@
     bind:prev="handleGoBack"
   ></page-footer>
 
-  <!-- 游戏页进入：设计问题按内容高度 + 情境 2×2，超出可滚 -->
+  <!-- 游戏页进入：完整设计问题 + 情境四张叠卡 -->
   <block wx:elif="{{isGameDetail}}">
     <scroll-view class="game-detail-body" scroll-y enhanced show-scrollbar="{{false}}">
       <!-- 完整设计问题：结构/排版与「选择设计问题」选中卡一致（text 须单行紧贴，避免空白行盒） -->
@@ -28,13 +29,29 @@
         </view>
       </view>
 
-      <!-- 情境四格：与选择/提交设计问题页 context-display 一致 -->
-      <view class="detail-context-wrap">
-        <context-display items="{{categories}}" />
+      <view class="cards-area cards-area-game-detail">
+        <view class="cards-deck" style="height: {{deckHeightRpx}}rpx;">
+          <view
+            class="deck-slot"
+            wx:for="{{cards}}"
+            wx:key="type"
+            style="top: {{index * deckStepRpx}}rpx; z-index: {{index + 1}}; animation-delay: {{index * 120}}ms"
+            data-index="{{index}}"
+            bindtap="handleCardTap"
+          >
+            <view class="deck-card">
+              <view class="deck-bg"></view>
+              <image class="deck-frame" src="/assets/bgCard/union-green.svg" mode="scaleToFill" />
+              <image class="deck-watermark" src="/assets/bgCard/icon-center-confirm.svg" mode="aspectFit" />
+              <text class="deck-value">{{item.value}}</text>
+            </view>
+            <text class="deck-label">{{item.label}}</text>
+          </view>
+        </view>
       </view>
     </scroll-view>
 
-    <page-footer extClass="footer footer-compact" showPrev="{{false}}">
+    <page-footer extClass="footer footer-compact" showPrev="{{false}}" fixed="{{false}}">
       <button class="confirm-btn enabled" bindtap="handleReturnToGame">{{returnBtnText}}</button>
     </page-footer>
   </block>
@@ -42,12 +59,12 @@
   <!-- 提交页回看 / 房主确认：原比例叠卡 -->
   <block wx:elif="{{fromGameView || (isHost && !isWaiting)}}">
     <view class="cards-area">
-      <view class="cards-deck">
+      <view class="cards-deck" style="height: {{deckHeightRpx}}rpx;">
         <view
           class="deck-slot"
           wx:for="{{cards}}"
           wx:key="type"
-          style="top: {{index * 255}}rpx; z-index: {{index + 1}}; animation-delay: {{index * 120}}ms"
+          style="top: {{index * deckStepRpx}}rpx; z-index: {{index + 1}}; animation-delay: {{index * 120}}ms"
           data-index="{{index}}"
           bindtap="handleCardTap"
         >

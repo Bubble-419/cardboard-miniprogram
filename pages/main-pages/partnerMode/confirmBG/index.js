@@ -24,6 +24,9 @@ const PARTNER_CARD_DEFS = [
   { type: 'function', label: '功能' }
 ];
 
+const DECK_CARD_HEIGHT_RPX = 414;
+const DECK_STEP_RPX = 255;
+
 Page(withPageInteractionLock({
   data: {
     roomId: '',
@@ -34,10 +37,11 @@ Page(withPageInteractionLock({
     /** 从 gamepage / submitProblem 回看情境：只读 */
     fromGameView: false,
     from: '',
-    /** 游戏页点设计问题进入：缩小叠卡 + 完整问题，一屏不滚 */
+    /** 游戏页点设计问题进入：完整问题 + 情境四张叠卡 */
     isGameDetail: false,
-    /** 缩小叠卡叠距（rpx） */
-    deckStepRpx: 118,
+    /** 叠卡叠距 / 高度，与情境确认页一致 */
+    deckStepRpx: DECK_STEP_RPX,
+    deckHeightRpx: 3 * DECK_STEP_RPX + DECK_CARD_HEIGHT_RPX,
     /** 底部主按钮文案 */
     returnBtnText: '返回游戏',
     avatarList: [],
@@ -67,7 +71,7 @@ Page(withPageInteractionLock({
     this._passedProblemText = String(passedProblemText || '').trim();
     this._fromGameView = fromGameView;
     this._fromSource = from || (fromGameView ? 'game' : '');
-    this.setData({ from: this._fromSource });
+    this.setData({ from: this._fromSource, isGameDetail });
 
     if (roomId) {
       getApp().globalData.roomId = roomId;

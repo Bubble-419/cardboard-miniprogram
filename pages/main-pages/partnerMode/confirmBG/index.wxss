@@ -11,20 +11,20 @@
   overflow: hidden;
 }
 
-/* 游戏详情：设计问题置顶 + 情境 2×2，一屏不滚 */
+/* 游戏详情：设计问题置顶 + 情境四张叠卡 */
 .game-detail-body {
   flex: 1;
   height: 0;
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 16rpx 40rpx 12rpx;
+  padding: 8rpx 0 12rpx;
 }
 
 /* 与选择设计问题页房主「选中卡」同款（padding / 色 / 竖线 / 字色） */
 .design-problem-block {
   flex: none;
-  width: 100%;
+  width: auto;
   box-sizing: border-box;
   background-color: #F2F4F1;
   border: 2rpx solid #5EC159;
@@ -34,7 +34,7 @@
   flex-direction: row;
   align-items: center;
   gap: 32rpx;
-  margin-bottom: 20rpx;
+  margin: 0 40rpx 4rpx;
 }
 
 .design-problem-indicator {
@@ -67,11 +67,6 @@
 
 .design-problem-text-empty {
   color: #999999;
-}
-
-.detail-context-wrap {
-  flex-shrink: 0;
-  width: 100%;
 }
 
 .footer-compact {
@@ -157,6 +152,13 @@
   padding-top: 32rpx;
   padding-bottom: 160rpx;       /* 为底部 fixed 按钮留空 */
   /* ❌ 不设 overflow:hidden —— 入场动画从上方落下时不被截断 */
+}
+
+.cards-area.cards-area-game-detail {
+  flex: none;
+  width: 100%;
+  padding-top: 16rpx;
+  padding-bottom: 24rpx;
 }
 
 /* =================================================
