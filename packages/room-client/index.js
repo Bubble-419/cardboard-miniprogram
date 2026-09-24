@@ -11,6 +11,8 @@ const { clone, applyProjectedEvent } = require('../room-projection/index');
 const ROOM_POLL_INTERVAL_MS = 2000;
 const PRESENCE_TOUCH_INTERVAL_MS = 5000;
 const PRESENCE_READ_INTERVAL_MS = 5000;
+// 云函数控制台建议至少 10 秒；客户端略晚于服务端预算结束，防止 SDK 丢回调永久堵塞串行队列。
+const ROOM_REQUEST_TIMEOUT_MS = 12000;
 
 function defaultCommandId() {
   return `cmd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
@@ -28,7 +30,35 @@ function isRecord(value) {
 function createCloudRoomGateway(options) {
   const callFunction = options && options.callFunction;
   if (typeof callFunction !== 'function') throw new Error('callFunction required');
-  const call = async (name, data) => unwrapCloudResult(await callFunction({ name, data }));
+  const requestedTimeoutMs = Number(options && options.requestTimeoutMs);
+  const requestTimeoutMs = Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
+    ? requestedTimeoutMs
+    : ROOM_REQUEST_TIMEOUT_MS;
+  const setTimeoutFn = options && options.setTimeoutFn || setTimeout;
+  const clearTimeoutFn = options && options.clearTimeoutFn || clearTimeout;
+  const call = (name, data) => new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutTimer = null;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutTimer) clearTimeoutFn(timeoutTimer);
+      callback(value);
+    };
+    timeoutTimer = setTimeoutFn(() => {
+      const error = new Error('房间服务响应超时，请稍后重试');
+      error.code = ERR.DEPENDENCY_UNAVAILABLE;
+      error.errCode = ERR.DEPENDENCY_UNAVAILABLE;
+      error.retryable = true;
+      finish(reject, error);
+    }, requestTimeoutMs);
+    Promise.resolve()
+      .then(() => callFunction({ name, data }))
+      .then(
+        (response) => finish(resolve, unwrapCloudResult(response)),
+        (error) => finish(reject, error)
+      );
+  });
   const withContext = (data, clientContext) => clientContext ? { ...data, clientContext } : data;
   return {
     currentRoom: (clientContext) => call('roomQuery', withContext({ action: 'current' }, clientContext)),
@@ -89,6 +119,7 @@ function createRoomClient(options) {
   let lastRequestCompletedAt = null;
   let listenerSeq = 0;
   let queue = Promise.resolve();
+  let connectionPromise = null;
   const listeners = new Map();
   const uncertainCommands = new Map();
 
@@ -183,6 +214,17 @@ function createRoomClient(options) {
         schedule(nextPollDelay());
       }
     });
+  }
+
+  function enqueueConnection(operation) {
+    if (connectionPromise) return connectionPromise;
+    const request = enqueueForeground(operation);
+    connectionPromise = request;
+    const clear = () => {
+      if (connectionPromise === request) connectionPromise = null;
+    };
+    request.then(clear, clear);
+    return request;
   }
 
   function resetConnection(nextStatus) {
@@ -588,7 +630,7 @@ function createRoomClient(options) {
   }
 
   return {
-    open: () => enqueueForeground(openInternal),
+    open: () => enqueueConnection(openInternal),
     subscribe(listener, subscribeOptions) {
       const id = ++listenerSeq;
       listeners.set(id, listener);
@@ -597,7 +639,7 @@ function createRoomClient(options) {
     },
     dispatch(input) { return enqueueForeground(() => dispatchInternal(input || {})); },
     // refresh 与前后台 resume 共享同一恢复语义：终态错误会断开，可恢复错误会进入退避重试。
-    refresh() { return enqueueForeground(resumeInternal); },
+    refresh() { return enqueueConnection(resumeInternal); },
     history(query, targetRoomId) {
       return enqueueForeground(() => {
         const queryRoomId = targetRoomId || roomId;
@@ -634,12 +676,12 @@ function createRoomClient(options) {
     getState: state,
     getRequestContext,
     pause() { paused = true; cancelTimer(); },
-    resume() { return enqueueForeground(resumeInternal); },
+    resume() { return enqueueConnection(resumeInternal); },
     close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }
   };
 }
 
 module.exports = {
-  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, PRESENCE_READ_INTERVAL_MS,
+  ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, PRESENCE_READ_INTERVAL_MS, ROOM_REQUEST_TIMEOUT_MS,
   createRoomClient, createCloudRoomGateway, defaultCommandId
 };

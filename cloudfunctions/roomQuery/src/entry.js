@@ -1,28 +1,39 @@
 'use strict';
 
-const cloud = require('wx-server-sdk');
-const { createRoomApplication } = require('@cardboard/room-application');
-const { createCloudBaseRoomRepository } = require('@cardboard/room-cloudbase-adapter');
+let runtime;
+let initializationError;
 
-cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+function createRuntime() {
+  const cloud = require('wx-server-sdk');
+  const { createRoomApplication } = require('@cardboard/room-application');
+  const { createCloudBaseRoomRepository } = require('@cardboard/room-cloudbase-adapter');
+  cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  const db = cloud.database();
+  const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+  return { cloud, app };
+}
 
-const db = cloud.database();
-const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+try {
+  runtime = createRuntime();
+} catch (error) {
+  initializationError = error;
+}
 
 /** V3 房间只读入口：current / snapshot / sync / history / session / messages / leaderboard。 */
 exports.main = async (event) => {
-  const wxContext = cloud.getWXContext();
-  const userId = wxContext.OPENID || '';
-  const roomId = event && event.roomId;
-  const action = (event && event.action) || 'current';
-  const clientContext = event && event.clientContext || {};
-  const actorContext = { userId,
-    deviceSessionId: clientContext.deviceSessionId,
-    touchPresence: clientContext.touchPresence === true,
-    // 缺省按 true 兼容旧客户端；新 RoomClient 会每 5 秒要求一次 Presence。
-    readPresence: clientContext.readPresence !== false };
-
   try {
+    if (initializationError) throw initializationError;
+    const { cloud, app } = runtime;
+    const wxContext = cloud.getWXContext();
+    const userId = wxContext.OPENID || '';
+    const roomId = event && event.roomId;
+    const action = (event && event.action) || 'current';
+    const clientContext = event && event.clientContext || {};
+    const actorContext = { userId,
+      deviceSessionId: clientContext.deviceSessionId,
+      touchPresence: clientContext.touchPresence === true,
+      // 缺省按 true 兼容旧客户端；新 RoomClient 会每 5 秒要求一次 Presence。
+      readPresence: clientContext.readPresence !== false };
     if (action === 'current') return await app.readCurrentRoom(actorContext);
     if (action === 'snapshot') return await app.readSnapshot(roomId, actorContext);
     if (action === 'sync') return await app.sync(roomId, event && event.afterSeq, actorContext, {

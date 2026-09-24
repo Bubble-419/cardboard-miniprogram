@@ -3864,7 +3864,7 @@ var require_room_application = __commonJS({
         serverTime: input.serverTime
       });
     }
-    function createRoomApplication2(repo, options) {
+    function createRoomApplication(repo, options) {
       if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
       const appOptions = options || {};
       const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
@@ -4501,7 +4501,7 @@ var require_room_application = __commonJS({
       };
     }
     module2.exports = {
-      createRoomApplication: createRoomApplication2,
+      createRoomApplication,
       hash,
       deriveCommandSeed,
       deterministicRandom,
@@ -4663,7 +4663,7 @@ var require_room_cloudbase_adapter = __commonJS({
       if (!sameDocument(patched, afterSession)) return null;
       return data;
     }
-    function createCloudBaseRoomRepository2(deps) {
+    function createCloudBaseRoomRepository(deps) {
       const db2 = deps && deps.db;
       if (!db2 || typeof db2.runTransaction !== "function") throw new Error("CloudBase transaction database required");
       function generateRoomId(commandId, actorUserId, attempt) {
@@ -5001,22 +5001,29 @@ var require_room_cloudbase_adapter = __commonJS({
         upsertSignal
       };
     }
-    module2.exports = { COLLECTIONS: COLLECTIONS2, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId: docId2, safeGet: safeGet2 };
+    module2.exports = { COLLECTIONS: COLLECTIONS2, createCloudBaseRoomRepository, digest, docId: docId2, safeGet: safeGet2 };
   }
 });
 
 // cloudfunctions/roomMedia/src/entry.js
-var cloud = require("wx-server-sdk");
-var { createRoomApplication } = require_room_application();
-var {
-  createCloudBaseRoomRepository,
-  COLLECTIONS,
-  docId,
-  safeGet
-} = require_room_cloudbase_adapter();
-cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-var db = cloud.database();
-var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+var cloud;
+var db;
+var app;
+var COLLECTIONS;
+var docId;
+var safeGet;
+var initializationError;
+try {
+  cloud = require("wx-server-sdk");
+  const { createRoomApplication } = require_room_application();
+  const adapter = require_room_cloudbase_adapter();
+  ({ COLLECTIONS, docId, safeGet } = adapter);
+  cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  db = cloud.database();
+  app = createRoomApplication(adapter.createCloudBaseRoomRepository({ db, cloud }));
+} catch (error) {
+  initializationError = error;
+}
 function extractImageBuffer(response) {
   const raw = response && (response.buffer || response.fileContent) || (Buffer.isBuffer(response) ? response : null);
   const buffer = Buffer.isBuffer(raw) ? raw : raw && Buffer.from(raw);
@@ -5099,6 +5106,14 @@ async function tempUrls(fileList, actorContext, scope) {
   return { ok: true, fileList: response && response.fileList || [] };
 }
 exports.main = async (event) => {
+  if (initializationError) {
+    console.error("roomMedia initialization error", initializationError);
+    return {
+      ok: false,
+      errCode: initializationError.code || "INTERNAL_ERROR",
+      errMsg: initializationError.message || "roomMedia initialization failed"
+    };
+  }
   const action = String(event && event.action || "qrcode");
   const wxContext = cloud.getWXContext();
   const userId = wxContext.OPENID || "";

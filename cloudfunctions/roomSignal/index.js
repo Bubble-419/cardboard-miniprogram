@@ -3864,7 +3864,7 @@ var require_room_application = __commonJS({
         serverTime: input.serverTime
       });
     }
-    function createRoomApplication2(repo, options) {
+    function createRoomApplication(repo, options) {
       if (!repo || typeof repo.transactCommand !== "function") throw new Error("RoomRepository required");
       const appOptions = options || {};
       const now = () => Number(typeof appOptions.now === "function" ? appOptions.now() : appOptions.now || Date.now());
@@ -4501,7 +4501,7 @@ var require_room_application = __commonJS({
       };
     }
     module2.exports = {
-      createRoomApplication: createRoomApplication2,
+      createRoomApplication,
       hash,
       deriveCommandSeed,
       deterministicRandom,
@@ -4663,15 +4663,15 @@ var require_room_cloudbase_adapter = __commonJS({
       if (!sameDocument(patched, afterSession)) return null;
       return data;
     }
-    function createCloudBaseRoomRepository2(deps) {
-      const db2 = deps && deps.db;
-      if (!db2 || typeof db2.runTransaction !== "function") throw new Error("CloudBase transaction database required");
+    function createCloudBaseRoomRepository(deps) {
+      const db = deps && deps.db;
+      if (!db || typeof db.runTransaction !== "function") throw new Error("CloudBase transaction database required");
       function generateRoomId(commandId, actorUserId, attempt) {
         const value = parseInt(digest(`${actorUserId}:${commandId}:room:${attempt || 0}`).slice(0, 12), 16);
         return String(1e7 + value % 9e7);
       }
       async function transactCommand(input, handler) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const actionId = docId(`${input.scopeKey}:${input.commandId}`);
           const existing = await safeGet(transaction, COLLECTIONS.actions, actionId);
           if (existing) {
@@ -4788,7 +4788,7 @@ var require_room_cloudbase_adapter = __commonJS({
         });
       }
       async function readAggregate(roomId) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const aggregate = await loadAggregate(transaction, roomId);
           if (!aggregate) return null;
           const first = await transaction.collection(COLLECTIONS.events).where({ roomId }).orderBy("seq", "asc").limit(1).get();
@@ -4798,17 +4798,17 @@ var require_room_cloudbase_adapter = __commonJS({
         });
       }
       async function readSessionAggregate(roomId, sessionId) {
-        return db2.runTransaction((transaction) => loadSessionAggregate(transaction, roomId, sessionId));
+        return db.runTransaction((transaction) => loadSessionAggregate(transaction, roomId, sessionId));
       }
       async function listSessions(roomId, options) {
         const size = Math.min(50, Math.max(1, Number(options && options.limit) || 20));
         const before = Number(options && options.beforeOrdinal);
         const condition = {
           roomId,
-          status: db2.command.in(["COMPLETED", "CANCELLED"])
+          status: db.command.in(["COMPLETED", "CANCELLED"])
         };
-        if (Number.isInteger(before)) condition.ordinal = db2.command.lt(before);
-        const result = await db2.collection(COLLECTIONS.sessions).where(condition).orderBy("ordinal", "desc").limit(size + 1).get();
+        if (Number.isInteger(before)) condition.ordinal = db.command.lt(before);
+        const result = await db.collection(COLLECTIONS.sessions).where(condition).orderBy("ordinal", "desc").limit(size + 1).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listMessages(roomId, sessionId, options) {
@@ -4816,22 +4816,22 @@ var require_room_cloudbase_adapter = __commonJS({
         const rawBeforeSeq = options && options.beforeSeq;
         const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
         const condition = { roomId, sessionId };
-        if (beforeSeq != null) condition.commitSeq = db2.command.lt(beforeSeq);
-        const result = await db2.collection(COLLECTIONS.messages).where(condition).orderBy("commitSeq", "desc").limit(size + 1).get();
+        if (beforeSeq != null) condition.commitSeq = db.command.lt(beforeSeq);
+        const result = await db.collection(COLLECTIONS.messages).where(condition).orderBy("commitSeq", "desc").limit(size + 1).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function readSyncState(roomId, afterSeq, limit) {
-        const room = await safeGet(db2, COLLECTIONS.rooms, roomId);
+        const room = await safeGet(db, COLLECTIONS.rooms, roomId);
         if (!compatibleRoom(room)) return { room: null, events: [] };
         const ceiling = room.eventSeq;
         if (afterSeq >= ceiling) return { room, events: [] };
         if (ceiling - afterSeq > MAX_INCREMENTAL_SYNC_EVENTS) return { room, events: [] };
-        const _ = db2.command;
-        const result = await db2.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
+        const _ = db.command;
+        const result = await db.collection(COLLECTIONS.events).where({ roomId, seq: _.gt(afterSeq).and(_.lte(ceiling)) }).orderBy("seq", "asc").limit(limit).get();
         return { room, events: (result && result.data || []).map(cleanDoc) };
       }
       async function findActiveRoom(userId) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const active = await safeGet(transaction, COLLECTIONS.active, docId(userId));
           if (!active) return null;
           const room = await safeGet(transaction, COLLECTIONS.rooms, active.roomId);
@@ -4842,23 +4842,23 @@ var require_room_cloudbase_adapter = __commonJS({
       async function upsertPresence({ roomId, memberId, deviceSessionId, lastSeenAt }) {
         const row = { roomId, memberId, deviceSessionId: deviceSessionId || "default", lastSeenAt, online: true };
         const presenceId = docId(`${roomId}:${memberId}:${row.deviceSessionId}`);
-        await db2.collection(COLLECTIONS.presence).doc(presenceId).set({
-          data: { ...row, lastSeenAt: db2.command.max(lastSeenAt) }
+        await db.collection(COLLECTIONS.presence).doc(presenceId).set({
+          data: { ...row, lastSeenAt: db.command.max(lastSeenAt) }
         });
         return row;
       }
       async function listPresence(roomId, cutoff) {
         const condition = { roomId };
-        if (Number.isFinite(Number(cutoff))) condition.lastSeenAt = db2.command.gte(Number(cutoff));
-        const result = await db2.collection(COLLECTIONS.presence).where(condition).orderBy("lastSeenAt", "desc").limit(50).get();
+        if (Number.isFinite(Number(cutoff))) condition.lastSeenAt = db.command.gte(Number(cutoff));
+        const result = await db.collection(COLLECTIONS.presence).where(condition).orderBy("lastSeenAt", "desc").limit(50).get();
         return (result && result.data || []).map(cleanDoc);
       }
       async function listSignals(roomId) {
-        const state = await readPublicSignals(db2, roomId);
+        const state = await readPublicSignals(db, roomId);
         return Object.values(state.signals).filter((row) => row && Object.values(SIGNAL_TYPES).includes(row.signalType));
       }
       async function upsertSignal(input) {
-        return db2.runTransaction(async (transaction) => {
+        return db.runTransaction(async (transaction) => {
           const room = await safeGet(transaction, COLLECTIONS.rooms, input.roomId);
           if (!compatibleRoom(room)) return { ok: false, errCode: "ROOM_NOT_FOUND", errMsg: "\u623F\u95F4\u4E0D\u5B58\u5728" };
           const member = room.lifecycle === "OPEN" && (room.members || []).find((item) => item.userId === input.actorUserId);
@@ -5001,26 +5001,38 @@ var require_room_cloudbase_adapter = __commonJS({
         upsertSignal
       };
     }
-    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository: createCloudBaseRoomRepository2, digest, docId, safeGet };
+    module2.exports = { COLLECTIONS, createCloudBaseRoomRepository, digest, docId, safeGet };
   }
 });
 
 // cloudfunctions/roomSignal/src/entry.js
-var cloud = require("wx-server-sdk");
-var { createRoomApplication } = require_room_application();
-var { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
-cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-var db = cloud.database();
-var app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+var runtime;
+var initializationError;
+function createRuntime() {
+  const cloud = require("wx-server-sdk");
+  const { createRoomApplication } = require_room_application();
+  const { createCloudBaseRoomRepository } = require_room_cloudbase_adapter();
+  cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  const db = cloud.database();
+  const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+  return { cloud, app };
+}
+try {
+  runtime = createRuntime();
+} catch (error) {
+  initializationError = error;
+}
 exports.main = async (event) => {
-  const wxContext = cloud.getWXContext();
-  const userId = wxContext.OPENID || "";
-  const roomId = String(event && event.roomId || "");
-  const signalType = String(event && event.signalType || "");
-  const sessionId = String(event && event.sessionId || "");
-  const turnId = String(event && event.turnId || "");
-  const clientContext = event && event.clientContext || {};
   try {
+    if (initializationError) throw initializationError;
+    const { cloud, app } = runtime;
+    const wxContext = cloud.getWXContext();
+    const userId = wxContext.OPENID || "";
+    const roomId = String(event && event.roomId || "");
+    const signalType = String(event && event.signalType || "");
+    const sessionId = String(event && event.sessionId || "");
+    const turnId = String(event && event.turnId || "");
+    const clientContext = event && event.clientContext || {};
     return await app.writeSignal({
       roomId,
       signalType,

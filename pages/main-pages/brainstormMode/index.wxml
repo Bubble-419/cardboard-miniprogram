@@ -17,13 +17,8 @@
     </view>
   </view>
 
-  <!-- 模式列表：scroll-view 必须用 px 高度，flex+height:0 在部分基础库会整页空白 -->
-  <scroll-view
-    class="mode-scroll"
-    scroll-y
-    show-scrollbar="{{false}}"
-    style="height: {{scrollHeight}}px"
-  >
+  <!-- 四张模式卡固定在剩余可视区内，不使用页内滚动 -->
+  <view class="mode-scroll">
     <view class="mode-groups">
       <view class="mode-group" wx:for="{{modeGroups}}" wx:key="id" wx:for-item="group">
         <view class="mode-group-heading">
@@ -56,10 +51,11 @@
         </view>
       </view>
     </view>
-  </scroll-view>
+  </view>
 
   <page-footer
     wx:if="{{isHost}}"
+    fixed="{{false}}"
     extClass="footer"
     bind:prev="handleGoBack"
   >
@@ -71,6 +67,7 @@
 
   <page-footer
     wx:else
+    fixed="{{false}}"
     extClass="footer"
     showPrimary="{{false}}"
     bind:prev="handleGoBack"

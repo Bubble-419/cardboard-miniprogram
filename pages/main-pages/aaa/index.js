@@ -280,7 +280,18 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在进入房间…' });
   },
 
-  async loadJoinedRoomState() {
+  loadJoinedRoomState() {
+    if (this._joinedStatePromise) return this._joinedStatePromise;
+    const request = this._loadJoinedRoomState();
+    this._joinedStatePromise = request;
+    const clear = () => {
+      if (this._joinedStatePromise === request) this._joinedStatePromise = null;
+    };
+    request.then(clear, clear);
+    return request;
+  },
+
+  async _loadJoinedRoomState() {
     if (_scanJoinNavigatingRoomId || isScanJoinActive()) return;
     const gen = (this._joinedStateGen || 0) + 1;
     this._joinedStateGen = gen;
@@ -639,9 +650,9 @@ Page(withPageInteractionLock({
     if (this.data.loading) return;
 
     this.setData({ loading: true });
-    const profile = await getOptionalProfileForRoom();
 
     try {
+      const profile = await getOptionalProfileForRoom();
       const payload = buildRoomJoinPayload(profile);
       const result = await dispatchRoomCommand('CREATE_ROOM', payload);
       const roomId = result && result.outcome && result.outcome.roomId;

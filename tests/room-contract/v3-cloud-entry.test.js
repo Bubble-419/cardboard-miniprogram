@@ -99,6 +99,26 @@ test('roomCommand 依赖加载失败时返回结构化错误，而不是让平�
   }
 });
 
+test('roomQuery 依赖加载失败时也返回结构化错误', async () => {
+  const originalLoad = Module._load;
+  const entryPath = require.resolve('../../cloudfunctions/roomQuery/src/entry');
+  Module._load = function loadMissingSdk(request, parent, isMain) {
+    if (request === 'wx-server-sdk') {
+      throw Object.assign(new Error("Cannot find module 'wx-server-sdk'"), { code: 'MODULE_NOT_FOUND' });
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  delete require.cache[entryPath];
+  try {
+    const result = await require(entryPath).main({ action: 'current' });
+    assert.equal(result.ok, false);
+    assert.equal(result.errCode, 'MODULE_NOT_FOUND');
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[entryPath];
+  }
+});
+
 test('roomCommand ignores arbitrary platform metadata outside the wrapped command', async () => {
   const result = await invokeRoomCommand({
     command: createRoomCommand(),

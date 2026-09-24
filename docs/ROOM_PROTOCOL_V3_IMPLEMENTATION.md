@@ -392,7 +392,11 @@ patch
 
 Command 的传输结果丢失时，客户端不能生成新 `commandId` 猜测重试。RoomClient 会把同一
 `roomId + type + context + payload` 视为同一未确认意图，在收到明确成功或失败前复用原
-`commandId`；服务端 Receipt 负责把重复提交收敛为一次结果。
+`commandId`；服务端 Receipt 负责把重复提交收敛为一次结果。所有房间云函数调用受统一的
+12 秒客户端传输超时约束，微信 SDK 丢失回调时必须结束当前请求并释放串行队列；Command 的
+自动重试和用户后续重试仍复用同一个 `commandId`，不能因客户端超时制造重复房间或重复动作。
+页面生命周期并发触发的 `open/refresh/resume` 必须复用同一个在途恢复请求，不能把重复 Query
+排在用户 Command 前面放大冷启动或故障延迟；首页 `onLoad/onShow` 的房间发现同样使用单飞请求。
 
 客户端 `knownSeq` 已经覆盖到本次提交前一号时，`roomCommand` 直接用事务内 Event Group 投影附带
 Sync，不再二次读取 Room/Event/Presence/Signal。瞬时态标记 `ephemeral.stale`，客户端保留上次

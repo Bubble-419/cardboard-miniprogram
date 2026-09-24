@@ -155,7 +155,11 @@ listInspirations
 
 不要重新部署已删除的 legacy 房间云函数。`roomCommand/roomQuery/.../index.js` 是构建产物，修改 `packages/*` 或 `src/entry.js` 后必须重新执行 `pnpm build:cloud`。
 
-上传 `roomCommand` 时必须选择「上传并部署：云端安装依赖」。漏装 `wx-server-sdk` 时，新入口会返回 `MODULE_NOT_FOUND`；若仍看到客户端 `errCode: -504002`，说明模块在进入 `main` 前就失败了，需要重新安装依赖。控制台将 `roomCommand` 超时时间设为不少于 10 秒，避免冷启动事务被默认 3 秒切断。
+上传所有 V3 云函数时必须选择「上传并部署：云端安装依赖」，不能只上传代码。构建脚本会把
+`wx-server-sdk`（以及语音函数的腾讯云 SDK）保留为云端依赖；漏装依赖会同时导致 Command、Query、
+Signal 和 Media 不可用，典型表现是创建/离开长时间无响应且二维码一直生成。新版入口会尽量返回
+`MODULE_NOT_FOUND`；若仍看到客户端 `errCode: -504002`，说明函数在进入 `main` 前就失败了，需要重新
+安装依赖。控制台将 `roomCommand` 超时时间设为不少于 10 秒，避免冷启动事务被默认 3 秒切断。
 
 二维码环境变量：
 

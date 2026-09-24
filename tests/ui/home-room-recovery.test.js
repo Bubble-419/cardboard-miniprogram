@@ -229,6 +229,28 @@ test('创建房间遇到 -504002 且没有当前房间时提示重新部署，�
   assert.deepEqual(toasts, ['云函数执行失败，请重新部署']);
 });
 
+test('首页 onLoad/onShow 的并发房间发现复用同一请求', async () => {
+  let resolveCurrent;
+  let currentCalls = 0;
+  const current = new Promise((resolve) => { resolveCurrent = resolve; });
+  const page = loadHomePage({
+    async getCurrentRoomPageSnapshot() {
+      currentCalls += 1;
+      return current;
+    },
+    async dispatchRoomCommand() { return { ok: true }; }
+  });
+
+  const first = page.loadJoinedRoomState();
+  const second = page.loadJoinedRoomState();
+  assert.equal(first, second);
+  assert.equal(currentCalls, 1);
+
+  resolveCurrent({ ok: true, roomId: null });
+  await first;
+  assert.equal(page._joinedStatePromise, null);
+});
+
 test('创建成功后导航丢失全部回调时会超时释放，不会一直加载', async () => {
   let redirectCalls = 0;
   let relaunchCalls = 0;

@@ -16,6 +16,7 @@ const {
 const { PROFILE_STORAGE_KEY } = require('./wxUserAvatar');
 const { upsertHistoryWorkshop } = require('./historyWorkshops');
 const { isScanJoinActive } = require('./scanJoinGate');
+const { waitForPageNavigation } = require('./pageInteractionLock');
 
 const HOME_URL = '/pages/main-pages/aaa/index';
 const HOME_ROUTE = 'pages/main-pages/aaa/index';
@@ -160,12 +161,8 @@ function _scheduleHomeReLaunch(title) {
   if (_homeRelaunchTimer) clearTimeout(_homeRelaunchTimer);
   _homeRelaunchTimer = setTimeout(() => {
     _homeRelaunchTimer = null;
-    wx.reLaunch({
-      url: HOME_URL,
-      complete: () => {
-        _exiting = false;
-      }
-    });
+    waitForPageNavigation('reLaunch', { url: HOME_URL })
+      .finally(() => { _exiting = false; });
   }, 200);
 }
 

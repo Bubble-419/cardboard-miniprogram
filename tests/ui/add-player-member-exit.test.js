@@ -123,9 +123,19 @@ test('静默刷新成功后仍会补拉二维码，快照失败也会尝试 room
   );
   assert.match(source, /this\._fillQrcodeIfNeeded\(roomId\)/);
   assert.match(source, /async _fetchRoomQrcode\(roomId, force = false\)/);
-  assert.match(source, /name: 'roomMedia'/);
+  assert.match(source, /callCloudFunction\('roomMedia'/);
   const silentBlock = source.split('if (silent) {')[1] || '';
   assert.match(silentBlock.slice(0, 1800), /_fillQrcodeIfNeeded\(roomId\)/);
+});
+
+test('退出房间复用统一清理与有超时导航，不等待裸 reLaunch 回调', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../pages/main-pages/addPlayer/index.js'),
+    'utf8'
+  );
+  const leaveBlock = source.split('async _leaveRoom() {')[1].split('/* DEV_TEST_START')[0];
+  assert.match(leaveBlock, /exitRoomGone\(/);
+  assert.doesNotMatch(leaveBlock, /await new Promise/);
 });
 
 test('非房主确认成员身份后才启动订阅，首次权威路由不会被跳过', async () => {

@@ -1,14 +1,24 @@
 'use strict';
 
-const cloud = require('wx-server-sdk');
-const { createRoomApplication } = require('@cardboard/room-application');
-const {
-  createCloudBaseRoomRepository, COLLECTIONS, docId, safeGet
-} = require('@cardboard/room-cloudbase-adapter');
+let cloud;
+let db;
+let app;
+let COLLECTIONS;
+let docId;
+let safeGet;
+let initializationError;
 
-cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
-const db = cloud.database();
-const app = createRoomApplication(createCloudBaseRoomRepository({ db, cloud }));
+try {
+  cloud = require('wx-server-sdk');
+  const { createRoomApplication } = require('@cardboard/room-application');
+  const adapter = require('@cardboard/room-cloudbase-adapter');
+  ({ COLLECTIONS, docId, safeGet } = adapter);
+  cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+  db = cloud.database();
+  app = createRoomApplication(adapter.createCloudBaseRoomRepository({ db, cloud }));
+} catch (error) {
+  initializationError = error;
+}
 
 function extractImageBuffer(response) {
   const raw = response && (response.buffer || response.fileContent) || (Buffer.isBuffer(response) ? response : null);
@@ -99,6 +109,14 @@ async function tempUrls(fileList, actorContext, scope) {
 
 /** 二维码属于可再生媒体，不改变房间业务版本。 */
 exports.main = async (event) => {
+  if (initializationError) {
+    console.error('roomMedia initialization error', initializationError);
+    return {
+      ok: false,
+      errCode: initializationError.code || 'INTERNAL_ERROR',
+      errMsg: initializationError.message || 'roomMedia initialization failed'
+    };
+  }
   const action = String(event && event.action || 'qrcode');
   const wxContext = cloud.getWXContext();
   const userId = wxContext.OPENID || '';

@@ -73,6 +73,26 @@ function authorizedRoomApp() {
   };
 }
 
+test('roomMedia 依赖加载失败时返回结构化错误', async () => {
+  const originalLoad = Module._load;
+  const entryPath = require.resolve('../../cloudfunctions/roomMedia/src/entry');
+  Module._load = function loadMissingSdk(request, parent, isMain) {
+    if (request === 'wx-server-sdk') {
+      throw Object.assign(new Error("Cannot find module 'wx-server-sdk'"), { code: 'MODULE_NOT_FOUND' });
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+  delete require.cache[entryPath];
+  try {
+    const result = await require(entryPath).main({ action: 'qrcode', roomId: '12345678' });
+    assert.equal(result.ok, false);
+    assert.equal(result.errCode, 'MODULE_NOT_FOUND');
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[entryPath];
+  }
+});
+
 test('roomMedia tempUrls 只签名当前 MemberView 中可见的文件', async () => {
   const { result, tempFileUrlCalls } = await invokeRoomMedia({
     event: { action: 'tempUrls', fileList: [ALLOWED_AVATAR, ALLOWED_ARTIFACT] },

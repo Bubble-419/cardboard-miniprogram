@@ -12,7 +12,6 @@ const {
   getActiveRoomSession,
   followRoomRouteAfterCommand
 } = require('../../../modules/room-session/index');
-const { getCapsuleTopBarMetrics } = require('../../../utils/capsuleTopBar');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
@@ -78,21 +77,6 @@ function parseIsHostOption(options) {
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
-function computeScrollHeight() {
-  try {
-    const sys = wx.getSystemInfoSync();
-    const windowHeight = sys.windowHeight || 667;
-    const footerReserve = 120 + (sys.safeAreaInsets && sys.safeAreaInsets.bottom
-      ? sys.safeAreaInsets.bottom
-      : 0);
-    const m = getCapsuleTopBarMetrics();
-    const headerReserve = (m.padTop || 0) + (m.barHeight || 32) + 140;
-    return Math.max(320, windowHeight - headerReserve - footerReserve);
-  } catch (e) {
-    return 520;
-  }
-}
-
 Page(withPageInteractionLock({
   data: {
     roomId: '',
@@ -102,8 +86,7 @@ Page(withPageInteractionLock({
     currentUser: null,
     modeGroups: cloneModeGroups(false),
     selectedModeId: null,
-    isSelecting: false,
-    scrollHeight: 520
+    isSelecting: false
   },
 
   onLoad(options) {
@@ -121,7 +104,6 @@ Page(withPageInteractionLock({
     this.setData({
       roomId,
       isHost,
-      scrollHeight: computeScrollHeight(),
       modeGroups: cloneModeGroups(false)
     });
 

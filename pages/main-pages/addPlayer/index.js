@@ -44,6 +44,7 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+const { callCloudFunction, withCloudTimeout } = require('../../../utils/cloudApi');
 
 const MEMBER_SLOTS = 6;   // 圆周展示的槽位数（含空位）
 const CIRCLE_R = 310;     // 头像圆心半径 rpx（略放大，作为视觉主体）
@@ -866,10 +867,9 @@ Page(withPageInteractionLock({
 
   async _regenerateRoomQrcode(roomId, force = false) {
     try {
-      const regenRes = await wx.cloud.callFunction({
-        name: 'roomMedia',
-        data: { action: 'qrcode', roomId, force: force === true,
-          clientContext: getRoomRequestContext() }
+      const regenRes = await callCloudFunction('roomMedia', {
+        action: 'qrcode', roomId, force: force === true,
+        clientContext: getRoomRequestContext()
       });
       const regenResult = (regenRes && regenRes.result) || {};
       if (regenResult.ok === true && regenResult.qrcodeFileID) {
@@ -879,7 +879,11 @@ Page(withPageInteractionLock({
           errMsg: ''
         };
       }
-      const errMsg = regenResult.errMsg || '生成二维码失败，请部署 roomMedia';
+      const dependencyMissing = regenResult.errCode === 'MODULE_NOT_FOUND'
+        || /Cannot find module|wx-server-sdk/i.test(String(regenResult.errMsg || ''));
+      const errMsg = dependencyMissing
+        ? 'roomMedia 依赖缺失，请选择“云端安装依赖”重新部署'
+        : (regenResult.errMsg || '生成二维码失败，请部署 roomMedia');
       console.warn('roomMedia fail', errMsg, regenResult);
       return { qrcodeFileID: null, qrcodeUrl: '', errMsg };
     } catch (e) {
@@ -898,9 +902,10 @@ Page(withPageInteractionLock({
       };
     }
     try {
-      const tempRes = await wx.cloud.getTempFileURL({
-        fileList: [qrcodeFileID]
-      });
+      const tempRes = await withCloudTimeout(
+        () => wx.cloud.getTempFileURL({ fileList: [qrcodeFileID] }),
+        '二维码地址'
+      );
       const first = tempRes && tempRes.fileList && tempRes.fileList[0];
       if (first && first.tempFileURL) {
         return {
@@ -1947,32 +1952,16 @@ Page(withPageInteractionLock({
       }
       if (result.ok !== true) {
         if (['NOT_IN_ROOM', 'NOT_MEMBER', 'ROOM_NOT_FOUND', 'ROOM_DISSOLVED'].includes(result.errCode)) {
-          disposeRoomSession();
-          try { wx.removeStorageSync('joinedRoomId'); } catch (e) { /* ignore */ }
-          getApp().globalData.roomId = null;
-          wx.reLaunch({ url: '/pages/main-pages/aaa/index' });
+          handleRoomGoneFromResult(result, this.data.roomId);
           return;
         }
         wx.showToast({ title: result.errMsg || '退出失败', icon: 'none' });
         return;
       }
-      disposeRoomSession();
-      try {
-        wx.removeStorageSync('joinedRoomId');
-      } catch (e) {
-        console.warn('removeStorage joinedRoomId failed', e);
-      }
-      getApp().globalData.roomId = null;
-      wx.showToast({ title: '已退出房间', icon: 'success' });
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          wx.reLaunch({
-            url: '/pages/main-pages/aaa/index',
-            success: resolve,
-            fail: resolve
-          });
-        }, 1200);
-      });
+      exitRoomGone(
+        { ...result, errCode: 'NOT_MEMBER' },
+        { roomId: this.data.roomId, title: '已退出房间' }
+      );
     } catch (err) {
       wx.showToast({ title: err.errMsg || '退出失败', icon: 'none' });
     }

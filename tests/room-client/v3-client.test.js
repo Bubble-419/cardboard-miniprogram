@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   ROOM_POLL_INTERVAL_MS, PRESENCE_TOUCH_INTERVAL_MS, PRESENCE_READ_INTERVAL_MS,
-  createRoomClient, createCloudRoomGateway
+  ROOM_REQUEST_TIMEOUT_MS, createRoomClient, createCloudRoomGateway
 } = require('@cardboard/room-client');
 const {
   VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS
@@ -82,6 +82,67 @@ function makeStableView(roomId, workshopName) {
     navigation: { back: { kind: 'NONE' } }
   };
 }
+
+test('Cloud gateway 在 SDK 丢失回调时按统一预算结束请求', async () => {
+  const gateway = createCloudRoomGateway({
+    callFunction: () => new Promise(() => {}),
+    requestTimeoutMs: 5
+  });
+
+  await assert.rejects(
+    gateway.dispatch({ type: 'CREATE_ROOM' }),
+    (error) => error.code === 'DEPENDENCY_UNAVAILABLE' && error.retryable === true
+  );
+  assert.equal(ROOM_REQUEST_TIMEOUT_MS, 12000);
+});
+
+test('并发 open/refresh 合并为一次连接恢复，避免写命令排在重复查询后', async () => {
+  const currentGate = deferred();
+  let currentCalls = 0;
+  const gateway = {
+    currentRoom: async () => {
+      currentCalls += 1;
+      return currentGate.promise;
+    },
+    snapshot: async () => null,
+    sync: async () => null,
+    dispatch: async () => ({ ok: false, errCode: 'ROOM_NOT_FOUND', retryable: false })
+  };
+  const client = createRoomClient({ gateway, ...inertTimers() });
+
+  const first = client.open();
+  const second = client.open();
+  const refreshed = client.refresh();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(currentCalls, 1);
+
+  currentGate.resolve({ ok: true, roomId: null });
+  await Promise.all([first, second, refreshed]);
+  client.close();
+});
+
+test('启动查询丢失回调超时后，排队的创建命令仍会执行', async () => {
+  const calls = [];
+  const gateway = createCloudRoomGateway({
+    requestTimeoutMs: 5,
+    callFunction: ({ name }) => {
+      calls.push(name);
+      if (name === 'roomQuery') return new Promise(() => {});
+      return Promise.resolve({ result: {
+        ok: false, errCode: 'ROOM_NOT_FOUND', retryable: false
+      } });
+    }
+  });
+  const client = createRoomClient({ gateway, ...inertTimers() });
+
+  const opening = client.open();
+  const result = await client.dispatch({ type: 'CREATE_ROOM', payload: {} });
+  await opening;
+
+  assert.equal(result.errCode, 'ROOM_NOT_FOUND');
+  assert.deepEqual(calls, ['roomQuery', 'roomCommand']);
+  client.close();
+});
 
 test('RoomClient 在前一次请求完成后统一静默 2 秒再轮询', async () => {
   const h = createHarness();

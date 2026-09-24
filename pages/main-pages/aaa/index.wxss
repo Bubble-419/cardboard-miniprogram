@@ -185,8 +185,6 @@
   align-items: flex-end;
   gap: 6rpx;
   padding: 16rpx 0 16rpx 12rpx;
-  background-color: #f9fafb;
-  border-radius: 9999rpx;
   margin-left: 16rpx;
 }
 

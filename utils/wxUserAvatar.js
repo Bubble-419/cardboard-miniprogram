@@ -1,5 +1,6 @@
 const PROFILE_STORAGE_KEY = 'wxUserProfile';
 const DEFAULT_AVATAR = '/assets/home/user-avatar-default.png';
+const OPTIONAL_PROFILE_TIMEOUT_MS = 6000;
 
 function getStoredProfile() {
   try {
@@ -120,11 +121,42 @@ function applyChooseAvatarEvent(detail) {
   return next;
 }
 
-async function getOptionalProfileForRoom() {
+function waitForOptionalProfile(promise, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const error = new Error('头像上传超时');
+      error.code = 'AVATAR_UPLOAD_TIMEOUT';
+      reject(error);
+    }, timeoutMs);
+    Promise.resolve(promise).then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+async function getOptionalProfileForRoom(options = {}) {
   const stored = getStoredProfile();
   if (!stored || !stored.avatarUrl) return null;
+  const requestedTimeoutMs = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0
+    ? requestedTimeoutMs
+    : OPTIONAL_PROFILE_TIMEOUT_MS;
   try {
-    return await prepareProfileForRoom(stored);
+    return await waitForOptionalProfile(prepareProfileForRoom(stored), timeoutMs);
   } catch (e) {
     console.warn('getOptionalProfileForRoom fail', e);
     return null;
@@ -143,6 +175,7 @@ function buildRoomJoinPayload(profile) {
 module.exports = {
   PROFILE_STORAGE_KEY,
   DEFAULT_AVATAR,
+  OPTIONAL_PROFILE_TIMEOUT_MS,
   getStoredProfile,
   saveStoredProfile,
   uploadAvatarToCloud,
