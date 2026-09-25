@@ -428,7 +428,11 @@ Page(withPageInteractionLock({
   preventTouchMove() {},
 
   onInput(e) {
-    this.setData({ problemText: e.detail.value });
+    const maxLength = Number(this.data.maxLength) || 50;
+    const problemText = String(e && e.detail && e.detail.value || '').slice(0, maxLength);
+    this.setData({ problemText });
+    // 原生 maxlength 在部分输入法联想/粘贴场景下可能短暂超限；返回值用于立即纠正 textarea。
+    return problemText;
   },
 
   async submitProblem() {

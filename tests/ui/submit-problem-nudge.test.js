@@ -40,6 +40,18 @@ function makePage(definition, data = {}) {
   };
 }
 
+test('设计问题输入在输入法或粘贴超限时立即截断到 50 字', () => {
+  const definition = loadPageDefinition('../../pages/main-pages/submitProblem/index');
+  const page = makePage(definition);
+  const overLimit = '一'.repeat(54);
+
+  const corrected = page.onInput({ detail: { value: overLimit } });
+
+  assert.equal(corrected.length, 50);
+  assert.equal(page.data.problemText.length, 50);
+  assert.equal(corrected, '一'.repeat(50));
+});
+
 test('已提交者点击催促后按钮立刻变灰，冷却期内不再发信号', async () => {
   const calls = [];
   global.wx = {
