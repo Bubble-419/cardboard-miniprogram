@@ -11,7 +11,7 @@
   z-index: 60;
   min-height: 92rpx;
   box-sizing: border-box;
-  background: #fafafa;
+  background: transparent;
 }
 
 .inspiration-bar-closing { margin-top: 32rpx; }
@@ -36,6 +36,7 @@
   z-index: 2;
 }
 .insp-icon-img { width: 92rpx; height: 92rpx; }
+.insp-icon-wrap-disabled { pointer-events: none; }
 .insp-badge {
   min-width: 32rpx;
   height: 32rpx;
@@ -66,6 +67,14 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  position: relative;
+  z-index: 1;
+  transition: margin-left 240ms ease-out;
+  will-change: margin-left;
+}
+.inspiration-composer-expanded {
+  margin-left: -110rpx;
+  z-index: 3;
 }
 .inspiration-composer-with-photos { height: auto; min-height: 92rpx; padding: 16rpx 24rpx; }
 .inspiration-photo-strip { width: 100%; margin-bottom: 8rpx; white-space: nowrap; }

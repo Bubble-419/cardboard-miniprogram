@@ -19,7 +19,8 @@ Component({
   },
 
   data: {
-    keyboardLiftStyle: ''
+    keyboardLiftStyle: '',
+    inputFocused: false
   },
 
   observers: {
@@ -32,9 +33,21 @@ Component({
   },
 
   methods: {
-    onOpenCenter() { this.triggerEvent('opencenter', {}); },
-    onFocus(e) { this.triggerEvent('focus', (e && e.detail) || {}); },
-    onBlur(e) { this.triggerEvent('blur', (e && e.detail) || {}); },
+    isInputActive() {
+      return !!(this.data.inputFocused || Number(this.data.keyboardHeight) > 0);
+    },
+    onOpenCenter() {
+      if (this.isInputActive()) return;
+      this.triggerEvent('opencenter', {});
+    },
+    onFocus(e) {
+      if (!this.data.inputFocused) this.setData({ inputFocused: true });
+      this.triggerEvent('focus', (e && e.detail) || {});
+    },
+    onBlur(e) {
+      if (this.data.inputFocused) this.setData({ inputFocused: false });
+      this.triggerEvent('blur', (e && e.detail) || {});
+    },
     onInput(e) { this.triggerEvent('input', (e && e.detail) || {}); },
     onKeyboardHeightChange(e) {
       this.triggerEvent('keyboardheightchange', (e && e.detail) || {});
