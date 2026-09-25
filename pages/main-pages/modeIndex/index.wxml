@@ -102,6 +102,7 @@
                 </view>
               </view>
             </view>
+            <view class="scenario-list-bottom-space" aria-hidden="true"></view>
           </scroll-view>
         </view>
       </view>

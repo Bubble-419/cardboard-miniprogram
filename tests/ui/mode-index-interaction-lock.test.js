@@ -51,6 +51,8 @@ test('选择情境房主页底栏参与纵向布局，不覆盖最后一张情�
   assert.match(hostPageRule[0], /flex:\s*1;/);
   assert.match(hostPageRule[0], /min-height:\s*0;/);
   assert.doesNotMatch(hostPageRule[0], /padding-bottom:\s*160rpx/);
+  assert.match(wxml, /class="scenario-list-bottom-space"/);
+  assert.match(wxss, /\.scenario-list-bottom-space\s*\{[^}]*height:\s*40rpx;/);
 });
 
 function makePage() {
