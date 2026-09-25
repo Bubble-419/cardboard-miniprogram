@@ -165,7 +165,7 @@ test('设计问题输入框使用紧凑高度并保留底部操作区', () => {
   const boxRule = wxss.match(/\.textarea-box\s*\{[\s\S]*?\}/);
 
   assert.ok(inputRule);
-  assert.match(inputRule[0], /height:\s*280rpx;/);
+  assert.match(inputRule[0], /height:\s*220rpx;/);
   assert.ok(boxRule);
   assert.match(boxRule[0], /padding-bottom:\s*96rpx;/);
 });

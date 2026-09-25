@@ -193,7 +193,7 @@
 /* 输入框（Figma: 14px/500/#CBD5E1 placeholder，颜色 #3F3F3F） */
 .problem-input {
   width: 100%;
-  height: 280rpx;
+  height: 220rpx;
   font-size: 28rpx;
   font-weight: 500;
   color: #3F3F3F;
