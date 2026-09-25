@@ -54,7 +54,11 @@ test('选择模式页的四张卡片和底部操作区在同一屏内排布', ()
   assert.doesNotMatch(wxss, /\.mode-groups\s*\{[^}]*justify-content:\s*space-between;/);
   assert.match(wxss, /\.mode-group\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;/);
   assert.match(wxss, /\.mode-list\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;/);
-  assert.match(wxss, /\.mode-item\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*140rpx;[\s\S]*?padding:\s*12rpx 24rpx;/);
+  assert.match(wxss, /\.mode-item\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*140rpx;[\s\S]*?padding:\s*20rpx 24rpx;/);
+  assert.match(wxss, /\.mode-cover\s*\{[\s\S]*?width:\s*136rpx;[\s\S]*?height:\s*136rpx;/);
+  assert.match(wxss, /\.mode-name\s*\{[\s\S]*?font-size:\s*36rpx;/);
+  assert.match(wxss, /\.mode-desc\s*\{[\s\S]*?font-size:\s*24rpx;/);
+  assert.match(wxss, /\.footer\s*\{[\s\S]*?background:\s*transparent;/);
   assert.match(wxss, /@media screen and \(max-height:\s*700px\)[\s\S]*?\.mode-item\s*\{[\s\S]*?min-height:\s*116rpx;/);
 });
 

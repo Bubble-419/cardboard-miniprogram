@@ -133,7 +133,7 @@
   min-height: 140rpx;
   border-radius: 32rpx;
   border: 4rpx solid transparent;
-  padding: 12rpx 24rpx;
+  padding: 20rpx 24rpx;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -151,9 +151,9 @@
 }
 
 .mode-cover {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 20rpx;
+  width: 136rpx;
+  height: 136rpx;
+  border-radius: 24rpx;
   flex-shrink: 0;
   overflow: hidden;
   background-color: #ffffff;
@@ -163,12 +163,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2rpx;
+  gap: 6rpx;
   min-width: 0;
 }
 
 .mode-name {
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 700;
   color: #545454;
   line-height: 1.25;
@@ -179,7 +179,7 @@
 }
 
 .mode-desc {
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 400;
   color: #94A3B8;
   line-height: 1.35;
@@ -212,7 +212,7 @@
 .footer {
   flex-shrink: 0;
   padding: 16rpx 40rpx calc(20rpx + env(safe-area-inset-bottom));
-  background: #FFFFFF;
+  background: transparent;
 }
 
 .footer .page-footer__prev-btn {
@@ -268,21 +268,21 @@
 
   .mode-item {
     min-height: 116rpx;
-    padding: 8rpx 20rpx;
+    padding: 12rpx 20rpx;
     gap: 20rpx;
   }
 
   .mode-cover {
-    width: 92rpx;
-    height: 92rpx;
+    width: 104rpx;
+    height: 104rpx;
   }
 
   .mode-name {
-    font-size: 30rpx;
+    font-size: 32rpx;
   }
 
   .mode-desc {
-    font-size: 20rpx;
+    font-size: 21rpx;
   }
 
   .footer {
