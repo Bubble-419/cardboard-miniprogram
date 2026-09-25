@@ -223,6 +223,37 @@ test('全局回顾 _buildDisplayCardState 保留全部纪要卡并可横滑', ()
   });
 });
 
+test('创意点复盘专属卡只在全局回顾末尾展示，玩家筛选时不归入任何人', () => {
+  withPageWx(() => {
+    const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+    const page = makePage(definition, { isHistoryReview: true, roomId: 'r1' });
+    page._isHistoryReview = true;
+    const roundSummaries = [
+      { round: 1, playerIndex: 1, playerName: '甲', playHistory: ['一'] },
+      { cardType: 'closingReview', reviewCardKey: 'closing-review:s1', closingReviewBlocks: [{ type: 'text', text: '复盘' }] }
+    ];
+    const globalState = page._buildDisplayCardState({
+      roundSummaries,
+      members: [{ playerIndex: 1, nickName: '甲' }],
+      currentPlayerIndex: 1,
+      historyReview: true,
+      roomId: 'r1'
+    });
+    assert.deepEqual(globalState.displayRoundSummaries.map((item) => item.cardType || 'turn'), ['turn', 'closingReview']);
+
+    const filteredState = page._buildDisplayCardState({
+      roundSummaries,
+      members: [{ playerIndex: 1, nickName: '甲' }],
+      filteredPlayerIndex: 1,
+      isPlayerFilterActive: true,
+      currentPlayerIndex: 1,
+      historyReview: true,
+      roomId: 'r1'
+    });
+    assert.deepEqual(filteredState.displayRoundSummaries.map((item) => item.cardType || 'turn'), ['turn']);
+  });
+});
+
 test('旧本地回顾只有 statementResult 时仍能还原表态文案', () => {
   const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
   const page = makePage(definition);

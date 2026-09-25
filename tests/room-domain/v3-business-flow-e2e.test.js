@@ -297,10 +297,19 @@ test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与
 
   state = await executeAndReduce(h, 'host', 'ADVANCE_PARTNER_CLOSING', { context: { sessionId } });
   assertScreen(state.snapshot, 'PARTNER_CLOSING_REVIEW', 'partnerGame');
-  await executeAndReduce(h, 'host', 'APPEND_ARTIFACT', {
+  state = await executeAndReduce(h, 'host', 'APPEND_ARTIFACT', {
     context: { sessionId, turnId: closingTurnId, workflowStep: 'PARTNER_CLOSING_REVIEW' },
     payload: { operationId: 'e2e-closing-card', text: '最终创意点' }
   });
+  const closingPage = projectPageSnapshot(state.snapshot.view, { seq: state.snapshot.seq });
+  assert.deepEqual(closingPage.roomState.partnerClosingCreativePoints.texts, ['最终创意点']);
+  assert.equal(
+    closingPage.roomState.partnerRoundSummaries.some((item) => (
+      item.closingReviewBlocks || item.closingReviewNotes || item.closingReviewImages
+    )),
+    false,
+    '收尾创意复盘不得重复并入游戏轮次纪要'
+  );
   state = await executeAndReduce(h, 'host', 'COMPLETE_PARTNER_SESSION', { context: { sessionId } });
   assert.equal(state.snapshot.view.session.status, 'COMPLETED');
   assertScreen(state.snapshot, 'PARTNER_CLOSING_REVIEW', 'leaderboard');

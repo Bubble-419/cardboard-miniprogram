@@ -945,9 +945,10 @@ Page(withPageInteractionLock({
     const cardIndex = preferredCardIndex != null
       ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
       : defaultIndex;
-    const indicatorPlayerIndex = cardIndex < summaryCount && displayRoundSummaries[cardIndex]
-      ? displayRoundSummaries[cardIndex].playerIndex
-      : currentPlayerIndex;
+    const activeSummary = cardIndex < summaryCount ? displayRoundSummaries[cardIndex] : null;
+    const indicatorPlayerIndex = activeSummary && activeSummary.cardType === 'closingReview'
+      ? -1
+      : (activeSummary ? activeSummary.playerIndex : currentPlayerIndex);
 
     return {
       displayRoundSummaries,
@@ -1617,33 +1618,41 @@ Page(withPageInteractionLock({
     ));
   },
 
-  _buildActiveReviewSummary(roomState, roundContent, options = {}) {
+  _buildClosingReviewCard(roomState, legacySummaries) {
     const points = roomState && roomState.partnerClosingCreativePoints || {};
-    const closingReviewBlocks = normalizeContentBlocks(
+    let closingReviewBlocks = normalizeContentBlocks(
       points.blocks,
       points.texts,
       points.images
     );
+    if (!closingReviewBlocks.length) {
+      const seen = new Set();
+      closingReviewBlocks = [];
+      (legacySummaries || []).forEach((summary) => {
+        const blocks = normalizeContentBlocks(
+          summary && summary.closingReviewBlocks,
+          summary && summary.closingReviewNotes,
+          summary && summary.closingReviewImages
+        );
+        blocks.forEach((block) => {
+          const identity = block.type === 'image'
+            ? `image:${block.url || ''}`
+            : `text:${block.text || ''}`;
+          if (!identity || seen.has(identity)) return;
+          seen.add(identity);
+          closingReviewBlocks.push(block);
+        });
+      });
+    }
+    if (!closingReviewBlocks.length) return null;
     const closingReviewLists = deriveListsFromBlocks(closingReviewBlocks);
-    const playerIndex = options.playerIndex;
-    const summary = {
-      round: options.currentRound,
-      turnId: options.turnId || '',
-      playerIndex,
-      playerName: options.playerName || `玩家${playerIndex}`,
-      playHistory: roundContent.playHistory,
-      discussionNotes: roundContent.discussionNotes,
-      playImages: roundContent.playImages,
-      discussionImages: roundContent.discussionImages,
-      playBlocks: roundContent.playBlocks,
-      discussionBlocks: roundContent.discussionBlocks,
+    return {
+      cardType: 'closingReview',
+      reviewCardKey: `closing-review:${this.data.sessionId || 'current'}`,
       closingReviewNotes: closingReviewLists.texts,
       closingReviewImages: closingReviewLists.images,
-      closingReviewBlocks,
-      voiceLines: Array.isArray(roundContent.voiceLines) ? roundContent.voiceLines : [],
-      turnRecords: Array.isArray(roundContent.turnRecords) ? roundContent.turnRecords : []
+      closingReviewBlocks
     };
-    return this._summaryHasContent(summary) ? summary : null;
   },
 
   _resolveCardAvgScore(item, turnAvgLookup) {
@@ -2353,6 +2362,7 @@ Page(withPageInteractionLock({
       ? roomState.partnerRoundSummaries
       : [];
     let normalizedRawRoundSummaries = Array.isArray(rawRoundSummaries) ? rawRoundSummaries : [];
+    const legacyClosingSummaries = normalizedRawRoundSummaries.slice();
     // 新局首回合保护：第1轮玩家1出牌时不应出现任何历史纪要，强制忽略旧缓存/旧会话残留
     if (
       !this.data.isHistoryReview
@@ -2373,6 +2383,7 @@ Page(withPageInteractionLock({
       // 只展示“已结束轮次”的纪要：当前轮进行中，不应出现当前/未来轮纪要卡
       // 全局回顾 / 历史回顾需要展示全部轮次，并带上本轮获评均分
       .filter((item) => {
+        if (item && item.cardType === 'closingReview') return false;
         const rd = Number(item && item.round);
         if (!Number.isFinite(rd) || rd <= 0) return false;
         const isReview = this.data.isHistoryReview || this._isHistoryReview;
@@ -2381,6 +2392,12 @@ Page(withPageInteractionLock({
         return this._summaryHasContent(item);
       })
       .map((item, summaryIdx) => {
+        const {
+          closingReviewNotes,
+          closingReviewImages,
+          closingReviewBlocks,
+          ...turnSummary
+        } = item || {};
         const lists = this._buildExpressListsForRound(expressMessages, item.round, currentRound);
         const decoratedTurns = this._decorateTurnRecords(
           Array.isArray(item.turnRecords) ? item.turnRecords : [],
@@ -2388,7 +2405,7 @@ Page(withPageInteractionLock({
         );
         const isReviewBuild = this._isHistoryReviewMode();
         return this._attachCardStarStats({
-          ...item,
+          ...turnSummary,
           voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
           turnRecords: decoratedTurns,
           expressChatList: isReviewBuild ? [] : lists.expressChatList,
@@ -2401,42 +2418,8 @@ Page(withPageInteractionLock({
       });
     const roundContent = this._applyRoundContentFromRoom(roomState);
     if (this.data.isHistoryReview || this._isHistoryReview) {
-      const actingIdx = player.currentPlayerIndex;
-      const already = roundSummaries.some((s) => (
-        Number(s.round) === Number(currentRound)
-        && Number(s.playerIndex) === Number(actingIdx)
-      ));
-      const activeReviewSummary = this._buildActiveReviewSummary(roomState, roundContent, {
-        currentRound,
-        turnId,
-        playerIndex: actingIdx,
-        playerName: player.currentPlayerName
-      });
-      if (!already && actingIdx > 0 && activeReviewSummary) {
-        const lists = this._buildExpressListsForRound(expressMessages, currentRound, currentRound);
-        roundSummaries.push(this._attachCardStarStats({
-          round: currentRound,
-          playerIndex: actingIdx,
-          playerName: player.currentPlayerName || `玩家${actingIdx}`,
-          playHistory: roundContent.playHistory,
-          discussionNotes: roundContent.discussionNotes,
-          playImages: roundContent.playImages,
-          discussionImages: roundContent.discussionImages,
-          playBlocks: roundContent.playBlocks,
-          discussionBlocks: roundContent.discussionBlocks,
-          closingReviewNotes: activeReviewSummary.closingReviewNotes,
-          closingReviewImages: activeReviewSummary.closingReviewImages,
-          closingReviewBlocks: activeReviewSummary.closingReviewBlocks,
-          voiceLines: Array.isArray(roundContent.voiceLines) ? roundContent.voiceLines : [],
-          turnRecords: this._decorateTurnRecords(roundContent.turnRecords, members),
-          expressChatList: lists.expressChatList,
-          playExpressChatList: lists.playExpressChatList,
-          discussionExpressChatList: lists.discussionExpressChatList
-        }, {
-          turnAvgScores: roomState.turnAvgScores,
-          turnStarStats: roomState.turnStarStats
-        }, roundSummaries.length));
-      }
+      const closingReviewCard = this._buildClosingReviewCard(roomState, legacyClosingSummaries);
+      if (closingReviewCard) roundSummaries.push(closingReviewCard);
     }
     // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
     this._ingestExpressMessages(expressMessages, {
@@ -3581,6 +3564,22 @@ Page(withPageInteractionLock({
 
   onRoundPrivateInsertPreview(e) {
     this.onRoundPrivateNotePreview(e);
+  },
+
+  async onReviewClosingImagePreview(e) {
+    const url = e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.url;
+    if (!url) return;
+    const card = (this.data.displayRoundSummaries || []).find(
+      (item) => item && item.cardType === 'closingReview'
+    );
+    const urls = ((card && card.closingReviewBlocks) || [])
+      .filter((block) => block && block.type === 'image' && block.url)
+      .map((block) => block.url);
+    const { list, current } = await this._resolveClosingCreativePreviewUrls(
+      urls.length ? urls : [url],
+      url
+    );
+    wx.previewImage({ current, urls: list });
   },
 
   async _uploadRoundNotePhotos(paths) {
@@ -6660,6 +6659,7 @@ Page(withPageInteractionLock({
   'onGameHeaderIntent',
   'onGameFooterIntent',
   'onRoundPrivateInsertPreview',
+  'onReviewClosingImagePreview',
   'onStarChipTouchEnd',
   'onStarChipTouchMove',
   'onStarChipTouchStart',

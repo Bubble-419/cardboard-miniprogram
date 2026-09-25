@@ -16,6 +16,7 @@ function resolvePlayerName(members, playerIndex) {
 }
 
 function enrichSummaryWithPlayer(summary, members, memberCount) {
+  if (summary && summary.cardType === 'closingReview') return { ...summary };
   const round = summary && summary.round != null ? summary.round : 1;
   const stored = summary && summary.playerIndex != null
     ? parseInt(summary.playerIndex, 10)
@@ -36,6 +37,8 @@ function enrichSummaryWithPlayer(summary, members, memberCount) {
 
 function sortSummaries(roundSummaries) {
   return (roundSummaries || []).slice().sort((a, b) => {
+    if (a && a.cardType === 'closingReview') return b && b.cardType === 'closingReview' ? 0 : 1;
+    if (b && b.cardType === 'closingReview') return -1;
     const rd = (a.round || 0) - (b.round || 0);
     if (rd !== 0) return rd;
     return (a.archivedAt || 0) - (b.archivedAt || 0);
@@ -47,6 +50,7 @@ function filterSummariesForPlayer(roundSummaries, playerIndex, memberCount) {
   const count = Number(memberCount) || 1;
   return sortSummaries(roundSummaries)
     .filter((item) => {
+      if (item && item.cardType === 'closingReview') return false;
       const stored = item && item.playerIndex != null
         ? parseInt(item.playerIndex, 10)
         : NaN;

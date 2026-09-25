@@ -435,8 +435,9 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。若整轮末 `firstMemberId` 被选为 question 回答者，该回答 Turn 直接计入新轮，完成后继续到下一座位。
 排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
-全局回顾按 `turnOrdinal` 展示纪要卡。收尾 Review 已提交的 `CLOSING_RUNE/CLOSING_REVIEW`
-素材进入当前收尾行动者的最后一张纪要卡，并以服务端 `createdAt` 顺序展示“创意复盘”区块；不能归到房主或生成额外的伪轮次。
+全局回顾按 `turnOrdinal` 展示游戏阶段纪要卡。收尾 Review 已提交的 `CLOSING_RUNE/CLOSING_REVIEW`
+素材以服务端 `createdAt` 顺序汇总成唯一的 `closingReview` 专属卡；该卡不属于成员或行动轮，沿用收尾阶段
+“收尾阶段 / 创意点复盘”版式，不展示轮次、出牌解释、疑问讨论、语音纪要或表态记录，也不得重复并入最后一张游戏纪要卡。
 
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event

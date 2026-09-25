@@ -114,10 +114,6 @@ function partnerSummary(view, summary) {
   const member = (view.session.participants || []).find((item) => item.memberId === summary.activeMemberId)
     || view.room.members.find((item) => item.memberId === summary.activeMemberId);
   const content = partnerContent({ activeArtifacts: summary.artifacts || [] }, ['PLAY', 'DISCUSSION']);
-  const closingContent = partnerContent(
-    { activeArtifacts: summary.artifacts || [] },
-    ['CLOSING_RUNE', 'CLOSING_REVIEW']
-  );
   const turnRecord = {
     playerIndex: member && (member.seatNo || member.seatNoAtStart),
     playerName: member && member.nickName,
@@ -136,9 +132,6 @@ function partnerSummary(view, summary) {
     playerName: member && member.nickName,
     archivedAt: summary.completedAt,
     ...content,
-    closingReviewNotes: closingContent.playHistory,
-    closingReviewImages: closingContent.playImages,
-    closingReviewBlocks: closingContent.playBlocks,
     turnRecords: [turnRecord]
   };
 }

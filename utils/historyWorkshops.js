@@ -45,6 +45,8 @@ function _slimMember(m) {
 function _slimSummary(item) {
   if (!item || typeof item !== 'object') return null;
   return {
+    cardType: item.cardType || '',
+    reviewCardKey: item.reviewCardKey || '',
     round: item.round,
     playerIndex: item.playerIndex,
     playerName: item.playerName || '',
@@ -54,6 +56,9 @@ function _slimSummary(item) {
     discussionImages: Array.isArray(item.discussionImages) ? item.discussionImages : [],
     playBlocks: Array.isArray(item.playBlocks) ? item.playBlocks : [],
     discussionBlocks: Array.isArray(item.discussionBlocks) ? item.discussionBlocks : [],
+    closingReviewNotes: Array.isArray(item.closingReviewNotes) ? item.closingReviewNotes : [],
+    closingReviewImages: Array.isArray(item.closingReviewImages) ? item.closingReviewImages : [],
+    closingReviewBlocks: Array.isArray(item.closingReviewBlocks) ? item.closingReviewBlocks : [],
     voiceLines: Array.isArray(item.voiceLines) ? item.voiceLines : [],
     turnRecords: Array.isArray(item.turnRecords) ? item.turnRecords : [],
     statementSummary: item.statementSummary || '',
