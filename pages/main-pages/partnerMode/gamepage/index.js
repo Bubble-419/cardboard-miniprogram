@@ -5657,6 +5657,9 @@ Page(withPageInteractionLock({
     this._inspirationBlurTimer = setTimeout(() => {
       if (this._inspirationPickingImage) return;
       if (this._inspirationNativeFocused) return;
+      if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+        wx.hideKeyboard({ fail() {} });
+      }
       this._flushInspirationKeyboardZero(true);
       this.setData({
         inspirationInputFocused: false,
