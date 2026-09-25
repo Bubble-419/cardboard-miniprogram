@@ -2620,7 +2620,8 @@ game-card-timer {
   min-height: 0;
   width: 100%;
   height: 100%;
-  padding: 0 56rpx 8rpx;
+  /* 与游戏阶段卡片对齐：swiper 侧露 24rpx + swiper-item 内边距 6rpx。 */
+  padding: 0 30rpx 8rpx;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

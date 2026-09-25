@@ -141,6 +141,20 @@ test('gamepage 由低耦合模块拼接，并让 RoomShell 屏幕选择包住原
   assert.equal(config.usingComponents['partner-game-footer'], '/components/partner-game-footer/index');
 });
 
+test('收尾阶段卡片与游戏阶段卡片使用一致的左右宽度', () => {
+  const markup = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const styles = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+  const swiperItemRule = styles.match(/^\.card-swiper-item\s*\{[\s\S]*?\n\}/m);
+  const closingStageRule = styles.match(/\.closing-card-stage\s*\{[\s\S]*?\n\}/);
+
+  assert.match(markup, /previous-margin="24rpx"/);
+  assert.match(markup, /next-margin="24rpx"/);
+  assert.ok(swiperItemRule);
+  assert.match(swiperItemRule[0], /padding:\s*0 6rpx;/);
+  assert.ok(closingStageRule);
+  assert.match(closingStageRule[0], /padding:\s*0 30rpx 8rpx;/);
+});
+
 test('声音过大提示在游戏卡片中央放大显示', () => {
   const markup = read('components/game-card-timer/index.wxml');
   const styles = read('components/game-card-timer/index.wxss');
