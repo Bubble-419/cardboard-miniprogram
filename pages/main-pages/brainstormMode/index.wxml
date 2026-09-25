@@ -34,7 +34,7 @@
             data-id="{{item.id}}"
             bindtap="onTapMode"
           >
-            <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFill" />
+            <image class="mode-cover" src="{{item.coverImage}}" mode="aspectFit" />
             <view class="mode-info">
               <text class="mode-name {{selectedModeId === item.id ? 'active' : ''}}">{{item.title}}</text>
               <text class="mode-desc">{{item.description}}</text>
