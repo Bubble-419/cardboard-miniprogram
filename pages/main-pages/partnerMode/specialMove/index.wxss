@@ -764,15 +764,6 @@
   padding-top: 4rpx;
 }
 
-.silent-action-detail {
-  font-size: 20rpx;
-  color: rgba(0, 0, 0, 0.4);
-  text-align: center;
-  line-height: 1.2;
-  letter-spacing: -0.04em;
-  white-space: nowrap;
-}
-
 /* 与脑暴主流程灵感栏样式尺寸一致：icon / 输入框同高 92rpx */
 .inspiration-bar {
   margin: 18rpx 30rpx 0;

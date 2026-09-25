@@ -707,22 +707,18 @@
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">出 1 张卡牌</text>
-                        <text class="action-cell-detail">新开或延续方案</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
-                        <text class="action-cell-label">翻 1 张卡牌</text>
-                        <text class="action-cell-detail">改变卡牌朝向</text>
+                        <text class="action-cell-label">删 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">调整 1 张卡牌</text>
-                        <text class="action-cell-detail">移动卡牌位置</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">交换 2 张卡牌</text>
-                        <text class="action-cell-detail">互换卡牌位置</text>
                       </view>
                     </view>
                   </view>

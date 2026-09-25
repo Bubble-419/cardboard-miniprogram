@@ -620,16 +620,6 @@
   flex-shrink: 0;
 }
 
-.action-cell-detail {
-  font-size: 20rpx;
-  color: rgba(0, 0, 0, 0.4);
-  text-align: center;
-  line-height: 1.2;
-  letter-spacing: -0.04em;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 /* 出牌玩家：同步显示打分人数（样式与旁观收起标签一致，不可自评） */
 .actor-score-chip {
   flex: 0 1 auto;
