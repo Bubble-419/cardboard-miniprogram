@@ -3,14 +3,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-function loadPageDefinition() {
+function loadPageDefinition(wxMock = {}) {
   const originalPage = global.Page;
   const originalGetApp = global.getApp;
   const originalWx = global.wx;
   let definition;
   global.Page = (value) => { definition = value; };
   global.getApp = () => ({ globalData: {} });
-  global.wx = { showToast() {} };
+  global.wx = { showToast() {}, ...wxMock };
   const modulePath = require.resolve('../../pages/leaderboard/index');
   delete require.cache[modulePath];
   require(modulePath);
@@ -20,6 +20,28 @@ function loadPageDefinition() {
   global.wx = originalWx;
   return definition;
 }
+
+test('排行榜顶栏按系统胶囊测量安全区并与全局房间入口对齐', () => {
+  const wxMock = {
+    getWindowInfo() { return { windowWidth: 375, statusBarHeight: 24 }; },
+    getMenuButtonBoundingClientRect() {
+      return { top: 32, right: 360, width: 87, height: 32 };
+    }
+  };
+  const page = makePage(loadPageDefinition(wxMock));
+  const originalWx = global.wx;
+  global.wx = wxMock;
+  try {
+    page._applyTopBarSafeInset();
+  } finally {
+    global.wx = originalWx;
+  }
+
+  assert.equal(page.data.topBarPadTop, 28);
+  assert.equal(page.data.topBarHeight, 40);
+  assert.equal(page.data.topBarIconSize, 37);
+  assert.equal(page.data.topBarPaddingRight, 23);
+});
 
 function makePage(definition) {
   const page = {

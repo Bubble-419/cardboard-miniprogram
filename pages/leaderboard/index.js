@@ -7,6 +7,7 @@ const {
   getRoomPageSnapshot
 } = require('../../modules/room-session/index');
 const { runPageInteraction, runPageNavigation, withPageInteractionLock } = require('../../utils/pageInteractionLock');
+const { getCapsuleTopBarMetrics } = require('../../utils/capsuleTopBar');
 
 function buildLeaderboard(snapshot) {
   const view = snapshot && snapshot.view;
@@ -36,10 +37,39 @@ function buildLeaderboard(snapshot) {
 Page(withPageInteractionLock({
   data: {
     roomId: '', sessionId: '', isSubScreen: false, isHost: false, leaderboard: [], loading: true,
-    error: '', from: '', actioning: false
+    error: '', from: '', actioning: false,
+    topBarPadTop: 44, topBarHeight: 40, topBarIconSize: 37, topBarPaddingRight: 100
+  },
+
+  _applyTopBarSafeInset() {
+    try {
+      const metrics = getCapsuleTopBarMetrics({ minBarPx: 36 });
+      const sys = typeof wx.getWindowInfo === 'function'
+        ? wx.getWindowInfo()
+        : wx.getSystemInfoSync();
+      const windowWidth = (sys && sys.windowWidth) || 375;
+      const roomIconNeedPx = Math.ceil((74 * windowWidth) / 750);
+      const barHeight = Math.max(metrics.barHeight, roomIconNeedPx);
+      const capsuleCenter = metrics.padTop + metrics.barHeight / 2;
+      const padTop = Math.max(0, Math.round(capsuleCenter - barHeight / 2));
+      this.setData({
+        topBarPadTop: padTop,
+        topBarHeight: barHeight,
+        topBarIconSize: Math.min(barHeight, Math.max(metrics.iconSize, roomIconNeedPx)),
+        topBarPaddingRight: Math.max(8, metrics.padRightPx + 8)
+      });
+    } catch (e) {
+      this.setData({
+        topBarPadTop: 44,
+        topBarHeight: 40,
+        topBarIconSize: 37,
+        topBarPaddingRight: 100
+      });
+    }
   },
 
   onLoad(options) {
+    this._applyTopBarSafeInset();
     const roomId = options && options.roomId || getApp().globalData.roomId || '';
     const isSubScreen = options && ['1', 'true'].includes(String(options.isSubScreen));
     const from = options && options.from || '';
@@ -51,7 +81,10 @@ Page(withPageInteractionLock({
     this.loadLeaderboard(roomId);
   },
 
-  onShow() { if (this.data.roomId) this._startStatePolling(); },
+  onShow() {
+    this._applyTopBarSafeInset();
+    if (this.data.roomId) this._startStatePolling();
+  },
   onHide() { this._stopStatePolling(); },
   onUnload() { this._pageAlive = false; this._stopStatePolling(); },
 

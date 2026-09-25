@@ -59,7 +59,11 @@ test('排行榜左上角保留房间入口，但不展示页面返回入口', ()
   const js = read('pages/leaderboard/index.js');
   assert.match(wxml, /class="navbar-room-entry"[\s\S]*?bindtap="handleGoRoom"/);
   assert.match(wxml, /src="\/assets\/partnerMode\/icon-room-entry-gp\.svg"/);
-  assert.match(wxss, /\.navbar-room-entry\s*\{[\s\S]*?width:\s*80rpx;[\s\S]*?height:\s*64rpx;/);
+  assert.match(wxml, /padding-top: \{\{topBarPadTop\}\}px; padding-right: \{\{topBarPaddingRight\}\}px;/);
+  assert.match(wxml, /class="navbar-room-entry"[\s\S]*?width: \{\{topBarIconSize\}\}px; height: \{\{topBarIconSize\}\}px;/);
+  assert.match(wxss, /\.navbar-content\s*\{[\s\S]*?padding-left:\s*30rpx;/);
+  assert.match(wxss, /\.footer\s*\{[\s\S]*?padding:\s*30rpx 40rpx;/);
+  assert.match(js, /getCapsuleTopBarMetrics\(\{ minBarPx: 36 \}\)/);
   assert.match(js, /handleGoRoom\s*\(\)\s*\{[\s\S]*?goRoomPage\(this\.data\.roomId\)/);
   assert.doesNotMatch(wxml, /icon-nav-back|bindtap="handleBack"/);
   assert.doesNotMatch(js, /handleBack\s*\(/);

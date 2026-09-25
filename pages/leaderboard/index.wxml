@@ -1,8 +1,12 @@
 <view class="container">
-  <view class="custom-navbar">
-    <view class="navbar-content">
+  <view
+    class="custom-navbar"
+    style="padding-top: {{topBarPadTop}}px; padding-right: {{topBarPaddingRight}}px;"
+  >
+    <view class="navbar-content" style="height: {{topBarHeight}}px;">
       <view
         class="navbar-room-entry"
+        style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
         bindtap="handleGoRoom"
         role="button"
         aria-label="打开房间"
@@ -14,7 +18,10 @@
         />
       </view>
       <view class="navbar-title"></view>
-      <view class="navbar-right" />
+      <view
+        class="navbar-right"
+        style="width: {{topBarIconSize}}px; height: {{topBarIconSize}}px;"
+      />
     </view>
   </view>
 
