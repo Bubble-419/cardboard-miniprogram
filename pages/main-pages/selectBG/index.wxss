@@ -133,19 +133,25 @@
 }
 
 .cards-swiper {
-  height: 680rpx;
+  /* swiper 会裁剪越界内容，为卡片边框、缩放动画和阴影预留上下安全区 */
+  height: 740rpx;
 }
 
 .card-item {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 20rpx 0 28rpx;
+  box-sizing: border-box;
 }
 
 .card-padding {
   width: 100%;
+  height: 100%;
   padding: 0 22rpx;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
 }
 
 /* ===== 底部确认按钮 ===== */
