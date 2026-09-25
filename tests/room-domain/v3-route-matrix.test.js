@@ -8,6 +8,7 @@ const { projectPageSnapshot } = require('../../modules/room-session/page-model')
 
 const ROUTE_MATRIX = Object.freeze({
   addPlayer: ['/pages/main-pages/addPlayer/index', 'addPlayer'],
+  brainstormMode: ['/pages/main-pages/brainstormMode/index', 'brainstormMode'],
   modeIndex: ['/pages/main-pages/modeIndex/index', 'auth'],
   subAwait: ['/pages/sub-pages/subAwait/index', 'subAwait'],
   submitProblem: ['/pages/main-pages/submitProblem/index', 'submitProblem'],
@@ -76,11 +77,32 @@ function assertBack(snapshot, commandType, after = 'FOLLOW_ROUTE') {
   assert.equal(back.kind, 'COMMAND');
   assert.equal(back.commandType, commandType);
   assert.equal(back.after, after);
+  if (commandType === 'CANCEL_MODE_SELECTION') {
+    assert.deepEqual(back.context, {});
+    return;
+  }
   assert.equal(back.context.sessionId, snapshot.view.session.sessionId);
   if (commandType !== 'CANCEL_WORKSHOP_SESSION') {
     assert.equal(back.context.workflowRevision, snapshot.view.session.workflow.revision);
   }
 }
+
+test('房主进入模式选择后，非房主自动进入空状态等待页', async () => {
+  const h = createHarness();
+  await h.seedMembers(3);
+
+  await runCommand(h, 'host', 'BEGIN_MODE_SELECTION', {});
+  await assertRoutes(h, {
+    host: 'brainstormMode',
+    u2: 'subAwait',
+    u3: 'subAwait'
+  }, '选择模式');
+  assert.deepEqual((await h.snapshot('u2')).view.route.params, { scene: 'brainstormMode' });
+  assertBack(await h.snapshot('host'), 'CANCEL_MODE_SELECTION');
+
+  await runCommand(h, 'host', 'CANCEL_MODE_SELECTION', {});
+  await assertRoutes(h, { host: 'addPlayer', u2: 'addPlayer', u3: 'addPlayer' }, '取消选择模式');
+});
 
 test('权威 route 默认物理页面注册完整，稳定 Shell 场景由 descriptor 进一步投影', () => {
   assert.deepEqual(Object.keys(ROUTES).sort(), Object.keys(ROUTE_MATRIX).sort());

@@ -36,11 +36,15 @@ flowchart LR
 stateDiagram-v2
   [*] --> 无房间
   无房间 --> 房间大厅: CREATE_ROOM / JOIN_ROOM
-  房间大厅 --> 场次配置: START_WORKSHOP_SESSION
+  房间大厅 --> 模式选择: BEGIN_MODE_SELECTION
+  模式选择 --> 房间大厅: CANCEL_MODE_SELECTION
+  模式选择 --> 场次配置: START_WORKSHOP_SESSION
   场次配置 --> 场次运行: 完成模式配置
   场次运行 --> 场次完成: 完成模式
-  场次配置 --> 房间大厅: CANCEL_WORKSHOP_SESSION
-  场次运行 --> 房间大厅: CANCEL_WORKSHOP_SESSION
+  场次配置 --> 模式选择: CANCEL_WORKSHOP_SESSION
+  场次运行 --> 模式选择: CANCEL_WORKSHOP_SESSION
+  场次配置 --> 房间大厅: 人数不足自动取消
+  场次运行 --> 房间大厅: 人数不足自动取消
   场次完成 --> 房间大厅: RETURN_TO_LOBBY
   场次完成 --> 新场次: REPLAY_WORKSHOP_SESSION
   新场次 --> 场次配置: Gan Deng Yan / Halli / Spy
@@ -60,6 +64,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `view.route.name` | 实际页面 | Page Model `currentPage` | 业务含义 |
 |---|---|---|---|
 | `addPlayer` | `/pages/main-pages/addPlayer/index` | `addPlayer` | 房间大厅或本场旁观成员 |
+| `brainstormMode` | `/pages/main-pages/brainstormMode/index` | `brainstormMode` | Host 选择游戏模式 |
 | `modeIndex` | `/pages/main-pages/modeIndex/index` | `auth` | Host 选择情境 |
 | `subAwait` | `scene=bg/player` 由 `/pages/main-pages/selectPlayer/index` Setup Shell 承载；Partner `scene=confirmFirstPlayer` 由 `/pages/main-pages/partnerMode/gamepage/index` RoomShell 承载；其他场景保留 `/pages/sub-pages/subAwait/index` | `subAwait` | 成员等待 Host 配置；逻辑 Route 不因稳定 Shell 改名 |
 | `submitProblem` | `/pages/main-pages/submitProblem/index` | `submitProblem` | 全员提交设计问题；已提交者可催促未提交者 |
@@ -82,7 +87,8 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 
 | Session / Step | Host Route | 本场 Player Route | 特殊分流 |
 |---|---|---|---|
-| 无 Session | `addPlayer` | `addPlayer` | — |
+| 无 Session，未选择模式 | `addPlayer` | `addPlayer` | `modeSelectionActive=false` |
+| 无 Session，正在选择模式 | `brainstormMode` | `subAwait` | Host `params.isHost=1`；Player `params.scene=brainstormMode`，显示空状态等待页 |
 | 任意进行中 Session | 对应下表 | 对应下表 | 非本场参与者固定为 `addPlayer?observing=true` |
 | `CHOOSE_SCENARIO` | `modeIndex` | `subAwait` | Player `params.scene=bg`；物理页面为 Setup Shell 的 `waiting` 屏幕 |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` | — |
@@ -111,7 +117,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 ```mermaid
 flowchart TD
   LOBBY[addPlayer<br/>权威 route: addPlayer]
-  MODE_PICK[brainstormMode<br/>本地选模式叠层]
+  MODE_PICK[brainstormMode<br/>权威 route: brainstormMode]
   SCENE[modeIndex<br/>权威 route: modeIndex]
   SCENE_FORM[selectBG<br/>本地表单叠层]
   SCENE_CONFIRM[confirmBG<br/>本地确认/只读叠层]
@@ -121,7 +127,8 @@ flowchart TD
   SPY[Spy 业务页<br/>权威 spy routes]
   LIB[cardLibrary<br/>本地牌库叠层]
 
-  LOBBY --> MODE_PICK
+  LOBBY -->|BEGIN_MODE_SELECTION| MODE_PICK
+  MODE_PICK -->|CANCEL_MODE_SELECTION| LOBBY
   MODE_PICK -->|START_WORKSHOP_SESSION| SCENE
   SCENE --> SCENE_FORM -->|SET_SCENARIO| NEXT[按新 View 跟随下一权威页面]
   SCENE --> SCENE_CONFIRM -->|SET_SCENARIO| NEXT
@@ -132,7 +139,7 @@ flowchart TD
 
 | V2 页面 | V3 定位 | Snapshot / 重连规则 |
 |---|---|---|
-| `brainstormMode` | `addPlayer` 的本地选模式叠层 | 未创建 Session 时恢复到大厅；已创建后按新 `view.route` 前进 |
+| `brainstormMode` | Host 的权威模式选择页 | Snapshot / Event 恢复 `brainstormMode`；同一状态下 Player 恢复 `subAwait?scene=brainstormMode` |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
 | `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式仅当前行动者停留在特殊行动叠层；其他成员留在 `gamepage`，使用相同的静默徽标与声浪边框，同时保留匿名表达和打分功能。`PARTNER_SILENT_SOUND` 继续作为所有成员卡片声浪效果的共享瞬时信号 |
@@ -142,8 +149,8 @@ flowchart TD
 | `packageSpy/pages/nextRound` | 兼容页 | V3 用 `SPY_RESULT → START_NEXT_SPY_ROUND → SPY_SPEAK` 表达 |
 | `partnerMode/statement`、`discussion`、`closingEnd` | 历史兼容页 | 当前权威流程分别收敛到 `partnerGame`、`closingStatement`、`leaderboard` |
 
-本地叠层使用精确的 Route Owner：`brainstormMode→addPlayer`、`selectBG→modeIndex`、
-`case→submitProblem`、`specialMove/imageCrop/inspiration→partnerGame`、`cardLibrary→spyIntro`。
+本地叠层使用精确的 Route Owner：`selectBG→modeIndex`、`case→submitProblem`、
+`specialMove/imageCrop/inspiration→partnerGame`、`cardLibrary→spyIntro`。
 只有 Owner 未变化才保留；不得使用通配 Owner 把过期叠层留在新的业务状态上。
 
 ### 2.3 统一后退策略
@@ -156,12 +163,13 @@ flowchart LR
   SEND --> ROUTE[跟随新 view.route]
   ROUTE --> AFTER{after}
   AFTER -->|FOLLOW_ROUTE| DONE[完成]
-  AFTER -->|OPEN_MODE_PICKER| PICK[打开 brainstormMode 本地叠层]
+  AFTER -->|OPEN_MODE_PICKER 兼容值| PICK[跟随权威 brainstormMode Route]
 ```
 
 | 当前权威状态 | 谁可后退 | 投影 Command | 结果 |
 |---|---|---|---|
-| `CHOOSE_SCENARIO` / `SPY_INTRO` | Host | `CANCEL_WORKSHOP_SESSION` | 先回 `addPlayer`，再打开选模式叠层 |
+| 模式选择 | Host | `CANCEL_MODE_SELECTION` | 全员回 `addPlayer` 大厅 |
+| `CHOOSE_SCENARIO` / `SPY_INTRO` | Host | `CANCEL_WORKSHOP_SESSION` | 取消 Session；Host 回 `brainstormMode`，Player 回 `subAwait?scene=brainstormMode` |
 | `SELECT_DESIGN_PROBLEM` | Host（当前 UI 不展示按钮） | `RESET_SCENARIO` | 清空本场情境、问题与选择，回 `CHOOSE_SCENARIO` |
 | `SELECT_FIRST_PLAYER`，Partner 已选问题 | Host | `RESET_DESIGN_PROBLEM` | 保留问题列表，回 `SELECT_DESIGN_PROBLEM` |
 | `SELECT_FIRST_PLAYER`，Partner 线下、Halli 或 Gan Deng Yan | Host | `RESET_SCENARIO` | 回 `CHOOSE_SCENARIO` |
@@ -249,7 +257,8 @@ sequenceDiagram
 | 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
 | “退出房间” | `LEAVE_ROOM` | 非 Host |
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
-| “选择模式”→“确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
+| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页 |
+| “确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
 大厅二维码属于房间邀请能力，不依赖完整 Room Snapshot 是否成功安装。Snapshot 暂时失败时，
@@ -274,7 +283,7 @@ Session 创建时冻结当前 Room Members 为本场 Participants；此后加入
 ```mermaid
 flowchart TD
   LOBBY[大厅 addPlayer]
-  PICK[选模式叠层 brainstormMode]
+  PICK[权威模式选择 brainstormMode<br/>Player: subAwait 空状态等待]
   CHOOSE_H[CHOOSE_SCENARIO<br/>Host: modeIndex]
   CHOOSE_P[Player: subAwait<br/>selectPlayer Setup Shell / waiting]
   COLLECT[COLLECT_DESIGN_PROBLEMS<br/>全员: submitProblem]
@@ -287,7 +296,8 @@ flowchart TD
   HALLI[HALLI_ACTIVITY<br/>全员: halliGame]
   SPY[SPY_INTRO<br/>全员: spyIntro]
 
-  LOBBY --> PICK
+  LOBBY -->|BEGIN_MODE_SELECTION| PICK
+  PICK -->|CANCEL_MODE_SELECTION| LOBBY
   PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_H
   PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_P
   PICK -->|START_WORKSHOP_SESSION Spy| SPY
@@ -321,8 +331,9 @@ flowchart TD
 | Host 从确认首位点“上一页” | `RESET_FIRST_PLAYER` | 清掉拟定首位，回到 `SELECT_FIRST_PLAYER`；Host 回 `selectPlayer`，Player 回 `subAwait?scene=player` |
 | Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` 或 `RESET_SCENARIO` | Partner 已选问题时回选问题；Partner 线下、Halli 或 Gan Deng Yan 回选情境。副屏等待态没有上一页 |
 | Host 从选问题页执行协议后退 | `RESET_SCENARIO` | 清空旧情境、问题 Facts、选择和进度，回 `CHOOSE_SCENARIO`；当前页面未展示该按钮 |
-| Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 打开 `brainstormMode?isHost=1` 叠层，不走 `navigateBack` |
-| Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档，Route 回 `addPlayer` |
+| Host 从模式选择页点“上一页”或回房间 | `CANCEL_MODE_SELECTION` | Host 与 Player 一起回 `addPlayer` 大厅 |
+| Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 回权威 `brainstormMode?isHost=1`，Player 回空状态等待页 |
+| Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` 后 `CANCEL_MODE_SELECTION` | 先取消 Session 回到权威模式选择状态，再取消模式选择回 `addPlayer` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。

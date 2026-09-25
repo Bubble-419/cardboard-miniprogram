@@ -144,6 +144,7 @@ function createRoomAggregate(roomId, actorUserId, payload, deps) {
     hostMemberId: memberId,
     workshopName: String(payload.workshopName || '脑暴工作坊').trim().slice(0, 20) || '脑暴工作坊',
     members: [],
+    modeSelectionActive: false,
     currentSessionId: null,
     sessionOrdinal: 0,
     createdAt: now,
@@ -233,6 +234,7 @@ function newSession(aggregate, mode, copiedSetup, deps) {
     progress: {}, modeState: {}, result: null, startedAt: now, completedAt: null, updatedAt: now
   };
   aggregate.room.sessionOrdinal = ordinal;
+  aggregate.room.modeSelectionActive = false;
   aggregate.room.currentSessionId = session.sessionId;
   aggregate.currentSession = session;
   return session;

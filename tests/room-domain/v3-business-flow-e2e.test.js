@@ -80,7 +80,11 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
   const h = createHarness();
   await h.seedMembers(3);
 
-  let state = await executeAndReduce(h, 'host', 'START_WORKSHOP_SESSION', {
+  let state = await executeAndReduce(h, 'host', 'BEGIN_MODE_SELECTION', {});
+  assert.equal(state.snapshot.view.route.name, 'brainstormMode');
+  assert.equal((await h.snapshot('u2')).view.route.params.scene, 'brainstormMode');
+
+  state = await executeAndReduce(h, 'host', 'START_WORKSHOP_SESSION', {
     payload: { mode: 'HALLI_GALLI' }
   });
   const sessionId = state.snapshot.view.session.sessionId;

@@ -45,6 +45,8 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.REOPEN_HALLI_IDEA, {
     context: { sessionId: 's1' }, payload: {}
   })).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.BEGIN_MODE_SELECTION)).ok, true);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.CANCEL_MODE_SELECTION)).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
     context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);
@@ -177,6 +179,15 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
     navigation: { back: { kind: 'NONE' } }
   };
   assert.equal(validateMemberView(view, '12345678'), true);
+
+  const modeSelectionView = JSON.parse(JSON.stringify(view));
+  modeSelectionView.session = null;
+  modeSelectionView.actor.isParticipant = false;
+  modeSelectionView.route = { name: 'brainstormMode', params: { isHost: 1 } };
+  modeSelectionView.navigation.back = {
+    kind: 'COMMAND', commandType: 'CANCEL_MODE_SELECTION', context: {}, after: 'FOLLOW_ROUTE'
+  };
+  assert.equal(validateMemberView(modeSelectionView, '12345678'), true);
 
   const withProblem = JSON.parse(JSON.stringify(view));
   withProblem.session.setup.designProblems = [{

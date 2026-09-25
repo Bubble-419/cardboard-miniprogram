@@ -1,7 +1,6 @@
 /** 脑暴模式配置：共用 modeIndex 页，通过 modeId 区分 */
 const MODE_INDEX_PATH = '/pages/main-pages/modeIndex/index';
 const { PARTNER_MODE_DISPLAY_TITLE } = require('../../../utils/modeDisplayNames');
-const { goRoomPage } = require('../../../utils/goRoomPage');
 const { buildAvatarListAsync } = require('../../../utils/avatars');
 const {
   dispatchRoomCommand,
@@ -10,9 +9,10 @@ const {
   unbindPageFromRoomSession,
   canRoomCommand,
   getActiveRoomSession,
-  followRoomRouteAfterCommand
+  goRoomPage,
+  followRoomRouteAfterCommand,
+  executeProjectedBack
 } = require('../../../modules/room-session/index');
-const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
   runPageInteraction,
   withPageInteractionLock
@@ -278,20 +278,19 @@ Page(withPageInteractionLock({
 
   handleGoBack() {
     return runPageInteraction(this, async () => {
-      const roomId = this.data.roomId || '';
-      const fallbackUrl = roomId
-        ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
-        : '/pages/main-pages/addPlayer/index';
-      safeNavigateBack({
-        expectedPrev: 'pages/main-pages/addPlayer/index',
-        fallbackUrl
-      });
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回失败', icon: 'none' });
+      }
     }, { loadingText: '正在返回…' });
   },
 
   handleGoRoom() {
     return runPageInteraction(this, async () => {
-      await goRoomPage(this.data.roomId);
+      const result = await executeProjectedBack(this.data.roomId);
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '返回房间失败', icon: 'none' });
+      }
     }, { loadingText: '正在返回房间…' });
   }
 }, ['onTapMode', 'onConfirmMode', 'handleGoBack', 'handleGoRoom']));

@@ -2,8 +2,8 @@
 
 const PROTOCOL_VERSION = 3;
 const SCHEMA_VERSION = 6;
-const VIEW_SCHEMA_VERSION = 8;
-const EVENT_SCHEMA_VERSION = 4;
+const VIEW_SCHEMA_VERSION = 9;
+const EVENT_SCHEMA_VERSION = 5;
 const MAX_INCREMENTAL_SYNC_EVENTS = 25;
 const MAX_SEATS = 6;
 const MAX_SESSION_MESSAGES = 500;
@@ -69,7 +69,8 @@ const WORKFLOW_GROUPS = Object.freeze({
 const COMMAND_TYPES = Object.freeze({
   CREATE_ROOM: 'CREATE_ROOM', UPDATE_ROOM_PROFILE: 'UPDATE_ROOM_PROFILE', JOIN_ROOM: 'JOIN_ROOM',
   UPDATE_MEMBER_PROFILE: 'UPDATE_MEMBER_PROFILE', REORDER_SEATS: 'REORDER_SEATS', LEAVE_ROOM: 'LEAVE_ROOM',
-  KICK_MEMBER: 'KICK_MEMBER', DISSOLVE_ROOM: 'DISSOLVE_ROOM', START_WORKSHOP_SESSION: 'START_WORKSHOP_SESSION',
+  KICK_MEMBER: 'KICK_MEMBER', DISSOLVE_ROOM: 'DISSOLVE_ROOM', BEGIN_MODE_SELECTION: 'BEGIN_MODE_SELECTION',
+  CANCEL_MODE_SELECTION: 'CANCEL_MODE_SELECTION', START_WORKSHOP_SESSION: 'START_WORKSHOP_SESSION',
   SET_SCENARIO: 'SET_SCENARIO', SUBMIT_DESIGN_PROBLEM: 'SUBMIT_DESIGN_PROBLEM',
   UPDATE_DESIGN_PROBLEM: 'UPDATE_DESIGN_PROBLEM', SELECT_DESIGN_PROBLEM: 'SELECT_DESIGN_PROBLEM',
   SELECT_FIRST_PLAYER: 'SELECT_FIRST_PLAYER', CONFIRM_FIRST_PLAYER: 'CONFIRM_FIRST_PLAYER',
@@ -106,6 +107,7 @@ const DESIGN_PROBLEM_NUDGE_COOLDOWN_MS = 15000;
 const EVENT_TYPES = Object.freeze([
   'ROOM_CREATED', 'ROOM_PROFILE_UPDATED', 'ROOM_DISSOLVED', 'ROOM_RETURNED_TO_LOBBY',
   'MEMBER_JOINED', 'MEMBER_PROFILE_UPDATED', 'SEATS_REORDERED', 'MEMBER_LEFT', 'MEMBER_KICKED',
+  'MODE_SELECTION_STARTED', 'MODE_SELECTION_CANCELLED',
   'WORKSHOP_SESSION_STARTED', 'WORKSHOP_SESSION_CANCELLED', 'WORKSHOP_SESSION_REPLAYED',
   'WORKSHOP_SESSION_COMPLETED', 'SCENARIO_SET', 'DESIGN_PROBLEM_SUBMITTED', 'DESIGN_PROBLEM_UPDATED',
   'DESIGN_PROBLEM_SELECTED', 'DESIGN_PROBLEM_SELECTION_RESET', 'PROBLEM_COLLECTION_COMPLETED',
@@ -189,6 +191,8 @@ const COMMAND_PAYLOAD_KEYS = Object.freeze({
   LEAVE_ROOM: [],
   KICK_MEMBER: ['memberId'],
   DISSOLVE_ROOM: [],
+  BEGIN_MODE_SELECTION: [],
+  CANCEL_MODE_SELECTION: [],
   START_WORKSHOP_SESSION: ['mode'],
   SET_SCENARIO: ['source', 'scenario'],
   SUBMIT_DESIGN_PROBLEM: ['text'],
@@ -555,14 +559,14 @@ function hasOwn(record, key) {
 function validProjectedBack(back) {
   if (!isRecord(back) || !['NONE', 'COMMAND'].includes(back.kind)) return false;
   if (back.kind === 'NONE') return Object.keys(back).length === 1;
-  const allowed = [COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, COMMAND_TYPES.RESET_SCENARIO,
+  const allowed = [COMMAND_TYPES.CANCEL_MODE_SELECTION, COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, COMMAND_TYPES.RESET_SCENARIO,
     COMMAND_TYPES.RESET_DESIGN_PROBLEM, COMMAND_TYPES.RESET_FIRST_PLAYER];
   if (!allowed.includes(back.commandType) || !isRecord(back.context)) return false;
   const expectedKeys = COMMAND_CONTEXT[back.commandType] || [];
   const actualKeys = Object.keys(back.context);
   if (actualKeys.length !== expectedKeys.length
     || expectedKeys.some((key) => !hasOwn(back.context, key))) return false;
-  if (!isNonEmptyString(back.context.sessionId)) return false;
+  if (expectedKeys.includes('sessionId') && !isNonEmptyString(back.context.sessionId)) return false;
   if (expectedKeys.includes('workflowRevision')
     && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
   const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION

@@ -25,8 +25,8 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 6;
-    var VIEW_SCHEMA_VERSION = 8;
-    var EVENT_SCHEMA_VERSION = 4;
+    var VIEW_SCHEMA_VERSION = 9;
+    var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
     var MAX_SESSION_MESSAGES = 500;
@@ -96,6 +96,8 @@ var require_room_contracts = __commonJS({
       LEAVE_ROOM: "LEAVE_ROOM",
       KICK_MEMBER: "KICK_MEMBER",
       DISSOLVE_ROOM: "DISSOLVE_ROOM",
+      BEGIN_MODE_SELECTION: "BEGIN_MODE_SELECTION",
+      CANCEL_MODE_SELECTION: "CANCEL_MODE_SELECTION",
       START_WORKSHOP_SESSION: "START_WORKSHOP_SESSION",
       SET_SCENARIO: "SET_SCENARIO",
       SUBMIT_DESIGN_PROBLEM: "SUBMIT_DESIGN_PROBLEM",
@@ -154,6 +156,8 @@ var require_room_contracts = __commonJS({
       "SEATS_REORDERED",
       "MEMBER_LEFT",
       "MEMBER_KICKED",
+      "MODE_SELECTION_STARTED",
+      "MODE_SELECTION_CANCELLED",
       "WORKSHOP_SESSION_STARTED",
       "WORKSHOP_SESSION_CANCELLED",
       "WORKSHOP_SESSION_REPLAYED",
@@ -296,6 +300,8 @@ var require_room_contracts = __commonJS({
       LEAVE_ROOM: [],
       KICK_MEMBER: ["memberId"],
       DISSOLVE_ROOM: [],
+      BEGIN_MODE_SELECTION: [],
+      CANCEL_MODE_SELECTION: [],
       START_WORKSHOP_SESSION: ["mode"],
       SET_SCENARIO: ["source", "scenario"],
       SUBMIT_DESIGN_PROBLEM: ["text"],
@@ -615,6 +621,7 @@ var require_room_contracts = __commonJS({
       if (!isRecord(back) || !["NONE", "COMMAND"].includes(back.kind)) return false;
       if (back.kind === "NONE") return Object.keys(back).length === 1;
       const allowed = [
+        COMMAND_TYPES.CANCEL_MODE_SELECTION,
         COMMAND_TYPES.CANCEL_WORKSHOP_SESSION,
         COMMAND_TYPES.RESET_SCENARIO,
         COMMAND_TYPES.RESET_DESIGN_PROBLEM,
@@ -624,7 +631,7 @@ var require_room_contracts = __commonJS({
       const expectedKeys = COMMAND_CONTEXT[back.commandType] || [];
       const actualKeys = Object.keys(back.context);
       if (actualKeys.length !== expectedKeys.length || expectedKeys.some((key) => !hasOwn(back.context, key))) return false;
-      if (!isNonEmptyString(back.context.sessionId)) return false;
+      if (expectedKeys.includes("sessionId") && !isNonEmptyString(back.context.sessionId)) return false;
       if (expectedKeys.includes("workflowRevision") && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
       const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION ? "OPEN_MODE_PICKER" : "FOLLOW_ROUTE";
       return back.after === expectedAfter;
@@ -855,6 +862,7 @@ var require_model = __commonJS({
         hostMemberId: memberId,
         workshopName: String(payload.workshopName || "\u8111\u66B4\u5DE5\u4F5C\u574A").trim().slice(0, 20) || "\u8111\u66B4\u5DE5\u4F5C\u574A",
         members: [],
+        modeSelectionActive: false,
         currentSessionId: null,
         sessionOrdinal: 0,
         createdAt: now,
@@ -947,6 +955,7 @@ var require_model = __commonJS({
         updatedAt: now
       };
       aggregate.room.sessionOrdinal = ordinal;
+      aggregate.room.modeSelectionActive = false;
       aggregate.room.currentSessionId = session.sessionId;
       aggregate.currentSession = session;
       return session;
@@ -2570,8 +2579,26 @@ var require_room_domain = __commonJS({
       aggregate.archivedFacts = clone(ensureFacts(aggregate));
       aggregate.currentSession = null;
       aggregate.room.currentSessionId = null;
+      aggregate.room.modeSelectionActive = false;
       aggregate.facts = emptyFacts();
       events.push(event(EVENT_TYPES.WORKSHOP_SESSION_CANCELLED, { sessionId: session.sessionId, reason }));
+    }
+    function beginModeSelection(aggregate, actorUserId) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
+      if (aggregate.room.modeSelectionActive === true) return fail(ERR.INVALID_TRANSITION, "\u5DF2\u5728\u9009\u62E9\u6A21\u5F0F");
+      aggregate.room.modeSelectionActive = true;
+      return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_STARTED)]);
+    }
+    function cancelModeSelection(aggregate, actorUserId) {
+      const auth = assertHost(aggregate, actorUserId);
+      if (!auth.ok) return auth;
+      if (aggregate.currentSession || aggregate.room.modeSelectionActive !== true) {
+        return fail(ERR.INVALID_TRANSITION);
+      }
+      aggregate.room.modeSelectionActive = false;
+      return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_CANCELLED)]);
     }
     function removeMember(aggregate, target, kicked, deps) {
       const events = [event(
@@ -2645,6 +2672,7 @@ var require_room_domain = __commonJS({
       const mode = normalizeMode(command.payload.mode);
       if (!mode) return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u6A21\u5F0F");
       if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} \u4EBA\u6570\u4E0D\u8DB3`);
+      aggregate.room.modeSelectionActive = false;
       aggregate.facts = emptyFacts();
       const session = newSession(aggregate, mode, null, deps);
       return domainOk(
@@ -2885,6 +2913,7 @@ var require_room_domain = __commonJS({
       if ([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(check.session.status)) return fail(ERR.INVALID_TRANSITION);
       const events = [];
       cancelCurrentSession(aggregate, "HOST_CANCELLED", deps, events);
+      aggregate.room.modeSelectionActive = true;
       return domainOk(aggregate, events, { kind: "SESSION_CANCELLED" });
     }
     function returnToLobby(aggregate, command, actorUserId) {
@@ -2897,6 +2926,7 @@ var require_room_domain = __commonJS({
       aggregate.archivedFacts = clone(ensureFacts(aggregate));
       aggregate.currentSession = null;
       aggregate.room.currentSessionId = null;
+      aggregate.room.modeSelectionActive = false;
       aggregate.facts = emptyFacts();
       return domainOk(aggregate, [event(EVENT_TYPES.ROOM_RETURNED_TO_LOBBY, { sessionId: check.session.sessionId })], { kind: "LOBBY" });
     }
@@ -2980,6 +3010,12 @@ var require_room_domain = __commonJS({
           break;
         case COMMAND_TYPES.DISSOLVE_ROOM:
           result = dissolveRoom(aggregate, actorUserId, deps);
+          break;
+        case COMMAND_TYPES.BEGIN_MODE_SELECTION:
+          result = beginModeSelection(aggregate, actorUserId);
+          break;
+        case COMMAND_TYPES.CANCEL_MODE_SELECTION:
+          result = cancelModeSelection(aggregate, actorUserId);
           break;
         case COMMAND_TYPES.START_WORKSHOP_SESSION:
           result = startSession(aggregate, command, actorUserId, deps);
@@ -3371,6 +3407,14 @@ var require_room_projection = __commonJS({
       caps[COMMAND_TYPES.LEAVE_ROOM] = capability(!!actor && !isHost, isHost ? "HOST_CANNOT_LEAVE" : "NOT_MEMBER");
       caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, "HOST_REQUIRED");
       caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, "HOST_REQUIRED");
+      caps[COMMAND_TYPES.BEGIN_MODE_SELECTION] = capability(
+        isHost && !session && aggregate.room.modeSelectionActive !== true,
+        isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED"
+      );
+      caps[COMMAND_TYPES.CANCEL_MODE_SELECTION] = capability(
+        isHost && !session && aggregate.room.modeSelectionActive === true,
+        isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED"
+      );
       caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED");
       caps[COMMAND_TYPES.SET_SCENARIO] = capability(
         isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
@@ -3459,7 +3503,12 @@ var require_room_projection = __commonJS({
     }
     function projectRoute(aggregate, actorView) {
       const session = aggregate.currentSession;
-      if (!session) return { name: "addPlayer", params: {} };
+      if (!session) {
+        if (aggregate.room.modeSelectionActive === true) {
+          return actorView.role === "HOST" ? { name: "brainstormMode", params: { isHost: 1 } } : { name: "subAwait", params: { scene: "brainstormMode" } };
+        }
+        return { name: "addPlayer", params: {} };
+      }
       if (!actorView.isParticipant) return { name: "addPlayer", params: { observing: true } };
       const step = session.workflow.step;
       const host = actorView.role === "HOST";
@@ -3522,9 +3571,18 @@ var require_room_projection = __commonJS({
     }
     function projectNavigation(aggregate, actorView) {
       const session = aggregate.currentSession;
-      if (!session || !actorView || !actorView.isParticipant || actorView.role !== "HOST") {
+      if (!actorView || actorView.role !== "HOST") {
         return { back: noBack() };
       }
+      if (!session) {
+        return aggregate.room.modeSelectionActive === true ? { back: {
+          kind: "COMMAND",
+          commandType: COMMAND_TYPES.CANCEL_MODE_SELECTION,
+          context: {},
+          after: "FOLLOW_ROUTE"
+        } } : { back: noBack() };
+      }
+      if (!actorView.isParticipant) return { back: noBack() };
       const commandBack = (commandType, after) => ({
         kind: "COMMAND",
         commandType,

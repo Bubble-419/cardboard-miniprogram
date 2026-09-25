@@ -409,8 +409,10 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 导航结束，不能硬编码猜测下一页面或提前释放交互锁。
 
 业务“后退”也属于成员投影：页面只执行 `view.navigation.back`。`COMMAND` 类型携带服务端生成的
-精确 context，成功后先跟随新的 `view.route`；选择模式这种本地叠层再按 `after=OPEN_MODE_PICKER`
-打开。运行期不可逆页面投影 `NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
+精确 context，成功后先跟随新的 `view.route`。模式选择已由 `BEGIN_MODE_SELECTION` /
+`CANCEL_MODE_SELECTION` 管理为权威房间状态；旧配置页保留的 `after=OPEN_MODE_PICKER` 仅作客户端兼容，
+提交 `CANCEL_WORKSHOP_SESSION` 后仍以新投影出的 `brainstormMode` Route 为准。运行期不可逆页面投影
+`NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
 
 逻辑 Route 不要求与微信物理页面一一对应。连续运行且共享大量本地 UI 状态的屏幕可以由稳定
 RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
@@ -458,14 +460,19 @@ sequenceDiagram
 stateDiagram-v2
   [*] --> OPEN: CREATE_ROOM
   OPEN --> OPEN: JOIN / PROFILE / REORDER / KICK / LEAVE
-  OPEN --> CONFIGURING: START_WORKSHOP_SESSION
+  OPEN --> SELECTING_MODE: BEGIN_MODE_SELECTION
+  SELECTING_MODE --> OPEN: CANCEL_MODE_SELECTION
+  SELECTING_MODE --> CONFIGURING: START_WORKSHOP_SESSION
   CONFIGURING --> RUNNING: 完成模式配置
   RUNNING --> COMPLETED: 模式完成
-  CONFIGURING --> OPEN: CANCEL / 人数不足
-  RUNNING --> OPEN: CANCEL / 人数不足
+  CONFIGURING --> SELECTING_MODE: Host CANCEL
+  RUNNING --> SELECTING_MODE: Host CANCEL
+  CONFIGURING --> OPEN: 人数不足自动取消
+  RUNNING --> OPEN: 人数不足自动取消
   COMPLETED --> OPEN: RETURN_TO_LOBBY
   COMPLETED --> CONFIGURING: REPLAY
   OPEN --> DISSOLVED: DISSOLVE_ROOM
+  SELECTING_MODE --> DISSOLVED: DISSOLVE_ROOM
   CONFIGURING --> DISSOLVED: DISSOLVE_ROOM
   RUNNING --> DISSOLVED: DISSOLVE_ROOM
 ```
@@ -585,7 +592,8 @@ flowchart LR
 
 | Workflow / Session | Host | Player |
 |---|---|---|
-| 无当前 Session | `addPlayer` | `addPlayer` |
+| 无当前 Session，`modeSelectionActive=false` | `addPlayer` | `addPlayer` |
+| 无当前 Session，`modeSelectionActive=true` | `brainstormMode?isHost=1` | `subAwait?scene=brainstormMode` |
 | 非本场 Participant | `addPlayer?observing=true` | 同左 |
 | `CHOOSE_SCENARIO` | `modeIndex` | `subAwait?scene=bg`（`selectPlayer` Setup Shell `waiting` 屏幕） |
 | `COLLECT_DESIGN_PROBLEMS` | `submitProblem` | `submitProblem` |

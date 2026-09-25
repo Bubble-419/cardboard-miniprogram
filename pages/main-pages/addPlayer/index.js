@@ -1569,7 +1569,7 @@ Page(withPageInteractionLock({
     });
   },
 
-  _goBrainstormMode() {
+  async _goBrainstormMode() {
     const roomId = this.data.roomId || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '房间参数错误', icon: 'none' });
@@ -1583,74 +1583,32 @@ Page(withPageInteractionLock({
     // 停掉大厅重动画，给路由让出主线程（模拟器尤其明显）
     this.setData({ navFreeze: true });
 
-    const url = `/pages/main-pages/brainstormMode/index?roomId=${encodeURIComponent(roomId)}&isHost=${this.data.isHost ? '1' : '0'}`;
-
-    return new Promise((resolve) => {
-      const onNavOk = () => {
-        this._navigatingToBrainstorm = false;
-        resolve({ ok: true });
-      };
-      const onNavFatal = (err, stage) => {
-        this._navigatingToBrainstorm = false;
-        console.error(`${stage} brainstormMode fail:`, err && err.errMsg, err);
-        if (this._pageAlive) {
-          this.setData({ navFreeze: false });
-          this._startMemberPolling();
-        }
-        wx.showToast({ title: '打开失败，请重试', icon: 'none' });
-        resolve({ ok: false, error: err });
-      };
-
-      const openWithReLaunch = () => {
-        wx.reLaunch({
-          url,
-          success: onNavOk,
-          fail: (err) => onNavFatal(err, 'reLaunch')
-        });
-      };
-
-      // 房主优先 redirectTo：卸载大厅页（动画/轮询/大 DOM），比 navigateTo 叠层更稳
-      const openPage = () => {
-        const preferRedirect = this.data.isHost === true;
-        const primary = preferRedirect ? wx.redirectTo : wx.navigateTo;
-        const primaryName = preferRedirect ? 'redirectTo' : 'navigateTo';
-        primary({
-          url,
-          success: onNavOk,
-          fail: (err) => {
-            const msg = (err && err.errMsg) || '';
-            console.error(`${primaryName} brainstormMode fail:`, msg, err);
-            if (/timeout|busy/i.test(msg)) {
-              setTimeout(openWithReLaunch, 400);
-              return;
-            }
-            const secondary = preferRedirect ? wx.navigateTo : wx.redirectTo;
-            secondary({
-              url,
-              success: onNavOk,
-              fail: (err2) => {
-                const msg2 = (err2 && err2.errMsg) || '';
-                console.error('fallback brainstormMode fail:', msg2, err2);
-                if (/timeout|busy|limit/i.test(msg2)) {
-                  setTimeout(openWithReLaunch, 400);
-                } else {
-                  onNavFatal(err2, 'fallback');
-                }
-              }
-            });
-          }
-        });
-      };
-
-      const waitAndGo = (attempt = 0) => {
-        if (!this._memberPollInFlight || attempt >= 20) {
-          setTimeout(openPage, 80);
-          return;
-        }
-        setTimeout(() => waitAndGo(attempt + 1), 50);
-      };
-      waitAndGo();
-    });
+    let navigated = false;
+    try {
+      const result = await dispatchRoomCommand('BEGIN_MODE_SELECTION', {}, {}, { roomId });
+      if (!result || result.ok !== true) {
+        wx.showToast({ title: result && result.errMsg || '打开失败，请重试', icon: 'none' });
+        return result;
+      }
+      this._stayOnLobby = false;
+      clearSpyLobbyStay();
+      const navigation = await followRoomRouteAfterCommand(result, roomId);
+      navigated = !!(navigation && navigation.ok === true);
+      if (!navigated) {
+        wx.showToast({ title: '房间状态正在同步，请重试', icon: 'none' });
+      }
+      return result;
+    } catch (error) {
+      console.error('begin mode selection fail:', error);
+      wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+      return { ok: false, error };
+    } finally {
+      this._navigatingToBrainstorm = false;
+      if (!navigated && this._pageAlive) {
+        this.setData({ navFreeze: false });
+        this._startMemberPolling();
+      }
+    }
   },
 
   handleAnotherRound() {

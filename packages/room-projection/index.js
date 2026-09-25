@@ -309,6 +309,14 @@ function projectCapabilities(aggregate, actor) {
   caps[COMMAND_TYPES.LEAVE_ROOM] = capability(!!actor && !isHost, isHost ? 'HOST_CANNOT_LEAVE' : 'NOT_MEMBER');
   caps[COMMAND_TYPES.KICK_MEMBER] = capability(isHost, 'HOST_REQUIRED');
   caps[COMMAND_TYPES.DISSOLVE_ROOM] = capability(isHost, 'HOST_REQUIRED');
+  caps[COMMAND_TYPES.BEGIN_MODE_SELECTION] = capability(
+    isHost && !session && aggregate.room.modeSelectionActive !== true,
+    isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED'
+  );
+  caps[COMMAND_TYPES.CANCEL_MODE_SELECTION] = capability(
+    isHost && !session && aggregate.room.modeSelectionActive === true,
+    isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED'
+  );
   caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED');
   caps[COMMAND_TYPES.SET_SCENARIO] = capability(
     isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
@@ -410,7 +418,14 @@ function projectCapabilities(aggregate, actor) {
 
 function projectRoute(aggregate, actorView) {
   const session = aggregate.currentSession;
-  if (!session) return { name: 'addPlayer', params: {} };
+  if (!session) {
+    if (aggregate.room.modeSelectionActive === true) {
+      return actorView.role === 'HOST'
+        ? { name: 'brainstormMode', params: { isHost: 1 } }
+        : { name: 'subAwait', params: { scene: 'brainstormMode' } };
+    }
+    return { name: 'addPlayer', params: {} };
+  }
   if (!actorView.isParticipant) return { name: 'addPlayer', params: { observing: true } };
   const step = session.workflow.step;
   const host = actorView.role === 'HOST';
@@ -479,9 +494,16 @@ function noBack() {
  */
 function projectNavigation(aggregate, actorView) {
   const session = aggregate.currentSession;
-  if (!session || !actorView || !actorView.isParticipant || actorView.role !== 'HOST') {
+  if (!actorView || actorView.role !== 'HOST') {
     return { back: noBack() };
   }
+  if (!session) {
+    return aggregate.room.modeSelectionActive === true
+      ? { back: { kind: 'COMMAND', commandType: COMMAND_TYPES.CANCEL_MODE_SELECTION,
+        context: {}, after: 'FOLLOW_ROUTE' } }
+      : { back: noBack() };
+  }
+  if (!actorView.isParticipant) return { back: noBack() };
   const commandBack = (commandType, after) => ({
     kind: 'COMMAND',
     commandType,

@@ -73,6 +73,7 @@ Room
 │   ├── role: HOST | PLAYER
 │   └── profile
 ├── currentSessionId
+├── modeSelectionActive     # 无活跃 Session 时，Host 正在选择模式
 ├── sessionOrdinal
 ├── signalScope             # 当前 Silent 的轻量事务令牌（memberId 为房主）或 null
 └── createdAt / updatedAt
@@ -88,7 +89,8 @@ stateDiagram-v2
 ```
 
 Room 只保存长期成员关系、同步水位和高频辅助协议所需的轻量派生令牌，不承载不断增长的场次内容。
-`currentSessionId` 为 `null` 表示当前在大厅且没有活跃场次。`signalScope` 与 Session 状态在同一
+`currentSessionId` 为 `null` 表示没有活跃场次；此时 `modeSelectionActive=false` 是房间大厅，
+`modeSelectionActive=true` 则表示 Host 位于权威模式选择页、其他成员位于空状态等待页。`signalScope` 与 Session 状态在同一
 Command 事务内更新，使 `roomSignal` 无需读取整个 Session，也不会在换 Turn 时写入旧信号。
 
 ### Room 不变量
@@ -101,7 +103,12 @@ seatNo ∈ [1, 6]
 hostMemberId 必须指向 role=HOST 的当前成员
 stateVersion 与 eventSeq 只在接受业务 Command 时递增
 currentSessionId == null 或指向同 roomId 的 RoomSession
+modeSelectionActive == true 时 currentSessionId 必须为 null
 ```
+
+`BEGIN_MODE_SELECTION` 与 `CANCEL_MODE_SELECTION` 原子切换 `modeSelectionActive`。创建 Session、
+返回大厅或清理失效场次时必须同步清零；Host 主动取消配置 Session 时则重新置为 `true`，使全员按
+同一权威状态回到“Host 选模式 / Player 等待”。
 
 ## 3. RoomSession 与 Facts
 

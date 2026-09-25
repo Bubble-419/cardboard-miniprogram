@@ -51,6 +51,24 @@ test('选择模式页的四张卡片和底部操作区在同一屏内排布', ()
   assert.match(wxml, /<page-footer[\s\S]*?fixed="\{\{false\}\}"/);
   assert.match(wxss, /\.container\s*\{[\s\S]*?height:\s*100vh;[\s\S]*?overflow:\s*hidden;/);
   assert.match(wxss, /\.mode-scroll\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;/);
-  assert.match(wxss, /\.mode-item\s*\{[\s\S]*?min-height:\s*140rpx;[\s\S]*?padding:\s*12rpx 24rpx;/);
+  assert.doesNotMatch(wxss, /\.mode-groups\s*\{[^}]*justify-content:\s*space-between;/);
+  assert.match(wxss, /\.mode-group\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;/);
+  assert.match(wxss, /\.mode-list\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*0;/);
+  assert.match(wxss, /\.mode-item\s*\{[\s\S]*?flex:\s*1;[\s\S]*?min-height:\s*140rpx;[\s\S]*?padding:\s*12rpx 24rpx;/);
   assert.match(wxss, /@media screen and \(max-height:\s*700px\)[\s\S]*?\.mode-item\s*\{[\s\S]*?min-height:\s*116rpx;/);
+});
+
+test('房主打开模式选择前先提交权威状态，返回时也执行投影后退', () => {
+  const lobbySource = fs.readFileSync(path.resolve(
+    __dirname,
+    '../../pages/main-pages/addPlayer/index.js'
+  ), 'utf8');
+  const modeSource = fs.readFileSync(path.resolve(
+    __dirname,
+    '../../pages/main-pages/brainstormMode/index.js'
+  ), 'utf8');
+
+  assert.match(lobbySource, /dispatchRoomCommand\('BEGIN_MODE_SELECTION'/);
+  assert.match(lobbySource, /followRoomRouteAfterCommand\(result, roomId\)/);
+  assert.match(modeSource, /executeProjectedBack\(this\.data\.roomId\)/);
 });

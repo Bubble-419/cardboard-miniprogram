@@ -8,6 +8,7 @@ const {
 
 const ROUTES = Object.freeze({
   addPlayer: { path: '/pages/main-pages/addPlayer/index', mode: 'reLaunch', pageKey: 'addplayer' },
+  brainstormMode: { path: '/pages/main-pages/brainstormMode/index', mode: 'redirectTo', pageKey: 'brainstormmode' },
   modeIndex: { path: '/pages/main-pages/modeIndex/index', mode: 'redirectTo', pageKey: 'modeindex' },
   subAwait: { path: '/pages/sub-pages/subAwait/index', mode: 'redirectTo', pageKey: 'subawait' },
   submitProblem: { path: '/pages/main-pages/submitProblem/index', mode: 'redirectTo', pageKey: 'submitproblem' },
@@ -35,7 +36,6 @@ const OVERLAY_OWNERS = Object.freeze({
   'pages/main-pages/partnerMode/imageCrop/index': ['partnerGame'],
   'pages/main-pages/partnerMode/specialMove/index': ['partnerGame'],
   'packageSpy/pages/cardLibrary/index': ['spyIntro'],
-  'pages/main-pages/brainstormMode/index': ['addPlayer'],
   'pages/main-pages/selectBG/index': ['modeIndex']
 });
 
@@ -124,7 +124,7 @@ function createNavigationCoordinator(options) {
     if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
     const current = currentPath();
     if (current === descriptor.path.slice(1)) { lastSeq = nextSeq; return { ok: true, skipped: true, reason: 'SAME_ROUTE' }; }
-    // 灵感/裁剪/选模式/填情境等叠层：仍属于当前 route 时不拆；route 变化后跟随。
+    // 灵感、裁剪、填情境等本地叠层：仍属于当前 route 时不拆；route 变化后跟随。
     if (current && isLocalOverlay(current, route.name)) {
       return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
     }

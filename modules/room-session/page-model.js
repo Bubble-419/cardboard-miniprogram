@@ -30,7 +30,7 @@ function isHalliLikeMode(mode) {
 
 function routePageKey(routeName) {
   return {
-    addPlayer: 'addPlayer', modeIndex: 'auth', subAwait: 'subAwait', submitProblem: 'submitProblem',
+    addPlayer: 'addPlayer', brainstormMode: 'brainstormMode', modeIndex: 'auth', subAwait: 'subAwait', submitProblem: 'submitProblem',
     selectProblem: 'selectProblem', selectPlayer: 'selectPlayer', confirmFirstPlayer: 'confirmFirstPlayer',
     partnerGame: 'gamepage', closingStatement: 'closingStatement', leaderboard: 'leaderboard',
     halliGame: 'gamepage', creativeInput: 'creativeInput', creativeSummary: 'creativeSummary',
