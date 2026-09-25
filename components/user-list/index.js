@@ -56,6 +56,10 @@ Component({
       type: String,
       value: 'scroll'
     },
+    compactStack: {
+      type: Boolean,
+      value: false
+    },
     showActingFrame: {
       type: Boolean,
       value: false
@@ -132,7 +136,7 @@ Component({
   },
 
   observers: {
-    'avatarList, maxVisible': function syncDisplayList(avatarList, maxVisible) {
+    'avatarList, maxVisible, compactStack': function syncDisplayList(avatarList, maxVisible) {
       const list = Array.isArray(avatarList) ? avatarList : [];
       const max = Number(maxVisible) || 0;
       let nextDisplay = max > 0 && list.length > max ? list.slice(0, max) : list;
@@ -235,8 +239,9 @@ Component({
       if (overflowCount > 0) n += 1;
       if (this.properties.enableAdd) n += 1;
       if (n <= 0) return '';
-      const avatarRpx = 80;
-      const overlapRpx = 16;
+      const compact = this.properties.compactStack === true;
+      const avatarRpx = compact ? 64 : 80;
+      const overlapRpx = compact ? 12 : 16;
       const endPadRpx = 8;
       const width = avatarRpx + (n - 1) * (avatarRpx - overlapRpx) + endPadRpx;
       return `width:${width}rpx;`;

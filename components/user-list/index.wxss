@@ -391,6 +391,24 @@
   z-index: 2;
 }
 
+/* 规则活动页顶栏：与 32px 微信胶囊/房间入口对齐，保持叠放但减少视觉下沉。 */
+.layout-stack.compact-stack .avatar-scroll,
+.layout-stack.compact-stack .avatar-row-stack,
+.layout-stack.compact-stack .avatar-slot,
+.layout-stack.compact-stack.fold .avatar-frame-box,
+.layout-stack.compact-stack.fold .avatar-wrap {
+  height: 64rpx;
+}
+
+.layout-stack.compact-stack.fold .avatar-frame-box,
+.layout-stack.compact-stack.fold .avatar-wrap {
+  width: 64rpx;
+}
+
+.layout-stack.compact-stack .avatar-item + .avatar-item {
+  margin-left: -12rpx;
+}
+
 @keyframes acting-ring-spin {
   from {
     transform: rotate(0deg);

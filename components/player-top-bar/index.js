@@ -16,6 +16,11 @@ Component({
       type: Boolean,
       value: true
     },
+    /** 规则活动页使用紧凑头像，使头像与微信胶囊/房间入口保持同一视觉高度。 */
+    compactAvatars: {
+      type: Boolean,
+      value: false
+    },
     showRoomEntry: {
       type: Boolean,
       value: true

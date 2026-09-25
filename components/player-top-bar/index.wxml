@@ -37,6 +37,7 @@
           isFold="{{true}}"
           showName="{{false}}"
           layout="stack"
+          compactStack="{{compactAvatars}}"
           visualMode="{{visualMode}}"
           onActionPage="{{onActionPage}}"
           specialMoveActive="{{specialMoveActive}}"

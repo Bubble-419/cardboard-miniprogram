@@ -1,4 +1,4 @@
-<view class="user-list {{showName ? 'show-name' : ''}} {{isFold ? 'fold' : ''}} {{layout === 'stack' ? 'layout-stack' : 'layout-scroll'}} {{isPartnerGameVisual ? 'partner-game' : ''}}">
+<view class="user-list {{showName ? 'show-name' : ''}} {{isFold ? 'fold' : ''}} {{layout === 'stack' ? 'layout-stack' : 'layout-scroll'}} {{compactStack ? 'compact-stack' : ''}} {{isPartnerGameVisual ? 'partner-game' : ''}}">
   <scroll-view
     class="avatar-scroll"
     scroll-x="{{true}}"

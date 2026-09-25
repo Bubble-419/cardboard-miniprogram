@@ -4,6 +4,7 @@
     <player-top-bar
       avatarList="{{avatarList}}"
       maxVisible="{{5}}"
+      compactAvatars="{{true}}"
       bind:goroom="handleGoRoom"
     />
   </view>

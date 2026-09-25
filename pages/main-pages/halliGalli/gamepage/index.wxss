@@ -15,14 +15,8 @@
 /* 固定顶栏：贴页顶，不随内容滚动；状态栏由 player-top-bar.padTop 负责 */
 .topbar-fixed {
   flex-shrink: 0;
-  padding: 0 40rpx;
-}
-
-/* player-top-bar 已自带左右预留，需同时抵消父级左右 padding，否则右侧头像会被胶囊裁切 */
-.topbar-fixed > player-top-bar {
-  margin-left: -40rpx;
-  margin-right: -40rpx;
-  width: calc(100% + 80rpx);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ===== 顶部区（情境） ===== */
