@@ -1609,9 +1609,41 @@ Page(withPageInteractionLock({
       || has(item.discussionImages)
       || has(item.playBlocks)
       || has(item.discussionBlocks)
+      || has(item.closingReviewNotes)
+      || has(item.closingReviewImages)
+      || has(item.closingReviewBlocks)
       || has(item.voiceLines)
       || has(item.turnRecords)
     ));
+  },
+
+  _buildActiveReviewSummary(roomState, roundContent, options = {}) {
+    const points = roomState && roomState.partnerClosingCreativePoints || {};
+    const closingReviewBlocks = normalizeContentBlocks(
+      points.blocks,
+      points.texts,
+      points.images
+    );
+    const closingReviewLists = deriveListsFromBlocks(closingReviewBlocks);
+    const playerIndex = options.playerIndex;
+    const summary = {
+      round: options.currentRound,
+      turnId: options.turnId || '',
+      playerIndex,
+      playerName: options.playerName || `玩家${playerIndex}`,
+      playHistory: roundContent.playHistory,
+      discussionNotes: roundContent.discussionNotes,
+      playImages: roundContent.playImages,
+      discussionImages: roundContent.discussionImages,
+      playBlocks: roundContent.playBlocks,
+      discussionBlocks: roundContent.discussionBlocks,
+      closingReviewNotes: closingReviewLists.texts,
+      closingReviewImages: closingReviewLists.images,
+      closingReviewBlocks,
+      voiceLines: Array.isArray(roundContent.voiceLines) ? roundContent.voiceLines : [],
+      turnRecords: Array.isArray(roundContent.turnRecords) ? roundContent.turnRecords : []
+    };
+    return this._summaryHasContent(summary) ? summary : null;
   },
 
   _resolveCardAvgScore(item, turnAvgLookup) {
@@ -1929,6 +1961,8 @@ Page(withPageInteractionLock({
       discussionImages: resolved.discussionImages,
       playBlocks: resolved.playBlocks,
       discussionBlocks: resolved.discussionBlocks,
+      closingReviewImages: resolved.closingReviewImages,
+      closingReviewBlocks: resolved.closingReviewBlocks,
       privateNote: note
     };
   },
@@ -2372,7 +2406,13 @@ Page(withPageInteractionLock({
         Number(s.round) === Number(currentRound)
         && Number(s.playerIndex) === Number(actingIdx)
       ));
-      if (!already && actingIdx > 0 && this._summaryHasContent(roundContent)) {
+      const activeReviewSummary = this._buildActiveReviewSummary(roomState, roundContent, {
+        currentRound,
+        turnId,
+        playerIndex: actingIdx,
+        playerName: player.currentPlayerName
+      });
+      if (!already && actingIdx > 0 && activeReviewSummary) {
         const lists = this._buildExpressListsForRound(expressMessages, currentRound, currentRound);
         roundSummaries.push(this._attachCardStarStats({
           round: currentRound,
@@ -2384,6 +2424,9 @@ Page(withPageInteractionLock({
           discussionImages: roundContent.discussionImages,
           playBlocks: roundContent.playBlocks,
           discussionBlocks: roundContent.discussionBlocks,
+          closingReviewNotes: activeReviewSummary.closingReviewNotes,
+          closingReviewImages: activeReviewSummary.closingReviewImages,
+          closingReviewBlocks: activeReviewSummary.closingReviewBlocks,
           voiceLines: Array.isArray(roundContent.voiceLines) ? roundContent.voiceLines : [],
           turnRecords: this._decorateTurnRecords(roundContent.turnRecords, members),
           expressChatList: lists.expressChatList,
@@ -3520,7 +3563,13 @@ Page(withPageInteractionLock({
     const item = idx >= 0 ? this.data.displayRoundSummaries[idx] : null;
     const note = item && item.privateNote;
     const urls = note
-      ? [].concat(note.playImages || [], note.discussionImages || [], note.images || [], note.photos || []).filter(Boolean)
+      ? [].concat(
+        note.playImages || [],
+        note.discussionImages || [],
+        item && item.closingReviewImages || [],
+        note.images || [],
+        note.photos || []
+      ).filter(Boolean)
       : [url];
     wx.previewImage({ current: url, urls: urls.length ? urls : [url] });
   },

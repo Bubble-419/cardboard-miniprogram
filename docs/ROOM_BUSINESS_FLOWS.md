@@ -434,6 +434,9 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。若整轮末 `firstMemberId` 被选为 question 回答者，该回答 Turn 直接计入新轮，完成后继续到下一座位。
 排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
+全局回顾按 `turnOrdinal` 展示纪要卡。收尾 Review 已提交的 `CLOSING_RUNE/CLOSING_REVIEW`
+素材进入当前收尾行动者的最后一张纪要卡，并以服务端 `createdAt` 顺序展示“创意复盘”区块；不能归到房主或生成额外的伪轮次。
+
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
 刷新丢失，也不能阻塞后续权威 View 应用。
@@ -444,7 +447,7 @@ Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后�
 手势和动画均属于本地 UI 状态；无关 Event/Snapshot 不得重建输入节点或关闭键盘。
 
 静默模式的录音权限只在进入静默测声时通过运行时授权申请；拒绝后本页不重复弹出授权窗口。
-所有成员都使用本机麦克风判断 40dB 边框效果，房主广播的声级只作为无麦设备的回退，且只有
+当前静默行动者使用本机麦克风判断 40dB 边框效果并广播瞬时声级；其他成员消费同一声级，保持外圈与声音过大提示一致，且只有
 当前特殊行动玩家可以结束静默。
 
 ### 5.2 收尾裁决

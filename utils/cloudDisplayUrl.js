@@ -258,6 +258,7 @@ function collectMediaUrls(roundContent) {
   const src = roundContent || {};
   (src.playImages || []).forEach(push);
   (src.discussionImages || []).forEach(push);
+  (src.closingReviewImages || []).forEach(push);
   (src.images || []).forEach(push);
   const walkBlocks = (blocks) => {
     (blocks || []).forEach((b) => {
@@ -266,6 +267,7 @@ function collectMediaUrls(roundContent) {
   };
   walkBlocks(src.playBlocks);
   walkBlocks(src.discussionBlocks);
+  walkBlocks(src.closingReviewBlocks);
   if (src.privateNote) {
     (src.privateNote.playImages || []).forEach(push);
     (src.privateNote.discussionImages || []).forEach(push);
@@ -293,9 +295,11 @@ async function resolveRoundContentMedia(roundContent, options) {
     ...src,
     playImages: mapList(src.playImages),
     discussionImages: mapList(src.discussionImages),
+    closingReviewImages: mapList(src.closingReviewImages),
     images: mapList(src.images),
     playBlocks: remapImageBlocks(src.playBlocks, urlMap),
     discussionBlocks: remapImageBlocks(src.discussionBlocks, urlMap),
+    closingReviewBlocks: remapImageBlocks(src.closingReviewBlocks, urlMap),
     privateNote: note
       ? {
         ...note,

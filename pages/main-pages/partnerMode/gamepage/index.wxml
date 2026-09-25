@@ -401,6 +401,24 @@
                   </view>
                 </view>
               </view>
+              <block wx:if="{{item.closingReviewBlocks && item.closingReviewBlocks.length}}">
+                <text class="card-section-title card-section-title-gap">创意复盘</text>
+                <view class="card-section-flow">
+                  <block wx:for="{{item.closingReviewBlocks}}" wx:for-item="block" wx:key="key">
+                    <view wx:if="{{block.type === 'text'}}" class="card-bullet">· {{block.text}}</view>
+                    <image
+                      wx:elif="{{block.type === 'image'}}"
+                      class="card-media-thumb card-media-thumb-flow"
+                      src="{{block.url}}"
+                      mode="aspectFill"
+                      data-url="{{block.url}}"
+                      data-round="{{item.round}}"
+                      data-scope="closingReview"
+                      bindtap="onRoundPrivateInsertPreview"
+                    />
+                  </block>
+                </view>
+              </block>
               <text class="card-section-title card-section-title-gap">语音纪要</text>
               <view class="card-bullet-list">
                 <view
