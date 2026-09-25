@@ -149,10 +149,17 @@
 }
 
 .nudge-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding: 0 20rpx 8rpx;
+  box-sizing: border-box;
+  pointer-events: none;
   opacity: 1;
 }
 .nudge-hint-out {

@@ -153,6 +153,8 @@ test('提交问题页模板包含催促按钮、输入框抖动和内联提示',
   );
   const hintRule = wxss.match(/\.nudge-hint\s*\{[\s\S]*?\}/);
   assert.ok(hintRule);
+  assert.match(hintRule[0], /position:\s*absolute;/);
+  assert.match(hintRule[0], /bottom:\s*100%;/);
   assert.match(hintRule[0], /justify-content:\s*flex-end;/);
 });
 
