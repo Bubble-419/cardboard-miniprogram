@@ -7,7 +7,7 @@
 }
 
 /* 静止态：与 Figma #5848:3392 对齐的浅绿描边 */
-.gct-wrap:not(.gct-wrap-timer-on):not(.gct-wrap-expiring):not(.gct-wrap-rainbow):not(.gct-wrap-sound) .gct-inner {
+.gct-wrap:not(.gct-wrap-timer-on):not(.gct-wrap-expiring):not(.gct-wrap-master):not(.gct-wrap-sound) .gct-inner {
   border: 8rpx solid #b0e0ae;
 }
 
@@ -76,32 +76,170 @@
   border-radius: 20rpx;
 }
 
-/* Master：卡片外框彩虹描边（静止/倒计时都用 CSS，不走绿色 canvas） */
-.gct-wrap-rainbow:not(.gct-wrap-expiring) {
-  overflow: hidden;
-  padding: 8rpx;
+/* Master：指挥核心。深绿基底承载青金能量流，四角刻线强调“全局权限”。 */
+.gct-wrap-master:not(.gct-wrap-expiring) {
+  overflow: visible;
   background: linear-gradient(
-    120deg,
-    #ff5a7a 0%,
-    #ffb347 18%,
-    #ffe066 36%,
-    #5ec159 54%,
-    #4fc3f7 72%,
-    #8b7cff 88%,
-    #ff5a7a 100%
+    135deg,
+    #123f3a 0%,
+    #257c68 22%,
+    #5ec159 38%,
+    #d8bd61 50%,
+    #37c4b1 68%,
+    #1b6b61 84%,
+    #123f3a 100%
   );
-  background-size: 240% 240%;
-  animation: gct-rainbow-shift 4.5s linear infinite;
+  background-size: 180% 180%;
+  box-shadow:
+    0 0 0 2rpx rgba(94, 193, 89, 0.32),
+    0 0 22rpx rgba(41, 174, 145, 0.34),
+    0 0 40rpx rgba(216, 189, 97, 0.12);
+  animation: gct-master-core 3.2s ease-in-out infinite;
   box-sizing: border-box;
 }
 
-.gct-wrap-rainbow:not(.gct-wrap-expiring) .gct-inner {
+.gct-wrap-master:not(.gct-wrap-expiring) .gct-inner {
   border: none;
   left: 8rpx;
   top: 8rpx;
   right: 8rpx;
   bottom: 8rpx;
   border-radius: 20rpx;
+  z-index: 3;
+  box-shadow: inset 0 0 0 2rpx rgba(219, 247, 236, 0.72);
+}
+
+.gct-master-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  border-radius: 28rpx;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gct-master-frame::before {
+  content: '';
+  position: absolute;
+  top: -90%;
+  left: -52%;
+  width: 40%;
+  height: 280%;
+  transform: rotate(24deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(120, 238, 213, 0.28) 24%,
+    rgba(255, 232, 151, 0.96) 50%,
+    rgba(120, 238, 213, 0.28) 76%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: gct-master-sweep 3.8s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+.gct-master-frame::after {
+  content: '';
+  position: absolute;
+  left: 7rpx;
+  top: 7rpx;
+  right: 7rpx;
+  bottom: 7rpx;
+  border: 2rpx solid rgba(102, 226, 201, 0.62);
+  border-radius: 21rpx;
+  box-sizing: border-box;
+}
+
+.gct-master-corner {
+  position: absolute;
+  width: 30rpx;
+  height: 30rpx;
+  border-color: #f2d679;
+  border-style: solid;
+  border-width: 0;
+  filter: drop-shadow(0 0 5rpx rgba(242, 214, 121, 0.8));
+  animation: gct-master-corner-pulse 2.4s ease-in-out infinite;
+}
+
+.gct-master-corner::after {
+  content: '';
+  position: absolute;
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background: #fff0b0;
+  box-shadow: 0 0 8rpx rgba(255, 226, 117, 0.9);
+}
+
+.gct-master-corner-tl {
+  left: 3rpx;
+  top: 3rpx;
+  border-left-width: 4rpx;
+  border-top-width: 4rpx;
+  border-radius: 12rpx 0 0 0;
+}
+
+.gct-master-corner-tl::after { left: -5rpx; top: -5rpx; }
+
+.gct-master-corner-tr {
+  right: 3rpx;
+  top: 3rpx;
+  border-right-width: 4rpx;
+  border-top-width: 4rpx;
+  border-radius: 0 12rpx 0 0;
+}
+
+.gct-master-corner-tr::after { right: -5rpx; top: -5rpx; }
+
+.gct-master-corner-br {
+  right: 3rpx;
+  bottom: 3rpx;
+  border-right-width: 4rpx;
+  border-bottom-width: 4rpx;
+  border-radius: 0 0 12rpx 0;
+}
+
+.gct-master-corner-br::after { right: -5rpx; bottom: -5rpx; }
+
+.gct-master-corner-bl {
+  left: 3rpx;
+  bottom: 3rpx;
+  border-left-width: 4rpx;
+  border-bottom-width: 4rpx;
+  border-radius: 0 0 0 12rpx;
+}
+
+.gct-master-corner-bl::after { left: -5rpx; bottom: -5rpx; }
+
+@keyframes gct-master-core {
+  0%, 100% {
+    background-position: 0% 50%;
+    box-shadow:
+      0 0 0 2rpx rgba(94, 193, 89, 0.28),
+      0 0 18rpx rgba(41, 174, 145, 0.28),
+      0 0 32rpx rgba(216, 189, 97, 0.08);
+  }
+  50% {
+    background-position: 100% 50%;
+    box-shadow:
+      0 0 0 2rpx rgba(94, 193, 89, 0.46),
+      0 0 28rpx rgba(41, 174, 145, 0.42),
+      0 0 46rpx rgba(216, 189, 97, 0.16);
+  }
+}
+
+@keyframes gct-master-sweep {
+  0%, 18% { left: -52%; opacity: 0; }
+  26% { opacity: 1; }
+  72% { opacity: 1; }
+  82%, 100% { left: 116%; opacity: 0; }
+}
+
+@keyframes gct-master-corner-pulse {
+  0%, 100% { opacity: 0.68; }
+  50% { opacity: 1; }
 }
 
 /* 静默：浅灰绿基础边框 + 周长渐变光带（canvas），不挤占卡片内容 */
@@ -147,12 +285,6 @@
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 8rpx 24rpx rgba(224, 138, 42, 0.2);
-}
-
-@keyframes gct-rainbow-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
 }
 
 .gct-expire-ring {

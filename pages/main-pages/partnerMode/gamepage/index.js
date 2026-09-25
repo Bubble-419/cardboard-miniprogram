@@ -188,7 +188,7 @@ Page(withPageInteractionLock({
     isMasterMode: false,
     isSilentMode: false,
     specialActionBadge: '',
-    /** default | rainbow | sound — 特殊行动卡片外框，全员同步 */
+    /** default | master | sound — 特殊行动卡片外框，全员同步 */
     cardBorderVariant: '',
     silentSoundLevel: 0,
     closingStep: CLOSING_STEP_RUNE,
@@ -2526,9 +2526,11 @@ Page(withPageInteractionLock({
       isSilentMode: roomState.partnerSilentMode === true,
       specialActionBadge: roomState.partnerMasterMode === true
         ? 'Master模式'
-        : (roomState.partnerSilentMode === true ? '静默模式' : ''),
+        : (roomState.partnerSilentMode === true
+          ? '静默模式'
+          : (roomState.partnerSpecialMoveUsed === 'HELP_LUCK' ? '反面随机拼' : '')),
       cardBorderVariant: roomState.partnerMasterMode === true
-        ? 'rainbow'
+        ? 'master'
         : (roomState.partnerSilentMode === true ? 'sound' : ''),
       silentSoundLevel: roomState.partnerSilentMode === true
         && roomState.partnerSilentSoundLevel != null

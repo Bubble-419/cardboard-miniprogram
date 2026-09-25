@@ -37,7 +37,7 @@
       selectedUser="{{!isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
       indicatorUser="{{indicatorPlayerIndex}}"
       actionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
-      specialMoveActive="{{cardBorderVariant === 'rainbow' || cardBorderVariant === 'sound'}}"
+      specialMoveActive="{{cardBorderVariant === 'master' || cardBorderVariant === 'sound'}}"
       interactive="{{gamepagePhase !== 'closing'}}"
       roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
       roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"

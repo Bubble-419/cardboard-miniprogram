@@ -179,7 +179,7 @@ Component({
       type: Boolean,
       value: false
     },
-    /** default | rainbow | sound */
+    /** default | master | sound */
     borderVariant: {
       type: String,
       value: ''
@@ -561,7 +561,7 @@ Component({
     },
 
     _useCssBorder() {
-      return this.properties.borderVariant === 'rainbow';
+      return this.properties.borderVariant === 'master';
     },
 
     _syncSoundVisual() {

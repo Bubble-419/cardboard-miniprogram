@@ -1,14 +1,24 @@
-<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}} {{suppressCanvas && displayMode === 'timer' ? 'gct-wrap-suppressed' : ''}} {{borderVariant === 'rainbow' ? 'gct-wrap-rainbow' : ''}} {{borderVariant === 'sound' ? 'gct-wrap-sound' : ''}}">
+<view class="gct-wrap {{displayMode === 'timer' ? 'gct-wrap-timer-on' : ''}} {{displayMode === 'expiring' ? 'gct-wrap-expiring' : ''}} {{suppressCanvas && displayMode === 'timer' ? 'gct-wrap-suppressed' : ''}} {{borderVariant === 'master' ? 'gct-wrap-master' : ''}} {{borderVariant === 'sound' ? 'gct-wrap-sound' : ''}}">
   <canvas
-    wx:if="{{displayMode === 'timer' && !suppressCanvas && borderVariant !== 'rainbow' && borderVariant !== 'sound'}}"
+    wx:if="{{displayMode === 'timer' && !suppressCanvas && borderVariant !== 'master' && borderVariant !== 'sound'}}"
     type="2d"
     id="gctCanvas"
     class="gct-canvas {{borderVisible ? 'gct-canvas-visible' : ''}}"
   ></canvas>
   <view
-    wx:elif="{{displayMode === 'timer' && suppressCanvas && borderVariant !== 'rainbow' && borderVariant !== 'sound'}}"
+    wx:elif="{{displayMode === 'timer' && suppressCanvas && borderVariant !== 'master' && borderVariant !== 'sound'}}"
     class="gct-canvas-placeholder"
   ></view>
+  <view
+    wx:if="{{borderVariant === 'master' && displayMode !== 'expiring'}}"
+    class="gct-master-frame"
+    aria-hidden="true"
+  >
+    <view class="gct-master-corner gct-master-corner-tl"></view>
+    <view class="gct-master-corner gct-master-corner-tr"></view>
+    <view class="gct-master-corner gct-master-corner-br"></view>
+    <view class="gct-master-corner gct-master-corner-bl"></view>
+  </view>
   <canvas
     wx:if="{{borderVariant === 'sound' && displayMode !== 'expiring'}}"
     type="2d"

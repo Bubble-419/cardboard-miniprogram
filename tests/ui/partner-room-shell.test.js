@@ -416,6 +416,20 @@ test('静默特殊行动让其他玩家留在游戏卡片并保留打分资格 U
   assert.equal(page.data.starRatingCollapsed, false);
 });
 
+test('反面随机拼提交后非出牌玩家同步显示特殊行动标签', async () => {
+  const page = makeGamePage();
+  const snapshot = nonCurrentPlayerGameSnapshot(false, 23);
+  snapshot.roomState.partnerSpecialMoveUsed = 'HELP_LUCK';
+
+  const applied = page._applyRoomContext(snapshot);
+  await applied.applied;
+
+  assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.GAME);
+  assert.equal(page.data.isCurrentPlayer, false);
+  assert.equal(page.data.specialActionBadge, '反面随机拼');
+  assert.equal(page.data.starRatingCollapsed, false);
+});
+
 test('静默音量 Signal 在相同业务指纹下窄刷卡片效果', async () => {
   const page = makeGamePage();
   const first = gameSnapshot(22);
