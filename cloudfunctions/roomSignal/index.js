@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 6;
-    var VIEW_SCHEMA_VERSION = 10;
+    var VIEW_SCHEMA_VERSION = 11;
     var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -932,7 +932,7 @@ var require_model = __commonJS({
         avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
         color: member.profile.color
       }));
-      const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : WORKFLOW_STEP.CHOOSE_SCENARIO;
+      const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : mode === MODE.GAN_DENG_YAN ? WORKFLOW_STEP.SELECT_FIRST_PLAYER : WORKFLOW_STEP.CHOOSE_SCENARIO;
       const session = {
         sessionId: idOf(deps, "session"),
         ordinal,
@@ -2697,7 +2697,7 @@ var require_room_domain = __commonJS({
         steps: WORKFLOW_GROUPS.SCENARIO_CONFIG
       });
       if (!check.ok) return check;
-      if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
+      if ([MODE.SPY, MODE.GAN_DENG_YAN].includes(check.session.mode)) return fail(ERR.INVALID_TRANSITION);
       const normalized = normalizeScenario(command.payload, check.session.mode);
       if (!normalized.ok) return normalized;
       const dirtyFacts = [];
@@ -2892,7 +2892,7 @@ var require_room_domain = __commonJS({
         steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
       });
       if (!check.ok) return check;
-      if (check.session.mode !== MODE.PARTNER && !isHalliLikeMode(check.session.mode)) {
+      if (check.session.mode !== MODE.PARTNER && check.session.mode !== MODE.HALLI_GALLI) {
         return fail(ERR.INVALID_TRANSITION);
       }
       const dirtyFacts = [];
@@ -2951,8 +2951,8 @@ var require_room_domain = __commonJS({
       }
       const oldSelectedProblem = old.setup.selectedProblemId ? Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === old.sessionId && row.contributionId === old.setup.selectedProblemId) : null;
       const setup = {
-        scenarioSource: old.setup.scenarioSource,
-        scenario: old.setup.scenario,
+        scenarioSource: old.mode === MODE.GAN_DENG_YAN ? null : old.setup.scenarioSource,
+        scenario: old.mode === MODE.GAN_DENG_YAN ? null : old.setup.scenario,
         selectedProblemId: old.setup.selectedProblemId,
         proposedFirstMemberId: old.setup.proposedFirstMemberId
       };
@@ -3427,7 +3427,7 @@ var require_room_projection = __commonJS({
       );
       caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? "INVALID_TRANSITION" : "HOST_REQUIRED");
       caps[COMMAND_TYPES.SET_SCENARIO] = capability(
-        isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
+        isHost && session && session.mode !== MODE.GAN_DENG_YAN && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
         "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, "INVALID_TRANSITION");
@@ -3447,7 +3447,7 @@ var require_room_projection = __commonJS({
         "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
-        isHost && session && (session.mode === MODE.PARTNER || isHalliLikeMode(session.mode)) && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
+        isHost && session && (session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI) && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
         "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.CANCEL_WORKSHOP_SESSION] = capability(isHost && !!session && ![SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(session.status), "INVALID_TRANSITION");
@@ -3608,6 +3608,9 @@ var require_room_projection = __commonJS({
         return { back: commandBack(COMMAND_TYPES.RESET_SCENARIO) };
       }
       if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) {
+        if (session.mode === MODE.GAN_DENG_YAN) {
+          return { back: commandBack(COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, "OPEN_MODE_PICKER") };
+        }
         const hasSelectedProblem = session.mode === MODE.PARTNER && !!session.setup.selectedProblemId;
         return { back: commandBack(hasSelectedProblem ? COMMAND_TYPES.RESET_DESIGN_PROBLEM : COMMAND_TYPES.RESET_SCENARIO) };
       }

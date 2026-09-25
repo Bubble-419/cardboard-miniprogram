@@ -30,6 +30,7 @@ Page(withPageInteractionLock({
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     isHost: false,
+    isGanDengYan: false,
     selectedBG: null,
     stepImgDeal: halliStepSrc('deal'),
     stepImgFlip: halliStepSrc('flip'),
@@ -97,6 +98,7 @@ Page(withPageInteractionLock({
       currentPlayerIndex,
       currentPlayerName: current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`,
       isHost: result.isHost === true,
+      isGanDengYan: (result.selectedModeId || roomState.selectedModeId) === 'ganDengYan',
       selectedBG: result.selectedBG || roomState.selectedBG || null
     });
   },

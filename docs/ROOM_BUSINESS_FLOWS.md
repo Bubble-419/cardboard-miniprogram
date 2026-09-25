@@ -298,8 +298,10 @@ flowchart TD
 
   LOBBY -->|BEGIN_MODE_SELECTION| PICK
   PICK -->|CANCEL_MODE_SELECTION| LOBBY
-  PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_H
-  PICK -->|START_WORKSHOP_SESSION Partner/Halli/Gan Deng Yan| CHOOSE_P
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_H
+  PICK -->|START_WORKSHOP_SESSION Partner/Halli| CHOOSE_P
+  PICK -->|START_WORKSHOP_SESSION Gan Deng Yan| SELECT_FIRST_H
+  PICK -->|START_WORKSHOP_SESSION Gan Deng Yan| SELECT_FIRST_P
   PICK -->|START_WORKSHOP_SESSION Spy| SPY
   CHOOSE_H -->|SET_SCENARIO Partner 非 OFFLINE| COLLECT
   CHOOSE_P -. Event / Snapshot .-> COLLECT
@@ -314,13 +316,13 @@ flowchart TD
   CONFIRM_H -->|CONFIRM_FIRST_PLAYER| PARTNER
   CONFIRM_P -. Event / Snapshot .-> PARTNER
   CHOOSE_H -->|SET_SCENARIO Partner OFFLINE| SELECT_FIRST_H
-  CHOOSE_H -->|SET_SCENARIO Halli / Gan Deng Yan 任意来源| SELECT_FIRST_H
+  CHOOSE_H -->|SET_SCENARIO Halli 任意来源| SELECT_FIRST_H
   SELECT_FIRST_H -->|SELECT_FIRST_PLAYER Halli / Gan Deng Yan| HALLI
 ```
 
 | 页面操作 | Command | 业务状态变化 |
 |---|---|---|
-| 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli / Gan Deng Yan→选首位 |
+| 情境卡箭头 / 自定义情境确认 | `SET_SCENARIO` | Partner 非线下→收集问题；Partner 线下→选首位；Halli→选首位；Gan Deng Yan 不进入情境配置 |
 | “确认问题” | `SUBMIT_DESIGN_PROBLEM` | 最后一人提交时自动进入选择问题 |
 | 已提交者“催促其他人” | `roomSignal` `DESIGN_PROBLEM_NUDGE` | 不改变业务状态；未提交者输入框抖动，并在框下方显示「小伙伴在催你提交啦」，3 秒后淡出。按钮立刻变灰，本地与服务端同一成员冷却 15 秒 |
 | Host 开始/结束编辑问题 | `roomSignal` `DESIGN_PROBLEM_EDITING` | 不改变业务状态；绑定当前 `sessionId + workflowRevision`，value 为正在编辑的 `contributionId`，清空即结束。Player 通过 2 秒 idle Sync 的 ephemeral 更新 Member View，并在对应条目显示「房主编辑中…」，不依赖 Event |
@@ -329,7 +331,7 @@ flowchart TD
 | “跳过”或抽取后“确认” | `SELECT_FIRST_PLAYER` | Partner→确认首位；Halli / Gan Deng Yan→活动开始 |
 | Partner “开始脑暴” | `CONFIRM_FIRST_PLAYER` | 创建首个 Turn，进入运行态 |
 | Host 从确认首位点“上一页” | `RESET_FIRST_PLAYER` | 清掉拟定首位，回到 `SELECT_FIRST_PLAYER`；Host 回 `selectPlayer`，Player 回 `subAwait?scene=player` |
-| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM` 或 `RESET_SCENARIO` | Partner 已选问题时回选问题；Partner 线下、Halli 或 Gan Deng Yan 回选情境。副屏等待态没有上一页 |
+| Host 从选首位页“上一页” | `RESET_DESIGN_PROBLEM`、`RESET_SCENARIO` 或 `CANCEL_WORKSHOP_SESSION` | Partner 已选问题时回选问题；Partner 线下或 Halli 回选情境；Gan Deng Yan 取消本场并回模式选择。副屏等待态没有上一页 |
 | Host 从选问题页执行协议后退 | `RESET_SCENARIO` | 清空旧情境、问题 Facts、选择和进度，回 `CHOOSE_SCENARIO`；当前页面未展示该按钮 |
 | Host 从模式选择页点“上一页”或回房间 | `CANCEL_MODE_SELECTION` | Host 与 Player 一起回 `addPlayer` 大厅 |
 | Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 回权威 `brainstormMode?isHost=1`，Player 回空状态等待页 |
@@ -338,7 +340,7 @@ flowchart TD
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。
 
-Player 的 `CHOOSE_SCENARIO → SELECT_FIRST_PLAYER` 使用稳定 `selectPlayer` Setup Shell：完整 Member
+Player 的 `CHOOSE_SCENARIO → SELECT_FIRST_PLAYER`（Gan Deng Yan 从 `SELECT_FIRST_PLAYER` 开始）使用稳定 `selectPlayer` Setup Shell：完整 Member
 View 将 `subAwait?scene=bg/player` 投影成受控 `waiting` 组件，Host 的 `selectPlayer` Route 投影成
 `selector`。首次进入时保持无交互加载态，不按 URL 猜测 Host/Player 屏幕；同路径变化只更新 Shell
 Model，不调用微信导航；进入其他流程页面时先冻结触摸与计时，再交还全局导航协调器。
@@ -480,7 +482,8 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  SCENE[CHOOSE_SCENARIO<br/>Host: modeIndex]
+  START{模式}
+  SCENE[CHOOSE_SCENARIO<br/>仅 Halli；Host: modeIndex]
   FIRST[SELECT_FIRST_PLAYER<br/>Host: selectPlayer]
   ACTIVITY[HALLI_ACTIVITY<br/>全员: halliGame]
   INPUT[HALLI_CREATIVE<br/>未提交: creativeInput]
@@ -491,6 +494,8 @@ flowchart LR
   REPLAY[新 Session<br/>SELECT_FIRST_PLAYER]
   LOBBY[大厅<br/>addPlayer]
 
+  START -->|Halli| SCENE
+  START -->|Gan Deng Yan| FIRST
   SCENE -->|SET_SCENARIO| FIRST
   FIRST -->|SELECT_FIRST_PLAYER| ACTIVITY
   ACTIVITY -->|Host“结束游戏”<br/>END_HALLI_ACTIVITY| INPUT
@@ -511,7 +516,7 @@ V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结�
 线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 回到自己的输入页，修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
 
 干瞪眼以独立协议模式 `GAN_DENG_YAN`（客户端 modeId 为 `ganDengYan`）存在。首版 baseline
-完整复用本节流程与页面：选择情境、选择首位玩家、线下活动、全员提交创意、汇总、完成与重玩；
+选择模式后直接进入选择首位玩家，不创建、展示或回退到情境；随后复用本节的线下活动、全员提交创意、汇总、完成与重玩流程；
 其 Session 和历史记录仍保留独立模式值。模式选择页按产品卡牌类型分组：组件卡依次为
 “干瞪眼模式、创意合伙人”，模板卡依次为“谁是卧底模式、德国心脏病模式”。
 
@@ -610,7 +615,8 @@ flowchart TD
   REPLAY[REPLAY_WORKSHOP_SESSION]
   LOBBY[Room OPEN<br/>currentSessionId = null<br/>route: addPlayer]
   P[Partner 新 Session<br/>复用情境/问题/首位<br/>直接 PARTNER_TURN]
-  H[Halli / Gan Deng Yan 新 Session<br/>复用情境<br/>SELECT_FIRST_PLAYER]
+  H[Halli 新 Session<br/>复用情境<br/>SELECT_FIRST_PLAYER]
+  G[Gan Deng Yan 新 Session<br/>不含情境<br/>SELECT_FIRST_PLAYER]
   S[Spy 新 Session<br/>SPY_INTRO]
   HISTORY[History / Session / Leaderboard]
 
@@ -618,6 +624,7 @@ flowchart TD
   DONE --> REPLAY
   REPLAY --> P
   REPLAY --> H
+  REPLAY --> G
   REPLAY --> S
   DONE --> HISTORY
 ```

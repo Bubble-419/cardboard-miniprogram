@@ -201,7 +201,7 @@ flowchart TD
 | R4 | Partner 评分并发 | 不漏分、不重复计数；最后一分后可进入 Statement |
 | R5 | Partner 四种特殊行动与收尾两种票型 | 路由、Turn 归档、Rune/Review/Question 分支正确 |
 | R6 | Halli 全员创意与投稿者离开 | required 集合同步缩减；可进入汇总并完成 |
-| R6a | Gan Deng Yan baseline 完整流程 | 独立模式值，按 Halli baseline 完成情境、首位、活动、创意、汇总与重玩 |
+| R6a | Gan Deng Yan baseline 完整流程 | 独立模式值，跳过情境并按 Halli baseline 完成首位、活动、创意、汇总与重玩 |
 | R7 | Spy 分牌、发言、弃票、平票、淘汰、两侧胜负 | 结算前其他成员和公共事件无秘密 |
 | R8 | 行动者/投票者中途离开 | 同一提交内缩减 required/submitted；旧票不参与当前裁决；推进或结算正确 |
 | R9 | 前后台切换、Event 人为过期/缺口、积压超过 25 条 | 恢复时直接 Snapshot；Sync 在同一响应内交付 Snapshot；页面状态可完整还原 |

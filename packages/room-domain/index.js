@@ -221,7 +221,7 @@ function setScenario(aggregate, command, actorUserId, deps) {
   const check = assertSession(aggregate, command.context, {
     steps: WORKFLOW_GROUPS.SCENARIO_CONFIG
   }); if (!check.ok) return check;
-  if (check.session.mode === MODE.SPY) return fail(ERR.INVALID_TRANSITION);
+  if ([MODE.SPY, MODE.GAN_DENG_YAN].includes(check.session.mode)) return fail(ERR.INVALID_TRANSITION);
   const normalized = normalizeScenario(command.payload, check.session.mode); if (!normalized.ok) return normalized;
   const dirtyFacts = [];
   // 配置页允许显式返回修改情境；旧问题必须原子清除，不能与新情境混用。
@@ -389,7 +389,7 @@ function resetScenario(aggregate, command, actorUserId, deps) {
     steps: [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER]
   });
   if (!check.ok) return check;
-  if (check.session.mode !== MODE.PARTNER && !isHalliLikeMode(check.session.mode)) {
+  if (check.session.mode !== MODE.PARTNER && check.session.mode !== MODE.HALLI_GALLI) {
     return fail(ERR.INVALID_TRANSITION);
   }
   const dirtyFacts = [];
@@ -444,7 +444,8 @@ function replaySession(aggregate, command, actorUserId, deps) {
     ? Object.values(ensureFacts(aggregate).contributions).find((row) => row.sessionId === old.sessionId
       && row.contributionId === old.setup.selectedProblemId)
     : null;
-  const setup = { scenarioSource: old.setup.scenarioSource, scenario: old.setup.scenario,
+  const setup = { scenarioSource: old.mode === MODE.GAN_DENG_YAN ? null : old.setup.scenarioSource,
+    scenario: old.mode === MODE.GAN_DENG_YAN ? null : old.setup.scenario,
     selectedProblemId: old.setup.selectedProblemId, proposedFirstMemberId: old.setup.proposedFirstMemberId };
   aggregate.archivedSession = old;
   aggregate.archivedFacts = clone(ensureFacts(aggregate));

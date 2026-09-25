@@ -481,11 +481,12 @@ stateDiagram-v2
 flowchart TD
   START[START_WORKSHOP_SESSION] --> MODE{mode}
   MODE -->|Spy| SI[SPY_INTRO]
-  MODE -->|Partner/Halli/Gan Deng Yan| CS[CHOOSE_SCENARIO]
+  MODE -->|Partner/Halli| CS[CHOOSE_SCENARIO]
+  MODE -->|Gan Deng Yan| FIRST[SELECT_FIRST_PLAYER]
   CS --> SRC{情境来源}
   SRC -->|Partner 且非 OFFLINE| COLLECT[COLLECT_DESIGN_PROBLEMS]
   COLLECT --> SELECT[SELECT_DESIGN_PROBLEM]
-  SRC -->|Partner OFFLINE / Halli / Gan Deng Yan| FIRST[SELECT_FIRST_PLAYER]
+  SRC -->|Partner OFFLINE / Halli| FIRST
   SELECT --> FIRST
   FIRST -->|RESET_DESIGN_PROBLEM| SELECT
   FIRST -->|Partner| CONFIRM[CONFIRM_FIRST_PLAYER]
@@ -540,7 +541,8 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-  [*] --> CHOOSE_SCENARIO
+  [*] --> CHOOSE_SCENARIO: Halli Galli
+  [*] --> SELECT_FIRST_PLAYER: Gan Deng Yan
   CHOOSE_SCENARIO --> SELECT_FIRST_PLAYER: SET_SCENARIO
   SELECT_FIRST_PLAYER --> HALLI_ACTIVITY: SELECT_FIRST_PLAYER
   HALLI_ACTIVITY --> HALLI_CREATIVE: END_HALLI_ACTIVITY
@@ -557,7 +559,8 @@ Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
 `creativeInput`；断线恢复后仍可从 Snapshot 还原编辑页和已提交文本。
 
 Gan Deng Yan 使用独立的 `GAN_DENG_YAN` 模式值和客户端 `ganDengYan` modeId。首版 baseline
-复用上述 `HALLI_*` Workflow、Command、Route 与创意事实结构，因此可以独立识别、恢复和重玩，
+跳过 `CHOOSE_SCENARIO`，从 `SELECT_FIRST_PLAYER` 开始；活动页不展示情境格，也不使用依赖情境的规则文案。
+其后复用上述 `HALLI_*` Workflow、Command、Route 与创意事实结构，因此可以独立识别、恢复和重玩，
 但暂不复制一套同构状态机；后续规则分化时再新增专属步骤和 Command。
 
 Spy 的 `START_NEXT_SPY_ROUND` 在无淘汰时重新洗牌；有淘汰时则保留上轮发言顺序，

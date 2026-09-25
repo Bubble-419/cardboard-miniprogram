@@ -11,7 +11,7 @@
   <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
 
     <!-- 情境格子 -->
-    <view class="header-section">
+    <view class="header-section" wx:if="{{!isGanDengYan}}">
       <context-display bg="{{selectedBG}}" />
     </view>
 
@@ -75,7 +75,7 @@
               <image class="step-img" src="{{stepImgPlay}}" data-key="play" binderror="onStepImgError" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">出牌</text>
-                <text class="step-desc">说明如何与情境信息结合</text>
+                <text class="step-desc">{{isGanDengYan ? '说明卡牌组合产生的想法' : '说明如何与情境信息结合'}}</text>
               </view>
             </view>
             <view class="step-badge"><text class="step-num">4</text></view>

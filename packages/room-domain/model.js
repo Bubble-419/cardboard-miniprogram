@@ -226,7 +226,11 @@ function newSession(aggregate, mode, copiedSetup, deps) {
     avatarIndex: member.profile.avatarIndex == null ? null : member.profile.avatarIndex,
     color: member.profile.color
   }));
-  const step = mode === MODE.SPY ? WORKFLOW_STEP.SPY_INTRO : WORKFLOW_STEP.CHOOSE_SCENARIO;
+  const step = mode === MODE.SPY
+    ? WORKFLOW_STEP.SPY_INTRO
+    : (mode === MODE.GAN_DENG_YAN
+      ? WORKFLOW_STEP.SELECT_FIRST_PLAYER
+      : WORKFLOW_STEP.CHOOSE_SCENARIO);
   const session = {
     sessionId: idOf(deps, 'session'), ordinal, status: SESSION_STATUS.CONFIGURING, mode, participants,
     setup: { scenarioSource: null, scenario: null, selectedProblemId: null, proposedFirstMemberId: null, ...(clone(copiedSetup) || {}) },

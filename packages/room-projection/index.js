@@ -320,7 +320,8 @@ function projectCapabilities(aggregate, actor) {
   );
   caps[COMMAND_TYPES.START_WORKSHOP_SESSION] = capability(isHost && !session, isHost ? 'INVALID_TRANSITION' : 'HOST_REQUIRED');
   caps[COMMAND_TYPES.SET_SCENARIO] = capability(
-    isHost && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
+    isHost && session && session.mode !== MODE.GAN_DENG_YAN
+      && WORKFLOW_GROUPS.SCENARIO_CONFIG.includes(step),
     'INVALID_TRANSITION'
   );
   caps[COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM] = capability(isParticipant && step === WORKFLOW_STEP.COLLECT_DESIGN_PROBLEMS, 'INVALID_TRANSITION');
@@ -341,7 +342,7 @@ function projectCapabilities(aggregate, actor) {
     'INVALID_TRANSITION'
   );
   caps[COMMAND_TYPES.RESET_SCENARIO] = capability(
-    isHost && session && (session.mode === MODE.PARTNER || isHalliLikeMode(session.mode))
+    isHost && session && (session.mode === MODE.PARTNER || session.mode === MODE.HALLI_GALLI)
       && [WORKFLOW_STEP.SELECT_DESIGN_PROBLEM, WORKFLOW_STEP.SELECT_FIRST_PLAYER].includes(step),
     'INVALID_TRANSITION'
   );
@@ -522,6 +523,9 @@ function projectNavigation(aggregate, actorView) {
     return { back: commandBack(COMMAND_TYPES.RESET_SCENARIO) };
   }
   if (step === WORKFLOW_STEP.SELECT_FIRST_PLAYER) {
+    if (session.mode === MODE.GAN_DENG_YAN) {
+      return { back: commandBack(COMMAND_TYPES.CANCEL_WORKSHOP_SESSION, 'OPEN_MODE_PICKER') };
+    }
     const hasSelectedProblem = session.mode === MODE.PARTNER && !!session.setup.selectedProblemId;
     return { back: commandBack(hasSelectedProblem
       ? COMMAND_TYPES.RESET_DESIGN_PROBLEM

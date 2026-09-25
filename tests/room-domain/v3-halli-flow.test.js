@@ -42,7 +42,7 @@ test('Halli 从情境、首位、线下活动、全员创意到汇总和完成',
   assert.equal(reopenCompleted.errCode, 'INVALID_TRANSITION');
 });
 
-test('干瞪眼 baseline 复用 Halli 的情境、线下活动、创意与汇总流程', async () => {
+test('干瞪眼跳过情境设置并复用 Halli 的线下活动、创意与汇总流程', async () => {
   const h = createHarness();
   await h.seedMembers(2);
   const started = await h.command('host', 'START_WORKSHOP_SESSION', {
@@ -51,15 +51,24 @@ test('干瞪眼 baseline 复用 Halli 的情境、线下活动、创意与汇总
   assert.equal(started.ok, true);
   let snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.mode, 'GAN_DENG_YAN');
-  assert.equal(snapshot.view.route.name, 'modeIndex');
-  assert.equal(snapshot.view.route.params.modeId, 'ganDengYan');
+  assert.equal(snapshot.view.session.workflow.step, 'SELECT_FIRST_PLAYER');
+  assert.equal(snapshot.view.route.name, 'selectPlayer');
+  assert.equal(snapshot.view.session.setup.scenario, null);
+  assert.equal(snapshot.view.actor.capabilities.SET_SCENARIO.allowed, false);
+  assert.equal(snapshot.view.actor.capabilities.RESET_SCENARIO.allowed, false);
+  assert.equal(snapshot.view.navigation.back.commandType, 'CANCEL_WORKSHOP_SESSION');
+  const playerSnapshot = await h.snapshot('u2');
+  assert.deepEqual(playerSnapshot.view.route, {
+    name: 'subAwait',
+    params: { phase: 'SELECT_FIRST_PLAYER', scene: 'player' }
+  });
   const sessionId = snapshot.view.session.sessionId;
 
-  await h.command('host', 'SET_SCENARIO', {
-    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
+  const scenarioAttempt = await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
     payload: { source: 'OFFLINE' }
   });
-  snapshot = await h.snapshot('host');
+  assert.equal(scenarioAttempt.errCode, 'INVALID_TRANSITION');
   await h.command('host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
     payload: { memberId: snapshot.view.actor.memberId }
@@ -85,6 +94,15 @@ test('干瞪眼 baseline 复用 Halli 的情境、线下活动、创意与汇总
   snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.status, 'COMPLETED');
   assert.equal(snapshot.view.session.result.mode, 'GAN_DENG_YAN');
+
+  const replay = await h.command('host', 'REPLAY_WORKSHOP_SESSION', { context: { sessionId } });
+  assert.equal(replay.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.notEqual(snapshot.view.session.sessionId, sessionId);
+  assert.equal(snapshot.view.session.workflow.step, 'SELECT_FIRST_PLAYER');
+  assert.equal(snapshot.view.session.setup.scenarioSource, null);
+  assert.equal(snapshot.view.session.setup.scenario, null);
+  assert.equal(snapshot.view.route.name, 'selectPlayer');
 });
 
 test('Halli 已提交成员可在收集期和汇总期返回修改自己的创意', async () => {

@@ -159,12 +159,8 @@ test('E2E 干瞪眼 baseline：每个阶段的 Event 与 Snapshot 保持等价',
   }, viewers);
   const sessionId = state.snapshot.view.session.sessionId;
   assert.equal(state.snapshot.view.session.mode, 'GAN_DENG_YAN');
-  assert.equal(state.snapshot.view.route.params.modeId, 'ganDengYan');
-
-  state = await executeAndReduce(h, 'host', 'SET_SCENARIO', {
-    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' },
-    payload: { source: 'OFFLINE' }
-  }, viewers);
+  assertScreen(state.snapshot, 'SELECT_FIRST_PLAYER', 'selectPlayer');
+  assert.equal(state.snapshot.view.session.setup.scenario, null);
   state = await executeAndReduce(h, 'host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
     payload: { memberId: state.snapshot.view.actor.memberId }

@@ -63,7 +63,7 @@ _Avoid_: 当前场次、房间历史快照
 **模式（Mode）**
 
 工作坊场次采用的规则集合，当前包括 Partner、Gan Deng Yan、Spy 和 Halli Galli。Gan Deng Yan
-首版拥有独立模式标识，但复用 Halli Galli 的配置、线下活动、创意提交与汇总状态机作为 baseline。
+首版拥有独立模式标识，跳过情境配置，并复用 Halli Galli 的首位选择、线下活动、创意提交与汇总状态机作为 baseline。
 
 _Avoid_: 页面、流程步骤
 

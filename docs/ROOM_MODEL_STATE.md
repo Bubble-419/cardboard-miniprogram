@@ -246,7 +246,8 @@ result.ideaCount
 ### Gan Deng Yan
 
 `GAN_DENG_YAN` 是独立的持久化与 Member View 模式值。baseline 暂时与 Halli Galli 共用
-`modeState.halli`、`HALLI_*` Workflow、`HALLI_IDEA` Contribution 和同一组完成/重玩不变量；
+`modeState.halli`、`HALLI_*` Workflow、`HALLI_IDEA` Contribution 和同一组完成/重玩不变量，
+但新场次直接从 `SELECT_FIRST_PLAYER` 开始，`setup.scenarioSource/scenario` 保持为空；
 模式值始终保留为 `GAN_DENG_YAN`，避免未来拆分规则时无法区分历史场次。
 
 ### Spy
