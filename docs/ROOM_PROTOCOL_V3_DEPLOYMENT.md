@@ -120,7 +120,7 @@ flowchart LR
 - `roomV3Sessions`、`roomV3Events`、`roomV3Actions` 均不开放客户端读权限；其中包含私密事实或成员投影。
 - 日志不得输出 openid、Spy 词语/身份、投票明细、消息或素材正文。
 - `roomMedia` 生成二维码前通过 Member Snapshot 鉴权；强制刷新仅 Host。
-- `roomSignal` 只接受已登记类型：静默声贝须绑定当前 session/turn 且 Silent 未过期，仅房主可写（各端边框以本机麦克风为准，该信号只给无麦端回退）；设计问题催促须在 `COLLECT_DESIGN_PROBLEMS` 且调用者已提交；设计问题编辑态须在 `SELECT_DESIGN_PROBLEM` 且仅房主可写。
+- `roomSignal` 只接受已登记类型：静默声贝须绑定当前 session/turn 且 Silent 未过期，仅当前静默行动者可写，其他玩家消费同一信号展示一致的声浪边框和声音过大提示；设计问题催促须在 `COLLECT_DESIGN_PROBLEMS` 且调用者已提交；设计问题编辑态须在 `SELECT_DESIGN_PROBLEM` 且仅房主可写。
 
 ## 5. 构建与部署顺序
 

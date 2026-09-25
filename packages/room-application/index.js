@@ -235,7 +235,7 @@ function createRoomApplication(repo, options) {
     const turn = session.modeState && session.modeState.partner && session.modeState.partner.activeTurn;
     if (session.mode !== 'PARTNER' || !turn || !turn.silentDeadlineAt) return null;
     return { sessionId: session.sessionId, turnId: turn.turnId,
-      memberId: aggregate.room.hostMemberId, deadlineAt: turn.silentDeadlineAt };
+      memberId: turn.activeMemberId, deadlineAt: turn.silentDeadlineAt };
   }
 
   function signalScope(aggregate) {

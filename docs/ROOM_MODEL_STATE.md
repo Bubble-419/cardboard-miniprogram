@@ -75,7 +75,7 @@ Room
 ├── currentSessionId
 ├── modeSelectionActive     # 无活跃 Session 时，Host 正在选择模式
 ├── sessionOrdinal
-├── signalScope             # 当前 Silent 的轻量事务令牌（memberId 为房主）或 null
+├── signalScope             # 当前 Silent 的轻量事务令牌（memberId 为当前行动者）或 null
 └── createdAt / updatedAt
 ```
 
@@ -415,7 +415,7 @@ erDiagram
 | `roomV3Events` | 每个 Command 一个 Event Group | 高频 Sync 按 `roomId + seq` 顺序读取 |
 | `roomV3Messages` | Partner 消息分页索引 | 历史分页；权威消息仍在 Session Facts |
 | `roomV3Presence` | 设备在线租约；按 `roomId + lastSeenAt` 在数据库内过滤有效窗口 | Snapshot 与降频后的最终 Sync ephemeral 投影 |
-| `roomV3Signals` | 一个 `hash(roomId:PUBLIC_SIGNALS)` 文档保存三种可丢失公开信号槽位（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默行动者在特殊行动页以本机麦克风驱动边框；其他成员留在游戏卡片页，显示静默徽标和声浪边框并保留匿名表达与打分。`PARTNER_SILENT_SOUND` 仍仅房主可写，存在时作为共享瞬时声级 | 一次点读完成 ephemeral 投影；独立凭证负责服务端限流 |
+| `roomV3Signals` | 一个 `hash(roomId:PUBLIC_SIGNALS)` 文档保存三种可丢失公开信号槽位（`PARTNER_SILENT_SOUND`、`DESIGN_PROBLEM_NUDGE`、`DESIGN_PROBLEM_EDITING`）；设计问题催促的成员级冷却凭证按 Session + Member 点写且不投影。静默行动者在特殊行动页以本机麦克风驱动边框并广播瞬时声级；其他成员留在游戏卡片页，显示相同的静默徽标、声浪边框和声音过大提示，同时保留匿名表达与打分。`PARTNER_SILENT_SOUND` 仅当前静默行动者可写 | 一次点读完成 ephemeral 投影；独立凭证负责服务端限流 |
 | `roomV3Media` | 二维码等可再生文件引用 | 媒体查询 |
 
 ```mermaid

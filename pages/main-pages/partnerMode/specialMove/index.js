@@ -954,7 +954,7 @@ Page(withPageInteractionLock({
           if (Math.abs(smooth - (this.data.soundLevel || 0)) > 0.01) {
             this.setData({ soundLevel: smooth });
           }
-          if (this.data.isHost) this._broadcastSilentSoundLevel(smooth);
+          this._broadcastSilentSoundLevel(smooth);
         } catch (e) {
           // ignore PCM parse errors
         }

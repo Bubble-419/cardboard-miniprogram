@@ -634,7 +634,7 @@ flowchart TD
 | 能力 | 归属 | 是否推进业务 seq |
 |---|---|:---:|
 | Presence 续租 | 任意已鉴权房间协议携带 `clientContext`，写 `roomV3Presence` | 否 |
-| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/host member/deadline；仅房主可写。边框以各端本地麦克风为准，该 signal 只给无麦端回退 | 否 |
+| Partner 静默声贝 | `roomSignal` + `roomV3Signals`，事务校验 Room.signalScope 的 session/turn/active member/deadline；仅当前静默行动者可写。行动者以本机麦克风驱动边框并广播声级，其他玩家消费同一 signal，保持声浪外圈与声音过大提示一致 | 否 |
 | 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；房间级最新信号供客户端投影，Session + Member 级冷却凭证保证同一成员 15 秒内幂等 | 否 |
 | 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；绑定精确 `sessionId + workflowRevision`，value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。它不推进 seq，每次 idle Sync 仍返回当前 ephemeral，Page Model 校验步骤、Session、workflow revision 和过期时间后投影 `roomState.editingProblemId`；页面不得直读 raw ephemeral | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |

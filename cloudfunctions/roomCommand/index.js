@@ -3993,7 +3993,7 @@ var require_room_application = __commonJS({
         return {
           sessionId: session.sessionId,
           turnId: turn.turnId,
-          memberId: aggregate.room.hostMemberId,
+          memberId: turn.activeMemberId,
           deadlineAt: turn.silentDeadlineAt
         };
       }

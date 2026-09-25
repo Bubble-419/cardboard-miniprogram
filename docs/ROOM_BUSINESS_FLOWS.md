@@ -142,7 +142,7 @@ flowchart TD
 | `brainstormMode` | Host 的权威模式选择页 | Snapshot / Event 恢复 `brainstormMode`；同一状态下 Player 恢复 `subAwait?scene=brainstormMode` |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式仅当前行动者停留在特殊行动叠层；其他成员留在 `gamepage`，使用相同的静默徽标与声浪边框，同时保留匿名表达和打分功能。`PARTNER_SILENT_SOUND` 继续作为所有成员卡片声浪效果的共享瞬时信号 |
+| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式仅当前行动者停留在特殊行动叠层并广播本机声级；其他成员留在 `gamepage`，使用同一瞬时声级显示相同的静默徽标、声浪边框和声音过大提示，同时保留匿名表达和打分功能。`PARTNER_SILENT_SOUND` 作为所有成员卡片声浪效果的共享瞬时信号，仅当前行动者可写 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
 | `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |

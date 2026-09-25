@@ -517,7 +517,7 @@ test('瞬时声贝写入与当前静默行动使用同一事务范围令牌', as
   assert.equal(h.repo.rooms.get('12345678').room.signalScope, null);
 });
 
-test('静默声贝仅房主可写，即使当前行动者不是房主', async () => {
+test('静默声贝仅当前行动者可写，并同步给所有玩家', async () => {
   const h = createHarness();
   await h.seedMembers(3);
   await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
@@ -526,7 +526,6 @@ test('静默声贝仅房主可写，即使当前行动者不是房主', async ()
   await h.command('host', 'SET_SCENARIO', {
     context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
   });
-  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
   const playerMemberId = (await h.snapshot('u2')).view.actor.memberId;
   await h.command('host', 'SELECT_FIRST_PLAYER', {
     context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' },
@@ -541,7 +540,7 @@ test('静默声贝仅房主可写，即使当前行动者不是房主', async ()
     context: { sessionId, turnId }, payload: { kind: 'SILENT' }
   });
 
-  assert.equal(h.repo.rooms.get('12345678').room.signalScope.memberId, hostMemberId);
+  assert.equal(h.repo.rooms.get('12345678').room.signalScope.memberId, playerMemberId);
 
   const actorWrite = await h.app.writeSignal({
     roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.4
@@ -553,14 +552,14 @@ test('静默声贝仅房主可写，即使当前行动者不是房主', async ()
     roomId: '12345678', sessionId, turnId, signalType: 'PARTNER_SILENT_SOUND', value: 0.2
   }, { userId: 'u3' });
 
-  assert.equal(actorWrite.errCode, 'INVALID_TRANSITION');
+  assert.equal(actorWrite.ok, true);
   assert.equal(otherWrite.errCode, 'INVALID_TRANSITION');
-  assert.equal(hostWrite.ok, true);
-  assert.equal(hostWrite.signal.value, 0.7);
-  assert.equal(hostWrite.signal.memberId, hostMemberId);
+  assert.equal(hostWrite.errCode, 'INVALID_TRANSITION');
+  assert.equal(actorWrite.signal.value, 0.4);
+  assert.equal(actorWrite.signal.memberId, playerMemberId);
 
   const heard = await h.app.sync('12345678', 0, { userId: 'u3' });
-  assert.equal(heard.ephemeral.signals.PARTNER_SILENT_SOUND.value, 0.7);
+  assert.equal(heard.ephemeral.signals.PARTNER_SILENT_SOUND.value, 0.4);
 });
 
 async function startCollectingDesignProblems(h, memberCount) {
