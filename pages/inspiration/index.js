@@ -422,6 +422,9 @@ Page(withPageInteractionLock({
     }
     this._inspirationFocusRequestedAt = 0;
     this._inspirationNativeFocused = false;
+    if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({ fail() {} });
+    }
     this._flushInspirationKeyboardZero(true);
     this.setData({
       inspirationInputFocused: false,
