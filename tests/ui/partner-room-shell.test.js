@@ -430,6 +430,27 @@ test('反面随机拼提交后非出牌玩家同步显示特殊行动标签', as
   assert.equal(page.data.starRatingCollapsed, false);
 });
 
+test('求助运气预览时非出牌玩家立即显示标签并可在取消预览后清除', async () => {
+  const page = makeGamePage();
+  let snapshot = nonCurrentPlayerGameSnapshot(false, 24);
+  let applied = page._applyRoomContext(snapshot);
+  await applied.applied;
+  assert.equal(page.data.specialActionBadge, '');
+
+  snapshot = nonCurrentPlayerGameSnapshot(false, 25);
+  snapshot.roomState.partnerSpecialMovePreview = 'HELP_LUCK';
+  applied = page._applyRoomContext(snapshot);
+  await applied.applied;
+  assert.equal(page.data.isCurrentPlayer, false);
+  assert.equal(page.data.specialActionBadge, '求助运气');
+
+  snapshot = nonCurrentPlayerGameSnapshot(false, 26);
+  snapshot.roomState.partnerSpecialMovePreview = null;
+  applied = page._applyRoomContext(snapshot);
+  await applied.applied;
+  assert.equal(page.data.specialActionBadge, '');
+});
+
 test('静默音量 Signal 在相同业务指纹下窄刷卡片效果', async () => {
   const page = makeGamePage();
   const first = gameSnapshot(22);

@@ -518,8 +518,11 @@ stateDiagram-v2
 Active Turn 后进入讨论。`ADVANCE_PARTNER_TURN` 可选用 `statementResult` 覆盖已保存
 结果；未传时使用讨论开始时写入的结果。断线恢复不依赖客户端草稿。
 
-`HELP_LUCK` 的反面随机拼先进入可返回的本地预览；只有用户选择“取消采用”
-或“采用卡组”时才发送 `USE_PARTNER_SPECIAL(HELP_LUCK)`，从预览返回转盘不消耗行动。
+`HELP_LUCK` 的反面随机拼先进入可返回的预览。进入和退出预览分别发送
+`SET_PARTNER_SPECIAL_PREVIEW(HELP_LUCK, active=true/false)`，公开 View 中的
+`activeTurn.specialPreview` 让所有成员在采用决策前同步看到“求助运气”标签；该状态不消耗
+特殊行动。只有用户选择“取消采用”或“采用卡组”时才发送
+`USE_PARTNER_SPECIAL(HELP_LUCK)`，提交时清除预览并记录 `specialUsed`。
 
 ```mermaid
 flowchart LR

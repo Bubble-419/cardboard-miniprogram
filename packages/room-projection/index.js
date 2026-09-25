@@ -177,6 +177,7 @@ function projectPublicView(aggregate) {
         phase: turn.phase,
         turnStartedAt: turn.turnStartedAt,
         phaseStartedAt: turn.phaseStartedAt,
+        specialPreview: turn.specialPreview || null,
         specialUsed: turn.specialUsed,
         masterMode: turn.masterMode,
         silentStartedAt: turn.silentStartedAt,
@@ -376,6 +377,7 @@ function projectCapabilities(aggregate, actor) {
     && !!turn && turn.ordinal < MAX_PARTNER_TURNS && progressComplete(turn.scoreProgress),
   turn && turn.ordinal >= MAX_PARTNER_TURNS ? 'LIMIT_EXCEEDED' : 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN
     && !!turn && isActorTurn && !!turn.silentDeadlineAt, 'INVALID_TRANSITION');

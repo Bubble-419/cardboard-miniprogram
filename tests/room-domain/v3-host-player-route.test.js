@@ -72,6 +72,42 @@ test('有人打分后主屏和副屏看到同一份评分人数', async () => {
   assert.notEqual(hostPage.roomState.progress.turnId, `turn_r${hostPage.roomState.currentRound}_s${hostPage.roomState.currentPlayerIndex}`);
 });
 
+test('求助运气采用决策前向所有玩家公开预览标签且不消耗特殊行动', async () => {
+  const { h, sessionId } = await startPartnerTurn('u2');
+  const turnId = (await h.snapshot('u2')).view.session.activeTurn.turnId;
+
+  const opened = await h.command('u2', 'SET_PARTNER_SPECIAL_PREVIEW', {
+    context: { sessionId, turnId },
+    payload: { kind: 'HELP_LUCK', active: true }
+  });
+  assert.equal(opened.ok, true);
+
+  for (const userId of ['host', 'u2', 'u3']) {
+    const snapshot = await h.snapshot(userId);
+    const page = projectPageSnapshot(snapshot.view, { seq: snapshot.seq });
+    assert.equal(snapshot.view.session.activeTurn.specialPreview, 'HELP_LUCK');
+    assert.equal(snapshot.view.session.activeTurn.specialUsed, null);
+    assert.equal(page.roomState.partnerSpecialMovePreview, 'HELP_LUCK');
+    assert.equal(snapshot.view.actor.capabilities.USE_PARTNER_SPECIAL.allowed, userId === 'u2');
+  }
+
+  const closed = await h.command('u2', 'SET_PARTNER_SPECIAL_PREVIEW', {
+    context: { sessionId, turnId },
+    payload: { kind: 'HELP_LUCK', active: false }
+  });
+  assert.equal(closed.ok, true);
+  assert.equal((await h.snapshot('host')).view.session.activeTurn.specialPreview, null);
+
+  const used = await h.command('u2', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId },
+    payload: { kind: 'HELP_LUCK' }
+  });
+  assert.equal(used.ok, true);
+  const committed = await h.snapshot('host');
+  assert.equal(committed.view.session.activeTurn.specialPreview, null);
+  assert.equal(committed.view.session.activeTurn.specialUsed, 'HELP_LUCK');
+});
+
 test('Master 特殊行动后所有非当前玩家仍在 gamepage 并保持打分能力', async () => {
   const { h, sessionId } = await startPartnerTurn('u2');
   const actorSnapshot = await h.snapshot('u2');

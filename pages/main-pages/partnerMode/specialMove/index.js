@@ -1193,8 +1193,9 @@ Page(withPageInteractionLock({
       return;
     }
     if (viewMode === 'reverseRandom') {
-      this.setData({ viewMode: 'wheel' }, () => this._jumpToActionCard());
-      return;
+      return runPageInteraction(this, () => this._closeHelpLuckPreview(), {
+        loadingText: '正在返回转盘…'
+      });
     }
     if (viewMode === 'silent') {
       if (!this._canEndSilent()) {
@@ -1257,12 +1258,9 @@ Page(withPageInteractionLock({
     }
 
     if (selectedAction === 'helpLuck') {
-      // 预览可以返回转盘；只有确定采用或取消采用时才消耗本轮特殊行动。
-      this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
-        this._jumpToActionCard();
-        this.loadRoomData();
+      return runPageInteraction(this, () => this._openHelpLuckPreview(), {
+        loadingText: '正在生成卡组…'
       });
-      return;
     }
 
     if (selectedAction === 'silent') {
@@ -1313,6 +1311,32 @@ Page(withPageInteractionLock({
     } finally {
       this._activatingClosing = false;
     }
+  },
+
+  async _setHelpLuckPreview(active) {
+    const result = await dispatchRoomCommand(
+      'SET_PARTNER_SPECIAL_PREVIEW',
+      { kind: 'HELP_LUCK', active: active === true },
+      this._turnContext()
+    );
+    if (!result || result.ok !== true) {
+      wx.showToast({ title: result && result.errMsg || '状态同步失败', icon: 'none' });
+      return false;
+    }
+    return true;
+  },
+
+  async _openHelpLuckPreview() {
+    if (!await this._setHelpLuckPreview(true)) return;
+    this.setData({ viewMode: 'reverseRandom', helpMethod: 'reverse' }, () => {
+      this._jumpToActionCard();
+      this.loadRoomData();
+    });
+  },
+
+  async _closeHelpLuckPreview() {
+    if (!await this._setHelpLuckPreview(false)) return;
+    this.setData({ viewMode: 'wheel' }, () => this._jumpToActionCard());
   },
 
   async activateSilentMode() {

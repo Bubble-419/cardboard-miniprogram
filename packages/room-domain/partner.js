@@ -50,7 +50,7 @@ function startPartnerTurn(aggregate, memberId, deps, countsForRound) {
   const turn = {
     turnId: idOf(deps, 'turn'), ordinal: partner.turnOrdinal, roundNo: partner.roundNo,
     activeMemberId: memberId, countsForRound: countsForRound !== false, phase: 'PLAY',
-    turnStartedAt: now, phaseStartedAt: now, specialUsed: null, masterMode: false,
+    turnStartedAt: now, phaseStartedAt: now, specialPreview: null, specialUsed: null, masterMode: false,
     silentStartedAt: null, silentDeadlineAt: null,
     scoreProgress: { requiredMemberIds, submittedMemberIds: [] }
   };
@@ -329,7 +329,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
       { kind: 'ACCEPTED', turnId: turn.turnId }, [{ kind: 'turns', id: summary.turnId }]);
     }
     check.turn.phase = 'STATEMENT'; check.turn.statementResult = command.payload.statementResult;
-    check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false;
+    check.turn.phaseStartedAt = nowOf(deps); check.turn.masterMode = false; check.turn.specialPreview = null;
     check.turn.silentStartedAt = null; check.turn.silentDeadlineAt = null;
     transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_STATEMENT, deps, {
       roundNo: check.turn.roundNo,
@@ -361,6 +361,7 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
     if (check.turn.ordinal >= MAX_PARTNER_TURNS && kind !== 'CLOSING') {
       return fail(ERR.LIMIT_EXCEEDED, `当前场次已达到 ${MAX_PARTNER_TURNS} 个行动轮，请使用收尾行动`);
     }
+    check.turn.specialPreview = null;
     check.turn.specialUsed = kind;
     const events = [event(EVENT_TYPES.PARTNER_SPECIAL_USED, { turnId: check.turn.turnId, kind })];
     if (kind === 'MASTER') check.turn.masterMode = true;
@@ -380,6 +381,17 @@ function reducePartnerCommand(aggregate, command, actorUserId, deps) {
       events.push(event(EVENT_TYPES.PARTNER_CLOSING_VOTE_STARTED, { closingVoteSessionId: voteSessionId, initiatorMemberId: actor.memberId }));
     }
     return domainOk(aggregate, events);
+  }
+
+  if (type === COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW) {
+    const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]); if (!check.ok) return check;
+    if (check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION, '仅当前行动者可预览特殊行动');
+    if (check.turn.specialUsed) return fail(ERR.INVALID_TRANSITION, '本行动轮已经使用特殊行动');
+    check.turn.specialPreview = command.payload.active ? command.payload.kind : null;
+    return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_SPECIAL_PREVIEW_CHANGED, {
+      turnId: check.turn.turnId,
+      kind: check.turn.specialPreview
+    })]);
   }
 
   if (type === COMMAND_TYPES.END_PARTNER_SILENT) {

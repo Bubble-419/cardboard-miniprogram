@@ -243,6 +243,18 @@ test('E2E Partner：完整配置、行动、评分、表态、收尾、回顾与
   assertScreen(state.snapshot, 'PARTNER_TURN', 'partnerGame');
   const firstTurnId = state.snapshot.view.session.activeTurn.turnId;
 
+  state = await executeAndReduce(h, 'host', 'SET_PARTNER_SPECIAL_PREVIEW', {
+    context: { sessionId, turnId: firstTurnId },
+    payload: { kind: 'HELP_LUCK', active: true }
+  });
+  assert.equal(state.snapshot.view.session.activeTurn.specialPreview, 'HELP_LUCK');
+  assert.equal(state.snapshot.view.session.activeTurn.specialUsed, null);
+  state = await executeAndReduce(h, 'host', 'SET_PARTNER_SPECIAL_PREVIEW', {
+    context: { sessionId, turnId: firstTurnId },
+    payload: { kind: 'HELP_LUCK', active: false }
+  });
+  assert.equal(state.snapshot.view.session.activeTurn.specialPreview, null);
+
   await executeAndReduce(h, 'host', 'APPEND_ARTIFACT', {
     context: { sessionId, turnId: firstTurnId, workflowStep: 'PARTNER_TURN' },
     payload: { operationId: 'e2e-card-1', text: '共享创意卡' }

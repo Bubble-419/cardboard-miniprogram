@@ -300,6 +300,7 @@ function projectPageSnapshot(view, clientState) {
     const closingContent = partnerContent(session, ['CLOSING_RUNE', 'CLOSING_REVIEW']);
     roomState.partnerClosingCreativePoints = { blocks: closingContent.playBlocks,
       texts: closingContent.playHistory, images: closingContent.playImages };
+    roomState.partnerSpecialMovePreview = turn && turn.specialPreview || null;
     roomState.partnerSpecialMoveUsed = turn && turn.specialUsed || null;
   } else if (session && isHalliLikeMode(session.mode)) {
     roomState.currentPlayerIndex = memberSeat(view, session.publicModeState.firstMemberId);

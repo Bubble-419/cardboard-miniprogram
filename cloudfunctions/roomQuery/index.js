@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 6;
-    var VIEW_SCHEMA_VERSION = 9;
+    var VIEW_SCHEMA_VERSION = 10;
     var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -104,6 +104,7 @@ var require_room_contracts = __commonJS({
       POST_PARTNER_MESSAGE: "POST_PARTNER_MESSAGE",
       START_PARTNER_STATEMENT: "START_PARTNER_STATEMENT",
       ADVANCE_PARTNER_TURN: "ADVANCE_PARTNER_TURN",
+      SET_PARTNER_SPECIAL_PREVIEW: "SET_PARTNER_SPECIAL_PREVIEW",
       USE_PARTNER_SPECIAL: "USE_PARTNER_SPECIAL",
       END_PARTNER_SILENT: "END_PARTNER_SILENT",
       SUBMIT_PARTNER_CLOSING_VOTE: "SUBMIT_PARTNER_CLOSING_VOTE",
@@ -162,6 +163,7 @@ var require_room_contracts = __commonJS({
       "PARTNER_TURN_ABANDONED",
       "PARTNER_SCORE_RECORDED",
       "PARTNER_STATEMENT_STARTED",
+      "PARTNER_SPECIAL_PREVIEW_CHANGED",
       "PARTNER_SPECIAL_USED",
       "PARTNER_SILENT_ENDED",
       "PARTNER_CLOSING_VOTE_STARTED",
@@ -260,6 +262,7 @@ var require_room_contracts = __commonJS({
       POST_PARTNER_MESSAGE: ["sessionId", "turnId", "workflowStep"],
       START_PARTNER_STATEMENT: ["sessionId", "turnId"],
       ADVANCE_PARTNER_TURN: ["sessionId", "turnId"],
+      SET_PARTNER_SPECIAL_PREVIEW: ["sessionId", "turnId"],
       USE_PARTNER_SPECIAL: ["sessionId", "turnId"],
       END_PARTNER_SILENT: ["sessionId", "turnId"],
       SUBMIT_PARTNER_CLOSING_VOTE: ["sessionId", "closingVoteSessionId"],
@@ -308,6 +311,7 @@ var require_room_contracts = __commonJS({
       POST_PARTNER_MESSAGE: ["text"],
       START_PARTNER_STATEMENT: ["statementResult"],
       ADVANCE_PARTNER_TURN: ["statementResult"],
+      SET_PARTNER_SPECIAL_PREVIEW: ["kind", "active"],
       USE_PARTNER_SPECIAL: ["kind"],
       END_PARTNER_SILENT: [],
       SUBMIT_PARTNER_CLOSING_VOTE: ["vote"],
@@ -397,6 +401,10 @@ var require_room_contracts = __commonJS({
       }
       if (type === COMMAND_TYPES.USE_PARTNER_SPECIAL && !["HELP_LUCK", "SILENT", "MASTER", "CLOSING"].includes(payload.kind)) {
         return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u7279\u6B8A\u884C\u52A8");
+      }
+      if (type === COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW) {
+        if (payload.kind !== "HELP_LUCK") return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u7279\u6B8A\u884C\u52A8\u9884\u89C8");
+        if (typeof payload.active !== "boolean") return fail(ERR.INVALID_ARGUMENT, "active \u5FC5\u987B\u662F\u5E03\u5C14\u503C");
       }
       const requiredString = {
         [COMMAND_TYPES.KICK_MEMBER]: "memberId",
@@ -1100,6 +1108,7 @@ var require_partner = __commonJS({
         phase: "PLAY",
         turnStartedAt: now,
         phaseStartedAt: now,
+        specialPreview: null,
         specialUsed: null,
         masterMode: false,
         silentStartedAt: null,
@@ -1425,6 +1434,7 @@ var require_partner = __commonJS({
         check.turn.statementResult = command.payload.statementResult;
         check.turn.phaseStartedAt = nowOf(deps);
         check.turn.masterMode = false;
+        check.turn.specialPreview = null;
         check.turn.silentStartedAt = null;
         check.turn.silentDeadlineAt = null;
         transitionWorkflow(check.session, WORKFLOW_STEP.PARTNER_STATEMENT, deps, {
@@ -1462,6 +1472,7 @@ var require_partner = __commonJS({
         if (check.turn.ordinal >= MAX_PARTNER_TURNS && kind !== "CLOSING") {
           return fail(ERR.LIMIT_EXCEEDED, `\u5F53\u524D\u573A\u6B21\u5DF2\u8FBE\u5230 ${MAX_PARTNER_TURNS} \u4E2A\u884C\u52A8\u8F6E\uFF0C\u8BF7\u4F7F\u7528\u6536\u5C3E\u884C\u52A8`);
         }
+        check.turn.specialPreview = null;
         check.turn.specialUsed = kind;
         const events = [event(EVENT_TYPES.PARTNER_SPECIAL_USED, { turnId: check.turn.turnId, kind })];
         if (kind === "MASTER") check.turn.masterMode = true;
@@ -1489,6 +1500,17 @@ var require_partner = __commonJS({
           events.push(event(EVENT_TYPES.PARTNER_CLOSING_VOTE_STARTED, { closingVoteSessionId: voteSessionId, initiatorMemberId: actor.memberId }));
         }
         return domainOk(aggregate, events);
+      }
+      if (type === COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW) {
+        const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
+        if (!check.ok) return check;
+        if (check.turn.activeMemberId !== actor.memberId) return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u884C\u52A8\u8005\u53EF\u9884\u89C8\u7279\u6B8A\u884C\u52A8");
+        if (check.turn.specialUsed) return fail(ERR.INVALID_TRANSITION, "\u672C\u884C\u52A8\u8F6E\u5DF2\u7ECF\u4F7F\u7528\u7279\u6B8A\u884C\u52A8");
+        check.turn.specialPreview = command.payload.active ? command.payload.kind : null;
+        return domainOk(aggregate, [event(EVENT_TYPES.PARTNER_SPECIAL_PREVIEW_CHANGED, {
+          turnId: check.turn.turnId,
+          kind: check.turn.specialPreview
+        })]);
       }
       if (type === COMMAND_TYPES.END_PARTNER_SILENT) {
         const check = assertTurn(aggregate, command.context, [WORKFLOW_STEP.PARTNER_TURN]);
@@ -2444,6 +2466,7 @@ var require_room_domain = __commonJS({
       COMMAND_TYPES.POST_PARTNER_MESSAGE,
       COMMAND_TYPES.START_PARTNER_STATEMENT,
       COMMAND_TYPES.ADVANCE_PARTNER_TURN,
+      COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW,
       COMMAND_TYPES.USE_PARTNER_SPECIAL,
       COMMAND_TYPES.END_PARTNER_SILENT,
       COMMAND_TYPES.SUBMIT_PARTNER_CLOSING_VOTE,
@@ -3263,6 +3286,7 @@ var require_room_projection = __commonJS({
             phase: turn.phase,
             turnStartedAt: turn.turnStartedAt,
             phaseStartedAt: turn.phaseStartedAt,
+            specialPreview: turn.specialPreview || null,
             specialUsed: turn.specialUsed,
             masterMode: turn.masterMode,
             silentStartedAt: turn.silentStartedAt,
@@ -3453,6 +3477,7 @@ var require_room_projection = __commonJS({
         turn && turn.ordinal >= MAX_PARTNER_TURNS ? "LIMIT_EXCEEDED" : "INVALID_TRANSITION"
       );
       caps[COMMAND_TYPES.ADVANCE_PARTNER_TURN] = capability(isHost && step === WORKFLOW_STEP.PARTNER_STATEMENT, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.SET_PARTNER_SPECIAL_PREVIEW] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.USE_PARTNER_SPECIAL] = capability(isActorTurn && step === WORKFLOW_STEP.PARTNER_TURN && !turn.specialUsed, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.END_PARTNER_SILENT] = capability(step === WORKFLOW_STEP.PARTNER_TURN && !!turn && isActorTurn && !!turn.silentDeadlineAt, "INVALID_TRANSITION");
       const canClosingVote = isParticipant && !!partner && !!partner.closing && step === WORKFLOW_STEP.PARTNER_CLOSING_VOTE && partner.closing.initiatorMemberId !== actor.memberId && partner.closing.requiredMemberIds.includes(actor.memberId) && !partner.closing.submittedMemberIds.includes(actor.memberId);

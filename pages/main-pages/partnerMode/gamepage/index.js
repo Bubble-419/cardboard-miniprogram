@@ -2528,7 +2528,9 @@ Page(withPageInteractionLock({
         ? 'Master模式'
         : (roomState.partnerSilentMode === true
           ? '静默模式'
-          : (roomState.partnerSpecialMoveUsed === 'HELP_LUCK' ? '反面随机拼' : '')),
+          : (roomState.partnerSpecialMoveUsed === 'HELP_LUCK'
+            ? '反面随机拼'
+            : (roomState.partnerSpecialMovePreview === 'HELP_LUCK' ? '求助运气' : ''))),
       cardBorderVariant: roomState.partnerMasterMode === true
         ? 'master'
         : (roomState.partnerSilentMode === true ? 'sound' : ''),
@@ -2839,7 +2841,8 @@ Page(withPageInteractionLock({
       options.resetTurnUi ? 1 : 0
     ].join('#');
     const specialModeChanged = patch.isMasterMode !== this.data.isMasterMode
-      || patch.isSilentMode !== this.data.isSilentMode;
+      || patch.isSilentMode !== this.data.isSilentMode
+      || patch.specialActionBadge !== this.data.specialActionBadge;
     const forcePatch = !!(
       options.resetTurnUi
       || playerChanged

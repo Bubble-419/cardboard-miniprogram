@@ -217,13 +217,17 @@ modeState.partner
 │   ├── turnId / activeMemberId / phase
 │   ├── statementResult          # 仅部分通过/全部疑问的讨论期保存
 │   ├── scoreProgress
-│   ├── specialUsed / masterMode
+│   ├── specialPreview / specialUsed / masterMode
 │   └── silentStartedAt / silentDeadlineAt
 └── closing
     ├── closingVoteSessionId / sourceTurnId / initiatorMemberId
     ├── requiredMemberIds / submittedMemberIds
     └── stage
 ```
+
+`activeTurn.specialPreview` 是公开、可恢复的预览状态，目前仅取 `HELP_LUCK` 或 `null`。
+它用于在出牌玩家决定采用/不采用反面随机拼前同步“求助运气”标签，不代表特殊行动已经消耗；
+提交 `USE_PARTNER_SPECIAL`、返回转盘或离开当前 Turn 时必须清除。
 
 完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。当前页面「开始表态」先进入讨论；讨论页「没有疑问」以 `allPass` 归档，「结束讨论」以 `allQuestion` 归档。协议仍允许 `START_PARTNER_STATEMENT(allPass)` 直接归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
 

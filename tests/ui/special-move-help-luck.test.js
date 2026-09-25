@@ -91,16 +91,22 @@ function fixture() {
   return { app, page, commands };
 }
 
-test('反面随机拼预览和返回转盘不消耗特殊行动', async () => {
+test('反面随机拼预览和返回转盘同步预览状态但不消耗特殊行动', async () => {
   const { app, page, commands } = fixture();
   await withRuntime(app, async () => {
     await page.handleConfirm();
     assert.equal(page.data.viewMode, 'reverseRandom');
-    assert.equal(commands.length, 0, '打开预览不应发送 USE_PARTNER_SPECIAL');
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0].type, 'SET_PARTNER_SPECIAL_PREVIEW');
+    assert.deepEqual(commands[0].payload, { kind: 'HELP_LUCK', active: true });
 
     await page.handleGoBack();
     assert.equal(page.data.viewMode, 'wheel');
-    assert.equal(commands.length, 0, '从预览返回转盘不应消耗特殊行动');
+    assert.equal(commands.length, 2);
+    assert.equal(commands[1].type, 'SET_PARTNER_SPECIAL_PREVIEW');
+    assert.deepEqual(commands[1].payload, { kind: 'HELP_LUCK', active: false });
+    assert.equal(commands.some((command) => command.type === 'USE_PARTNER_SPECIAL'), false,
+      '预览和返回转盘都不应消耗特殊行动');
   });
 });
 

@@ -425,7 +425,8 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 | Host 选“部分通过/全部疑问” | `START_PARTNER_STATEMENT(partialPass/allQuestion)` | 将结果保存在 Active Turn，进入 `PARTNER_STATEMENT` 讨论 |
 | Host “没有疑问” | `ADVANCE_PARTNER_TURN(allPass)` | 覆盖讨论期结果为全部通过，归档 Turn，创建下一 Turn |
 | Host “结束讨论” | `ADVANCE_PARTNER_TURN(allQuestion)` | 按疑问结果归档 Turn，创建下一 Turn |
-| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 进入反面随机拼预览时不消耗，只在“取消采用/采用卡组”时发送；`SILENT` 后其他成员继续停留在游戏卡片，通过 Member View 同步静默徽标、声浪边框和 `PARTNER_SILENT_SOUND` 效果，并继续使用匿名表达与打分 |
+| 当前行动者预览求助运气 | `SET_PARTNER_SPECIAL_PREVIEW` | 进入/退出反面随机拼预览时公开或清除 `activeTurn.specialPreview`；所有非行动者在采用决策前同步看到“求助运气”标签，不消耗本 Turn 特殊行动 |
+| 当前行动者选择特殊行动 | `USE_PARTNER_SPECIAL` | 每 Turn 一次：`HELP_LUCK/SILENT/MASTER/CLOSING`。`HELP_LUCK` 只在“取消采用/采用卡组”时发送，并清除预览标签、切换为已采用的“反面随机拼”标签；`SILENT` 后其他成员继续停留在游戏卡片，通过 Member View 同步静默徽标、声浪边框和 `PARTNER_SILENT_SOUND` 效果，并继续使用匿名表达与打分 |
 | 结束静默 | `END_PARTNER_SILENT` | 仅当前特殊行动玩家；房主若不是行动者不能结束 |
 | “通过/存在疑问” | `SUBMIT_PARTNER_CLOSING_VOTE` | 发起者自动通过，其余 required 成员各投一次 |
 | Host “下一步” | `ADVANCE_PARTNER_CLOSING` | Rune→Review |
