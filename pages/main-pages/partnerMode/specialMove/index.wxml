@@ -285,24 +285,28 @@
                     <view class="special-mode-badge">静默模式</view>
                     <text class="special-action-title">保持分贝低于40dB</text>
                   </view>
-                  <text class="silent-desc">您可以进行1—3次行动，1 次行动可以是以下任意一种</text>
+                  <text class="silent-desc">每轮行动 1–3 次，可新开方案，也可延续他人想法。每次行动后，简要说明你的想法。</text>
                   <view class="action-divider silent-divider"></view>
                   <view class="silent-action-grid">
                     <view class="silent-action-cell">
                       <view class="silent-action-illus"></view>
                       <text class="silent-action-label">出 1 张卡牌</text>
+                      <text class="silent-action-detail">新开或延续方案</text>
                     </view>
                     <view class="silent-action-cell">
                       <view class="silent-action-illus"></view>
-                      <text class="silent-action-label">删 1 张卡牌</text>
+                      <text class="silent-action-label">翻 1 张卡牌</text>
+                      <text class="silent-action-detail">改变卡牌朝向</text>
                     </view>
                     <view class="silent-action-cell">
                       <view class="silent-action-illus"></view>
                       <text class="silent-action-label">调整 1 张卡牌</text>
+                      <text class="silent-action-detail">移动卡牌位置</text>
                     </view>
                     <view class="silent-action-cell">
                       <view class="silent-action-illus"></view>
                       <text class="silent-action-label">交换 2 张卡牌</text>
+                      <text class="silent-action-detail">互换卡牌位置</text>
                     </view>
                   </view>
                 </view>

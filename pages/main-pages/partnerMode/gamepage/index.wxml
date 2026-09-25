@@ -660,7 +660,7 @@
                         <text class="action-title action-title-special">{{isMasterMode ? '请进行卡牌行动并解释' : '出牌并解释'}}</text>
                       </view>
                       <text class="action-title" wx:else>出牌并解释</text>
-                      <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : (expressChatPanelVisible ? '您可以进行1—3次行动' : '您可以进行1—3次行动，1次行动可以是以下任意一种')}}</text>
+                      <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : '每轮行动 1–3 次，可新开方案，也可延续他人想法。每次行动后，简要说明你的想法。'}}</text>
                     </view>
                   </view>
                   <view class="action-divider"></view>
@@ -707,18 +707,22 @@
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">出 1 张卡牌</text>
+                        <text class="action-cell-detail">新开或延续方案</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
-                        <text class="action-cell-label">删 1 张卡牌</text>
+                        <text class="action-cell-label">翻 1 张卡牌</text>
+                        <text class="action-cell-detail">改变卡牌朝向</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">调整 1 张卡牌</text>
+                        <text class="action-cell-detail">移动卡牌位置</text>
                       </view>
                       <view class="action-cell">
                         <view class="action-illus"></view>
                         <text class="action-cell-label">交换 2 张卡牌</text>
+                        <text class="action-cell-detail">互换卡牌位置</text>
                       </view>
                     </view>
                   </view>
