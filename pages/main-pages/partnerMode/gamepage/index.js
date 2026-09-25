@@ -2513,7 +2513,7 @@ Page(withPageInteractionLock({
           ? '静默模式'
           : (roomState.partnerSpecialMoveUsed === 'HELP_LUCK'
             ? '反面随机拼'
-            : (roomState.partnerSpecialMovePreview === 'HELP_LUCK' ? '求助运气' : ''))),
+            : (roomState.partnerSpecialMovePreview === 'HELP_LUCK' ? '反面随机拼' : ''))),
       cardBorderVariant: roomState.partnerMasterMode === true
         ? 'master'
         : (roomState.partnerSilentMode === true ? 'sound' : ''),

@@ -520,7 +520,7 @@ Active Turn 后进入讨论。`ADVANCE_PARTNER_TURN` 可选用 `statementResult`
 
 `HELP_LUCK` 的反面随机拼先进入可返回的预览。进入和退出预览分别发送
 `SET_PARTNER_SPECIAL_PREVIEW(HELP_LUCK, active=true/false)`，公开 View 中的
-`activeTurn.specialPreview` 让所有成员在采用决策前同步看到“求助运气”标签；该状态不消耗
+`activeTurn.specialPreview` 让所有成员在采用决策前同步看到与行动者一致的“反面随机拼”标签；该状态不消耗
 特殊行动。只有用户选择“取消采用”或“采用卡组”时才发送
 `USE_PARTNER_SPECIAL(HELP_LUCK)`，提交时清除预览并记录 `specialUsed`。
 

@@ -430,7 +430,7 @@ test('反面随机拼提交后非出牌玩家同步显示特殊行动标签', as
   assert.equal(page.data.starRatingCollapsed, false);
 });
 
-test('求助运气预览时非出牌玩家立即显示标签并可在取消预览后清除', async () => {
+test('反面随机拼预览时非出牌玩家立即显示相同标签并可在取消预览后清除', async () => {
   const page = makeGamePage();
   let snapshot = nonCurrentPlayerGameSnapshot(false, 24);
   let applied = page._applyRoomContext(snapshot);
@@ -442,7 +442,7 @@ test('求助运气预览时非出牌玩家立即显示标签并可在取消预�
   applied = page._applyRoomContext(snapshot);
   await applied.applied;
   assert.equal(page.data.isCurrentPlayer, false);
-  assert.equal(page.data.specialActionBadge, '求助运气');
+  assert.equal(page.data.specialActionBadge, '反面随机拼');
 
   snapshot = nonCurrentPlayerGameSnapshot(false, 26);
   snapshot.roomState.partnerSpecialMovePreview = null;
