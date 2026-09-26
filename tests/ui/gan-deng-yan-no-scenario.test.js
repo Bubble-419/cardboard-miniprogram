@@ -15,7 +15,7 @@ test('干瞪眼活动页隐藏情境并展示独立的四步图文规则', () =>
 
   assert.match(js, /isGanDengYan:\s*\(result\.selectedModeId \|\| roomState\.selectedModeId\) === 'ganDengYan'/);
   assert.match(wxml, /class="header-section" wx:if="\{\{!isGanDengYan\}\}"/);
-  assert.match(wxml, /class="gan-steps-grid" wx:if="\{\{isGanDengYan\}\}"/);
+  assert.match(wxml, /class="gan-steps-list" wx:if="\{\{isGanDengYan\}\}"/);
 
   const rules = [
     ['rule-deal.jpg', '洗牌发牌', '打乱所有卡牌，随机分给玩家，每人获得相同数量的卡牌。'],
@@ -34,4 +34,13 @@ test('干瞪眼活动页隐藏情境并展示独立的四步图文规则', () =>
   assert.doesNotMatch(wxml, /isGanDengYan\s*\?/);
   assert.match(wxml, /class="steps-card" wx:else/);
   assert.match(wxml, /class="key-highlight" wx:if="\{\{!isGanDengYan\}\}"/);
+});
+
+test('干瞪眼规则改为单列横向卡片，为中文说明保留足够行宽', () => {
+  const wxss = read('pages/main-pages/halliGalli/gamepage/index.wxss');
+
+  assert.match(wxss, /\.gan-steps-list\s*\{[\s\S]*?flex-direction:\s*column/);
+  assert.match(wxss, /\.gan-step-card\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(wxss, /\.gan-step-image-wrap\s*\{[\s\S]*?width:\s*220rpx/);
+  assert.match(wxss, /\.gan-step-copy\s*\{[\s\S]*?padding:\s*24rpx/);
 });

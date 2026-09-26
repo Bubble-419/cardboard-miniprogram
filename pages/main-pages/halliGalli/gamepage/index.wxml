@@ -26,7 +26,7 @@
       </view>
 
       <!-- 干瞪眼：独立四步规则，不依赖情境 -->
-      <view class="gan-steps-grid" wx:if="{{isGanDengYan}}">
+      <view class="gan-steps-list" wx:if="{{isGanDengYan}}">
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
             <image class="gan-step-img" src="/assets/ganDengYan/rule-deal.jpg" mode="aspectFill" />
