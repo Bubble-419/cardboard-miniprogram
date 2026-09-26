@@ -25,8 +25,55 @@
         <text class="rules-subtitle">可随时查看规则；完成后进入创意提交阶段</text>
       </view>
 
-      <!-- 步骤卡片组 -->
-      <view class="steps-card">
+      <!-- 干瞪眼：独立四步规则，不依赖情境 -->
+      <view class="gan-steps-grid" wx:if="{{isGanDengYan}}">
+        <view class="gan-step-card">
+          <view class="gan-step-image-wrap">
+            <image class="gan-step-img" src="/assets/ganDengYan/rule-deal.jpg" mode="aspectFill" />
+            <view class="step-badge"><text class="step-num">1</text></view>
+          </view>
+          <view class="gan-step-copy">
+            <text class="step-title">洗牌发牌</text>
+            <text class="step-desc">打乱所有卡牌，随机分给玩家，每人获得相同数量的卡牌。</text>
+          </view>
+        </view>
+
+        <view class="gan-step-card">
+          <view class="gan-step-image-wrap">
+            <image class="gan-step-img" src="/assets/ganDengYan/rule-first-play.jpg" mode="aspectFill" />
+            <view class="step-badge"><text class="step-num">2</text></view>
+          </view>
+          <view class="gan-step-copy">
+            <text class="step-title">首位出牌</text>
+            <text class="step-desc">放下第一张卡牌，按基础连接原则继续拼接，直到无法继续。</text>
+          </view>
+        </view>
+
+        <view class="gan-step-card">
+          <view class="gan-step-image-wrap">
+            <image class="gan-step-img" src="/assets/ganDengYan/rule-connect.jpg" mode="aspectFill" />
+            <view class="step-badge"><text class="step-num">3</text></view>
+          </view>
+          <view class="gan-step-copy">
+            <text class="step-title">依次接牌</text>
+            <text class="step-desc">下一位玩家从已拼卡牌的任一可连接处延伸，之后依次进行。</text>
+          </view>
+        </view>
+
+        <view class="gan-step-card">
+          <view class="gan-step-image-wrap">
+            <image class="gan-step-img" src="/assets/ganDengYan/rule-win.jpg" mode="aspectFill" />
+            <view class="step-badge"><text class="step-num">4</text></view>
+          </view>
+          <view class="gan-step-copy">
+            <text class="step-title">获胜条件</text>
+            <text class="step-desc">最先出完手中所有卡牌的玩家获胜。</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 德国心脏病步骤卡片组 -->
+      <view class="steps-card" wx:else>
 
         <!-- 第 1 行：步骤 1 & 2 -->
         <view class="steps-row">
@@ -76,7 +123,7 @@
               <image class="step-img" src="{{stepImgPlay}}" data-key="play" binderror="onStepImgError" mode="aspectFill" />
               <view class="step-text-col">
                 <text class="step-title">出牌</text>
-                <text class="step-desc">{{isGanDengYan ? '说明卡牌组合产生的想法' : '说明如何与情境信息结合'}}</text>
+                <text class="step-desc">说明如何与情境信息结合</text>
               </view>
             </view>
             <view class="step-badge"><text class="step-num">4</text></view>
@@ -115,7 +162,7 @@
       </view>
 
       <!-- 规则重点高亮块 -->
-      <view class="key-highlight">
+      <view class="key-highlight" wx:if="{{!isGanDengYan}}">
         <view class="key-icon-wrap">
           <image class="key-icon" src="/assets/halliGalli/icon-rules-key.svg" mode="aspectFit" />
         </view>

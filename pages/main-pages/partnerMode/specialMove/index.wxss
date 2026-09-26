@@ -617,6 +617,9 @@
 }
 
 .reverse-card-inner .special-action-title {
+  font-size: 52rpx;
+  line-height: 1.3;
+  letter-spacing: -0.06em;
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
@@ -645,7 +648,8 @@
 
 .reverse-step-illus {
   width: 100%;
-  height: 312rpx;
+  height: auto;
+  aspect-ratio: 1 / 1;
   background: #e7e7e7;
   flex-shrink: 0;
 }
