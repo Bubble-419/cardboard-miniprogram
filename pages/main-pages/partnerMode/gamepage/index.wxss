@@ -51,6 +51,23 @@
   overflow: hidden;
 }
 
+/*
+ * 灵感输入宿主不放进 page-body，避免 iOS 原生 input 被 overflow:hidden 裁切。
+ * 键盘打开后宿主直接固定到键盘上沿，节点本身不重建。
+ */
+.game-inspiration-dock {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 60;
+}
+
+.game-inspiration-dock-keyboard {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 120;
+}
+
 /* Figma #5848:3368 — 顶部内容避开微信胶囊 */
 .page-footer {
   flex-shrink: 0;

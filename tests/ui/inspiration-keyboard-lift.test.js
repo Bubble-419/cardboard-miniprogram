@@ -36,16 +36,34 @@ function makePage(definition, data = {}) {
   };
 }
 
-test('贴底灵感输入按键盘高度手动上移，卡内输入继续使用系统避让', () => {
+test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
   const composerWxml = read('components/partner-inspiration-composer/index.wxml');
   const inspirationWxml = read('pages/inspiration/index.wxml');
 
   const composerInputs = composerWxml.match(/<input[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/g) || [];
   assert.equal(composerInputs.length, 1);
-  assert.equal((gameWxml.match(/<partner-inspiration-composer/g) || []).length, 2);
+  assert.equal(
+    (gameWxml.match(/<partner-inspiration-composer/g) || []).length,
+    1,
+    '灵感输入节点不得分散在两个 overflow 容器分支中'
+  );
   assert.match(composerInputs[0], /adjust-position="\{\{false\}\}"/);
-  assert.match(composerWxml, /style="\{\{keyboardLiftStyle\}\}"/);
+  assert.doesNotMatch(composerWxml, /style="\{\{keyboardLiftStyle\}\}"/);
+  assert.match(
+    gameWxml,
+    /class="game-inspiration-dock[^\"]*"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
+    '灵感输入宿主应脱离 page-body 裁切，并在匿名表达时完全移出布局'
+  );
+  const pageBodyEnd = gameWxml.indexOf('</block>\n  </view>');
+  const composerIndex = gameWxml.indexOf('<partner-inspiration-composer');
+  const footerIndex = gameWxml.indexOf('<partner-game-footer');
+  assert.ok(pageBodyEnd >= 0 && composerIndex > pageBodyEnd && composerIndex < footerIndex);
+  assert.match(
+    gameWxss,
+    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;/
+  );
   assert.match(composerInputs[0], /cursor-spacing="24"/);
 
   const inspirationTextarea = inspirationWxml.match(/<textarea[\s\S]*?class="inspiration-textarea"[\s\S]*?\/>/);
@@ -74,8 +92,8 @@ test('游戏页首次聚焦时先从父布局移除底栏，再等待键盘高�
   assert.ok(footer, '游戏页应继续使用统一底栏组件');
   assert.match(
     footer[0],
-    /wx:if="\{\{!inspirationInputFocused && inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
-    'focus 到 keyboardheightchange 之间也必须移除底栏，避免原生输入框按旧布局定位'
+    /wx:if="\{\{!inspirationInputFocused && !expressComposerOpen && inspirationKeyboardHeight <= 0 && expressKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
+    'focus 到 keyboardheightchange 之间及匿名表达期间都必须将底栏移出布局'
   );
 
   const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
@@ -91,7 +109,7 @@ test('游戏页首次聚焦时先从父布局移除底栏，再等待键盘高�
   assert.equal(page.data.inspirationKeyboardHeight, 0, 'focus 阶段不猜测键盘高度');
 });
 
-test('gamepage 只从输入事件接收精确键盘高度并交给贴底组件', () => {
+test('gamepage 只从输入事件接收精确键盘高度并停靠灵感宿主', () => {
   let globalKeyboardBindings = 0;
   const originalWx = global.wx;
   const wxMock = {
@@ -119,6 +137,25 @@ test('gamepage 只从输入事件接收精确键盘高度并交给贴底组件',
 
   assert.equal(globalKeyboardBindings, 0, '全局监听与 input 事件双通道会产生高度抖动');
   assert.equal(page.data.inspirationKeyboardHeight, 320);
+  assert.equal(page.data.inspirationDockStyle, 'bottom: 320px;');
+  assert.equal(page.data.keyboardViewportStyle, '');
+});
+
+test('gamepage 灵感键盘高度早于 focus 回调时仍立即停靠输入栏', () => {
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+  const page = makePage(definition, {
+    inspirationInputFocused: false,
+    inspirationKeyboardHeight: 0,
+    inspirationDockStyle: '',
+    keyboardViewportStyle: ''
+  });
+  page._inspirationNativeFocused = false;
+
+  page.onInspirationKeyboardHeightChange({ detail: { height: 286 } });
+
+  assert.equal(page.data.inspirationKeyboardHeight, 286);
+  assert.equal(page.data.inspirationDockStyle, 'bottom: 286px;');
+  assert.equal(page.data.keyboardViewportStyle, '');
 });
 
 test('灵感空间按输入事件的精确键盘高度上移输入栏', () => {
