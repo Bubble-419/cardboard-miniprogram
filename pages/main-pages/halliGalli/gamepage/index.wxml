@@ -174,12 +174,12 @@
     </view>
 
     <!-- 底部占位，防止内容被固定按钮遮挡 -->
-    <view class="footer-placeholder" wx:if="{{isHost}}"></view>
+    <view class="footer-placeholder" wx:if="{{canEndGame}}"></view>
 
   </scroll-view>
 
   <!-- 底部：结束线下游戏并推进到创意阶段（仅房主） -->
-  <view class="footer-section" wx:if="{{isHost}}">
+  <view class="footer-section" wx:if="{{canEndGame}}">
     <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
   </view>
 </view>

@@ -30,6 +30,7 @@ Page(withPageInteractionLock({
     currentPlayerIndex: 1,
     currentPlayerName: '玩家1',
     isHost: false,
+    canEndGame: false,
     isGanDengYan: false,
     selectedBG: null,
     stepImgDeal: halliStepSrc('deal'),
@@ -92,12 +93,18 @@ Page(withPageInteractionLock({
     const roomState = result.roomState || {};
     const currentPlayerIndex = roomState.currentPlayerIndex || this.data.currentPlayerIndex || 1;
     const current = members.find((member) => member.playerIndex === currentPlayerIndex);
+    const endActivityCapability = result.view && result.view.actor
+      && result.view.actor.capabilities && result.view.actor.capabilities.END_HALLI_ACTIVITY;
+    const isHost = result.isHost === true;
     this.setData({
       members,
       avatarList,
       currentPlayerIndex,
       currentPlayerName: current ? (current.nickName || `玩家${currentPlayerIndex}`) : `玩家${currentPlayerIndex}`,
-      isHost: result.isHost === true,
+      isHost,
+      canEndGame: endActivityCapability
+        ? endActivityCapability.allowed === true
+        : isHost,
       isGanDengYan: (result.selectedModeId || roomState.selectedModeId) === 'ganDengYan',
       selectedBG: result.selectedBG || roomState.selectedBG || null
     });

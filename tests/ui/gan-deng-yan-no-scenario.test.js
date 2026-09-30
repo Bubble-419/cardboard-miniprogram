@@ -44,3 +44,14 @@ test('干瞪眼规则改为单列横向卡片，为中文说明保留足够行�
   assert.match(wxss, /\.gan-step-image-wrap\s*\{[\s\S]*?width:\s*220rpx/);
   assert.match(wxss, /\.gan-step-copy\s*\{[\s\S]*?padding:\s*24rpx/);
 });
+
+test('干瞪眼活动页按权威能力展示结束游戏按钮', () => {
+  const js = read('pages/main-pages/halliGalli/gamepage/index.js');
+  const wxml = read('pages/main-pages/halliGalli/gamepage/index.wxml');
+
+  assert.match(js, /capabilities\.END_HALLI_ACTIVITY/);
+  assert.match(js, /canEndGame:\s*endActivityCapability/);
+  assert.match(wxml, /class="footer-section" wx:if="\{\{canEndGame\}\}"/);
+  assert.match(wxml, /class="end-game-btn" bindtap="handleEndGame">结束游戏<\/button>/);
+  assert.match(js, /dispatchRoomCommand\('END_HALLI_ACTIVITY', \{\}\)/);
+});

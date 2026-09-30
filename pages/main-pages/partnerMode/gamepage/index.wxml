@@ -37,7 +37,7 @@
       selectedUser="{{!isPlayerFilterActive ? -1 : selectedPlayerIndex}}"
       indicatorUser="{{indicatorPlayerIndex}}"
       actionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
-      specialMoveActive="{{cardBorderVariant === 'master' || cardBorderVariant === 'sound'}}"
+      specialMoveActive="{{!!specialActionBadge}}"
       interactive="{{gamepagePhase !== 'closing'}}"
       roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
       roundTimerActive="{{!isHistoryReview && roundTimerVisible && roundTimerReady}}"
@@ -659,8 +659,15 @@
                         <view class="special-mode-badge">{{specialActionBadge}}</view>
                         <text class="action-title action-title-special">{{isMasterMode ? '请进行卡牌行动并解释' : '出牌并解释'}}</text>
                       </view>
-                      <text class="action-title" wx:else>出牌并解释</text>
-                      <text class="action-desc">{{isMasterMode ? '您可以进行任意次行动，每次行动可以是以下任意一种' : '每轮行动 1–3 次，可新开方案，也可延续他人想法。每次行动后，简要说明你的想法。'}}</text>
+                      <view class="action-title-row action-title-row-regular" wx:else>
+                        <view class="regular-mode-badge">普通模式</view>
+                        <text class="action-title action-title-regular">请进行卡牌行动并解释</text>
+                      </view>
+                      <text class="action-desc" wx:if="{{isMasterMode}}">您可以进行任意次行动，每次行动可以是以下任意一种</text>
+                      <view class="action-guidance" wx:else>
+                        <text class="action-count">每轮可行动 <text class="action-count-number">1–3 次</text></text>
+                        <text class="action-desc action-desc-detail">下方任意一种操作均算 1 次行动。可新开方案或延续他人想法，行动后请简要说明。</text>
+                      </view>
                     </view>
                   </view>
                   <view class="action-divider"></view>
