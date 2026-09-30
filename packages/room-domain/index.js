@@ -134,6 +134,7 @@ function beginModeSelection(aggregate, actorUserId) {
   if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, '请先结束当前场次');
   if (aggregate.room.modeSelectionActive === true) return fail(ERR.INVALID_TRANSITION, '已在选择模式');
   aggregate.room.modeSelectionActive = true;
+  aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
   return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_STARTED)]);
 }
 
@@ -206,6 +207,10 @@ function dissolveRoom(aggregate, actorUserId, deps) {
 function startSession(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
   if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, '请先结束当前场次');
+  if (Number(command.context.modeSelectionRevision)
+    !== Number(aggregate.room.modeSelectionRevision || 0)) {
+    return fail(ERR.STALE_CONTEXT, '模式选择页已经变化');
+  }
   const mode = normalizeMode(command.payload.mode);
   if (!mode) return fail(ERR.INVALID_ARGUMENT, '未知模式');
   if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} 人数不足`);
@@ -418,6 +423,7 @@ function cancelSession(aggregate, command, actorUserId, deps) {
   if ([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(check.session.status)) return fail(ERR.INVALID_TRANSITION);
   const events = []; cancelCurrentSession(aggregate, 'HOST_CANCELLED', deps, events);
   aggregate.room.modeSelectionActive = true;
+  aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
   return domainOk(aggregate, events, { kind: 'SESSION_CANCELLED' });
 }
 

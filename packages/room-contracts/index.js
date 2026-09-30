@@ -1,8 +1,8 @@
 'use strict';
 
 const PROTOCOL_VERSION = 3;
-const SCHEMA_VERSION = 6;
-const VIEW_SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 7;
+const VIEW_SCHEMA_VERSION = 12;
 const EVENT_SCHEMA_VERSION = 5;
 const MAX_INCREMENTAL_SYNC_EVENTS = 25;
 const MAX_SEATS = 6;
@@ -151,6 +151,7 @@ const ERR_MSG = Object.freeze({
 });
 
 const COMMAND_CONTEXT = Object.freeze({
+  START_WORKSHOP_SESSION: ['modeSelectionRevision'],
   SET_SCENARIO: ['sessionId', 'workflowStep', 'workflowRevision'],
   SUBMIT_DESIGN_PROBLEM: ['sessionId', 'workflowRevision'],
   UPDATE_DESIGN_PROBLEM: ['sessionId', 'workflowStep', 'workflowRevision', 'entityVersion'],
@@ -443,7 +444,7 @@ function validateCommandEnvelope(raw) {
   if (unknownContext) return fail(ERR.INVALID_ARGUMENT, `context.${unknownContext} 不属于 ${type}`);
   for (const key of contextKeys) {
     if (context[key] == null || context[key] === '') return fail(ERR.INVALID_ARGUMENT, `context.${key} 必填`);
-    if (!['entityVersion', 'roundNo', 'workflowRevision'].includes(key)
+    if (!['entityVersion', 'roundNo', 'workflowRevision', 'modeSelectionRevision'].includes(key)
       && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
       return fail(ERR.INVALID_ARGUMENT, `context.${key} 必须是 1～128 字符`);
     }
@@ -459,6 +460,10 @@ function validateCommandEnvelope(raw) {
   if (context.workflowRevision != null
     && (!Number.isInteger(context.workflowRevision) || context.workflowRevision < 1)) {
     return fail(ERR.INVALID_ARGUMENT, 'context.workflowRevision 必须是正整数');
+  }
+  if (context.modeSelectionRevision != null
+    && (!Number.isInteger(context.modeSelectionRevision) || context.modeSelectionRevision < 0)) {
+    return fail(ERR.INVALID_ARGUMENT, 'context.modeSelectionRevision 必须是非负整数');
   }
   const payloadResult = validatePayload(type, payload);
   if (!payloadResult.ok) return payloadResult;
@@ -593,6 +598,8 @@ function validateMemberView(view, expectedRoomId) {
     || (expectedRoomId && view.room.roomId !== expectedRoomId)) return false;
   if (!Object.values(LIFECYCLE).includes(view.room.lifecycle)
     || typeof view.room.workshopName !== 'string'
+    || !Number.isInteger(view.room.modeSelectionRevision)
+    || view.room.modeSelectionRevision < 0
     || !Number.isFinite(view.room.createdAt)
     || !isNonEmptyString(view.room.hostMemberId)
     || !Array.isArray(view.room.members)

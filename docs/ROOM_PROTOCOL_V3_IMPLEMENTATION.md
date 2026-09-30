@@ -31,7 +31,7 @@ V3 遵循以下不可拆分的原则：
 
 1. **服务端权威**：Room、当前 Session 和 Facts 是唯一业务事实源。客户端只提交意图，不提交最终状态、身份或权限结论。
 2. **Command 原子化**：每个已接受 Command 在同一事务内提交 State、一个 Event Group 和 Command Receipt；失败不得留下部分结果。
-3. **精确上下文**：并发冲突通过 `sessionId`、`turnId`、`workflowStep`、`workflowRevision`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
+3. **精确上下文**：并发冲突通过 `modeSelectionRevision`、`sessionId`、`turnId`、`workflowStep`、`workflowRevision`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
 4. **事件只负责同步**：Event 是有保留期的有序同步日志，不是从创世事件重建服务端状态的完整事件溯源。Event 不可用时直接恢复 Snapshot。
 5. **View 是成员投影**：页面只消费由服务端为当前成员投影的完整 `Member View`，不得读取 Aggregate、Raw Event 或其他成员的 Actor 投影。
 6. **Snapshot 与 Event 等价**：同一个 `Member View` 必须既能由 Snapshot 完整替换，也能由前一 View 顺序应用 Event Patch 得到；页面不能根据来源执行不同业务逻辑。
@@ -185,7 +185,7 @@ flowchart TB
 
 ```text
 view
-├── room { roomId, lifecycle, hostMemberId, workshopName, members[] }
+├── room { roomId, lifecycle, hostMemberId, workshopName, modeSelectionRevision, members[] }
 ├── session
 │   ├── { sessionId, ordinal, status, mode, participants[] }
 │   ├── setup { scenarioSource, scenario, selectedProblem, designProblems[], proposedFirstMemberId }

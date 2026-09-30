@@ -257,7 +257,7 @@ sequenceDiagram
 | 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
 | “退出房间” | `LEAVE_ROOM` | 非 Host |
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
-| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页 |
+| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页，并生成新的 `modeSelectionRevision` |
 | “确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
@@ -336,6 +336,7 @@ flowchart TD
 | Host 从模式选择页点“上一页”或回房间 | `CANCEL_MODE_SELECTION` | Host 与 Player 一起回 `addPlayer` 大厅 |
 | Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 回权威 `brainstormMode?isHost=1`，Player 回空状态等待页 |
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` 后 `CANCEL_MODE_SELECTION` | 先取消 Session 回到权威模式选择状态，再取消模式选择回 `addPlayer` |
+| Host 在房间页从当前模式面板点“退出当前模式” | 运行中先 `CANCEL_WORKSHOP_SESSION` 再 `CANCEL_MODE_SELECTION`；已完成则 `RETURN_TO_LOBBY` | Session 归档并完整回到 `addPlayer` 大厅；之后再次点“选择模式”可重新发送 `BEGIN_MODE_SELECTION` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。

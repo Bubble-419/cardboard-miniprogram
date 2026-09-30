@@ -47,6 +47,13 @@ test('按命令注册表验证精确上下文令牌', () => {
   })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.BEGIN_MODE_SELECTION)).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.CANCEL_MODE_SELECTION)).ok, true);
+  assert.deepEqual(COMMAND_CONTEXT.START_WORKSHOP_SESSION, ['modeSelectionRevision']);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_WORKSHOP_SESSION, {
+    context: {}, payload: { mode: 'PARTNER' }
+  })).ok, false);
+  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_WORKSHOP_SESSION, {
+    context: { modeSelectionRevision: 1 }, payload: { mode: 'PARTNER' }
+  })).ok, true);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
     context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);
@@ -149,7 +156,7 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
   const view = {
     room: {
       roomId: '12345678', lifecycle: 'OPEN', workshopName: '工作坊', createdAt: 1,
-      hostMemberId: 'member-1',
+      hostMemberId: 'member-1', modeSelectionRevision: 1,
       members: [{
         memberId: 'member-1', seatNo: 1, nickName: '房主', avatarRef: null,
         avatarIndex: null, color: '#5EC159', joinedAt: 1
@@ -203,6 +210,7 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
   const missingCases = [
     ['room.members', (copy) => { delete copy.room.members; }],
     ['room.hostMemberId', (copy) => { delete copy.room.hostMemberId; }],
+    ['room.modeSelectionRevision', (copy) => { delete copy.room.modeSelectionRevision; }],
     ['actor.scoreStatus', (copy) => { delete copy.actor.scoreStatus; }],
     ['actor.isParticipant', (copy) => { delete copy.actor.isParticipant; }],
     ['navigation.back', (copy) => { delete copy.navigation.back; }],

@@ -77,3 +77,90 @@ test('房主打开模式选择前先提交权威状态，返回时也执行投�
   assert.match(lobbySource, /followRoomRouteAfterCommand\(result, roomId\)/);
   assert.match(modeSource, /executeProjectedBack\(this\.data\.roomId\)/);
 });
+
+test('新房间首次选择模式会携带当前 modeSelectionRevision', async () => {
+  const definition = loadPageDefinition();
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  const originalGetCurrentPages = global.getCurrentPages;
+  const roomId = '12345678';
+  const modeSelectionRevision = 1;
+  let revision = 1;
+  let modeStarted = false;
+  let dispatchedCommand = null;
+  let navigatedUrl = '';
+  const toasts = [];
+
+  const currentView = () => ({
+    room: { roomId, modeSelectionRevision },
+    session: modeStarted ? { sessionId: 'session-1', status: 'CONFIGURING' } : null,
+    actor: {
+      capabilities: {
+        START_WORKSHOP_SESSION: { allowed: !modeStarted, reason: 'INVALID_TRANSITION' }
+      }
+    },
+    route: modeStarted
+      ? { name: 'modeIndex', params: { modeId: 'partner' } }
+      : { name: 'brainstormMode', params: { isHost: 1, modeSelectionRevision } }
+  });
+  const roomSession = {
+    roomId,
+    getView: currentView,
+    getSnapshot: () => ({ ok: true, roomId, revision, view: currentView() }),
+    dispatch: async (command) => {
+      dispatchedCommand = command;
+      if (command.context.modeSelectionRevision !== modeSelectionRevision) {
+        return {
+          ok: false,
+          errCode: 'INVALID_ARGUMENT',
+          errMsg: 'context.modeSelectionRevision 必填'
+        };
+      }
+      modeStarted = true;
+      revision += 1;
+      return { ok: true, outcome: { committedThroughSeq: revision } };
+    }
+  };
+  const app = { globalData: { roomId, roomSession } };
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/brainstormMode/index', data: { roomId } }];
+  global.wx = {
+    showToast(options) { toasts.push(options && options.title); },
+    redirectTo(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    },
+    reLaunch(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    }
+  };
+
+  const page = {
+    ...definition,
+    data: {
+      ...definition.data,
+      roomId,
+      isHost: true,
+      selectedModeId: 'partner'
+    },
+    setData(patch) {
+      Object.assign(this.data, patch);
+    }
+  };
+
+  try {
+    await page._confirmMode();
+
+    assert.equal(
+      dispatchedCommand && dispatchedCommand.context.modeSelectionRevision,
+      modeSelectionRevision
+    );
+    assert.equal(toasts.includes('context.modeSelectionRevision 必填'), false);
+    assert.match(navigatedUrl, /modeIndex/);
+  } finally {
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+    global.getCurrentPages = originalGetCurrentPages;
+  }
+});

@@ -40,6 +40,10 @@ function commandContext(type, explicit) {
   const partner = session && session.publicModeState;
   const spy = session && session.mode === 'SPY' ? session.publicModeState : null;
   const tokens = COMMAND_CONTEXT[type] || [];
+  if (tokens.includes('modeSelectionRevision')
+    && missingContextToken(context.modeSelectionRevision) && view && view.room) {
+    context.modeSelectionRevision = view.room.modeSelectionRevision;
+  }
   if (tokens.includes('sessionId') && missingContextToken(context.sessionId) && session) {
     context.sessionId = session.sessionId;
   }

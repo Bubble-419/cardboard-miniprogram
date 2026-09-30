@@ -145,6 +145,7 @@ function createRoomAggregate(roomId, actorUserId, payload, deps) {
     workshopName: String(payload.workshopName || '脑暴工作坊').trim().slice(0, 20) || '脑暴工作坊',
     members: [],
     modeSelectionActive: false,
+    modeSelectionRevision: 0,
     currentSessionId: null,
     sessionOrdinal: 0,
     createdAt: now,

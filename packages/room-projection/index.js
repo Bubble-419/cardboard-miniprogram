@@ -71,6 +71,7 @@ function projectPublicView(aggregate) {
       workshopName: room.workshopName,
       createdAt: room.createdAt,
       hostMemberId: room.hostMemberId,
+      modeSelectionRevision: Number(room.modeSelectionRevision || 0),
       members: (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
         memberId: member.memberId,
         seatNo: member.seatNo,
