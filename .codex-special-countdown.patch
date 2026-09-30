@@ -1,0 +1,20 @@
+diff --git a/pages/main-pages/partnerMode/gamepage/index.wxml b/pages/main-pages/partnerMode/gamepage/index.wxml
+--- a/pages/main-pages/partnerMode/gamepage/index.wxml
++++ b/pages/main-pages/partnerMode/gamepage/index.wxml
+@@ -38,5 +38,5 @@
+       indicatorUser="{{indicatorPlayerIndex}}"
+       actionPage="{{!isHistoryReview && showCurrentActionCard && cardIndex >= displayRoundSummaries.length}}"
+-      specialMoveActive="{{cardBorderVariant === 'master' || cardBorderVariant === 'sound'}}"
++      specialMoveActive="{{!!specialActionBadge}}"
+       interactive="{{gamepagePhase !== 'closing'}}"
+       roundStartedAt="{{isHistoryReview ? null : avatarRoundStartedAt}}"
+diff --git a/pages/main-pages/partnerMode/specialMove/index.wxml b/pages/main-pages/partnerMode/specialMove/index.wxml
+--- a/pages/main-pages/partnerMode/specialMove/index.wxml
++++ b/pages/main-pages/partnerMode/specialMove/index.wxml
+@@ -45,5 +45,5 @@
+         visualMode="partner-game"
+         onActionPage="{{viewMode === 'wheel' || cardIndex >= displayRoundSummaries.length}}"
+-        specialMoveActive="{{true}}"
++        specialMoveActive="{{viewMode === 'reverseRandom' || viewMode === 'silent' || selectedAction === 'master' || selectedAction === 'helpLuck' || selectedAction === 'silent'}}"
+         showActingFrame="{{true}}"
+         roundStartedAt="{{avatarRoundStartedAt}}"
