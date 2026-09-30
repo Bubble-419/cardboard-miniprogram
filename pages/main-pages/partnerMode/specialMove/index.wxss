@@ -754,7 +754,7 @@
   width: 100%;
   height: auto;
   aspect-ratio: 4 / 3;
-  background: #e7e7e7;
+  background: #f6fff4;
   flex-shrink: 0;
 }
 

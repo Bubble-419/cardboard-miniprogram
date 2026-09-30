@@ -705,19 +705,19 @@
                   <view class="action-rules-block" wx:else>
                     <view class="action-grid">
                       <view class="action-cell">
-                        <view class="action-illus"></view>
+                        <image class="action-illus" src="/assets/partnerMode/actions/action-play.jpg" mode="aspectFit" />
                         <text class="action-cell-label">出 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <view class="action-illus"></view>
+                        <image class="action-illus" src="/assets/partnerMode/actions/action-delete.jpg" mode="aspectFit" />
                         <text class="action-cell-label">删 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <view class="action-illus"></view>
+                        <image class="action-illus" src="/assets/partnerMode/actions/action-move.jpg" mode="aspectFit" />
                         <text class="action-cell-label">调整 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <view class="action-illus"></view>
+                        <image class="action-illus" src="/assets/partnerMode/actions/action-swap.jpg" mode="aspectFit" />
                         <text class="action-cell-label">交换 2 张卡牌</text>
                       </view>
                     </view>

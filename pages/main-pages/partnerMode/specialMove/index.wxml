@@ -289,19 +289,19 @@
                   <view class="action-divider silent-divider"></view>
                   <view class="silent-action-grid">
                     <view class="silent-action-cell">
-                      <view class="silent-action-illus"></view>
+                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-play.jpg" mode="aspectFit" />
                       <text class="silent-action-label">出 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <view class="silent-action-illus"></view>
+                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-delete.jpg" mode="aspectFit" />
                       <text class="silent-action-label">删 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <view class="silent-action-illus"></view>
+                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-move.jpg" mode="aspectFit" />
                       <text class="silent-action-label">调整 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <view class="silent-action-illus"></view>
+                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-swap.jpg" mode="aspectFit" />
                       <text class="silent-action-label">交换 2 张卡牌</text>
                     </view>
                   </view>
