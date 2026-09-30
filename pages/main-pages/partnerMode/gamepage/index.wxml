@@ -712,19 +712,19 @@
                   <view class="action-rules-block" wx:else>
                     <view class="action-grid">
                       <view class="action-cell">
-                        <image class="action-illus" src="/assets/partnerMode/actions/action-play.jpg" mode="aspectFit" />
+                        <image class="action-illus" src="{{actionPlaySrc}}" mode="aspectFit" />
                         <text class="action-cell-label">出 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <image class="action-illus" src="/assets/partnerMode/actions/action-delete.jpg" mode="aspectFit" />
+                        <image class="action-illus" src="{{actionDeleteSrc}}" mode="aspectFit" />
                         <text class="action-cell-label">删 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <image class="action-illus" src="/assets/partnerMode/actions/action-move.jpg" mode="aspectFit" />
+                        <image class="action-illus" src="{{actionMoveSrc}}" mode="aspectFit" />
                         <text class="action-cell-label">调整 1 张卡牌</text>
                       </view>
                       <view class="action-cell">
-                        <image class="action-illus" src="/assets/partnerMode/actions/action-swap.jpg" mode="aspectFit" />
+                        <image class="action-illus" src="{{actionSwapSrc}}" mode="aspectFit" />
                         <text class="action-cell-label">交换 2 张卡牌</text>
                       </view>
                     </view>
@@ -933,7 +933,7 @@
   </view>
 
   <partner-game-footer
-    wx:if="{{inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0}}"
+    wx:if="{{!inspirationInputFocused && inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0}}"
     id="partnerGameFooter"
     visible="{{(isHistoryReview && reviewCanGoBack) || (!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review')))}}"
     keyboardOpen="{{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0}}"

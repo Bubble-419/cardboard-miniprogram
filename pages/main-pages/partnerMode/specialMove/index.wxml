@@ -261,7 +261,7 @@
                   <view class="action-divider reverse-divider"></view>
                   <view class="reverse-step-grid">
                     <view class="reverse-step-cell" wx:for="{{reverseSteps}}" wx:key="label">
-                      <view class="reverse-step-illus"></view>
+                      <image class="reverse-step-illus" src="{{item.image}}" mode="aspectFill" />
                       <text class="reverse-step-label">{{item.label}}</text>
                     </view>
                   </view>
@@ -292,19 +292,19 @@
                   <view class="action-divider silent-divider"></view>
                   <view class="silent-action-grid">
                     <view class="silent-action-cell">
-                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-play.jpg" mode="aspectFit" />
+                      <image class="silent-action-illus" src="{{actionPlaySrc}}" mode="aspectFit" />
                       <text class="silent-action-label">出 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-delete.jpg" mode="aspectFit" />
+                      <image class="silent-action-illus" src="{{actionDeleteSrc}}" mode="aspectFit" />
                       <text class="silent-action-label">删 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-move.jpg" mode="aspectFit" />
+                      <image class="silent-action-illus" src="{{actionMoveSrc}}" mode="aspectFit" />
                       <text class="silent-action-label">调整 1 张卡牌</text>
                     </view>
                     <view class="silent-action-cell">
-                      <image class="silent-action-illus" src="/assets/partnerMode/actions/action-swap.jpg" mode="aspectFit" />
+                      <image class="silent-action-illus" src="{{actionSwapSrc}}" mode="aspectFit" />
                       <text class="silent-action-label">交换 2 张卡牌</text>
                     </view>
                   </view>

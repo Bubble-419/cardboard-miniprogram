@@ -99,7 +99,15 @@
         "type": "glob"
       },
       {
+        "value": "assets/ganDengYan/*.jpg",
+        "type": "glob"
+      },
+      {
         "value": "assets/halliGalli/*.webp",
+        "type": "glob"
+      },
+      {
+        "value": "assets/partnerMode/actions/*.jpg",
         "type": "glob"
       },
       {

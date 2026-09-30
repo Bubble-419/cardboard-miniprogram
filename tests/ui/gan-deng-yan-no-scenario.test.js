@@ -25,7 +25,8 @@ test('干瞪眼活动页隐藏情境并展示独立的四步图文规则', () =>
   ];
 
   rules.forEach(([file, title, description]) => {
-    assert.match(wxml, new RegExp(`/assets/ganDengYan/${file.replace('.', '\\.')}`));
+    assert.ok(js.includes(`staticCdnUrl(\`assets/ganDengYan/rule-\${key}.jpg\`)`));
+    assert.doesNotMatch(wxml, new RegExp(`/assets/ganDengYan/${file.replace('.', '\\.')}`));
     assert.ok(wxml.includes(`<text class="step-title">${title}</text>`));
     assert.ok(wxml.includes(`<text class="step-desc">${description}</text>`));
     assert.ok(fs.existsSync(path.join(root, 'assets/ganDengYan', file)), `missing ${file}`);

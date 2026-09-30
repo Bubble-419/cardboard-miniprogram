@@ -5,10 +5,10 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '../..');
 const imagePaths = [
-  '/assets/partnerMode/actions/action-play.jpg',
-  '/assets/partnerMode/actions/action-delete.jpg',
-  '/assets/partnerMode/actions/action-move.jpg',
-  '/assets/partnerMode/actions/action-swap.jpg'
+  'assets/partnerMode/actions/action-play.jpg',
+  'assets/partnerMode/actions/action-delete.jpg',
+  'assets/partnerMode/actions/action-move.jpg',
+  'assets/partnerMode/actions/action-swap.jpg'
 ];
 
 function read(relativePath) {
@@ -35,25 +35,26 @@ function readJpegSize(buffer) {
   throw new Error('JPEG dimensions not found');
 }
 
-test('regular and silent action rules render all supplied illustrations without cropping', () => {
+test('regular and silent action rules render CDN illustrations without cropping', () => {
   const templates = [
     read('pages/main-pages/partnerMode/gamepage/index.wxml'),
     read('pages/main-pages/partnerMode/specialMove/index.wxml')
   ];
+  const scripts = [
+    read('pages/main-pages/partnerMode/gamepage/index.js'),
+    read('pages/main-pages/partnerMode/specialMove/index.js')
+  ];
 
-  for (const template of templates) {
-    for (const imagePath of imagePaths) {
-      assert.match(
-        template,
-        new RegExp(`<image[^>]+src="${imagePath}"[^>]+mode="aspectFit"`)
-      );
-    }
+  for (const imagePath of imagePaths) {
+    scripts.forEach((script) => assert.ok(script.includes(`staticCdnUrl('${imagePath}')`)));
+    templates.forEach((template) => assert.doesNotMatch(template, new RegExp(`/${imagePath}`)));
   }
+  assert.equal(templates.reduce((count, template) => count + (template.match(/class="(?:action|silent-action)-illus"[^>]+mode="aspectFit"/g) || []).length, 0), 8);
 });
 
-test('all action-rule image assets are packaged and retain a 4:3 JPEG canvas', () => {
+test('all action-rule image sources retain a 4:3 JPEG canvas', () => {
   for (const imagePath of imagePaths) {
-    const absolutePath = path.join(root, imagePath.slice(1));
+    const absolutePath = path.join(root, imagePath);
     const buffer = fs.readFileSync(absolutePath);
 
     assert.equal(buffer[0], 0xff);

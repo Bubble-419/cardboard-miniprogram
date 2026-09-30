@@ -25,6 +25,8 @@ const ENTRIES = [
   { type: 'file', rel: 'assets/brainstormMode/mode-cover-halligalli.jpg' },
   { type: 'file', rel: 'assets/brainstormMode/mode-cover-partner.jpg' },
   { type: 'file', rel: 'assets/brainstormMode/mode-cover-spy.jpg' },
+  { type: 'dir', rel: 'assets/ganDengYan' },
+  { type: 'dir', rel: 'assets/partnerMode/actions' },
   { type: 'file', rel: 'assets/halliGalli/step-deal.webp' },
   { type: 'file', rel: 'assets/halliGalli/step-flip.webp' },
   { type: 'file', rel: 'assets/halliGalli/step-ring.webp' },

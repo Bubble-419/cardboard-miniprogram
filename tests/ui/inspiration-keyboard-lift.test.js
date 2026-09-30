@@ -67,16 +67,28 @@ test('贴底灵感输入按键盘高度手动上移，卡内输入继续使用�
   assert.doesNotMatch(gameWxml, /style="\{\{closingComposeLiftStyle\}\}"/);
 });
 
-test('游戏页键盘打开时从父布局移除底栏组件，不保留一整块按钮高度', () => {
+test('游戏页首次聚焦时先从父布局移除底栏，再等待键盘高度事件', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
   const footer = gameWxml.match(/<partner-game-footer[\s\S]*?\/>/);
 
   assert.ok(footer, '游戏页应继续使用统一底栏组件');
   assert.match(
     footer[0],
-    /wx:if="\{\{inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
-    '仅隐藏组件内部内容仍会让自定义组件宿主占据底栏高度'
+    /wx:if="\{\{!inspirationInputFocused && inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
+    'focus 到 keyboardheightchange 之间也必须移除底栏，避免原生输入框按旧布局定位'
   );
+
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
+  const page = makePage(definition, {
+    inspirationInputFocused: false,
+    inspirationKeyboardHeight: 0
+  });
+
+  page.onInspirationFocus();
+
+  assert.equal(page._inspirationNativeFocused, true);
+  assert.equal(page.data.inspirationInputFocused, true);
+  assert.equal(page.data.inspirationKeyboardHeight, 0, 'focus 阶段不猜测键盘高度');
 });
 
 test('gamepage 只从输入事件接收精确键盘高度并交给贴底组件', () => {

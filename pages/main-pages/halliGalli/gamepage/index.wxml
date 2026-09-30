@@ -29,7 +29,7 @@
       <view class="gan-steps-list" wx:if="{{isGanDengYan}}">
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
-            <image class="gan-step-img" src="/assets/ganDengYan/rule-deal.jpg" mode="aspectFill" />
+            <image class="gan-step-img" src="{{ganRuleDealSrc}}" mode="aspectFill" />
             <view class="step-badge"><text class="step-num">1</text></view>
           </view>
           <view class="gan-step-copy">
@@ -40,7 +40,7 @@
 
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
-            <image class="gan-step-img" src="/assets/ganDengYan/rule-first-play.jpg" mode="aspectFill" />
+            <image class="gan-step-img" src="{{ganRuleFirstPlaySrc}}" mode="aspectFill" />
             <view class="step-badge"><text class="step-num">2</text></view>
           </view>
           <view class="gan-step-copy">
@@ -51,7 +51,7 @@
 
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
-            <image class="gan-step-img" src="/assets/ganDengYan/rule-connect.jpg" mode="aspectFill" />
+            <image class="gan-step-img" src="{{ganRuleConnectSrc}}" mode="aspectFill" />
             <view class="step-badge"><text class="step-num">3</text></view>
           </view>
           <view class="gan-step-copy">
@@ -62,7 +62,7 @@
 
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
-            <image class="gan-step-img" src="/assets/ganDengYan/rule-win.jpg" mode="aspectFill" />
+            <image class="gan-step-img" src="{{ganRuleWinSrc}}" mode="aspectFill" />
             <view class="step-badge"><text class="step-num">4</text></view>
           </view>
           <view class="gan-step-copy">

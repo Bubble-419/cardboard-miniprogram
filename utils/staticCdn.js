@@ -39,7 +39,9 @@ const PACK_IGNORE_FOR_CDN = [
   { value: 'assets/subAwait/wait-hero-5a8ea5.webp', type: 'file' },
   { value: 'assets/home/empty-history-6f27f1.webp', type: 'file' },
   { value: 'assets/brainstormMode/*.jpg', type: 'glob' },
-  { value: 'assets/halliGalli/*.webp', type: 'glob' }
+  { value: 'assets/ganDengYan/*.jpg', type: 'glob' },
+  { value: 'assets/halliGalli/*.webp', type: 'glob' },
+  { value: 'assets/partnerMode/actions/*.jpg', type: 'glob' }
 ];
 
 module.exports = {

@@ -109,7 +109,7 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
-const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
+const { WAIT_HERO_SRC, staticCdnUrl } = require('../../../../utils/staticCdn');
 const {
   PARTNER_SHELL_SCREEN,
   projectPartnerRoomShell
@@ -133,6 +133,10 @@ Page(withPageInteractionLock({
     closingVoteModel: null,
     closingVoteSubmitting: false,
     waitHeroSrc: WAIT_HERO_SRC,
+    actionPlaySrc: staticCdnUrl('assets/partnerMode/actions/action-play.jpg'),
+    actionDeleteSrc: staticCdnUrl('assets/partnerMode/actions/action-delete.jpg'),
+    actionMoveSrc: staticCdnUrl('assets/partnerMode/actions/action-move.jpg'),
+    actionSwapSrc: staticCdnUrl('assets/partnerMode/actions/action-swap.jpg'),
     isHost: false,
     avatarList: [],
     currentPlayerIndex: 1,
@@ -5702,6 +5706,11 @@ Page(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
+    // 原生 input 会在 keyboardheightchange 之前完成首帧定位。先移除底栏，
+    // 避免底栏回流与键盘抬升同帧发生，导致首次聚焦多出一个底栏高度的间隔。
+    if (!this.data.inspirationInputFocused) {
+      this.setData({ inspirationInputFocused: true });
+    }
   },
 
   onInspirationBlur() {

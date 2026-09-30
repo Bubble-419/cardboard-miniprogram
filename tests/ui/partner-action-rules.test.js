@@ -61,10 +61,21 @@ test('普通与静默行动插画区域都固定为 4:3', () => {
 });
 
 test('反面随机拼使用正方形插画，提示标题与出牌标题字号一致', () => {
+  const specialJs = read('pages/main-pages/partnerMode/specialMove/index.js');
+  const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
   const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
   const specialWxss = read('pages/main-pages/partnerMode/specialMove/index.wxss');
 
+  assert.match(specialWxml, /<image class="reverse-step-illus" src="\{\{item\.image\}\}" mode="aspectFill"/);
   assert.match(specialWxss, /\.reverse-step-illus\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1/);
   assert.match(gameWxss, /\.action-title\s*\{[\s\S]*?font-size:\s*52rpx/);
   assert.match(specialWxss, /\.reverse-card-inner \.special-action-title\s*\{[\s\S]*?font-size:\s*52rpx/);
+
+  for (let step = 1; step <= 4; step += 1) {
+    const relativePath = `assets/partnerMode/actions/reverse-step-${step}.jpg`;
+    const assetPath = path.join(root, relativePath);
+    assert.ok(specialJs.includes(`staticCdnUrl('${relativePath}')`));
+    assert.ok(fs.existsSync(assetPath), `${relativePath} should exist`);
+    assert.ok(fs.statSync(assetPath).size < 100 * 1024, `${relativePath} should stay upload-friendly`);
+  }
 });
