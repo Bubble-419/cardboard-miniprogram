@@ -17,8 +17,6 @@ const {
   projectSelectPlayerShell
 } = require('./shell');
 
-const IOS_TOUCH_OVERFLOW_FALLBACK_MS = 800;
-
 Page({
   data: {
     activeTouches: [],
@@ -26,7 +24,6 @@ Page({
     minPlayers: 0,
     countdown: 1,
     isSelecting: false,
-    iosTouchLimitActive: false,
     selectedTouchId: null,
     roomId: '',
     members: [],
@@ -95,7 +92,6 @@ Page({
     if (this.countdownTimer) clearInterval(this.countdownTimer);
     if (this.selectionTimer) clearTimeout(this.selectionTimer);
     this._clearLongPressTimer();
-    this._clearIosTouchOverflowTimer();
   },
 
   _startStatePolling() {
@@ -122,7 +118,6 @@ Page({
     const shell = projectSelectPlayerShell(result);
     if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.EXTERNAL) {
       this._clearLongPressTimer();
-      this._clearIosTouchOverflowTimer();
       if (this.countdownTimer) {
         clearInterval(this.countdownTimer);
         this.countdownTimer = null;
@@ -135,15 +130,13 @@ Page({
         roomShellScreen: SELECT_PLAYER_SHELL_SCREEN.LOADING,
         waitingModel: null,
         activeTouches: [],
-        isSelecting: false,
-        iosTouchLimitActive: false
+        isSelecting: false
       });
       return shell;
     }
 
     if (shell.screen === SELECT_PLAYER_SHELL_SCREEN.WAITING) {
       this._clearLongPressTimer();
-      this._clearIosTouchOverflowTimer();
       if (this.countdownTimer) {
         clearInterval(this.countdownTimer);
         this.countdownTimer = null;
@@ -157,8 +150,7 @@ Page({
         waitingModel: shell.waiting,
         isHost: false,
         activeTouches: [],
-        isSelecting: false,
-        iosTouchLimitActive: false
+        isSelecting: false
       });
       return shell;
     }
@@ -173,68 +165,9 @@ Page({
       isHost: selector.isHost === true,
       selectedModeId,
       members,
-      minPlayers: members.length || this.data.minPlayers,
-      iosTouchLimitActive: members.length > 5 && this._isIosDevice()
+      minPlayers: members.length || this.data.minPlayers
     });
     return shell;
-  },
-
-  _isIosDevice() {
-    if (typeof wx === 'undefined') return false;
-    let info = {};
-    try {
-      if (typeof wx.getDeviceInfo === 'function') {
-        info = wx.getDeviceInfo() || {};
-      } else if (typeof wx.getSystemInfoSync === 'function') {
-        info = wx.getSystemInfoSync() || {};
-      }
-    } catch (e) {
-      info = {};
-    }
-    return /ios|iphone|ipad/i.test(`${info.platform || ''} ${info.system || ''}`);
-  },
-
-  _selectFromIosTouchOverflow() {
-    const activeTouches = (this.data.activeTouches || []).slice(0, 5);
-    if (activeTouches.length < 5 || this.data.isSelecting) return false;
-    this._clearLongPressTimer();
-    this._clearIosTouchOverflowTimer();
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-    }
-    if (this.selectionTimer) {
-      clearTimeout(this.selectionTimer);
-      this.selectionTimer = null;
-    }
-    this.setData({
-      activeTouches,
-      playerCount: activeTouches.length,
-      countdown: 0,
-      isSelecting: true
-    });
-    this.selectRandomPlayer();
-    return true;
-  },
-
-  _startIosTouchOverflowTimer() {
-    if (this._iosTouchOverflowTimer) return;
-    this._iosTouchOverflowTimer = setTimeout(() => {
-      this._iosTouchOverflowTimer = null;
-      if (!this.data.iosTouchLimitActive
-        || (this.data.activeTouches || []).length < 5
-        || this.data.isSelecting
-        || this.data.selectedPlayerIndex) {
-        return;
-      }
-      this._selectFromIosTouchOverflow();
-    }, IOS_TOUCH_OVERFLOW_FALLBACK_MS);
-  },
-
-  _clearIosTouchOverflowTimer() {
-    if (!this._iosTouchOverflowTimer) return;
-    clearTimeout(this._iosTouchOverflowTimer);
-    this._iosTouchOverflowTimer = null;
   },
 
   async loadMembers(roomId) {
@@ -252,17 +185,12 @@ Page({
   onTouchStart(e) {
     if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
-    // iOS 同时最多上报 5 个触点。第 6 次 touchstart 到达时，直接从已经按住的
-    // 5 个触点中抽取，避免六人及以上房间永远达不到 minPlayers。
-    if (this.data.iosTouchLimitActive
-      && (this.data.activeTouches || []).length >= 5
-      && this._selectFromIosTouchOverflow()) {
-      return;
-    }
-    const touches = e.touches;
+    const maxTouches = (this.data.members || []).length || Number(this.data.minPlayers) || 0;
+    const touches = [...(e.touches || []), ...(e.changedTouches || [])];
     const now = Date.now();
 
-    // 为每个新的触摸点创建波纹
+    // iOS 可能只在 changedTouches 中提供新增触点；合并后按 identifier 去重。
+    // 抽取池最多容纳当前房间成员数，额外手指不创建波纹，也不参与随机选择。
     touches.forEach(touch => {
       const touchId = touch.identifier;
       // 使用 clientX/clientY 相对于视口的坐标
@@ -277,7 +205,9 @@ Page({
       // 检查是否已存在该触摸点
       const existingIndex = this.data.activeTouches.findIndex(t => t.id === touchId);
       if (existingIndex === -1) {
-        this.data.activeTouches.push(newTouch);
+        if (maxTouches > 0 && this.data.activeTouches.length < maxTouches) {
+          this.data.activeTouches.push(newTouch);
+        }
       } else {
         // 更新现有触摸点位置
         this.data.activeTouches[existingIndex] = newTouch;
@@ -346,13 +276,6 @@ Page({
       playerCount: count
     });
 
-    if (this.data.iosTouchLimitActive && minPlayers > 5 && count >= 5
-      && !this.data.isSelecting) {
-      this._startIosTouchOverflowTimer();
-    } else {
-      this._clearIosTouchOverflowTimer();
-    }
-
     if (minPlayers > 0 && count >= minPlayers && !this.data.isSelecting) {
       this._startLongPressTimer();
     } else {
@@ -381,7 +304,6 @@ Page({
   // 开始选择玩家
   startSelection() {
     if (this.data.isSelecting) return;
-    this._clearIosTouchOverflowTimer();
     
     this.setData({
       isSelecting: true
@@ -515,7 +437,6 @@ Page({
   reselectSelection() {
     if (isPageInteractionLocked(this)) return;
     this._clearLongPressTimer();
-    this._clearIosTouchOverflowTimer();
     if (this.animationDoneTimer) {
       clearTimeout(this.animationDoneTimer);
       this.animationDoneTimer = null;
