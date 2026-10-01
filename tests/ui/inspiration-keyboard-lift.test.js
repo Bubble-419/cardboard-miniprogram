@@ -56,10 +56,15 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
     /class="game-inspiration-dock[^\"]*"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
     '灵感输入宿主应脱离 page-body 裁切，并在匿名表达时完全移出布局'
   );
-  const pageBodyEnd = gameWxml.indexOf('</block>\n  </view>');
+  assert.match(
+    gameWxml,
+    /<\/block>\s*<\/view>\s*<!--[\s\S]*?class="game-inspiration-dock/,
+    '灵感输入宿主应位于 page-body 结束标签之后'
+  );
+  const dockIndex = gameWxml.indexOf('class="game-inspiration-dock');
   const composerIndex = gameWxml.indexOf('<partner-inspiration-composer');
   const footerIndex = gameWxml.indexOf('<partner-game-footer');
-  assert.ok(pageBodyEnd >= 0 && composerIndex > pageBodyEnd && composerIndex < footerIndex);
+  assert.ok(dockIndex >= 0 && composerIndex > dockIndex && composerIndex < footerIndex);
   assert.match(
     gameWxss,
     /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;/
