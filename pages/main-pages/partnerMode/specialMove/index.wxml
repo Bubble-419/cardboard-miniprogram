@@ -256,12 +256,16 @@
                 <view class="reverse-card-inner">
                   <view class="special-action-header">
                     <view class="special-mode-badge">反面随机拼</view>
-                    <text class="special-action-title">请根据以下提示操作</text>
+                    <text class="special-action-title">请按以下步骤完成</text>
+                  </view>
+                  <view class="reverse-guidance">
+                    <text class="reverse-step-count">按顺序完成 <text class="reverse-step-count-number">4 个步骤</text></text>
+                    <text class="reverse-desc">将卡牌背面朝上随机拼接并装入覆膜，完成后决定是否采用该卡组。</text>
                   </view>
                   <view class="action-divider reverse-divider"></view>
                   <view class="reverse-step-grid">
                     <view class="reverse-step-cell" wx:for="{{reverseSteps}}" wx:key="label">
-                      <image class="reverse-step-illus" src="{{item.image}}" mode="aspectFill" />
+                      <image class="reverse-step-illus" src="{{item.image}}" mode="aspectFit" />
                       <text class="reverse-step-label">{{item.label}}</text>
                     </view>
                   </view>

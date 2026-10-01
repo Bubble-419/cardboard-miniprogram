@@ -69,16 +69,27 @@ test('当前出牌卡上下边距一致且保持紧凑', () => {
   assert.match(gameWxss, /\.card-express-corner-with-progress\s*\{[\s\S]*?bottom:\s*var\(--action-card-vertical-inset, 20rpx\)/);
 });
 
-test('反面随机拼使用正方形插画，提示标题与出牌标题字号一致', () => {
+test('反面随机拼参照静默模式展示说明层级和 4:3 图文步骤', () => {
   const specialJs = read('pages/main-pages/partnerMode/specialMove/index.js');
   const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
-  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
   const specialWxss = read('pages/main-pages/partnerMode/specialMove/index.wxss');
 
-  assert.match(specialWxml, /<image class="reverse-step-illus" src="\{\{item\.image\}\}" mode="aspectFill"/);
-  assert.match(specialWxss, /\.reverse-step-illus\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1/);
-  assert.match(gameWxss, /\.action-title\s*\{[\s\S]*?font-size:\s*52rpx/);
-  assert.match(specialWxss, /\.reverse-card-inner \.special-action-title\s*\{[\s\S]*?font-size:\s*52rpx/);
+  assert.match(specialWxml, /class="reverse-guidance"[\s\S]*?按顺序完成[\s\S]*?4 个步骤/);
+  assert.match(specialWxml, /将卡牌背面朝上随机拼接并装入覆膜，完成后决定是否采用该卡组。/);
+  assert.match(specialWxml, /<image class="reverse-step-illus" src="\{\{item\.image\}\}" mode="aspectFit"/);
+  assert.match(specialWxss, /\.reverse-guidance\s*\{[\s\S]*?flex-direction:\s*column/);
+  assert.match(specialWxss, /\.reverse-step-count-number\s*\{[\s\S]*?font-weight:\s*800/);
+  assert.match(specialWxss, /\.reverse-step-illus\s*\{[\s\S]*?aspect-ratio:\s*4\s*\/\s*3/);
+  assert.doesNotMatch(specialWxss, /\.reverse-card-inner \.special-action-title/);
+
+  for (const label of [
+    '将 1 号覆膜置于桌面',
+    '卡牌背面朝上拼至覆膜',
+    '对齐并粘贴两张覆膜',
+    '垂直翻转覆膜内的卡组'
+  ]) {
+    assert.match(specialJs, new RegExp(label));
+  }
 
   for (let step = 1; step <= 4; step += 1) {
     const relativePath = `assets/partnerMode/actions/reverse-step-${step}.jpg`;
