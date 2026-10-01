@@ -454,6 +454,7 @@
             suppressCanvas="{{showHostStatementTip}}"
             borderVariant="{{cardBorderVariant}}"
             soundLevel="{{silentSoundLevel}}"
+            layoutKey="{{keyboardViewportStyle}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:if="{{gamepagePhase === 'discussion'}}"
           >
@@ -621,6 +622,7 @@
             suppressCanvas="{{showHostStatementTip}}"
             borderVariant="{{cardBorderVariant}}"
             soundLevel="{{silentSoundLevel}}"
+            layoutKey="{{keyboardViewportStyle}}"
             bind:timerexpire="handleRoundTimerExpire"
             wx:else
           >

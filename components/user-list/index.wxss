@@ -437,12 +437,31 @@
 
 .partner-game .avatar-frame-box-pg .avatar-wrap,
 .partner-game.fold .avatar-frame-box-pg .avatar-wrap {
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
   width: 96rpx;
   height: 96rpx;
   padding: 0;
   border: none;
+  border-radius: 50%;
   background-color: #f2f2f2;
   box-shadow: none;
+  overflow: hidden;
+  clip-path: circle(50% at 50% 50%);
+}
+
+/* 真机半像素取整会让 flex 居中的头像与绝对定位圆环错开；图片自身再裁一次圆，避免底边露图。 */
+.partner-game .avatar-frame-box-pg .avatar-img,
+.partner-game.fold .avatar-frame-box-pg .avatar-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  clip-path: circle(50% at 50% 50%);
+  box-sizing: border-box;
 }
 
 /* 样式一：行动中&&非行动页 — 浅绿外环 + 绿色内环（静态） */

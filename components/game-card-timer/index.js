@@ -191,6 +191,11 @@ Component({
     soundLevel: {
       type: Number,
       value: 0
+    },
+    /** 外层可用高度变化标记，用于重新按实际尺寸建立 canvas 位图。 */
+    layoutKey: {
+      type: null,
+      value: ''
     }
   },
 
@@ -208,6 +213,7 @@ Component({
     detached() {
       this._stopLocalTimer();
       this._clearExpireTimer();
+      this._clearCanvasResizeTimer();
       this._stopSoundVisual();
     }
   },
@@ -263,10 +269,40 @@ Component({
     soundLevel(level) {
       this._soundTarget = clamp01(Number(level) || 0);
       this._syncSoundVisual();
+    },
+    layoutKey() {
+      this._scheduleCanvasResize();
     }
   },
 
   methods: {
+    _clearCanvasResizeTimer() {
+      if (this._canvasResizeTimer) {
+        clearTimeout(this._canvasResizeTimer);
+        this._canvasResizeTimer = null;
+      }
+    },
+
+    _scheduleCanvasResize() {
+      this._clearCanvasResizeTimer();
+      if (this.data.displayMode !== 'timer' || this._useCssBorder() || this.properties.suppressCanvas) return;
+
+      const resize = () => {
+        if (this.data.displayMode === 'timer') this._initCanvas();
+      };
+      if (typeof wx !== 'undefined' && typeof wx.nextTick === 'function') {
+        wx.nextTick(resize);
+      } else {
+        setTimeout(resize, 0);
+      }
+      // 部分真机的键盘视口会晚于 setData 完成布局，再校准一次，避免旧位图
+      // 被 CSS 纵向压缩后把顶部和底部的倒计时线条一并压细。
+      this._canvasResizeTimer = setTimeout(() => {
+        this._canvasResizeTimer = null;
+        resize();
+      }, 260);
+    },
+
     _clearExpireTimer() {
       if (this._expireTimer) {
         clearTimeout(this._expireTimer);

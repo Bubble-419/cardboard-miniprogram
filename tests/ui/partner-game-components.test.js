@@ -167,3 +167,35 @@ test('声音过大提示在游戏卡片中央放大显示', () => {
   assert.match(warning[0], /transform:\s*translate\(-50%,\s*-50%\);/);
   assert.match(warning[0], /font-size:\s*(?:3[6-9]|[4-9]\d)rpx;/);
 });
+
+test('键盘缩短卡片时按实际尺寸重建倒计时画布', () => {
+  const markup = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const definition = loadComponent('components/game-card-timer/index.js');
+  const source = read('components/game-card-timer/index.js');
+  const cardTimers = markup.match(/<game-card-timer[\s\S]*?>/g) || [];
+  const currentCardTimers = cardTimers.filter((tag) => /timerActive="\{\{roundTimerVisible/.test(tag));
+
+  assert.equal(currentCardTimers.length, 2);
+  currentCardTimers.forEach((tag) => {
+    assert.match(tag, /layoutKey="\{\{keyboardViewportStyle\}\}"/);
+  });
+  assert.ok(definition.properties.layoutKey);
+  assert.equal(typeof definition.observers.layoutKey, 'function');
+  assert.match(source, /layoutKey\(\)\s*\{\s*this\._scheduleCanvasResize\(\);/);
+  assert.match(source, /this\._canvasResizeTimer\s*=\s*setTimeout/);
+});
+
+test('Partner 头像裁切层和圆环使用明确的共同圆心', () => {
+  const styles = read('components/user-list/index.wxss');
+  const avatarWrap = styles.match(/\.partner-game \.avatar-frame-box-pg \.avatar-wrap,[\s\S]*?\n\}/);
+  const avatarImage = styles.match(/\.partner-game \.avatar-frame-box-pg \.avatar-img,[\s\S]*?\n\}/);
+
+  assert.ok(avatarWrap);
+  assert.match(avatarWrap[0], /position:\s*absolute;/);
+  assert.match(avatarWrap[0], /left:\s*4rpx;/);
+  assert.match(avatarWrap[0], /top:\s*4rpx;/);
+  assert.match(avatarWrap[0], /clip-path:\s*circle\(50% at 50% 50%\);/);
+  assert.ok(avatarImage);
+  assert.match(avatarImage[0], /border-radius:\s*inherit;/);
+  assert.match(avatarImage[0], /clip-path:\s*circle\(50% at 50% 50%\);/);
+});
