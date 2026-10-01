@@ -279,8 +279,15 @@
               soundLevel="{{soundLevel}}"
               bind:timerexpire="handleSilentTimerExpire"
             >
-              <scroll-view class="silent-card-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-                <view class="silent-card-inner">
+              <view class="silent-card-shell">
+                <scroll-view
+                  class="silent-card-scroll"
+                  scroll-y
+                  enhanced
+                  show-scrollbar="{{false}}"
+                  scroll-into-view="{{silentExpressChatAnchor}}"
+                >
+                <view class="silent-card-inner {{isCurrentPlayer ? 'silent-card-inner-with-actions' : ''}}">
                   <view class="special-action-header">
                     <view class="special-mode-badge">静默模式</view>
                     <text class="special-action-title">保持分贝低于40dB</text>
@@ -290,7 +297,25 @@
                     <text class="silent-desc">下方任意一种操作均算 1 次行动。可新开方案或延续他人想法，行动后请简要说明。</text>
                   </view>
                   <view class="action-divider silent-divider"></view>
-                  <view class="silent-action-grid">
+                  <view class="silent-express-chat" wx:if="{{silentExpressPanelVisible && isCurrentPlayer}}">
+                    <view
+                      class="silent-express-row"
+                      wx:for="{{silentExpressChatList}}"
+                      wx:key="id"
+                      id="silent-express-{{item.id}}"
+                    >
+                      <view class="silent-express-avatar-wrap">
+                        <image class="silent-express-avatar" src="{{item.avatar}}" mode="aspectFill" />
+                        <view class="silent-express-avatar-dot" style="{{item.avatarDotStyle}}"></view>
+                      </view>
+                      <view class="silent-express-bubble">
+                        <text class="silent-express-text">{{item.text}}</text>
+                      </view>
+                    </view>
+                    <view class="silent-express-empty" wx:if="{{!silentExpressChatList.length}}">暂无匿名表达</view>
+                    <view id="silent-express-chat-bottom" class="silent-express-anchor"></view>
+                  </view>
+                  <view class="silent-action-grid" wx:else>
                     <view class="silent-action-cell">
                       <image class="silent-action-illus" src="/assets/partnerMode/actions/action-play.jpg" mode="aspectFit" />
                       <text class="silent-action-label">出 1 张卡牌</text>
@@ -309,7 +334,23 @@
                     </view>
                   </view>
                 </view>
-              </scroll-view>
+                </scroll-view>
+                <view
+                  class="silent-card-feedback {{silentExpressPanelVisible ? '' : 'silent-card-feedback-with-progress'}}"
+                  wx:if="{{isCurrentPlayer}}"
+                >
+                  <view class="silent-score-chip" wx:if="{{!silentExpressPanelVisible}}">
+                    <text class="silent-score-chip-text">已打分：{{scoredCount}}/{{totalRequired}}人</text>
+                  </view>
+                  <view class="silent-express-btn" catchtap="toggleSilentExpressChat">
+                    <image
+                      class="silent-express-btn-icon"
+                      src="{{silentExpressPanelVisible ? '/assets/partnerMode/icon-express-view.png' : '/assets/partnerMode/icon-express-bubble.svg'}}"
+                      mode="aspectFit"
+                    />
+                  </view>
+                </view>
+              </view>
             </game-card-timer>
           </swiper-item>
         </swiper>

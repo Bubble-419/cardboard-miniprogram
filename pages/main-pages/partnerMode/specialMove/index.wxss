@@ -711,6 +711,13 @@
   height: 100%;
 }
 
+.silent-card-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .silent-card-inner {
   padding: 50rpx 30rpx 40rpx;
   box-sizing: border-box;
@@ -718,6 +725,137 @@
   flex-direction: column;
   align-items: stretch;
   min-width: 0;
+}
+
+.silent-card-inner-with-actions {
+  padding-bottom: 120rpx;
+}
+
+/* 与出牌玩家游戏卡片一致：左侧只显示全员打分进度，右侧切换匿名表达列表。 */
+.silent-card-feedback {
+  position: absolute;
+  left: 30rpx;
+  right: 30rpx;
+  bottom: 20rpx;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.silent-card-feedback-with-progress {
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.silent-score-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 60rpx;
+  padding: 0 20rpx;
+  border-radius: 16rpx;
+  background: #5ec159;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.silent-score-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.silent-express-btn {
+  width: 60rpx;
+  height: 60rpx;
+  flex-shrink: 0;
+  border-radius: 16rpx;
+  background: #5ec159;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.silent-express-btn-icon {
+  width: 40rpx;
+  height: 40rpx;
+  display: block;
+}
+
+.silent-express-chat {
+  width: 100%;
+  min-height: 300rpx;
+  box-sizing: border-box;
+}
+
+.silent-express-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.silent-express-avatar-wrap {
+  position: relative;
+  width: 64rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+}
+
+.silent-express-avatar {
+  display: block;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #ededed;
+}
+
+.silent-express-avatar-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18rpx;
+  height: 18rpx;
+  border: 2rpx solid #fff;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.silent-express-bubble {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  padding: 16rpx 20rpx;
+  border-radius: 4rpx 18rpx 18rpx 18rpx;
+  background: #f2f2f2;
+  box-sizing: border-box;
+}
+
+.silent-express-text {
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.silent-express-empty {
+  padding: 72rpx 0;
+  font-size: 28rpx;
+  color: #b0b0b0;
+  text-align: center;
+}
+
+.silent-express-anchor {
+  height: 1rpx;
 }
 
 .silent-guidance {

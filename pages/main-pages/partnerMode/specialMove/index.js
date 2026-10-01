@@ -23,6 +23,7 @@ const {
 const { isRoundTimerActive, buildPaginationDots } = require('../../../../utils/partnerRoundTimer');
 const { getCapsuleTopBarMetrics } = require('../../../../utils/capsuleTopBar');
 const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
+const { resolvePartnerScoreProgress } = require('../utils/partnerScoreProgress');
 const { buildDisplaySummaries } = require('../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
@@ -50,6 +51,7 @@ const WHEEL_PIECES = [
 const SUGGESTED_QUESTIONS = ['智能穿戴设备', '如何提升体验'];
 
 const SILENT_DURATION_SEC = 5 * 60;
+const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
 
 const SILENT_HINT_LINES = [
   '选择全场静默',
@@ -121,6 +123,11 @@ Page(withPageInteractionLock({
     canEndSilent: false,
     /** 声贝等级 0~1，本机麦克风采样；无麦时回退房主瞬时信号 */
     soundLevel: 0,
+    scoredCount: 0,
+    totalRequired: 0,
+    silentExpressPanelVisible: false,
+    silentExpressChatList: [],
+    silentExpressChatAnchor: '',
     inspirationDraftText: '',
     inspirationInputFocused: false,
     inspirationKeyboardHeight: 0,
@@ -351,6 +358,69 @@ Page(withPageInteractionLock({
         silentStartedAt: 0
       });
     }
+  },
+
+  _expressAvatarKey(msg) {
+    if (!msg) return '';
+    if (msg.anonKey) return String(msg.anonKey);
+    const matched = String(msg.id || '').match(/^([a-f0-9]{16})_/i);
+    return matched ? matched[1] : '';
+  },
+
+  _silentExpressDotColor(msg) {
+    const colors = ['#FF6B6B', '#4ECDC4', '#FFB020', '#6C8CFF', '#C084FC', '#34D399', '#F97316', '#F472B6'];
+    const key = this._expressAvatarKey(msg);
+    if (!key) return '#B0B0B0';
+    if (!this._expressAnonColorMap) this._expressAnonColorMap = Object.create(null);
+    if (!this._expressAnonColorMap[key]) {
+      const index = Object.keys(this._expressAnonColorMap).length % colors.length;
+      this._expressAnonColorMap[key] = colors[index];
+    }
+    return this._expressAnonColorMap[key];
+  },
+
+  _syncSilentCardFeedback(roomState, currentRound, sessionId) {
+    const state = roomState || {};
+    const progress = resolvePartnerScoreProgress(state);
+    const round = Number(currentRound != null ? currentRound : this.data.currentRound);
+    const activeSessionId = String(sessionId || this.data.sessionId || '');
+    const messages = Array.isArray(state.partnerExpressMessages)
+      ? state.partnerExpressMessages
+      : [];
+    const filtered = messages.filter((msg) => {
+      if (!msg || !msg.id) return false;
+      if (activeSessionId && String(msg.sessionId || '') !== activeSessionId) return false;
+      if (msg.phase === 'discussion') return false;
+      if (msg.round == null || msg.round === '') return true;
+      return Number(msg.round) === round;
+    });
+    filtered.forEach((msg) => this._silentExpressDotColor(msg));
+    const silentExpressChatList = filtered.slice(-40).map((msg) => {
+      const dotColor = this._silentExpressDotColor(msg);
+      return {
+        id: msg.id,
+        text: msg.text || '',
+        avatar: EXPRESS_ANON_AVATAR,
+        avatarDotStyle: `background-color:${dotColor};`
+      };
+    });
+
+    const lastMessage = silentExpressChatList[silentExpressChatList.length - 1];
+    this.setData({
+      scoredCount: progress.scoredCount,
+      totalRequired: progress.requiredScoreCount,
+      silentExpressChatList,
+      silentExpressChatAnchor: lastMessage ? `silent-express-${lastMessage.id}` : ''
+    });
+  },
+
+  toggleSilentExpressChat() {
+    this.setData({
+      silentExpressPanelVisible: !this.data.silentExpressPanelVisible,
+      silentExpressChatAnchor: this.data.silentExpressChatList.length
+        ? `silent-express-${this.data.silentExpressChatList[this.data.silentExpressChatList.length - 1].id}`
+        : ''
+    });
   },
 
   handleSilentTimerExpire() {
@@ -844,6 +914,7 @@ Page(withPageInteractionLock({
         this._renderedTurnContext = Object.freeze({ sessionId, turnId });
         this._checkProblemTextOverflow();
         this._syncAvatarTimerFromRoom(roomState, currentRound, player.currentPlayerIndex);
+        this._syncSilentCardFeedback(roomState, currentRound, sessionId);
         this._applyRoundSummaries(this._normalizeRoundSummaries(roomState, members));
         if (roomState.partnerSilentMode === true || this._joinSilent) {
           const startedAt = roomState.partnerSilentStartedAt || Date.now();
@@ -1045,12 +1116,18 @@ Page(withPageInteractionLock({
               }
             }
             if (result.roomState) {
+              const syncedRound = result.roomState.currentRound != null
+                ? result.roomState.currentRound
+                : this.data.currentRound;
               this._syncAvatarTimerFromRoom(
                 result.roomState,
-                result.roomState.currentRound != null
-                  ? result.roomState.currentRound
-                  : this.data.currentRound,
+                syncedRound,
                 player.currentPlayerIndex
+              );
+              this._syncSilentCardFeedback(
+                result.roomState,
+                syncedRound,
+                result.roomState.sessionId || this.data.sessionId
               );
               if (
                 this.data.viewMode === 'silent'
@@ -1579,6 +1656,7 @@ Page(withPageInteractionLock({
   'handleAdoptDeck',
   'handleEndSilent',
   'handleSilentTimerExpire',
+  'toggleSilentExpressChat',
   'handleGoInspirationCenter',
   'onInspirationActionTap',
   'onInspirationInput',
