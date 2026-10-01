@@ -382,13 +382,20 @@ Page(withPageInteractionLock({
     // 保留空实现，避免其它入口报错；不再脉冲 focus
   },
 
-  onInspirationFocus() {
+  onInspirationFocus(e) {
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
     this._inspirationFocusRequestedAt = Date.now();
     this._inspirationNativeFocused = true;
+    // Android 首次唤起键盘时，精确高度可能先随 focus.detail.height 返回，
+    // 后续不再补发 keyboardheightchange。两者都来自当前 textarea 的原生事件，
+    // 因此直接复用同一套停靠逻辑，避免第一次点击仍被键盘遮住。
+    const focusKeyboardHeight = keyboardHeightFromEvent(e);
+    if (focusKeyboardHeight > 0) {
+      this._setInspirationKeyboardHeight(focusKeyboardHeight);
+    }
   },
 
   onInspirationBlur() {

@@ -211,6 +211,24 @@ test('灵感空间键盘高度早于 focus 回调时仍立即顶起输入栏', (
   assert.match(page.data.inspirationMaskStyle, /286px/);
 });
 
+test('安卓首次 focus 携带键盘高度时立即顶起灵感空间输入栏', () => {
+  const definition = loadPageDefinition('../../pages/inspiration/index');
+  const page = makePage(definition, {
+    inspirationInputFocused: false,
+    inspirationKeyboardHeight: 0,
+    inspirationLiftStyle: '',
+    inspirationMaskStyle: ''
+  });
+  page._inspirationNativeFocused = false;
+
+  page.onInspirationFocus({ detail: { height: 308 } });
+
+  assert.equal(page._inspirationNativeFocused, true);
+  assert.equal(page.data.inspirationKeyboardHeight, 308);
+  assert.equal(page.data.inspirationLiftStyle, 'bottom: 308px;');
+  assert.match(page.data.inspirationMaskStyle, /308px/);
+});
+
 test('特殊行动灵感栏和 AI 对话输入栏分别按自身键盘事件上移', () => {
   const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
   assert.match(specialWxml, /class="inspiration-bar"[\s\S]*?style="\{\{inspirationLiftStyle\}\}"/);
