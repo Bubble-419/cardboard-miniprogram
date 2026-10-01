@@ -14,9 +14,12 @@ const EXPIRE_ANIM_MS = 2000;
 /** 静默边框：0–80 dB 走完整半周；40 dB 为黄绿阈值 */
 const SOUND_MAX_DB = 80;
 const SOUND_WARN_DB = 40;
-const SOUND_EASE_MS = 420;
+const SOUND_EASE_MS = 180;
 const SOUND_TICK_MS = 32;
 const SOUND_WARN_HOLD_MS = 700;
+const SOUND_TRACK_WIDTH_RPX = 5;
+const SOUND_BAND_MIN_WIDTH_RPX = 7;
+const SOUND_BAND_MAX_WIDTH_RPX = 10;
 const SOUND_COLOR_STOPS = [
   { t: 0, rgb: [62, 198, 201] },
   { t: 0.18, rgb: [126, 240, 208] },
@@ -123,10 +126,10 @@ function strokeSoundBand(ctx, pts, progress, lineWidth) {
   }
   if (totalLen < 1) return;
   const drawLen = totalLen * clamp01(progress);
-  const fadeStart = drawLen * 0.86;
+  const fadeStart = drawLen * 0.94;
   const passes = [
-    { w: lineWidth * 3.2, a: 0.15 },
-    { w: lineWidth * 1.75, a: 0.3 },
+    { w: lineWidth * 4, a: 0.2 },
+    { w: lineWidth * 2.2, a: 0.42 },
     { w: lineWidth, a: 1 }
   ];
   ctx.lineCap = 'round';
@@ -143,7 +146,8 @@ function strokeSoundBand(ctx, pts, progress, lineWidth) {
       let alpha = pass.a;
       if (next > fadeStart) {
         const fadeT = (next - fadeStart) / Math.max(0.001, drawLen - fadeStart);
-        alpha *= 1 - fadeT * fadeT;
+        // 保留发光头部，避免短促的声音变化在真机上像是没有绘制。
+        alpha *= 1 - 0.55 * fadeT * fadeT;
       }
       const cut = (next - traveled) / s.seg;
       ctx.beginPath();
@@ -711,7 +715,7 @@ Component({
 
       ctx.clearRect(0, 0, w, h);
       const rpxToPx = this._getRpxToPx();
-      const thick = 8 * rpxToPx;
+      const thick = SOUND_BAND_MAX_WIDTH_RPX * rpxToPx;
       const pad = thick / 2 + 0.5;
       const xL = pad;
       const yT = pad;
@@ -723,12 +727,16 @@ Component({
 
       this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
       ctx.strokeStyle = 'rgba(176, 224, 174, 0.38)';
-      ctx.lineWidth = 4 * rpxToPx;
+      ctx.lineWidth = SOUND_TRACK_WIDTH_RPX * rpxToPx;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
 
-      const bandWidth = 5.5 * rpxToPx;
+      // 音量除了改变光带长度，也同步改变粗细，低幅波动在手机屏幕上更容易辨认。
+      const bandWidth = (
+        SOUND_BAND_MIN_WIDTH_RPX
+        + (SOUND_BAND_MAX_WIDTH_RPX - SOUND_BAND_MIN_WIDTH_RPX) * progress
+      ) * rpxToPx;
       const rightPath = buildSoundHalfPath(w, h, r, pad, true);
       const leftPath = buildSoundHalfPath(w, h, r, pad, false);
       strokeSoundBand(ctx, rightPath, progress, bandWidth);

@@ -168,6 +168,18 @@ test('声音过大提示在游戏卡片中央放大显示', () => {
   assert.match(warning[0], /font-size:\s*(?:3[6-9]|[4-9]\d)rpx;/);
 });
 
+test('静默模式边缘对声音变化提供清晰的长度、粗细和光晕反馈', () => {
+  const source = read('components/game-card-timer/index.js');
+
+  assert.match(source, /const SOUND_EASE_MS = 180;/);
+  assert.match(source, /const SOUND_BAND_MIN_WIDTH_RPX = 7;/);
+  assert.match(source, /const SOUND_BAND_MAX_WIDTH_RPX = 10;/);
+  assert.match(source, /SOUND_BAND_MAX_WIDTH_RPX - SOUND_BAND_MIN_WIDTH_RPX\) \* progress/);
+  assert.match(source, /\{ w: lineWidth \* 4, a: 0\.2 \}/);
+  assert.match(source, /alpha \*= 1 - 0\.55 \* fadeT \* fadeT;/);
+  assert.match(source, /const SOUND_WARN_DB = 40;/);
+});
+
 test('键盘缩短卡片时按实际尺寸重建倒计时画布', () => {
   const markup = read('pages/main-pages/partnerMode/gamepage/index.wxml');
   const definition = loadComponent('components/game-card-timer/index.js');
