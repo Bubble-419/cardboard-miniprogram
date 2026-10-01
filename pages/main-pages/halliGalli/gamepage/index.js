@@ -22,10 +22,6 @@ function halliStepSrc(key) {
   return staticCdnUrl(`assets/halliGalli/step-${key}.webp`);
 }
 
-function ganRuleSrc(key) {
-  return staticCdnUrl(`assets/ganDengYan/rule-${key}.jpg`);
-}
-
 Page(withPageInteractionLock({
   data: {
     roomId: '',
@@ -37,10 +33,6 @@ Page(withPageInteractionLock({
     canEndGame: false,
     isGanDengYan: false,
     selectedBG: null,
-    ganRuleDealSrc: ganRuleSrc('deal'),
-    ganRuleFirstPlaySrc: ganRuleSrc('first-play'),
-    ganRuleConnectSrc: ganRuleSrc('connect'),
-    ganRuleWinSrc: ganRuleSrc('win'),
     stepImgDeal: halliStepSrc('deal'),
     stepImgFlip: halliStepSrc('flip'),
     stepImgRing: halliStepSrc('ring'),

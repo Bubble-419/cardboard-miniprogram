@@ -109,7 +109,7 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
-const { WAIT_HERO_SRC, staticCdnUrl } = require('../../../../utils/staticCdn');
+const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
 const {
   PARTNER_SHELL_SCREEN,
   projectPartnerRoomShell
@@ -133,10 +133,6 @@ Page(withPageInteractionLock({
     closingVoteModel: null,
     closingVoteSubmitting: false,
     waitHeroSrc: WAIT_HERO_SRC,
-    actionPlaySrc: staticCdnUrl('assets/partnerMode/actions/action-play.jpg'),
-    actionDeleteSrc: staticCdnUrl('assets/partnerMode/actions/action-delete.jpg'),
-    actionMoveSrc: staticCdnUrl('assets/partnerMode/actions/action-move.jpg'),
-    actionSwapSrc: staticCdnUrl('assets/partnerMode/actions/action-swap.jpg'),
     isHost: false,
     avatarList: [],
     currentPlayerIndex: 1,

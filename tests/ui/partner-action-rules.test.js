@@ -60,6 +60,15 @@ test('普通与静默行动插画区域都固定为 4:3', () => {
   assert.match(specialWxss, /\.silent-action-illus\s*\{[\s\S]*?aspect-ratio:\s*4\s*\/\s*3/);
 });
 
+test('当前出牌卡上下边距一致且保持紧凑', () => {
+  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+
+  assert.match(gameWxss, /--action-card-vertical-inset:\s*20rpx/);
+  assert.match(gameWxss, /\.action-card-inner\s*\{[\s\S]*?padding:\s*var\(--action-card-vertical-inset, 20rpx\)/);
+  assert.match(gameWxss, /\.card-express-corner\s*\{[\s\S]*?bottom:\s*var\(--action-card-vertical-inset, 20rpx\)/);
+  assert.match(gameWxss, /\.card-express-corner-with-progress\s*\{[\s\S]*?bottom:\s*var\(--action-card-vertical-inset, 20rpx\)/);
+});
+
 test('反面随机拼使用正方形插画，提示标题与出牌标题字号一致', () => {
   const specialJs = read('pages/main-pages/partnerMode/specialMove/index.js');
   const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
@@ -74,8 +83,8 @@ test('反面随机拼使用正方形插画，提示标题与出牌标题字号�
   for (let step = 1; step <= 4; step += 1) {
     const relativePath = `assets/partnerMode/actions/reverse-step-${step}.jpg`;
     const assetPath = path.join(root, relativePath);
-    assert.ok(specialJs.includes(`staticCdnUrl('${relativePath}')`));
+    assert.match(specialJs, new RegExp(`/${relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.ok(fs.existsSync(assetPath), `${relativePath} should exist`);
-    assert.ok(fs.statSync(assetPath).size < 100 * 1024, `${relativePath} should stay upload-friendly`);
+    assert.ok(fs.statSync(assetPath).size < 100 * 1024, `${relativePath} should stay package-friendly`);
   }
 });

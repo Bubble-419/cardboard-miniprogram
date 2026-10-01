@@ -26,7 +26,6 @@ const { getStatementLabel } = require('../../../../utils/partnerRoundContent');
 const { buildDisplaySummaries } = require('../utils/partnerRoundNavigation');
 const { attachPrivateNotesToSummaries } = require('../../../../utils/partnerRoundPrivateNotes');
 const { resolveRoundContentMedia } = require('../../../../utils/cloudDisplayUrl');
-const { staticCdnUrl } = require('../../../../utils/staticCdn');
 const {
   buildKeyboardLiftStyle,
   keyboardHeightFromEvent
@@ -79,10 +78,10 @@ const HELP_METHOD_OPTIONS = isAiFeatureEnabled()
   : HELP_METHOD_OPTIONS_ALL.filter((item) => item.id !== 'outside');
 
 const REVERSE_STEPS = [
-  { label: 'step1.将1号覆膜置于桌面', image: staticCdnUrl('assets/partnerMode/actions/reverse-step-1.jpg') },
-  { label: 'Step 2. 背面朝上拼接卡牌至覆膜', image: staticCdnUrl('assets/partnerMode/actions/reverse-step-2.jpg') },
-  { label: 'Step 3. 两张覆膜对齐粘贴', image: staticCdnUrl('assets/partnerMode/actions/reverse-step-3.jpg') },
-  { label: 'step4.通过覆膜垂直翻面卡组', image: staticCdnUrl('assets/partnerMode/actions/reverse-step-4.jpg') }
+  { label: 'step1.将1号覆膜置于桌面', image: '/assets/partnerMode/actions/reverse-step-1.jpg' },
+  { label: 'Step 2. 背面朝上拼接卡牌至覆膜', image: '/assets/partnerMode/actions/reverse-step-2.jpg' },
+  { label: 'Step 3. 两张覆膜对齐粘贴', image: '/assets/partnerMode/actions/reverse-step-3.jpg' },
+  { label: 'step4.通过覆膜垂直翻面卡组', image: '/assets/partnerMode/actions/reverse-step-4.jpg' }
 ];
 
 Page(withPageInteractionLock({
@@ -129,10 +128,6 @@ Page(withPageInteractionLock({
     inspirationHasText: false,
     suggestedQuestions: SUGGESTED_QUESTIONS,
     reverseSteps: REVERSE_STEPS,
-    actionPlaySrc: staticCdnUrl('assets/partnerMode/actions/action-play.jpg'),
-    actionDeleteSrc: staticCdnUrl('assets/partnerMode/actions/action-delete.jpg'),
-    actionMoveSrc: staticCdnUrl('assets/partnerMode/actions/action-move.jpg'),
-    actionSwapSrc: staticCdnUrl('assets/partnerMode/actions/action-swap.jpg'),
     avatarRoundStartedAt: null,
     roundTimerActive: false,
     roundTimerKey: '',

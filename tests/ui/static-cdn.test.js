@@ -79,7 +79,6 @@ test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大�
   assert.match(homeJs, /EMPTY_HISTORY_SRC/);
   assert.match(brainstormJs, /staticCdnUrl\('assets\/brainstormMode\/mode-cover-/);
   assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{key\}\.webp`\)/);
-  assert.match(halliJs, /staticCdnUrl\(`assets\/ganDengYan\/rule-\$\{key\}\.jpg`\)/);
 });
 
 test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
@@ -108,9 +107,6 @@ test('平铺到云存储根目录的文件名互不冲突', () => {
   add('assets/home/empty-history-6f27f1.webp');
   ['halligalli', 'partner', 'spy'].forEach((id) => add(`assets/brainstormMode/mode-cover-${id}.jpg`));
   ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => add(`assets/halliGalli/step-${key}.webp`));
-  ['deal', 'first-play', 'connect', 'win'].forEach((key) => add(`assets/ganDengYan/rule-${key}.jpg`));
-  ['play', 'delete', 'move', 'swap'].forEach((key) => add(`assets/partnerMode/actions/action-${key}.jpg`));
-  [1, 2, 3, 4].forEach((key) => add(`assets/partnerMode/actions/reverse-step-${key}.jpg`));
   const spyDir = path.join(ROOT, 'packageSpy/assets/interactionCards/webp');
   fs.readdirSync(spyDir).forEach((name) => {
     const abs = path.join(spyDir, name);

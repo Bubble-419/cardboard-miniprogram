@@ -356,8 +356,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 内容区与底栏按钮共用：左 / 右 / 底 = 30rpx */
+  /* 内容区与底栏按钮共用：左右 30rpx，上下 20rpx。 */
   --action-card-inset: 30rpx;
+  --action-card-vertical-inset: 20rpx;
 }
 
 .action-card-scroll {
@@ -378,8 +379,8 @@
   min-height: 0;
   width: 100%;
   max-width: 100%;
-  /* 底栏高 60rpx + inset，避免规则区被按钮挡住 */
-  padding: 50rpx var(--action-card-inset, 30rpx) calc(var(--action-card-inset, 30rpx) + 76rpx);
+  /* 底栏高 60rpx + 纵向 inset，避免规则区被按钮挡住。 */
+  padding: var(--action-card-vertical-inset, 20rpx) var(--action-card-inset, 30rpx) calc(var(--action-card-vertical-inset, 20rpx) + 76rpx);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -387,15 +388,15 @@
 }
 
 .action-card-inner-express {
-  padding-bottom: calc(var(--action-card-inset) + 76rpx);
+  padding-bottom: calc(var(--action-card-vertical-inset, 20rpx) + 76rpx);
 }
 
-/* 卡片右下角表达入口（出牌玩家）：左 / 右 / 底 = 内容区 inset */
+/* 卡片底部表达入口（出牌玩家）：横向与内容对齐，底部使用统一纵向 inset。 */
 .card-express-corner {
   position: absolute;
   left: var(--action-card-inset, 30rpx);
   right: var(--action-card-inset, 30rpx);
-  bottom: var(--action-card-inset, 30rpx);
+  bottom: var(--action-card-vertical-inset, 20rpx);
   z-index: 6;
   display: flex;
   flex-direction: row;
@@ -424,7 +425,7 @@
 .card-express-corner-with-progress {
   left: var(--action-card-inset, 30rpx);
   right: var(--action-card-inset, 30rpx);
-  bottom: var(--action-card-inset, 30rpx);
+  bottom: var(--action-card-vertical-inset, 20rpx);
   max-width: none;
   justify-content: space-between;
   align-items: center;
