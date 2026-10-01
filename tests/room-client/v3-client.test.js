@@ -67,6 +67,7 @@ function makeStableView(roomId, workshopName) {
       workshopName: workshopName || '测试工作坊',
       createdAt: 1,
       hostMemberId: 'member-1',
+      modeSelectionRevision: 0,
       members: [{
         memberId: 'member-1', seatNo: 1, nickName: '房主', avatarRef: null,
         avatarIndex: null, color: '#5EC159', joinedAt: 1

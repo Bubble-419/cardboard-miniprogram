@@ -143,6 +143,34 @@ test('旧持久化 Schema 的房间不会困住账号，账号可直接创建新
   assert.equal(repo.activeRooms.get('host'), '12345678');
 });
 
+test('模式选择代次阻止旧选择页启动新场次', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+
+  await h.command('host', 'BEGIN_MODE_SELECTION');
+  let snapshot = await h.snapshot('host');
+  const firstRevision = snapshot.view.room.modeSelectionRevision;
+  assert.equal(firstRevision, 1);
+
+  await h.command('host', 'CANCEL_MODE_SELECTION');
+  await h.command('host', 'BEGIN_MODE_SELECTION');
+  snapshot = await h.snapshot('host');
+  const secondRevision = snapshot.view.room.modeSelectionRevision;
+  assert.equal(secondRevision, 2);
+
+  const stale = await h.command('host', 'START_WORKSHOP_SESSION', {
+    context: { modeSelectionRevision: firstRevision },
+    payload: { mode: 'PARTNER' }
+  });
+  assert.equal(stale.errCode, 'STALE_CONTEXT');
+
+  const started = await h.command('host', 'START_WORKSHOP_SESSION', {
+    context: { modeSelectionRevision: secondRevision },
+    payload: { mode: 'PARTNER' }
+  });
+  assert.equal(started.ok, true);
+});
+
 test('中途加入只成为 Room Member，不进入冻结的 Session Participant', async () => {
   const h = createHarness();
   let snapshot = await h.seedMembers(2);

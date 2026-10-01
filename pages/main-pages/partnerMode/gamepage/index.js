@@ -12,7 +12,11 @@ const {
 } = require('../../../../utils/avatars');
 const { safeNavigateBack } = require('../../../../utils/pageNavigate');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
-const { keyboardHeightFromEvent } = require('../../../../utils/keyboardAvoidance');
+const {
+  buildKeyboardBottomStyle,
+  buildKeyboardViewportStyle,
+  keyboardHeightFromEvent
+} = require('../../../../utils/keyboardAvoidance');
 const {
   storageKey: roomDraftStorageKey,
   readRoomLocalDraft,
@@ -247,6 +251,9 @@ Page(withPageInteractionLock({
     inspirationInputFocused: false,
     inspirationHoldKeyboard: false,
     inspirationKeyboardHeight: 0,
+    inspirationDockStyle: '',
+    expressKeyboardHeight: 0,
+    keyboardViewportStyle: '',
     inspirationSaving: false,
     inspirationHasText: false,
     /** 与微信胶囊垂直对齐 */
@@ -713,6 +720,8 @@ Page(withPageInteractionLock({
     if (
       this.data.inspirationKeyboardHeight
       || this.data.inspirationInputFocused
+      || this.data.expressKeyboardHeight
+      || this.data.expressComposerOpen
       || this.data.closingKeyboardHeight
       || this.data.closingCreativeEditFocus
     ) {
@@ -720,6 +729,11 @@ Page(withPageInteractionLock({
       this.setData({
         inspirationInputFocused: false,
         inspirationKeyboardHeight: 0,
+        inspirationDockStyle: '',
+        expressComposerOpen: false,
+        expressComposerNeedFocus: false,
+        expressKeyboardHeight: 0,
+        keyboardViewportStyle: '',
         closingCreativeEditFocus: false,
         closingCreativeWantFocus: false,
         ...this._resetClosingKeyboardUi()
@@ -2625,6 +2639,9 @@ Page(withPageInteractionLock({
       patch.scoreSheetAnimating = false;
       this._scoreSheetMeasuredOk = false;
       patch.expressComposerOpen = false;
+      patch.expressComposerNeedFocus = false;
+      patch.expressKeyboardHeight = 0;
+      patch.keyboardViewportStyle = '';
       patch.expressDraftText = '';
       patch.expressHasText = false;
       this._expressDraftText = '';
@@ -3355,11 +3372,14 @@ Page(withPageInteractionLock({
     this.setData({
       expressComposerOpen: false,
       expressComposerNeedFocus: false,
+      expressKeyboardHeight: 0,
       inspirationInputFocused: false,
       inspirationHoldKeyboard: false,
+      inspirationDockStyle: '',
       playDraftFocused: false,
       discussionDraftFocused: false,
-      ...this._resetInspirationKeyboardUi()
+      inspirationKeyboardHeight: 0,
+      keyboardViewportStyle: ''
     });
 
     if (typeof wx !== 'undefined' && typeof wx.hideKeyboard === 'function') {
@@ -4824,6 +4844,7 @@ Page(withPageInteractionLock({
     }
     const draft = this._expressDraftText || this.data.expressDraftText || '';
     this._expressDraftText = draft;
+    this._inspirationNativeFocused = false;
     this._expressKeyboardWasVisible = false;
     this._expressComposerIgnoreBlurUntil = Date.now() + 1200;
     if (this._expressFocusTimer) {
@@ -4833,6 +4854,10 @@ Page(withPageInteractionLock({
     this.setData({
       expressComposerOpen: true,
       expressComposerNeedFocus: false,
+      expressKeyboardHeight: 0,
+      inspirationKeyboardHeight: 0,
+      inspirationDockStyle: '',
+      keyboardViewportStyle: '',
       expressDraftText: draft,
       expressHasText: !!draft.trim()
     });
@@ -4871,6 +4896,8 @@ Page(withPageInteractionLock({
     this.setData({
       expressComposerOpen: false,
       expressComposerNeedFocus: false,
+      expressKeyboardHeight: 0,
+      keyboardViewportStyle: '',
       expressDraftText: draft,
       expressHasText: !!draft.trim()
     });
@@ -4886,12 +4913,25 @@ Page(withPageInteractionLock({
     const keyboardHeight = keyboardHeightFromEvent(e);
     if (keyboardHeight > 0) {
       this._expressKeyboardWasVisible = true;
+      this._inspirationNativeFocused = false;
+      if (keyboardHeight !== this.data.expressKeyboardHeight) {
+        this.setData({
+          expressKeyboardHeight: keyboardHeight,
+          inspirationKeyboardHeight: 0,
+          inspirationDockStyle: '',
+          keyboardViewportStyle: buildKeyboardViewportStyle(keyboardHeight)
+        });
+      }
       return;
     }
     // 原生 input 挂载时也可能先派发一次 height=0，只有键盘实际显示过后
     // 再降为 0 才代表用户收起了键盘。
     if (!this._expressKeyboardWasVisible) return;
     this._expressKeyboardWasVisible = false;
+    this.setData({
+      expressKeyboardHeight: 0,
+      keyboardViewportStyle: ''
+    });
     if (!this.data.expressComposerOpen || this.data.expressSending) return;
     this.closeExpressComposer();
   },
@@ -5067,6 +5107,8 @@ Page(withPageInteractionLock({
         expressModalVisible: false,
         expressComposerOpen: false,
         expressComposerNeedFocus: false,
+        expressKeyboardHeight: 0,
+        keyboardViewportStyle: '',
         expressDraftText: '',
         expressHasText: false
       });
@@ -5658,7 +5700,11 @@ Page(withPageInteractionLock({
   },
 
   _resetInspirationKeyboardUi() {
-    return { inspirationKeyboardHeight: 0 };
+    return {
+      inspirationKeyboardHeight: 0,
+      inspirationDockStyle: '',
+      keyboardViewportStyle: buildKeyboardViewportStyle(this.data.expressKeyboardHeight)
+    };
   },
 
   _commitInspirationKeyboardHeight(next) {
@@ -5668,7 +5714,11 @@ Page(withPageInteractionLock({
     ) {
       return;
     }
-    this.setData({ inspirationKeyboardHeight: height });
+    this.setData({
+      inspirationKeyboardHeight: height,
+      inspirationDockStyle: buildKeyboardBottomStyle(height),
+      keyboardViewportStyle: buildKeyboardViewportStyle(this.data.expressKeyboardHeight)
+    });
   },
 
   _flushInspirationKeyboardZero(immediate) {
@@ -5729,9 +5779,15 @@ Page(withPageInteractionLock({
 
   onInspirationKeyboardHeightChange(e) {
     const height = keyboardHeightFromEvent(e);
+    // iOS 可能先发 keyboardheightchange，后发 focus。该事件只绑定在
+    // 灵感 input 上，正高度本身就是有效聚焦信号，不得被父级焦点时序过滤。
+    if (height > 0) {
+      if (this.data.expressComposerOpen || this.data.expressKeyboardHeight > 0) return;
+      this._setInspirationKeyboardHeight(height);
+      return;
+    }
     const active = this.data.inspirationInputFocused || this._inspirationNativeFocused;
-    if (!active && height > 0) return;
-    if (!active && height <= 0) {
+    if (!active) {
       this._setInspirationKeyboardHeight(0);
       return;
     }

@@ -24,8 +24,8 @@ var require_room_contracts = __commonJS({
   "packages/room-contracts/index.js"(exports2, module2) {
     "use strict";
     var PROTOCOL_VERSION = 3;
-    var SCHEMA_VERSION = 6;
-    var VIEW_SCHEMA_VERSION = 11;
+    var SCHEMA_VERSION = 7;
+    var VIEW_SCHEMA_VERSION = 12;
     var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -257,6 +257,7 @@ var require_room_contracts = __commonJS({
       [ERR.SNAPSHOT_REQUIRED]: "\u9700\u8981\u91CD\u65B0\u83B7\u53D6\u5FEB\u7167"
     });
     var COMMAND_CONTEXT = Object.freeze({
+      START_WORKSHOP_SESSION: ["modeSelectionRevision"],
       SET_SCENARIO: ["sessionId", "workflowStep", "workflowRevision"],
       SUBMIT_DESIGN_PROBLEM: ["sessionId", "workflowRevision"],
       UPDATE_DESIGN_PROBLEM: ["sessionId", "workflowStep", "workflowRevision", "entityVersion"],
@@ -554,7 +555,7 @@ var require_room_contracts = __commonJS({
       if (unknownContext) return fail(ERR.INVALID_ARGUMENT, `context.${unknownContext} \u4E0D\u5C5E\u4E8E ${type}`);
       for (const key of contextKeys) {
         if (context[key] == null || context[key] === "") return fail(ERR.INVALID_ARGUMENT, `context.${key} \u5FC5\u586B`);
-        if (!["entityVersion", "roundNo", "workflowRevision"].includes(key) && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
+        if (!["entityVersion", "roundNo", "workflowRevision", "modeSelectionRevision"].includes(key) && (!isNonEmptyString(context[key]) || context[key].length > 128)) {
           return fail(ERR.INVALID_ARGUMENT, `context.${key} \u5FC5\u987B\u662F 1\uFF5E128 \u5B57\u7B26`);
         }
       }
@@ -566,6 +567,9 @@ var require_room_contracts = __commonJS({
       }
       if (context.workflowRevision != null && (!Number.isInteger(context.workflowRevision) || context.workflowRevision < 1)) {
         return fail(ERR.INVALID_ARGUMENT, "context.workflowRevision \u5FC5\u987B\u662F\u6B63\u6574\u6570");
+      }
+      if (context.modeSelectionRevision != null && (!Number.isInteger(context.modeSelectionRevision) || context.modeSelectionRevision < 0)) {
+        return fail(ERR.INVALID_ARGUMENT, "context.modeSelectionRevision \u5FC5\u987B\u662F\u975E\u8D1F\u6574\u6570");
       }
       const payloadResult = validatePayload(type, payload);
       if (!payloadResult.ok) return payloadResult;
@@ -648,7 +652,7 @@ var require_room_contracts = __commonJS({
       if (!isRecord(view) || !isRecord(view.room) || !isRecord(view.actor) || !isRecord(view.route) || !isRecord(view.navigation) || !isRecord(view.navigation.back)) return false;
       if (!hasOwn(view, "session")) return false;
       if (typeof view.room.roomId !== "string" || !/^\d{8}$/.test(view.room.roomId) || expectedRoomId && view.room.roomId !== expectedRoomId) return false;
-      if (!Object.values(LIFECYCLE).includes(view.room.lifecycle) || typeof view.room.workshopName !== "string" || !Number.isFinite(view.room.createdAt) || !isNonEmptyString(view.room.hostMemberId) || !Array.isArray(view.room.members) || !view.room.members.every(validProjectedMember)) return false;
+      if (!Object.values(LIFECYCLE).includes(view.room.lifecycle) || typeof view.room.workshopName !== "string" || !Number.isInteger(view.room.modeSelectionRevision) || view.room.modeSelectionRevision < 0 || !Number.isFinite(view.room.createdAt) || !isNonEmptyString(view.room.hostMemberId) || !Array.isArray(view.room.members) || !view.room.members.every(validProjectedMember)) return false;
       const memberIds = view.room.members.map((member) => member.memberId);
       const seatNos = view.room.members.map((member) => member.seatNo);
       if (new Set(memberIds).size !== memberIds.length || new Set(seatNos).size !== seatNos.length || view.room.lifecycle === LIFECYCLE.OPEN && !memberIds.includes(view.room.hostMemberId)) return false;
@@ -871,6 +875,7 @@ var require_model = __commonJS({
         workshopName: String(payload.workshopName || "\u8111\u66B4\u5DE5\u4F5C\u574A").trim().slice(0, 20) || "\u8111\u66B4\u5DE5\u4F5C\u574A",
         members: [],
         modeSelectionActive: false,
+        modeSelectionRevision: 0,
         currentSessionId: null,
         sessionOrdinal: 0,
         createdAt: now,
@@ -2612,6 +2617,7 @@ var require_room_domain = __commonJS({
       if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
       if (aggregate.room.modeSelectionActive === true) return fail(ERR.INVALID_TRANSITION, "\u5DF2\u5728\u9009\u62E9\u6A21\u5F0F");
       aggregate.room.modeSelectionActive = true;
+      aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
       return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_STARTED)]);
     }
     function cancelModeSelection(aggregate, actorUserId) {
@@ -2692,6 +2698,9 @@ var require_room_domain = __commonJS({
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
       if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
+      if (Number(command.context.modeSelectionRevision) !== Number(aggregate.room.modeSelectionRevision || 0)) {
+        return fail(ERR.STALE_CONTEXT, "\u6A21\u5F0F\u9009\u62E9\u9875\u5DF2\u7ECF\u53D8\u5316");
+      }
       const mode = normalizeMode(command.payload.mode);
       if (!mode) return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u6A21\u5F0F");
       if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} \u4EBA\u6570\u4E0D\u8DB3`);
@@ -2937,6 +2946,7 @@ var require_room_domain = __commonJS({
       const events = [];
       cancelCurrentSession(aggregate, "HOST_CANCELLED", deps, events);
       aggregate.room.modeSelectionActive = true;
+      aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
       return domainOk(aggregate, events, { kind: "SESSION_CANCELLED" });
     }
     function returnToLobby(aggregate, command, actorUserId) {
@@ -3198,6 +3208,7 @@ var require_room_projection = __commonJS({
           workshopName: room.workshopName,
           createdAt: room.createdAt,
           hostMemberId: room.hostMemberId,
+          modeSelectionRevision: Number(room.modeSelectionRevision || 0),
           members: (room.members || []).slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
             memberId: member.memberId,
             seatNo: member.seatNo,

@@ -25,7 +25,9 @@ const {
   getRoomRequestContext,
   dispatchRoomCommand,
   getRoomPageSnapshot,
-  followRoomRoute
+  followRoomRoute,
+  followRoomRouteAfterCommand,
+  getCommittedSnapshotAfterCommand
 } = require('../../../modules/room-session/index');
 const { normalizeModeDisplayTitle } = require('../../../utils/modeDisplayNames');
 const { getDevRoomIdDisplayPatch } = require('../../../utils/devJoinRoomById');
@@ -1800,13 +1802,39 @@ Page(withPageInteractionLock({
     try {
       const current = getActiveRoomSession() && getActiveRoomSession().getView();
       const currentSession = current && current.session;
-      const result = !currentSession
+      const shouldCancelModeSelection = !currentSession
+        ? !!(current && current.actor && current.actor.capabilities
+          && current.actor.capabilities.CANCEL_MODE_SELECTION
+          && current.actor.capabilities.CANCEL_MODE_SELECTION.allowed === true)
+        : currentSession.status !== 'COMPLETED';
+      let result = !currentSession
         ? { ok: true }
         : await dispatchRoomCommand(currentSession.status === 'COMPLETED' ? 'RETURN_TO_LOBBY' : 'CANCEL_WORKSHOP_SESSION',
           {}, { sessionId: currentSession.sessionId });
       if (result.ok !== true) {
         wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
         return;
+      }
+      if (currentSession && shouldCancelModeSelection) {
+        const committed = await getCommittedSnapshotAfterCommand(result);
+        if (!committed.ok) {
+          wx.showToast({ title: '房间状态正在同步，请重试', icon: 'none' });
+          return;
+        }
+      }
+      if (shouldCancelModeSelection) {
+        result = await dispatchRoomCommand('CANCEL_MODE_SELECTION');
+        if (result.ok !== true) {
+          wx.showToast({ title: result.errMsg || '操作失败', icon: 'none' });
+          return;
+        }
+      }
+      if (currentSession || shouldCancelModeSelection) {
+        const committed = await getCommittedSnapshotAfterCommand(result);
+        if (!committed.ok) {
+          wx.showToast({ title: '房间状态正在同步，请重试', icon: 'none' });
+          return;
+        }
       }
       try {
         const app = getApp();

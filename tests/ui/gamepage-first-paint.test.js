@@ -17,7 +17,7 @@ test('READY 后 refresh 仍再拉完整 Snapshot，而不是用已有 View', asy
   const view = {
     room: {
       roomId: '12345678', lifecycle: 'OPEN', workshopName: '已在内存', createdAt: 1,
-      hostMemberId: 'm1',
+      hostMemberId: 'm1', modeSelectionRevision: 0,
       members: [{ memberId: 'm1', seatNo: 1, nickName: '房主', avatarRef: null,
         avatarIndex: null, color: '#5EC159', joinedAt: 1 }]
     },

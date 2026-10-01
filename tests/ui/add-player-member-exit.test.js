@@ -178,3 +178,123 @@ test('非房主确认成员身份后才启动订阅，首次权威路由不会�
   assert.equal(membershipConfirmedWhenPollingStarts, true);
   assert.equal(followedInitialSnapshot, true);
 });
+
+test('房主退出当前模式后再次选择模式可以正常进入选择页', async () => {
+  const definition = loadPageDefinition();
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  const originalGetCurrentPages = global.getCurrentPages;
+  const roomId = '12345678';
+  let sessionActive = true;
+  let modeSelectionActive = false;
+  let revision = 1;
+  const commands = [];
+  const toasts = [];
+  let navigatedUrl = '';
+
+  const currentView = () => ({
+    session: sessionActive
+      ? { sessionId: 'session-1', status: 'RUNNING' }
+      : null,
+    actor: {
+      capabilities: {
+        CANCEL_WORKSHOP_SESSION: { allowed: sessionActive, reason: 'INVALID_TRANSITION' },
+        CANCEL_MODE_SELECTION: { allowed: modeSelectionActive, reason: 'INVALID_TRANSITION' },
+        BEGIN_MODE_SELECTION: { allowed: !sessionActive && !modeSelectionActive, reason: 'INVALID_TRANSITION' }
+      }
+    },
+    route: {
+      name: modeSelectionActive ? 'brainstormMode' : 'addPlayer',
+      params: modeSelectionActive ? { isHost: 1 } : {}
+    }
+  });
+
+  const roomSession = {
+    roomId,
+    getView: currentView,
+    getSnapshot: () => ({ ok: true, roomId, revision, view: currentView() }),
+    dispatch: async (command) => {
+      commands.push(command.type);
+      if (command.type === 'CANCEL_WORKSHOP_SESSION') {
+        sessionActive = false;
+        modeSelectionActive = true;
+      } else if (command.type === 'CANCEL_MODE_SELECTION') {
+        modeSelectionActive = false;
+      } else if (command.type === 'BEGIN_MODE_SELECTION') {
+        modeSelectionActive = true;
+      }
+      revision += 1;
+      return { ok: true, outcome: { committedThroughSeq: revision } };
+    }
+  };
+  const app = { globalData: { roomId, roomSession } };
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/addPlayer/index', data: { roomId } }];
+  global.wx = {
+    hideLoading() {},
+    showToast(options) { toasts.push(options && options.title); },
+    navigateTo(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    },
+    redirectTo(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    },
+    reLaunch(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    }
+  };
+
+  const page = {
+    ...definition,
+    data: {
+      ...definition.data,
+      roomId,
+      isHost: true,
+      isParticipant: true,
+      memberCount: 3,
+      hasSelectedMode: true,
+      brainstormSessionEnded: false
+    },
+    _pageAlive: true,
+    setData(patch) {
+      Object.assign(this.data, patch);
+    },
+    _stopMemberPolling() {},
+    _startMemberPolling() {},
+    async loadRoomData() {
+      const footer = this._computeFooterActions({
+        hasSelectedMode: false,
+        brainstormSessionEnded: false
+      });
+      this.setData({
+        hasSelectedMode: false,
+        brainstormSessionEnded: false,
+        ...footer
+      });
+      return { ok: true };
+    }
+  };
+
+  try {
+    await page._confirmExitMode();
+    assert.equal(page.data.primaryBtnAction, 'selectMode');
+
+    const result = await page._goBrainstormMode();
+
+    assert.equal(result && result.ok, true, '再次选择模式不应被权威状态拒绝');
+    assert.match(navigatedUrl, /brainstormMode/, '应正常跳转到选择模式页');
+    assert.equal(toasts.includes('当前不能执行该操作'), false);
+    assert.deepEqual(commands, [
+      'CANCEL_WORKSHOP_SESSION',
+      'CANCEL_MODE_SELECTION',
+      'BEGIN_MODE_SELECTION'
+    ]);
+  } finally {
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+    global.getCurrentPages = originalGetCurrentPages;
+  }
+});

@@ -257,7 +257,7 @@ sequenceDiagram
 | 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
 | “退出房间” | `LEAVE_ROOM` | 非 Host |
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
-| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页 |
+| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页，并生成新的 `modeSelectionRevision` |
 | “确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
@@ -336,6 +336,7 @@ flowchart TD
 | Host 从模式选择页点“上一页”或回房间 | `CANCEL_MODE_SELECTION` | Host 与 Player 一起回 `addPlayer` 大厅 |
 | Host 从情境页点“上一页” | `CANCEL_WORKSHOP_SESSION` | Session 取消并归档；Host 回权威 `brainstormMode?isHost=1`，Player 回空状态等待页 |
 | Host 从情境页回房间 | `CANCEL_WORKSHOP_SESSION` 后 `CANCEL_MODE_SELECTION` | 先取消 Session 回到权威模式选择状态，再取消模式选择回 `addPlayer` |
+| Host 在房间页从当前模式面板点“退出当前模式” | 运行中先 `CANCEL_WORKSHOP_SESSION` 再 `CANCEL_MODE_SELECTION`；已完成则 `RETURN_TO_LOBBY` | Session 归档并完整回到 `addPlayer` 大厅；之后再次点“选择模式”可重新发送 `BEGIN_MODE_SELECTION` |
 
 `SET_SCENARIO` 允许在配置阶段重新选择情境；执行时会原子清空旧问题、旧选择和旧进度，避免新旧配置混用。
 选题列表按服务端首次提交时间升序展示；Host 编辑只更新正文与 `entityVersion`，不会改变顺序或默认选中的第一项。
@@ -345,10 +346,10 @@ View 将 `subAwait?scene=bg/player` 投影成受控 `waiting` 组件，Host 的 
 `selector`。首次进入时保持无交互加载态，不按 URL 猜测 Host/Player 屏幕；同路径变化只更新 Shell
 Model，不调用微信导航；进入其他流程页面时先冻结触摸与计时，再交还全局导航协调器。
 
-选择首位玩家的多人触摸抽取属于 Host 本地 UI 机制，不改变房间协议。iOS 且本场参与者超过
-5 人时，页面只保留前 5 个有效触点；第 6 次触摸事件到达后立即从这 5 个触点中抽取。
-考虑到部分 iOS 设备不会上报超出上限的触摸事件，5 个触点持续按住 800ms 后执行同一
-兜底抽取，避免页面停在 `5/N`。其他平台仍等待全部参与者触点后进入原倒计时流程。
+选择首位玩家的多人触摸抽取属于 Host 本地 UI 机制，不改变房间协议。抽取池最多接受与当前
+房间成员数相同的触点，额外手指不展示波纹也不参与选择。页面合并 `touches` 与
+`changedTouches` 中按 `identifier` 去重后的触点，以兼容 iOS 仅在 `changedTouches` 上报新增
+触点的情况；只有有效触点数达到当前成员数时才进入正常长按倒计时和随机抽取。
 
 ## 5. Partner
 

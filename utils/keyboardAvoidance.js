@@ -21,12 +21,22 @@ function buildKeyboardLiftStyle(height) {
 }
 
 /**
- * iOS 原生 textarea 位于 transform 容器中时可能重复合成并产生残影。
+ * iOS 原生 input/textarea 位于 transform 容器中时可能不跟随、
+ * 重复合成或产生残影。
  * 对 position: relative/fixed 的单层输入栏改用 bottom 位移，仍只消费原生 px 高度。
  */
 function buildKeyboardBottomStyle(height) {
   const px = normalizeKeyboardHeight(height);
   return px > 0 ? `bottom: ${px}px;` : '';
+}
+
+/**
+ * 固定顶部的全屏 Flex 页面在键盘打开时缩短可用高度，
+ * 由中间可伸缩区承担压缩，底部输入区保持在键盘上沿。
+ */
+function buildKeyboardViewportStyle(height) {
+  const px = normalizeKeyboardHeight(height);
+  return px > 0 ? `height: calc(100vh - ${px}px);` : '';
 }
 
 function buildKeyboardMaskBottomStyle(height, baseInset = '180rpx + env(safe-area-inset-bottom)') {
@@ -38,6 +48,7 @@ module.exports = {
   buildKeyboardBottomStyle,
   buildKeyboardLiftStyle,
   buildKeyboardMaskBottomStyle,
+  buildKeyboardViewportStyle,
   keyboardHeightFromEvent,
   normalizeKeyboardHeight
 };

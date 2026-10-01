@@ -49,9 +49,46 @@ test('iOS 点击匿名表达输入框外部可收起键盘', () => {
   assert.equal(inputs.length, 2, '讨论卡与旁观卡各有一个匿名表达输入框');
   inputs.forEach((markup) => {
     assert.match(markup, /hold-keyboard="\{\{false\}\}"/);
+    assert.match(markup, /adjust-position="\{\{false\}\}"/);
   });
   assert.ok(closeMethod);
   assert.match(closeMethod[0], /wx\.hideKeyboard\(/);
+});
+
+test('匿名表达打开键盘时固定顶部并压缩中间卡牌高度', () => {
+  const wxml = fs.readFileSync(GAME_WXML, 'utf8');
+  const wxss = fs.readFileSync(GAME_WXSS, 'utf8');
+  assert.match(wxml, /class="container[^\"]*"\s+style="\{\{keyboardViewportStyle\}\}"/);
+  assert.match(
+    wxml,
+    /class="game-inspiration-dock[^\"]*"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
+    '匿名表达键盘打开时灵感栏必须移出布局'
+  );
+  const footer = wxml.match(/<partner-game-footer[\s\S]*?\/>/);
+  assert.ok(footer);
+  assert.match(
+    footer[0],
+    /wx:if="\{\{!inspirationInputFocused && !expressComposerOpen && inspirationKeyboardHeight <= 0 && expressKeyboardHeight <= 0 && closingKeyboardHeight <= 0\}\}"/,
+    '匿名表达键盘打开时开始表态底栏必须移出布局'
+  );
+  assert.match(wxss, /\.spectator-express-input\s*\{[\s\S]*?background:\s*#f2f2f2;/);
+  assert.match(
+    wxss,
+    /\.spectator-bottom-stack-composing \.spectator-express-slot-flow\s*\{[\s\S]*?background:\s*#fff;/
+  );
+
+  const definition = loadPageDefinition();
+  const page = makePage(definition, {
+    expressComposerOpen: true,
+    expressKeyboardHeight: 0,
+    inspirationKeyboardHeight: 0,
+    keyboardViewportStyle: ''
+  });
+
+  page.onExpressKeyboardHeightChange({ detail: { height: 300 } });
+
+  assert.equal(page.data.expressKeyboardHeight, 300);
+  assert.equal(page.data.keyboardViewportStyle, 'height: calc(100vh - 300px);');
 });
 
 test('匿名表达输入框右侧有微信风格发送键，并使用全局绿色', () => {
@@ -132,5 +169,7 @@ test('匿名表达键盘收起后关闭输入框并恢复打分状态', () => {
 
   assert.equal(page.data.expressComposerOpen, false);
   assert.equal(page.data.expressComposerNeedFocus, false);
+  assert.equal(page.data.expressKeyboardHeight, 0);
+  assert.equal(page.data.keyboardViewportStyle, '');
   assert.equal(page.data.expressDraftText, '未发送的草稿');
 });

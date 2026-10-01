@@ -254,7 +254,15 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '当前不能选择模式', icon: 'none' });
         return;
       }
-      const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, {}, {
+      const modeSelectionRevision = view && view.room
+        && view.room.modeSelectionRevision != null
+        ? view.room.modeSelectionRevision
+        : view && view.route && view.route.params
+          ? view.route.params.modeSelectionRevision
+          : undefined;
+      const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, {
+        modeSelectionRevision
+      }, {
         roomId: this.data.roomId
       });
 

@@ -17,7 +17,7 @@
 <view wx:elif="{{roomShellScreen === 'closingVote'}}" class="room-shell-loading"></view>
 
 <block wx:elif="{{roomShellScreen === 'game'}}">
-<view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}">
+<view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}" style="{{keyboardViewportStyle}}">
   <view class="page-body">
     <partner-game-header
       id="partnerGameHeader"
@@ -193,27 +193,6 @@
         </view>
       </view>
 
-      <!-- 输入模块拥有键盘与原生输入节点；房间 View 刷新不重建其局部状态。 -->
-      <partner-inspiration-composer
-        count="{{inspirationCount}}"
-        draftText="{{inspirationDraftText}}"
-        draftPhotos="{{inspirationDraftPhotos}}"
-        hasText="{{inspirationHasText}}"
-        holdKeyboard="{{inspirationHoldKeyboard}}"
-        saving="{{inspirationSaving}}"
-        keyboardHeight="{{inspirationKeyboardHeight}}"
-        closing="{{true}}"
-        safeBottom="{{!isHost && closingStep !== 'review'}}"
-        hiddenByKeyboard="{{closingKeyboardHeight > 0}}"
-        bind:opencenter="handleGoInspirationCenter"
-        bind:focus="onInspirationFocus"
-        bind:blur="onInspirationBlur"
-        bind:input="onInspirationInput"
-        bind:keyboardheightchange="onInspirationKeyboardHeightChange"
-        bind:action="onInspirationActionTap"
-        bind:previewphoto="onInspirationPreviewPhoto"
-        bind:removephoto="onInspirationRemovePhoto"
-      />
     </block>
 
     <!-- 常规出牌 / 讨论 -->
@@ -601,7 +580,7 @@
                       maxlength="40"
                       confirm-type="send"
                       hold-keyboard="{{false}}"
-                      adjust-position="{{true}}"
+                      adjust-position="{{false}}"
                       cursor-spacing="24"
                       focus="{{expressComposerNeedFocus}}"
                       placeholder="说点什么…"
@@ -830,7 +809,7 @@
                           maxlength="40"
                           confirm-type="send"
                           hold-keyboard="{{false}}"
-                          adjust-position="{{true}}"
+                          adjust-position="{{false}}"
                           cursor-spacing="24"
                           focus="{{expressComposerNeedFocus}}"
                           placeholder="说点什么…"
@@ -909,6 +888,18 @@
       </view>
     </view>
 
+  </block>
+  </view>
+
+  <!--
+    唯一灵感输入节点放在 page-body 的 overflow:hidden 之外。
+    聚焦后只切换宿主定位，不重建原生 input；匿名表达时完全移出布局。
+  -->
+  <view
+    class="game-inspiration-dock {{inspirationKeyboardHeight > 0 ? 'game-inspiration-dock-keyboard' : ''}}"
+    style="{{inspirationDockStyle}}"
+    hidden="{{expressComposerOpen || expressKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
+  >
     <partner-inspiration-composer
       count="{{inspirationCount}}"
       draftText="{{inspirationDraftText}}"
@@ -917,9 +908,10 @@
       holdKeyboard="{{inspirationHoldKeyboard}}"
       saving="{{inspirationSaving}}"
       keyboardHeight="{{inspirationKeyboardHeight}}"
+      closing="{{!isHistoryReview && gamepagePhase === 'closing'}}"
       history="{{isHistoryReview}}"
       historyWithFooter="{{isHistoryReview && reviewCanGoBack}}"
-      safeBottom="{{!isHistoryReview && !isHost && gamepagePhase === 'discussion'}}"
+      safeBottom="{{!isHistoryReview && !isHost && ((gamepagePhase === 'closing' && closingStep !== 'review') || gamepagePhase === 'discussion')}}"
       bind:opencenter="handleGoInspirationCenter"
       bind:focus="onInspirationFocus"
       bind:blur="onInspirationBlur"
@@ -929,14 +921,13 @@
       bind:previewphoto="onInspirationPreviewPhoto"
       bind:removephoto="onInspirationRemovePhoto"
     />
-  </block>
   </view>
 
   <partner-game-footer
-    wx:if="{{!inspirationInputFocused && inspirationKeyboardHeight <= 0 && closingKeyboardHeight <= 0}}"
+    wx:if="{{!inspirationInputFocused && !expressComposerOpen && inspirationKeyboardHeight <= 0 && expressKeyboardHeight <= 0 && closingKeyboardHeight <= 0}}"
     id="partnerGameFooter"
     visible="{{(isHistoryReview && reviewCanGoBack) || (!isHistoryReview && (isHost || gamepagePhase === 'play' || (gamepagePhase === 'closing' && closingStep === 'review')))}}"
-    keyboardOpen="{{inspirationKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
+    keyboardOpen="{{inspirationKeyboardHeight > 0 || expressKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
     historyReview="{{isHistoryReview}}"
     reviewCanGoBack="{{reviewCanGoBack}}"
     phase="{{gamepagePhase}}"

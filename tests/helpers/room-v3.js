@@ -25,6 +25,12 @@ function createHarness(options) {
     const roomId = input.roomId || (options && options.roomId) || '12345678';
     const context = { ...(input.context || {}) };
     const contextTokens = COMMAND_CONTEXT[type] || [];
+    if (contextTokens.includes('modeSelectionRevision') && context.modeSelectionRevision == null) {
+      const current = await app.readSnapshot(roomId, { userId });
+      const revision = current && current.ok && current.view && current.view.room
+        && current.view.room.modeSelectionRevision;
+      if (revision != null) context.modeSelectionRevision = revision;
+    }
     if (contextTokens.includes('workflowRevision') && context.workflowRevision == null) {
       const current = await app.readSnapshot(roomId, { userId });
       const revision = current && current.ok && current.view && current.view.session

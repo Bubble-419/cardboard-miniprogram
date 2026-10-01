@@ -50,15 +50,15 @@ test('灵感输入模块通过小接口输出语义事件，不持有 RoomSessio
   assert.doesNotMatch(read('components/partner-inspiration-composer/index.js'), /room-session|dispatchRoomCommand|getApp\(/);
 });
 
-test('灵感输入模块按父页面传入的键盘 px 高度精确上移', () => {
+test('灵感输入模块留在正常布局流，键盘高度交给页面可用视口处理', () => {
   const definition = loadComponent('components/partner-inspiration-composer/index.js');
-  const component = componentInstance(definition);
+  const source = read('components/partner-inspiration-composer/index.js');
+  const markup = read('components/partner-inspiration-composer/index.wxml');
 
-  definition.observers.keyboardHeight.call(component, 318);
-  assert.equal(component.data.keyboardLiftStyle, 'transform: translate3d(0, -318px, 0);');
-
-  definition.observers.keyboardHeight.call(component, 0);
-  assert.equal(component.data.keyboardLiftStyle, '');
+  assert.equal(definition.observers, undefined);
+  assert.doesNotMatch(source, /buildKeyboard(?:Bottom|Lift)Style/);
+  assert.doesNotMatch(markup, /keyboardLiftStyle/);
+  assert.match(markup, /keyboardHeight > 0 \? 'inspiration-bar-keyboard-open'/);
 });
 
 test('游戏底栏模块只输出业务意图，不执行命令或页面导航', () => {
