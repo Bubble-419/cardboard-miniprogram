@@ -75,7 +75,7 @@ test('Spy 投票页房主可开启提问轮，提问页复用发言壳', () => {
   const speakWxml = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxml'), 'utf8');
   assert.match(voteJs, /callSpyAction\('startQuestion'/);
   assert.match(voteJs, /START_SPY_QUESTION_ROUND/);
-  assert.match(voteWxml, /开始提问/);
+  assert.match(voteWxml, /进行提问|question-btn-line">进行[\s\S]*question-btn-line">提问/);
   assert.match(voteWxml, /bindtap="onStartQuestion"/);
   assert.match(speakWxml, /每人最多提出一个问题/);
   assert.match(speakWxml, /\{\{finishActionText\}\}/);

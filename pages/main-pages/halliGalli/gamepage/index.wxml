@@ -9,8 +9,8 @@
     />
   </view>
 
-  <scroll-view class="main-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-
+  <!-- Halli 一屏适配；干瞪眼内容更长时允许内部滚动 -->
+  <view class="page-body {{isGanDengYan ? 'is-scrollable' : 'is-fit'}}">
     <!-- 情境格子 -->
     <view class="header-section" wx:if="{{!isGanDengYan}}">
       <context-display bg="{{selectedBG}}" />
@@ -72,14 +72,14 @@
         </view>
       </view>
 
-      <!-- 德国心脏病步骤卡片组 -->
+      <!-- 德国心脏病步骤：双列网格，吃满剩余高度，避免滚动与底栏遮挡 -->
       <view class="steps-card" wx:else>
-
-        <!-- 第 1 行：步骤 1 & 2 -->
-        <view class="steps-row">
+        <view class="steps-grid">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgDeal}}" data-key="deal" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgDeal}}" data-key="deal" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">发牌</text>
                 <text class="step-desc">每位玩家获得3张交互方式卡</text>
@@ -87,10 +87,11 @@
             </view>
             <view class="step-badge"><text class="step-num">1</text></view>
           </view>
-          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgFlip}}" data-key="flip" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgFlip}}" data-key="flip" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">翻牌</text>
                 <text class="step-desc">展示本轮控件形态卡</text>
@@ -98,18 +99,11 @@
             </view>
             <view class="step-badge"><text class="step-num">2</text></view>
           </view>
-        </view>
-
-        <!-- 向下箭头 -->
-        <view class="arrow-down-row">
-          <image class="arrow-down" src="/assets/halliGalli/icon-arrow-down.svg" mode="widthFix" />
-        </view>
-
-        <!-- 第 2 行：步骤 3 & 4 -->
-        <view class="steps-row">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgRing}}" data-key="ring" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgRing}}" data-key="ring" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">抢铃</text>
                 <text class="step-desc">准备完成后抢铃争取出牌权</text>
@@ -117,10 +111,11 @@
             </view>
             <view class="step-badge"><text class="step-num">3</text></view>
           </view>
-          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgPlay}}" data-key="play" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgPlay}}" data-key="play" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">出牌</text>
                 <text class="step-desc">说明如何与情境信息结合</text>
@@ -128,18 +123,11 @@
             </view>
             <view class="step-badge"><text class="step-num">4</text></view>
           </view>
-        </view>
-
-        <!-- 向下箭头 -->
-        <view class="arrow-down-row">
-          <image class="arrow-down" src="/assets/halliGalli/icon-arrow-down.svg" mode="widthFix" />
-        </view>
-
-        <!-- 第 3 行：步骤 5 & 6 -->
-        <view class="steps-row">
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgVote}}" data-key="vote" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgVote}}" data-key="vote" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">表决</text>
                 <text class="step-desc">其他玩家投票或提问评分</text>
@@ -147,10 +135,11 @@
             </view>
             <view class="step-badge"><text class="step-num">5</text></view>
           </view>
-          <image class="arrow-h" src="/assets/halliGalli/icon-arrow-h.svg" mode="aspectFit" />
           <view class="step-wrap">
             <view class="step-card">
-              <image class="step-img" src="{{stepImgJudge}}" data-key="judge" binderror="onStepImgError" mode="aspectFill" />
+              <view class="step-img-wrap">
+                <image class="step-img" src="{{stepImgJudge}}" data-key="judge" binderror="onStepImgError" mode="aspectFit" />
+              </view>
               <view class="step-text-col">
                 <text class="step-title">判定</text>
                 <text class="step-desc">半数通过即成功，否则失败并摸1张牌</text>
@@ -172,13 +161,9 @@
         </view>
       </view>
     </view>
+  </view>
 
-    <!-- 底部占位，防止内容被固定按钮遮挡 -->
-    <view class="footer-placeholder" wx:if="{{canEndGame}}"></view>
-
-  </scroll-view>
-
-  <!-- 底部：结束线下游戏并推进到创意阶段（仅房主） -->
+  <!-- 底部：结束线下游戏并推进到创意阶段（仅房主）；参与文档流，不遮挡内容 -->
   <view class="footer-section" wx:if="{{canEndGame}}">
     <button class="end-game-btn" bindtap="handleEndGame">结束游戏</button>
   </view>

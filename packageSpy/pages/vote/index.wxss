@@ -106,19 +106,121 @@
 }
 
 .vote-actions {
-  margin: 0 40rpx;
+  margin: 0 30rpx 24rpx;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 20rpx;
 }
 
-.vote-actions .primary-btn {
-  height: 120rpx;
-  font-size: 36rpx;
+/* 对齐合伙人 partner-game-footer：特殊行动 + 主操作 */
+.vote-bottom-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.question-btn-wrap {
+  flex: none;
+  width: 162rpx;
+  overflow: hidden;
+}
+
+.question-btn-wrap-alone {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.question-btn-wrap-alone .question-btn {
+  flex-direction: row;
+  gap: 0;
+  letter-spacing: 0.12em;
+}
+
+.question-btn-wrap-alone .question-btn-line {
+  display: inline;
+  line-height: 1.2;
+}
+
+.vote-bottom-gap {
+  flex: none;
+  width: 24rpx;
+  height: 1rpx;
+}
+
+.confirm-btn-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.question-btn {
+  width: 100%;
+  height: 112rpx;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 28rpx;
+  background: #e9f5e9;
+  color: #5ec159;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 1.06em;
+  letter-spacing: 0.1em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.question-btn-line {
+  display: block;
+  line-height: 1.1;
+}
+
+.question-btn.dimmed {
+  opacity: 0.45;
+}
+
+.question-btn:active {
+  opacity: 0.85;
+}
+
+.confirm-btn {
+  width: 100%;
+  height: 112rpx;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 28rpx;
+  color: #ffffff;
+  font-size: 60rpx;
+  font-weight: 400;
+  letter-spacing: 0.0667em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.confirm-btn-enabled {
+  background: #5ec159;
+}
+
+.confirm-btn-enabled:active {
+  opacity: 0.9;
+}
+
+.confirm-btn-disabled {
+  background: #c0c0c0;
 }
 
 .abstain-link {
+  align-self: center;
   font-size: 24rpx;
   color: #9ca3af;
   padding: 6rpx 16rpx;
@@ -126,26 +228,6 @@
 
 .abstain-link:active {
   opacity: 0.7;
-}
-
-.host-question-actions {
-  margin: 0 40rpx 20rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.host-question-actions .secondary-btn {
-  width: 100%;
-  margin-top: 0;
-}
-
-.host-question-hint {
-  font-size: 22rpx;
-  color: #9ca3af;
-  text-align: center;
-  line-height: 1.4;
 }
 
 .tie-subtitle {

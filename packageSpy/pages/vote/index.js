@@ -297,7 +297,7 @@ Page(withPageInteractionLock({
 
   onStartQuestion() {
     return runPageInteraction(this, () => this._startQuestion(), {
-      loadingText: '正在开始提问…'
+      loadingText: '正在开启提问…'
     });
   },
 
