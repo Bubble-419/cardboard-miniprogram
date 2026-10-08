@@ -17,6 +17,8 @@ const SOUND_WARN_DB = 40;
 const SOUND_EASE_MS = 180;
 const SOUND_TICK_MS = 32;
 const SOUND_WARN_HOLD_MS = 700;
+/** 回落后短暂稳定再消标，避免阈值附近抖闪；不得再要求更低滞回阈值 */
+const SOUND_WARN_CLEAR_MS = 280;
 const SOUND_TRACK_WIDTH_RPX = 5;
 const SOUND_BAND_MIN_WIDTH_RPX = 7;
 const SOUND_BAND_MAX_WIDTH_RPX = 10;
@@ -642,6 +644,7 @@ Component({
       this._soundStarting = false;
       this._soundToken = (this._soundToken || 0) + 1;
       this._over40Since = 0;
+      this._under40Since = 0;
       if (this._soundTimer) {
         clearTimeout(this._soundTimer);
         this._soundTimer = null;
@@ -744,6 +747,7 @@ Component({
 
       const now = Date.now();
       if (db >= SOUND_WARN_DB) {
+        this._under40Since = 0;
         if (!this._over40Since) this._over40Since = now;
         const loud = now - this._over40Since >= SOUND_WARN_HOLD_MS;
         if (loud !== this.data.soundTooLoud) {
@@ -751,7 +755,12 @@ Component({
         }
       } else {
         this._over40Since = 0;
-        if (this.data.soundTooLoud && db < SOUND_WARN_DB - 2) {
+        if (!this._under40Since) this._under40Since = now;
+        // 稳定低于 40dB 即消标；此前要求 <38 会在 38–40 区间永远挂着“声音过大”
+        if (
+          this.data.soundTooLoud
+          && now - this._under40Since >= SOUND_WARN_CLEAR_MS
+        ) {
           this.setData({ soundTooLoud: false });
         }
       }

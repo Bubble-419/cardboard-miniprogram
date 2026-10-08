@@ -955,7 +955,10 @@ Page(withPageInteractionLock({
       ? Math.max(1, summaryCount + 1)
       : Math.max(1, summaryCount);
     const actionCardIndex = summaryCount;
-    const defaultIndex = showCurrentActionCard ? actionCardIndex : Math.max(0, summaryCount - 1);
+    // 全局回顾默认落在第一张（收尾记录卡优先）；进行中游戏仍默认落在当前出牌卡/最新纪要
+    const defaultIndex = isReview
+      ? 0
+      : (showCurrentActionCard ? actionCardIndex : Math.max(0, summaryCount - 1));
     const cardIndex = preferredCardIndex != null
       ? Math.min(Math.max(0, preferredCardIndex), cardCount - 1)
       : defaultIndex;
@@ -1148,9 +1151,13 @@ Page(withPageInteractionLock({
   },
 
   _resolveIndicatorPlayerIndex(cardIndex) {
+    // 收尾（补全符文 / 创意复盘）为全局环节，箭头不指向任何玩家。
+    if (isClosingPhase(this.data.gamepagePhase)) return -1;
     const summaries = this.data.displayRoundSummaries || [];
     if (cardIndex < summaries.length && summaries[cardIndex]) {
-      return summaries[cardIndex].playerIndex;
+      const summary = summaries[cardIndex];
+      if (summary.cardType === 'closingReview') return -1;
+      return summary.playerIndex;
     }
     return this.data.currentPlayerIndex;
   },
@@ -2433,7 +2440,7 @@ Page(withPageInteractionLock({
     const roundContent = this._applyRoundContentFromRoom(roomState);
     if (this.data.isHistoryReview || this._isHistoryReview) {
       const closingReviewCard = this._buildClosingReviewCard(roomState, legacyClosingSummaries);
-      if (closingReviewCard) roundSummaries.push(closingReviewCard);
+      if (closingReviewCard) roundSummaries.unshift(closingReviewCard);
     }
     // 页面级表达列表只服务当前轮卡片；换轮强制重算，避免残留上一轮
     this._ingestExpressMessages(expressMessages, {
@@ -2559,7 +2566,8 @@ Page(withPageInteractionLock({
       displayRoundSummaries: paginationState.displayRoundSummaries,
       cardCount: paginationState.cardCount,
       selectedPlayerIndex: paginationState.selectedPlayerIndex,
-      indicatorPlayerIndex: paginationState.indicatorPlayerIndex,
+      // 收尾阶段不指向任何人；历史回顾里的 closingReview 卡已在分页态置为 -1。
+      indicatorPlayerIndex: isClosingPhase(roomPhase) ? -1 : paginationState.indicatorPlayerIndex,
       isPlayerFilterActive: paginationState.isPlayerFilterActive
     };
     // 仅在回合/会话重置时回写 cardIndex；日常轮询不得改写，否则 controlled swiper 与手势互抢

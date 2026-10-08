@@ -80,10 +80,10 @@ const HELP_METHOD_OPTIONS = isAiFeatureEnabled()
   : HELP_METHOD_OPTIONS_ALL.filter((item) => item.id !== 'outside');
 
 const REVERSE_STEPS = [
-  { label: '将 1 号覆膜置于桌面', image: '/assets/partnerMode/actions/reverse-step-1.jpg' },
-  { label: '卡牌背面朝上拼至覆膜', image: '/assets/partnerMode/actions/reverse-step-2.jpg' },
-  { label: '对齐并粘贴两张覆膜', image: '/assets/partnerMode/actions/reverse-step-3.jpg' },
-  { label: '垂直翻转覆膜内的卡组', image: '/assets/partnerMode/actions/reverse-step-4.jpg' }
+  { label: '1. 将 1 号覆膜置于桌面', image: '/assets/partnerMode/actions/reverse-step-1.jpg' },
+  { label: '2. 卡牌背面朝上拼至覆膜', image: '/assets/partnerMode/actions/reverse-step-2.jpg' },
+  { label: '3. 对齐并粘贴两张覆膜', image: '/assets/partnerMode/actions/reverse-step-3.jpg' },
+  { label: '4. 垂直翻转覆膜内的卡组', image: '/assets/partnerMode/actions/reverse-step-4.jpg' }
 ];
 
 Page(withPageInteractionLock({

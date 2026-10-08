@@ -37,25 +37,85 @@ const WORD_RAW_FALLBACK = {
 };
 
 /**
- * 牌库收录的全部词语（与 webp 文件名对应，含对局词库外的扩展卡）
- * 对局抽词仍只用 spyWordPairs 中的配对。
+ * 牌库四类分组（编号 01–36）。
+ * word：资源文件名用词；displayName / blurbWord 可选，用于展示别名与简介来源。
  */
-const LIBRARY_WORDS = [
-  '开关', '单击', '按下', '双击',
-  '滑动切换', '轻扫切换', '越界切换',
-  '快击', '点击缓冲',
-  '拖拽', '甩动', '翻动', '轻拨',
-  '持续触发', '长按', '缓冲连发',
-  '多点有序点击', '异位连触', '多点同时点击', '多点开关',
-  '双按拖拽', '长按拖拽', '点拖互斥',
-  '向量菜单', '域控式移动', '整体移动', '方向解耦',
-  '滑入停留', '边缘滑入', '环绕旋转',
-  '捏合缩放', '捏合解耦', '力速调幅', '动势点选',
-  '限位点击', '震动'
+const LIBRARY_CATEGORIES = [
+  {
+    id: 'click',
+    title: '点击类',
+    cards: [
+      { no: '01', word: '开关' },
+      { no: '02', word: '单击' },
+      { no: '03', word: '按下' },
+      { no: '04', word: '持续触发' },
+      { no: '05', word: '长按' },
+      { no: '06', word: '双击' },
+      { no: '07', word: '多点开关' },
+      { no: '08', word: '多点有序点击' },
+      { no: '09', word: '多点同时点击' }
+    ]
+  },
+  {
+    id: 'motion',
+    title: '位移类',
+    cards: [
+      { no: '10', word: '拖拽' },
+      { no: '11', word: '甩动' },
+      { no: '12', word: '翻动' },
+      { no: '13', word: '滑动切换' },
+      { no: '14', word: '越界切换' },
+      // 资源文件名为「震动」；对局词库条目为「晃动」
+      { no: '15', word: '震动', displayName: '晃动/震动', blurbWord: '晃动' },
+      { no: '16', word: '捏合缩放' },
+      { no: '17', word: '环绕旋转' },
+      { no: '18', word: '整体移动' }
+    ]
+  },
+  {
+    id: 'multi',
+    title: '多维协同',
+    cards: [
+      { no: '19', word: '限位点击' },
+      { no: '20', word: '长按拖拽' },
+      { no: '21', word: '双按拖拽' },
+      { no: '22', word: '轻扫切换' },
+      { no: '23', word: '域控式移动' },
+      { no: '24', word: '力速调幅' },
+      { no: '25', word: '异位连触' },
+      { no: '26', word: '向量菜单' },
+      { no: '27', word: '动势点选' }
+    ]
+  },
+  {
+    id: 'conflict',
+    title: '冲突调和',
+    cards: [
+      { no: '28', word: '快击' },
+      { no: '29', word: '点击缓冲' },
+      { no: '30', word: '缓冲连发' },
+      { no: '31', word: '边缘滑入' },
+      { no: '32', word: '滑入停留' },
+      { no: '33', word: '方向解耦' },
+      { no: '34', word: '轻拨' },
+      { no: '35', word: '点拖互斥' },
+      { no: '36', word: '捏合解耦' }
+    ]
+  }
 ];
+
+const LIBRARY_WORDS = LIBRARY_CATEGORIES.reduce(
+  (all, category) => all.concat(category.cards.map((item) => item.word)),
+  []
+);
 
 const ENTRY_BLURB = WORD_ENTRIES.reduce((acc, item) => {
   acc[item.word] = item.blurb || '';
+  return acc;
+}, {});
+
+const GAME_WORD_SET = WORD_ENTRIES.reduce((acc, item) => {
+  acc[item.word] = true;
   return acc;
 }, {});
 
@@ -80,6 +140,25 @@ function getWordCardAssets(word) {
   };
 }
 
+function buildLibraryCard(item) {
+  const word = item.word;
+  const assets = getWordCardAssets(word);
+  const blurbKey = item.blurbWord || word;
+  return {
+    no: item.no,
+    word,
+    displayName: item.displayName || word,
+    blurb: ENTRY_BLURB[blurbKey] || ENTRY_BLURB[word] || '',
+    coverSrc: assets.assignedWordSrc,
+    backSrc: assets.backSrc,
+    assignedWordSrc: assets.assignedWordSrc,
+    assignedWordFallbackSrc: assets.assignedWordFallbackSrc,
+    word1Src: assets.word1Src,
+    word1FallbackSrc: assets.word1FallbackSrc,
+    inGame: !!(GAME_WORD_SET[blurbKey] || GAME_WORD_SET[word])
+  };
+}
+
 /** 牌库组数：每词含「词语 + 词语1」视为 1 组 */
 function getLibraryGroupCount() {
   return LIBRARY_WORDS.length;
@@ -91,37 +170,34 @@ function getGamePairCount() {
 }
 
 /**
- * 牌库列表项（浏览用，不参与抽卡）
- * @returns {Array<{word:string,blurb:string,coverSrc:string,backSrc:string,assignedWordSrc:string,word1Src:string,inGame:boolean}>}
+ * 牌库分类列表（浏览用，不参与抽卡）
+ * @returns {Array<{id:string,title:string,count:number,cards:Array}>}
+ */
+function listLibraryCategories() {
+  return LIBRARY_CATEGORIES.map((category) => ({
+    id: category.id,
+    title: category.title,
+    count: category.cards.length,
+    cards: category.cards.map(buildLibraryCard)
+  }));
+}
+
+/**
+ * 牌库扁平列表（兼容发言页等查找）
+ * @returns {Array}
  */
 function listLibraryCards() {
-  const gameWordSet = WORD_ENTRIES.reduce((acc, item) => {
-    acc[item.word] = true;
-    return acc;
-  }, {});
-
-  return LIBRARY_WORDS.map((word) => {
-    const assets = getWordCardAssets(word);
-    return {
-      word,
-      blurb: ENTRY_BLURB[word] || '',
-      coverSrc: assets.assignedWordSrc,
-      backSrc: assets.backSrc,
-      assignedWordSrc: assets.assignedWordSrc,
-      assignedWordFallbackSrc: assets.assignedWordFallbackSrc,
-      word1Src: assets.word1Src,
-      word1FallbackSrc: assets.word1FallbackSrc,
-      inGame: !!gameWordSet[word]
-    };
-  });
+  return listLibraryCategories().reduce((all, category) => all.concat(category.cards), []);
 }
 
 module.exports = {
   WORD_RAW_FALLBACK,
+  LIBRARY_CATEGORIES,
   LIBRARY_WORDS,
   getWordCardAssets,
   getLibraryGroupCount,
   getGamePairCount,
+  listLibraryCategories,
   listLibraryCards,
   ASSET_ROOT,
   RAW_DIR,

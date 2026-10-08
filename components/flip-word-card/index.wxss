@@ -5,6 +5,8 @@
   perspective: 1200px;
   -webkit-perspective: 1200px;
   box-sizing: border-box;
+  /* 吃掉卡面手势，避免竖滑/斜滑冒泡到页面触发返回 */
+  touch-action: none;
 }
 
 .flip-scene.is-pressed {
@@ -22,31 +24,48 @@
   height: 100%;
   transform-style: preserve-3d;
   -webkit-transform-style: preserve-3d;
+  transform-origin: center center;
   background: transparent;
-  transform: rotateY(0deg);
-  -webkit-transform: rotateY(0deg);
+  transform: rotateX(0deg);
+  -webkit-transform: rotateX(0deg);
   box-sizing: border-box;
 }
 
-.flip-card.flip-out {
+/* 上滑 / 点击：向上翻 */
+.flip-card.flip-out-up {
   transition: transform 300ms ease-in-out;
   -webkit-transition: -webkit-transform 300ms ease-in-out;
-  transform: rotateY(90deg);
-  -webkit-transform: rotateY(90deg);
+  transform: rotateX(-90deg);
+  -webkit-transform: rotateX(-90deg);
 }
 
-.flip-card.flip-in-start {
+.flip-card.flip-in-start-up {
   transition: none;
   -webkit-transition: none;
-  transform: rotateY(-90deg);
-  -webkit-transform: rotateY(-90deg);
+  transform: rotateX(90deg);
+  -webkit-transform: rotateX(90deg);
+}
+
+/* 下滑：向下翻 */
+.flip-card.flip-out-down {
+  transition: transform 300ms ease-in-out;
+  -webkit-transition: -webkit-transform 300ms ease-in-out;
+  transform: rotateX(90deg);
+  -webkit-transform: rotateX(90deg);
+}
+
+.flip-card.flip-in-start-down {
+  transition: none;
+  -webkit-transition: none;
+  transform: rotateX(-90deg);
+  -webkit-transform: rotateX(-90deg);
 }
 
 .flip-card.flip-in {
   transition: transform 300ms ease-in-out;
   -webkit-transition: -webkit-transform 300ms ease-in-out;
-  transform: rotateY(0deg);
-  -webkit-transform: rotateY(0deg);
+  transform: rotateX(0deg);
+  -webkit-transform: rotateX(0deg);
 }
 
 .flip-face {
@@ -60,6 +79,8 @@
   justify-content: center;
   background: transparent;
   overflow: visible;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .flip-img {

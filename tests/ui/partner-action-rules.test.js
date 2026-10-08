@@ -52,6 +52,21 @@ test('普通状态参考 Master 模式的横向标题结构，并使用描边徽
   assert.match(gameWxss, /\.action-guidance\s*\{[\s\S]*?align-items:\s*flex-start/);
 });
 
+test('Master 与普通模式共用行动次数引导样式，突出任意次与 1–3 次对比', () => {
+  const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+
+  assert.match(
+    gameWxml,
+    /action-guidance" wx:if="\{\{isMasterMode\}\}"[\s\S]*?action-count">本轮可进行 <text class="action-count-number">任意次行动<\/text>/
+  );
+  assert.match(
+    gameWxml,
+    /action-guidance" wx:else>[\s\S]*?action-count">每轮可行动 <text class="action-count-number">1–3 次<\/text>/
+  );
+  assert.match(gameWxss, /\.action-count-number\s*\{[\s\S]*?color:\s*#5ec159[\s\S]*?font-weight:\s*800/);
+});
+
 test('普通与静默行动插画区域都固定为 4:3', () => {
   const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
   const specialWxss = read('pages/main-pages/partnerMode/specialMove/index.wxss');
@@ -83,12 +98,12 @@ test('反面随机拼参照静默模式展示说明层级和 4:3 图文步骤', 
   assert.doesNotMatch(specialWxss, /\.reverse-card-inner \.special-action-title/);
 
   for (const label of [
-    '将 1 号覆膜置于桌面',
-    '卡牌背面朝上拼至覆膜',
-    '对齐并粘贴两张覆膜',
-    '垂直翻转覆膜内的卡组'
+    '1. 将 1 号覆膜置于桌面',
+    '2. 卡牌背面朝上拼至覆膜',
+    '3. 对齐并粘贴两张覆膜',
+    '4. 垂直翻转覆膜内的卡组'
   ]) {
-    assert.match(specialJs, new RegExp(label));
+    assert.match(specialJs, new RegExp(label.replace(/\./g, '\\.')));
   }
 
   for (let step = 1; step <= 4; step += 1) {

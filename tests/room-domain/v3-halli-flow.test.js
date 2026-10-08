@@ -130,7 +130,7 @@ test('Halli 已提交成员可在收集期和汇总期返回修改自己的创�
   let result = await h.command('host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
   assert.equal(result.ok, true);
   snapshot = await h.snapshot('host');
-  assert.equal(snapshot.view.route.name, 'creativeInput');
+  assert.equal(snapshot.view.route.name, 'creativeSummary');
   assert.equal(snapshot.view.actor.contributionStatus.text, '初稿');
   assert.equal(snapshot.view.actor.capabilities.SUBMIT_HALLI_IDEA.allowed, true);
 
@@ -154,7 +154,7 @@ test('Halli 已提交成员可在收集期和汇总期返回修改自己的创�
 
   result = await h.command('host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
   assert.equal(result.ok, true);
-  assert.equal((await h.snapshot('host')).view.route.name, 'creativeInput');
+  assert.equal((await h.snapshot('host')).view.route.name, 'creativeSummary');
   assert.equal((await h.snapshot('u2')).view.route.name, 'creativeSummary',
     '一名成员修改时不应改变其他成员的汇总页');
   const prematureComplete = await h.command('host', 'COMPLETE_HALLI_SESSION', {

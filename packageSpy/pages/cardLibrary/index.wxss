@@ -1,10 +1,53 @@
 @import "../styles/common.wxss";
 
+.category-list {
+  padding: 0 28rpx 40rpx;
+  box-sizing: border-box;
+}
+
+.category-block {
+  margin-bottom: 28rpx;
+}
+
+.category-block:last-child {
+  margin-bottom: 0;
+}
+
+.category-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  padding: 0 8rpx 16rpx;
+}
+
+.category-mark {
+  width: 8rpx;
+  height: 28rpx;
+  border-radius: 999rpx;
+  background: #5ec159;
+  flex-shrink: 0;
+}
+
+.category-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #334155;
+  line-height: 40rpx;
+}
+
+.category-count {
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #94a3b8;
+  line-height: 40rpx;
+}
+
 .card-grid {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  padding: 0 28rpx 40rpx;
+  margin: 0 -12rpx;
   box-sizing: border-box;
 }
 
@@ -43,7 +86,17 @@
   padding: 0 4rpx;
 }
 
+.tile-no {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #5ec159;
+  line-height: 1.2;
+}
+
 .tile-name {
+  flex: 1;
+  min-width: 0;
   font-size: 26rpx;
   font-weight: 600;
   color: #333333;

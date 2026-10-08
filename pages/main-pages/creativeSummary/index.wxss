@@ -70,9 +70,47 @@
 .idea-card {
   background: #fff;
   border-radius: 18rpx;
-  padding: 20rpx;
+  padding: 20rpx 24rpx;
   margin-bottom: 16rpx;
   box-shadow: 0 6rpx 16rpx rgba(94, 193, 89, 0.1);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.idea-card.editing {
+  align-items: flex-start;
+}
+
+.idea-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.idea-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.idea-action-btn {
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.idea-action-btn-hover {
+  opacity: 0.7;
+}
+
+.idea-action-icon {
+  width: 48rpx;
+  height: 48rpx;
 }
 
 .player-row {
@@ -106,6 +144,19 @@
   font-size: 30rpx;
   line-height: 1.55;
   color: #2f2f2f;
+  word-break: break-all;
+}
+
+.idea-textarea {
+  margin-top: 14rpx;
+  width: 100%;
+  font-size: 30rpx;
+  line-height: 1.55;
+  color: #2f2f2f;
+  background: transparent;
+  padding: 0;
+  box-sizing: border-box;
+  word-break: break-all;
 }
 
 .footer {
@@ -117,7 +168,6 @@
   gap: 20rpx;
 }
 
-.edit-btn,
 .room-btn,
 .finish-btn {
   flex: 1;
@@ -129,14 +179,6 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-}
-
-.edit-btn {
-  width: 100%;
-  margin-bottom: 16rpx;
-  border: 2rpx solid #5ec159;
-  background: #fff;
-  color: #5ec159;
 }
 
 .room-btn {
@@ -157,7 +199,6 @@
   color: #eef7ee;
 }
 
-.edit-btn::after,
 .room-btn::after,
 .finish-btn::after {
   border: none;

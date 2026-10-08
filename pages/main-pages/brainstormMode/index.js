@@ -25,14 +25,16 @@ const BRAINSTORM_MODE_GROUPS = [
     title: '组件卡',
     modes: [{
       id: 'ganDengYan',
-      title: '干瞪眼模式',
-      description: '组件卡快速组合，\n在线下对局中激发创意',
+      title: '干瞪眼',
+      tag: '复习',
+      description: '不断拼接组件卡牌，\n在对局中掌握连接规则。',
       // baseline 阶段复用 Halli 流程及封面，后续规则独立演进时可替换专属素材。
       coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
       pagePath: MODE_INDEX_PATH
     }, {
       id: 'partner',
       title: PARTNER_MODE_DISPLAY_TITLE,
+      tag: '脑暴',
       description: '团队协作，\n共同打磨并提交最佳创意方案',
       coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-partner.jpg'),
       pagePath: MODE_INDEX_PATH
@@ -43,13 +45,15 @@ const BRAINSTORM_MODE_GROUPS = [
     title: '模板卡',
     modes: [{
       id: 'spy',
-      title: '谁是卧底模式',
-      description: '在描述与推理中隐藏差异，\n激发多元视角与灵感',
+      title: '谁是卧底',
+      tag: '复习',
+      description: '通过描述与推理辨别卡牌差异，\n熟悉交互模板的特征与联动关系。',
       coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-spy.jpg'),
       pagePath: '/packageSpy/pages/modeIndex/index'
     }, {
       id: 'halliGalli',
-      title: '德国心脏病模式',
+      title: '德国心脏病',
+      tag: '脑暴',
       description: '快节奏卡牌对决，\n在限时竞速中碰撞创意火花',
       coverImage: staticCdnUrl('assets/brainstormMode/mode-cover-halligalli.jpg'),
       pagePath: MODE_INDEX_PATH

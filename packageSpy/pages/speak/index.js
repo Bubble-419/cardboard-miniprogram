@@ -12,7 +12,8 @@ const {
 const {
   getWordCardAssets,
   getLibraryGroupCount,
-  listLibraryCards
+  listLibraryCards,
+  listLibraryCategories
 } = require('../../utils/spyWordCardAssets');
 const {
   buildTiedNames,
@@ -60,6 +61,7 @@ Page(withPageInteractionLock({
     word1FallbackSrc: '',
     cardReady: false,
     libraryGroupCount: 0,
+    libraryCategories: [],
     libraryCards: [],
     contentTab: 0,
     acting: false,
@@ -88,6 +90,7 @@ Page(withPageInteractionLock({
     this.setData({
       roomId: (options && options.roomId) || getApp().globalData.roomId || '',
       libraryGroupCount: getLibraryGroupCount(),
+      libraryCategories: listLibraryCategories(),
       libraryCards: listLibraryCards(),
       contentTab: 0
     });

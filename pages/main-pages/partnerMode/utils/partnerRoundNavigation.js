@@ -37,8 +37,9 @@ function enrichSummaryWithPlayer(summary, members, memberCount) {
 
 function sortSummaries(roundSummaries) {
   return (roundSummaries || []).slice().sort((a, b) => {
-    if (a && a.cardType === 'closingReview') return b && b.cardType === 'closingReview' ? 0 : 1;
-    if (b && b.cardType === 'closingReview') return -1;
+    // 收尾记录卡固定第一张；其余历史卡按轮次 / 归档时间
+    if (a && a.cardType === 'closingReview') return b && b.cardType === 'closingReview' ? 0 : -1;
+    if (b && b.cardType === 'closingReview') return 1;
     const rd = (a.round || 0) - (b.round || 0);
     if (rd !== 0) return rd;
     return (a.archivedAt || 0) - (b.archivedAt || 0);

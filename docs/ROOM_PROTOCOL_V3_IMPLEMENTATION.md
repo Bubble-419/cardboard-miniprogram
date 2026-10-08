@@ -555,8 +555,8 @@ stateDiagram-v2
 成员离开会在同一事务内缩减 `requiredMemberIds`；若剩余提交已经齐全，立即进入汇总。
 已提交的 Halli 创意在 `HALLI_CREATIVE` 阶段就进入公共 View，每次提交产生的
 Public Patch 与同水位 Snapshot 都包含相同的渐进创意列表。
-`REOPEN_HALLI_IDEA` 把修改意图写入 Session，只将修改者的 Actor Route 投影为
-`creativeInput`；断线恢复后仍可从 Snapshot 还原编辑页和已提交文本。
+`REOPEN_HALLI_IDEA` 把修改意图写入 Session；修改者仍停留在 `creativeSummary`，
+在本人创意条原地进入编辑态，断线恢复后仍可从 Snapshot 还原草稿与提交能力。
 
 Gan Deng Yan 使用独立的 `GAN_DENG_YAN` 模式值和客户端 `ganDengYan` modeId。首版 baseline
 跳过 `CHOOSE_SCENARIO`，从 `SELECT_FIRST_PLAYER` 开始；活动页不展示情境格，也不使用依赖情境的规则文案。
@@ -611,7 +611,7 @@ flowchart LR
 | Partner `COMPLETED` | `leaderboard` | `leaderboard` |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` |
 | `HALLI_CREATIVE` 未提交 | `creativeInput` | `creativeInput` |
-| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary`；本人修改中为 `creativeInput` |
+| `HALLI_CREATIVE` 已提交 / `HALLI_SUMMARY` / 完成 | `creativeSummary` | `creativeSummary`（本人修改时仍在本页原地编辑） |
 | `SPY_INTRO / SPEAK / VOTE / RESULT / SETTLED` | 对应 Spy 页面 | 对应 Spy 页面 |
 
 ## 10. 成员变化的原子副作用

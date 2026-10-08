@@ -138,7 +138,7 @@
                 bindtouchcancel="onInnerScrollTouchEnd"
               >
                 <view class="card-scroll-inner">
-                  <text class="card-section-title">出牌解释</text>
+                  <text class="card-section-title">匿名表达</text>
                   <view class="card-section-flow">
                     <block wx:if="{{item.privateNote.playBlocks && item.privateNote.playBlocks.length}}">
                       <block wx:for="{{item.privateNote.playBlocks}}" wx:for-item="block" wx:key="key">

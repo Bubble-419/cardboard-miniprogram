@@ -29,3 +29,19 @@ test('closing stage does not enable the acting-avatar countdown', () => {
   assert.ok(timerBinding);
   assert.doesNotMatch(timerBinding[1], /selectedAction === 'closing'/);
 });
+
+test('closing stage clears player pointing arrow for rune and review steps', () => {
+  const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const gameJs = read('pages/main-pages/partnerMode/gamepage/index.js');
+
+  assert.match(
+    gameWxml,
+    /indicatorUser="\{\{gamepagePhase === 'closing' \? -1 : indicatorPlayerIndex\}\}"/
+  );
+  assert.match(
+    gameWxml,
+    /actingUser="\{\{isHistoryReview \|\| gamepagePhase === 'closing' \? -1 : currentPlayerIndex\}\}"/
+  );
+  assert.match(gameJs, /isClosingPhase\(this\.data\.gamepagePhase\)\) return -1/);
+  assert.match(gameJs, /isClosingPhase\(roomPhase\) \? -1 : paginationState\.indicatorPlayerIndex/);
+});

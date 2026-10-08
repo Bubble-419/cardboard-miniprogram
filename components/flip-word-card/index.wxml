@@ -3,6 +3,10 @@
   hover-class="is-pressed"
   hover-start-time="0"
   hover-stay-time="80"
+  catchtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  catchtouchend="onTouchEnd"
+  catchtouchcancel="onTouchCancel"
   bindtap="onTap"
 >
   <view class="flip-card {{flipClass}}">
@@ -19,7 +23,7 @@
       <view wx:else class="flip-back-fallback">
         <view class="flip-back-pattern"></view>
         <text class="flip-back-title">词语卡</text>
-        <text class="flip-back-hint">点击翻开</text>
+        <text class="flip-back-hint">点击或上下滑动翻开</text>
       </view>
     </view>
 

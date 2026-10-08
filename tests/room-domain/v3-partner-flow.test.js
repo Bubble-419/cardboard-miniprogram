@@ -316,8 +316,20 @@ test('Partner 收尾 question 回到新 Turn；全 pass 进入 Rune/Review 并�
   assert.equal(leaderboard.leaderboard.length, 3);
 });
 
-test('Partner 多人同时 question 时按冻结座次选择下一位，而不是按提交先后', async () => {
-  const { h, sessionId, turnId, u2MemberId } = await seedPartner();
+test('Partner 多人同时 question 时从有疑问者中随机一位，而不是按提交先后', async () => {
+  const { pickClosingQuestioner } = require('../../packages/room-domain/partner');
+  const pickedFirst = pickClosingQuestioner([
+    { memberId: 'm-u3', vote: 'question' },
+    { memberId: 'm-u2', vote: 'question' }
+  ], { random: () => 0 });
+  const pickedSecond = pickClosingQuestioner([
+    { memberId: 'm-u3', vote: 'question' },
+    { memberId: 'm-u2', vote: 'question' }
+  ], { random: () => 0.99 });
+  assert.equal(pickedFirst.memberId, 'm-u3');
+  assert.equal(pickedSecond.memberId, 'm-u2');
+
+  const { h, sessionId, turnId, hostMemberId, u2MemberId, u3MemberId } = await seedPartner();
   await h.command('host', 'USE_PARTNER_SPECIAL', {
     context: { sessionId, turnId }, payload: { kind: 'CLOSING' }
   });
@@ -334,7 +346,44 @@ test('Partner 多人同时 question 时按冻结座次选择下一位，而不�
 
   const snapshot = await h.snapshot('host');
   assert.equal(snapshot.view.session.workflow.step, 'PARTNER_TURN');
-  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
+  assert.ok([u2MemberId, u3MemberId].includes(snapshot.view.session.activeTurn.activeMemberId),
+    '应从有疑问者中选择下一位行动者');
+  assert.notEqual(snapshot.view.session.activeTurn.activeMemberId, hostMemberId);
+});
+
+test('Partner 收尾有疑问者出牌后，按正常座位顺序轮到下一位', async () => {
+  const { h, sessionId, turnId, hostMemberId, u2MemberId, u3MemberId } = await seedPartner();
+  await h.command('host', 'USE_PARTNER_SPECIAL', {
+    context: { sessionId, turnId }, payload: { kind: 'CLOSING' }
+  });
+  const closing = (await h.snapshot('host')).view.session.publicModeState.closing;
+  await h.command('u2', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'pass' }
+  });
+  await h.command('u3', 'SUBMIT_PARTNER_CLOSING_VOTE', {
+    context: { sessionId, closingVoteSessionId: closing.closingVoteSessionId },
+    payload: { vote: 'question' }
+  });
+
+  let snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, u3MemberId);
+  const questionedTurnId = snapshot.view.session.activeTurn.turnId;
+
+  await h.command('host', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('u2', 'SUBMIT_PARTNER_SCORE', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { scoreHalfSteps: 8 }
+  });
+  await h.command('host', 'START_PARTNER_STATEMENT', {
+    context: { sessionId, turnId: questionedTurnId }, payload: { statementResult: 'allPass' }
+  });
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.activeTurn.activeMemberId, hostMemberId,
+    'u3 出牌完成后应按座位顺序轮到下一位（host），而不是仍停在本轮未出完的 u2');
+  assert.notEqual(snapshot.view.session.activeTurn.activeMemberId, u2MemberId);
 });
 
 test('Partner 整轮末首位玩家被 question 时，回答行动计入新轮且不会连续行动', async () => {

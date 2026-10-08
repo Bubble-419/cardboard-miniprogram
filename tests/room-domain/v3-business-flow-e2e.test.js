@@ -116,7 +116,7 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
   state = await executeAndReduce(h, 'host', 'REOPEN_HALLI_IDEA', {
     context: { sessionId }
   });
-  assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeInput');
+  assertScreen(state.snapshot, 'HALLI_CREATIVE', 'creativeSummary');
   state = await executeAndReduce(h, 'host', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 A2' }
   });
@@ -138,7 +138,7 @@ test('E2E Halli Galli：情境 → 首位 → 线下活动 → 全员创意 → 
   state = await executeAndReduce(h, 'host', 'REOPEN_HALLI_IDEA', {
     context: { sessionId }
   });
-  assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeInput');
+  assertScreen(state.snapshot, 'HALLI_SUMMARY', 'creativeSummary');
   state = await executeAndReduce(h, 'host', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 A3' }
   });

@@ -154,7 +154,7 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
   });
   await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeInput' }, '房主已提交');
   await runCommand(h, 'host', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
-  await assertRoutes(h, { host: 'creativeInput', u2: 'creativeInput', u3: 'creativeInput' }, '房主修改创意');
+  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeInput' }, '房主修改创意');
   await runCommand(h, 'host', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 A2' }
   });
@@ -170,7 +170,7 @@ test('Halli：角色分流、本人提交分流和完成态都能投影到正确
   });
   await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeSummary', u3: 'creativeSummary' }, '创意汇总');
   await runCommand(h, 'u2', 'REOPEN_HALLI_IDEA', { context: { sessionId } });
-  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeInput', u3: 'creativeSummary' }, '汇总期修改');
+  await assertRoutes(h, { host: 'creativeSummary', u2: 'creativeSummary', u3: 'creativeSummary' }, '汇总期修改');
   await runCommand(h, 'u2', 'SUBMIT_HALLI_IDEA', {
     context: { sessionId }, payload: { text: '创意 B2' }
   });

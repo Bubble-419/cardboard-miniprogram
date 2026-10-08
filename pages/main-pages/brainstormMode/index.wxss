@@ -10,7 +10,7 @@
 
 /* ===== 顶部标题区 ===== */
 .header-section {
-  padding: 4rpx 48rpx 20rpx;
+  padding: 12rpx 48rpx 36rpx;
   flex-shrink: 0;
 }
 
@@ -53,7 +53,7 @@
 .title-block {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  gap: 12rpx;
 }
 
 .page-title {
@@ -82,10 +82,10 @@
 
 .mode-groups {
   height: 100%;
-  padding: 0 40rpx 12rpx;
+  padding: 0 40rpx 16rpx;
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 32rpx;
   box-sizing: border-box;
 }
 
@@ -93,7 +93,7 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  gap: 16rpx;
 }
 
 .mode-group-heading {
@@ -121,18 +121,18 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10rpx;
+  gap: 20rpx;
 }
 
 /* ===== 模式卡片 ===== */
 .mode-item {
   flex: 0 0 auto;
-  height: 176rpx;
+  height: 196rpx;
   background-color: #FFFFFF;
   min-height: 0;
   border-radius: 32rpx;
   border: 4rpx solid transparent;
-  padding: 10rpx 24rpx;
+  padding: 18rpx 28rpx;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -162,7 +162,15 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
+  gap: 10rpx;
+  min-width: 0;
+}
+
+.mode-name-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
   min-width: 0;
 }
 
@@ -171,10 +179,26 @@
   font-weight: 700;
   color: #545454;
   line-height: 1.25;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mode-name.active {
   color: #3AAE34;
+}
+
+.mode-tag {
+  flex-shrink: 0;
+  padding: 2rpx 14rpx;
+  border-radius: 9999rpx;
+  background-color: #DCFCE7;
+  color: #3AAE34;
+  font-size: 20rpx;
+  font-weight: 500;
+  line-height: 30rpx;
 }
 
 .mode-desc {
@@ -210,7 +234,7 @@
 
 .footer {
   flex-shrink: 0;
-  padding: 16rpx 40rpx calc(20rpx + env(safe-area-inset-bottom));
+  padding: 24rpx 40rpx calc(24rpx + env(safe-area-inset-bottom));
   background: transparent;
 }
 
@@ -242,10 +266,14 @@
   opacity: 0.85;
 }
 
-/* 小屏机型继续压缩纵向密度，保证四张卡与底部按钮同屏可见 */
+/* 小屏机型适度压缩纵向密度，保证四张卡与底部按钮同屏可见 */
 @media screen and (max-height: 700px) {
   .header-section {
-    padding-bottom: 12rpx;
+    padding: 8rpx 40rpx 20rpx;
+  }
+
+  .title-block {
+    gap: 8rpx;
   }
 
   .page-title {
@@ -253,28 +281,32 @@
   }
 
   .mode-groups {
-    padding: 0 32rpx 8rpx;
-    gap: 8rpx;
-  }
-
-  .mode-group {
-    gap: 4rpx;
-  }
-
-  .mode-list {
-    gap: 6rpx;
-  }
-
-  .mode-item {
-    height: 152rpx;
-    min-height: 0;
-    padding: 8rpx 20rpx;
+    padding: 0 32rpx 12rpx;
     gap: 20rpx;
   }
 
+  .mode-group {
+    gap: 10rpx;
+  }
+
+  .mode-list {
+    gap: 12rpx;
+  }
+
+  .mode-item {
+    height: 168rpx;
+    min-height: 0;
+    padding: 12rpx 22rpx;
+    gap: 20rpx;
+  }
+
+  .mode-info {
+    gap: 6rpx;
+  }
+
   .mode-cover {
-    width: 128rpx;
-    height: 128rpx;
+    width: 132rpx;
+    height: 132rpx;
   }
 
   .mode-name {
@@ -286,7 +318,7 @@
   }
 
   .footer {
-    padding: 8rpx 32rpx calc(12rpx + env(safe-area-inset-bottom));
+    padding: 12rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
   }
 
   .footer .page-footer__prev-btn,

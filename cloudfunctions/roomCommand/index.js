@@ -25,7 +25,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 7;
-    var VIEW_SCHEMA_VERSION = 12;
+    var VIEW_SCHEMA_VERSION = 13;
     var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -1316,6 +1316,14 @@ var require_partner = __commonJS({
         [{ kind: "artifacts", id: key }]
       );
     }
+    function pickClosingQuestioner(rows, deps) {
+      const questions = rows.filter((row) => row.vote === "question");
+      if (!questions.length) return null;
+      if (questions.length === 1) return questions[0];
+      const random = deps && typeof deps.random === "function" ? deps.random : Math.random;
+      const index = Math.floor(random() * questions.length);
+      return questions[Math.min(questions.length - 1, Math.max(0, index))];
+    }
     function resolveClosing(aggregate, deps) {
       const session = aggregate.currentSession;
       const partner = partnerState(aggregate);
@@ -1323,29 +1331,22 @@ var require_partner = __commonJS({
       const facts = ensureFacts(aggregate);
       const requiredVoters = new Set(closing.requiredMemberIds);
       const rows = Object.values(facts.votes).filter((row) => row.voteSessionId === closing.closingVoteSessionId && requiredVoters.has(row.memberId));
-      const seats = new Map((session.participants || []).map((item) => [item.memberId, item.seatNoAtStart]));
-      const question = rows.filter((row) => row.vote === "question").sort((a, b) => (seats.get(a.memberId) || Number.MAX_SAFE_INTEGER) - (seats.get(b.memberId) || Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt)[0];
+      const question = pickClosingQuestioner(rows, deps);
       const summary = archiveActiveTurn(aggregate, question ? "CLOSING_QUESTIONED" : "CLOSING_ACCEPTED", null, deps);
       const dirty = summary ? [{ kind: "turns", id: summary.turnId }] : [];
       if (question) {
         closing.stage = "QUESTIONED";
+        const questionMemberId = question.memberId;
         if (!partner.roundRemainingMemberIds.length) {
-          const nextRoundOrder = orderedParticipantIds(
-            aggregate,
-            activeParticipantIds(session).includes(partner.firstMemberId) ? partner.firstMemberId : activeParticipantsBySeat(aggregate)[0] && activeParticipantsBySeat(aggregate)[0].memberId
-          );
-          if (nextRoundOrder[0] === question.memberId) beginNextPartnerRound(aggregate);
+          partner.roundNo += 1;
         }
-        let countsForRound = partner.roundRemainingMemberIds.includes(question.memberId);
-        if (countsForRound) {
-          partner.roundRemainingMemberIds = [question.memberId].concat(partner.roundRemainingMemberIds.filter((id) => id !== question.memberId));
-        }
-        const turn = startPartnerTurn(aggregate, question.memberId, deps, countsForRound);
+        partner.roundRemainingMemberIds = orderedParticipantIds(aggregate, questionMemberId);
+        const turn = startPartnerTurn(aggregate, questionMemberId, deps, true);
         partner.closing = null;
         return { events: [
           event(EVENT_TYPES.PARTNER_TURN_COMPLETED, { turnId: summary.turnId, reason: summary.reason }),
-          event(EVENT_TYPES.PARTNER_CLOSING_QUESTIONED, { memberId: question.memberId }),
-          event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: question.memberId, roundNo: turn.roundNo })
+          event(EVENT_TYPES.PARTNER_CLOSING_QUESTIONED, { memberId: questionMemberId }),
+          event(EVENT_TYPES.PARTNER_TURN_STARTED, { turnId: turn.turnId, memberId: questionMemberId, roundNo: turn.roundNo })
         ], dirty };
       }
       closing.stage = "RUNE";
@@ -3580,8 +3581,7 @@ var require_room_projection = __commonJS({
         if (isHalliLikeMode(session.mode)) return { name: "creativeSummary", params: {} };
         return { name: "spySettle", params: {} };
       }
-      const revisingHalliIdea = isHalliLikeMode(session.mode) && actorView.contributionStatus.submitted && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA] && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
-      if (revisingHalliIdea) return { name: "creativeInput", params: {} };
+      // 已提交后的修改在 creativeSummary 原地完成，不再投影到 creativeInput。
       if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
         return { name: "creativeSummary", params: {} };
       }

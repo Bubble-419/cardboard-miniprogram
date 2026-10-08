@@ -178,6 +178,77 @@ test('静默模式边缘对声音变化提供清晰的长度、粗细和光晕�
   assert.match(source, /\{ w: lineWidth \* 4, a: 0\.2 \}/);
   assert.match(source, /alpha \*= 1 - 0\.55 \* fadeT \* fadeT;/);
   assert.match(source, /const SOUND_WARN_DB = 40;/);
+  assert.match(source, /const SOUND_WARN_CLEAR_MS = 280;/);
+  assert.doesNotMatch(source, /SOUND_WARN_DB\s*-\s*2/, '不得用更低滞回阈值卡住警告标签');
+});
+
+function createSoundTimerHarness(overrides = {}) {
+  const definition = loadComponent('components/game-card-timer/index.js');
+  const noop = () => {};
+  const ctx = {
+    clearRect: noop,
+    beginPath: noop,
+    moveTo: noop,
+    lineTo: noop,
+    stroke: noop,
+    lineCap: '',
+    lineJoin: '',
+    lineWidth: 0,
+    strokeStyle: ''
+  };
+  const component = {
+    data: {
+      ...(definition.data || {}),
+      displayMode: 'timer',
+      soundTooLoud: false,
+      ...(overrides.data || {})
+    },
+    properties: {
+      borderVariant: 'sound',
+      soundLevel: 0,
+      ...(overrides.properties || {})
+    },
+    setData(patch) { Object.assign(this.data, patch); },
+    ...definition.methods,
+    _ensureSoundCanvas: noop,
+    _traceRoundedRect: noop,
+    _getRpxToPx() { return 0.5; },
+    _soundCtx: ctx,
+    _soundW: 200,
+    _soundH: 300,
+    _soundSmooth: overrides.soundSmooth,
+    _soundTarget: overrides.soundTarget,
+    _over40Since: overrides.over40Since || 0,
+    _under40Since: overrides.under40Since || 0
+  };
+  return component;
+}
+
+test('音量稳定低于 40dB 后声音过大提示应及时消失', () => {
+  const now = Date.now();
+  const component = createSoundTimerHarness({
+    data: { soundTooLoud: true },
+    // 0.4875 ≈ 39 dB：旧逻辑要求 <38 才会消标，会永远挂着
+    soundSmooth: 0.4875,
+    soundTarget: 0.4875,
+    under40Since: now - 300
+  });
+
+  component._tickSoundVisual();
+  assert.equal(component.data.soundTooLoud, false);
+});
+
+test('音量再次稳定超标后声音过大提示应重新显示', () => {
+  const now = Date.now();
+  const component = createSoundTimerHarness({
+    data: { soundTooLoud: false },
+    soundSmooth: 0.6,
+    soundTarget: 0.6,
+    over40Since: now - 800
+  });
+
+  component._tickSoundVisual();
+  assert.equal(component.data.soundTooLoud, true);
 });
 
 test('键盘缩短卡片时按实际尺寸重建倒计时画布', () => {

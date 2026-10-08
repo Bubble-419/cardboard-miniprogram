@@ -102,8 +102,8 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `PARTNER_CLOSING_REVIEW` | `partnerGame` | `partnerGame` | `roomState.partnerClosingStep = review` |
 | Partner `COMPLETED` | `leaderboard?from=closingEnd` | `leaderboard?from=closingEnd&isSubScreen=1` | Host 显示“返回房间/再来一轮”，Player 仅展示排行榜 |
 | `HALLI_ACTIVITY` | `halliGame` | `halliGame` | 只有 Host 显示“结束游戏” |
-| `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后投影为 `creativeSummary`；修改中回到 `creativeInput` |
-| `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | 任一成员修改自己的创意时，仅本人投影为 `creativeInput` |
+| `HALLI_CREATIVE` | `creativeInput` | `creativeInput` | 本人已提交后投影为 `creativeSummary`；修改中仍留在 `creativeSummary` 原地编辑 |
+| `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | 任一成员修改自己的创意时，仍留在 `creativeSummary` 原地编辑 |
 | Halli / Gan Deng Yan `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
 | `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
 | `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 当前发言者可结束发言；Host 可开票 |
@@ -438,9 +438,10 @@ RoomSession 收到 View 时必须先把 Snapshot/Event 归约后的完整 PageSn
 Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后递增；`turnOrdinal` 每换一次行动者递增。新一轮仍从本场 `firstMemberId` 起按座位旋转，不会在换人时重复同一位玩家。若整轮末 `firstMemberId` 被选为 question 回答者，该回答 Turn 直接计入新轮，完成后继续到下一座位。
 排行榜的“评分次数”是该成员所有归档 Turn 的 `scoredCount` 之和，不是 Turn 数量。
 
-全局回顾按 `turnOrdinal` 展示游戏阶段纪要卡。收尾 Review 已提交的 `CLOSING_RUNE/CLOSING_REVIEW`
-素材以服务端 `createdAt` 顺序汇总成唯一的 `closingReview` 专属卡；该卡不属于成员或行动轮，沿用收尾阶段
-“收尾阶段 / 创意点复盘”版式，不展示轮次、出牌解释、疑问讨论、语音纪要或表态记录，也不得重复并入最后一张游戏纪要卡。
+全局回顾中，收尾 Review 已提交的 `CLOSING_RUNE/CLOSING_REVIEW` 素材以服务端 `createdAt`
+顺序汇总成唯一的 `closingReview` 专属卡，并固定显示为第一张；其余游戏阶段纪要卡仍按
+`turnOrdinal`（实现上按轮次 / 归档时间）排列。该卡不属于成员或行动轮，沿用收尾阶段
+“收尾阶段 / 创意点复盘”版式，不展示轮次、出牌解释、疑问讨论、语音纪要或表态记录，也不得重复并入游戏纪要卡。
 
 收尾 Review 的未发送文字是本地草稿，不进入稳定 View。草稿按 `roomId + sessionId + turnId`
 隔离，发送成功或删除成功后清除；网络失败、页面重建或短暂离开时保留并恢复，不能因 Snapshot/Event
@@ -477,7 +478,7 @@ flowchart TD
   REVIEW -->|COMPLETE_PARTNER_SESSION| DONE
 ```
 
-多人同时选择 `question` 时，按本场冻结 Participant 座次升序选择下一位行动者；客户端提交先后和网络时延不参与裁决。
+多人同时选择 `question` 时，从有疑问者中随机一位接棒出牌；其出牌完成后按座位正常顺序轮到下一位。客户端提交先后和网络时延不参与裁决。
 
 ## 6. 德国心脏病（Halli Galli）与干瞪眼 baseline
 
@@ -490,7 +491,6 @@ flowchart LR
   INPUT[HALLI_CREATIVE<br/>未提交: creativeInput]
   WAIT[HALLI_CREATIVE<br/>已提交: creativeSummary]
   SUMMARY[HALLI_SUMMARY<br/>全员: creativeSummary]
-  EDIT[HALLI_CREATIVE / HALLI_SUMMARY<br/>仅修改者: creativeInput]
   COMPLETE[COMPLETED<br/>全员: creativeSummary]
   REPLAY[新 Session<br/>SELECT_FIRST_PLAYER]
   LOBBY[大厅<br/>addPlayer]
@@ -503,10 +503,8 @@ flowchart LR
   INPUT -->|SUBMIT_HALLI_IDEA| WAIT
   INPUT -->|最后一人提交| SUMMARY
   WAIT -->|最后一人提交| SUMMARY
-  WAIT -->|REOPEN_HALLI_IDEA| EDIT
-  SUMMARY -->|REOPEN_HALLI_IDEA| EDIT
-  EDIT -->|SUBMIT_HALLI_IDEA| WAIT
-  EDIT -->|汇总期保存| SUMMARY
+  WAIT -->|REOPEN_HALLI_IDEA<br/>原地编辑| WAIT
+  SUMMARY -->|REOPEN_HALLI_IDEA<br/>原地编辑| SUMMARY
   SUMMARY -->|COMPLETE_HALLI_SESSION| COMPLETE
   COMPLETE -->|REPLAY_WORKSHOP_SESSION| REPLAY
   COMPLETE -->|RETURN_TO_LOBBY| LOBBY
@@ -514,7 +512,7 @@ flowchart LR
 
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
-线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 回到自己的输入页，修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
+线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 在汇总页本人创意条原地编辑；修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
 
 干瞪眼以独立协议模式 `GAN_DENG_YAN`（客户端 modeId 为 `ganDengYan`）存在。首版 baseline
 选择模式后直接进入选择首位玩家，不创建、展示或回退到情境；随后复用本节的线下活动、全员提交创意、汇总、完成与重玩流程；

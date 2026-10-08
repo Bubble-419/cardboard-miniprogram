@@ -461,11 +461,7 @@ function projectRoute(aggregate, actorView) {
     if (isHalliLikeMode(session.mode)) return { name: 'creativeSummary', params: {} };
     return { name: 'spySettle', params: {} };
   }
-  const revisingHalliIdea = isHalliLikeMode(session.mode)
-    && actorView.contributionStatus.submitted
-    && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA]
-    && actorView.capabilities[COMMAND_TYPES.SUBMIT_HALLI_IDEA].allowed;
-  if (revisingHalliIdea) return { name: 'creativeInput', params: {} };
+  // 已提交后的修改在 creativeSummary 原地完成，不再投影到 creativeInput。
   if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
     return { name: 'creativeSummary', params: {} };
   }

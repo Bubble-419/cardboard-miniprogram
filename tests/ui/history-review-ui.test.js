@@ -223,7 +223,7 @@ test('全局回顾 _buildDisplayCardState 保留全部纪要卡并可横滑', ()
   });
 });
 
-test('创意点复盘专属卡只在全局回顾末尾展示，玩家筛选时不归入任何人', () => {
+test('创意点复盘专属卡固定为全局回顾第一张，玩家筛选时不归入任何人', () => {
   withPageWx(() => {
     const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
     const page = makePage(definition, { isHistoryReview: true, roomId: 'r1' });
@@ -239,7 +239,9 @@ test('创意点复盘专属卡只在全局回顾末尾展示，玩家筛选时�
       historyReview: true,
       roomId: 'r1'
     });
-    assert.deepEqual(globalState.displayRoundSummaries.map((item) => item.cardType || 'turn'), ['turn', 'closingReview']);
+    assert.deepEqual(globalState.displayRoundSummaries.map((item) => item.cardType || 'turn'), ['closingReview', 'turn']);
+    assert.equal(globalState.cardIndex, 0);
+    assert.equal(globalState.displayRoundSummaries[0].cardType, 'closingReview');
 
     const filteredState = page._buildDisplayCardState({
       roundSummaries,

@@ -1,5 +1,9 @@
 const { goRoomPage, buildSpyPageUrl, openUrl, fetchRoomDataOrExit } = require('../../utils/spyMode');
-const { listLibraryCards, getLibraryGroupCount } = require('../../utils/spyWordCardAssets');
+const {
+  listLibraryCards,
+  listLibraryCategories,
+  getLibraryGroupCount
+} = require('../../utils/spyWordCardAssets');
 const { SPY_PHASE } = require('../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
@@ -25,6 +29,7 @@ Page(withPageInteractionLock({
   data: {
     roomId: '',
     groupCount: 0,
+    categories: [],
     cards: [],
     selectedWord: '',
     selectedCard: null,
@@ -35,10 +40,12 @@ Page(withPageInteractionLock({
   onLoad(options) {
     this._pageAlive = true;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
+    const categories = listLibraryCategories();
     const cards = listLibraryCards();
     this.setData({
       roomId,
       groupCount: getLibraryGroupCount(),
+      categories,
       cards
     });
   },
