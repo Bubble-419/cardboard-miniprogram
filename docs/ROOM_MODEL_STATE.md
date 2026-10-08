@@ -262,7 +262,8 @@ modeState.spy
 ├── players[]
 ├── speakOrder / currentSpeakerIndex / speakerTurnId
 ├── voteProgress / voteStartedAt
-├── tieBreak / lastResult
+├── tieBreak / questionRound / questionRoundUsed
+├── lastResult
 └── winnerSide / reveal
 
 facts.secrets[gameId:memberId]

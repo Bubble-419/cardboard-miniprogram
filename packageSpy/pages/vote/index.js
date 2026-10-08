@@ -186,12 +186,18 @@ Page(withPageInteractionLock({
         const tiedNamesText = buildTiedNames(spyGame).join('、');
         const showTieBanner = spyGame.tieBreak === true || last.tied === true;
         const holdingTieSpeak = isTieReturnPending(spyGame);
+        const caps = result.view && result.view.actor && result.view.actor.capabilities;
+        const canStartQuestion = !!(caps
+          && caps.START_SPY_QUESTION_ROUND
+          && caps.START_SPY_QUESTION_ROUND.allowed);
 
         this.setData({
           avatarList: buildAvatarList(members),
           selectedIndex: voteSessionChanged ? null : this.data.selectedIndex,
           hasVoted,
           eliminated,
+          isHost: result.isHost === true,
+          canStartQuestion,
           tieBreak: spyGame.tieBreak === true,
           showTieBanner,
           tiedNamesText,
@@ -289,6 +295,33 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在提交投票…' });
   },
 
+  onStartQuestion() {
+    return runPageInteraction(this, () => this._startQuestion(), {
+      loadingText: '正在开始提问…'
+    });
+  },
+
+  async _startQuestion() {
+    if (!this.data.canStartQuestion || this.data.acting) return;
+    this.setData({ acting: true });
+    try {
+      const result = await callSpyAction('startQuestion', {
+        roomId: this.data.roomId,
+        context: this._spyCommandContext
+      });
+      if (result.ok !== true) {
+        wx.showToast({ title: result.errMsg || '开启提问失败', icon: 'none', duration: 2500 });
+        return;
+      }
+      this.stopTicker();
+      bumpSpyRoomSession();
+    } catch (e) {
+      wx.showToast({ title: (e && e.errMsg) || '开启提问失败', icon: 'none' });
+    } finally {
+      if (this._pageAlive) this.setData({ acting: false });
+    }
+  },
+
   async submitVote({ abstain = false } = {}) {
     if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
     this.setData({ acting: true });
@@ -322,4 +355,4 @@ Page(withPageInteractionLock({
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });
   }
-}, ['onSelectTarget', 'onConfirmVote', 'onAbstain', 'handleGoRoom']));
+}, ['onSelectTarget', 'onConfirmVote', 'onAbstain', 'onStartQuestion', 'handleGoRoom']));

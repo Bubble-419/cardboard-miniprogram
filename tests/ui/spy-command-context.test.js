@@ -27,6 +27,9 @@ test('Spy 写指令使用页面已渲染的并发令牌，不被后来 Snapshot 
   assert.deepEqual(spyCommandContextForAction('submitVote', captured), {
     sessionId: 'session-old', gameId: 'game-old', voteSessionId: 'vote-old'
   });
+  assert.deepEqual(spyCommandContextForAction('startQuestion', captured), {
+    sessionId: 'session-old', gameId: 'game-old', voteSessionId: 'vote-old'
+  });
   assert.deepEqual(spyCommandContextForAction('nextRound', captured), {
     sessionId: 'session-old', gameId: 'game-old', roundNo: 2
   });
@@ -56,11 +59,24 @@ test('Spy 发言页向全体非发言玩家展示当前发言人提示', () => {
   const source = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.js'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxml'), 'utf8');
   assert.match(source, /currentSpeakerName:/);
-  assert.match(template, /当前发言：\{\{currentSpeakerName\}\}/);
+  assert.match(template, /\{\{waitingHintPrefix\}\}：\{\{currentSpeakerName\}\}/);
   assert.match(template, /wx:if="\{\{!isCurrentSpeaker && currentSpeakerName\}\}"/);
   assert.doesNotMatch(template, /isHost && !isCurrentSpeaker && currentSpeakerName/);
   assert.match(
     template,
     /wx:if="\{\{isCurrentSpeaker \|\| currentSpeakerName\}\}"/
   );
+});
+
+test('Spy 投票页房主可开启提问轮，提问页复用发言壳', () => {
+  const root = path.resolve(__dirname, '../..');
+  const voteJs = fs.readFileSync(path.join(root, 'packageSpy/pages/vote/index.js'), 'utf8');
+  const voteWxml = fs.readFileSync(path.join(root, 'packageSpy/pages/vote/index.wxml'), 'utf8');
+  const speakWxml = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxml'), 'utf8');
+  assert.match(voteJs, /callSpyAction\('startQuestion'/);
+  assert.match(voteJs, /START_SPY_QUESTION_ROUND/);
+  assert.match(voteWxml, /开始提问/);
+  assert.match(voteWxml, /bindtap="onStartQuestion"/);
+  assert.match(speakWxml, /每人最多提出一个问题/);
+  assert.match(speakWxml, /\{\{finishActionText\}\}/);
 });

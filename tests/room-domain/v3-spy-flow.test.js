@@ -222,6 +222,51 @@ test('Spy 开票仅在全员发言完成后自动触发，房主不能手动开�
   assert.ok(snapshot.view.session.publicModeState.voteSessionId);
 });
 
+test('Spy 投票中房主可开启一轮提问，全员问完后自动回到投票', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_VOTE');
+  assert.equal(snapshot.view.actor.capabilities.START_SPY_QUESTION_ROUND.allowed, true);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+
+  const started = await h.command('host', 'START_SPY_QUESTION_ROUND', {
+    context: { sessionId, gameId, voteSessionId }
+  });
+  assert.equal(started.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_QUESTION');
+  assert.equal(snapshot.view.route.name, 'spySpeak');
+  assert.equal(snapshot.view.session.publicModeState.questionRound, true);
+  assert.equal(snapshot.view.actor.capabilities.START_SPY_QUESTION_ROUND.allowed, false);
+
+  while ((await h.snapshot('host')).view.session.workflow.step === 'SPY_QUESTION') {
+    snapshot = await h.snapshot('host');
+    const state = snapshot.view.session.publicModeState;
+    const userId = userForMember(snapshot, state.currentSpeakerMemberId);
+    const advanced = await h.command(userId, 'ADVANCE_SPY_SPEAKER', {
+      context: { sessionId, gameId, speakerTurnId: state.speakerTurnId }
+    });
+    assert.equal(advanced.ok, true);
+  }
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_VOTE');
+  assert.ok(snapshot.view.session.publicModeState.voteSessionId);
+  assert.notEqual(snapshot.view.session.publicModeState.voteSessionId, voteSessionId);
+  assert.equal(snapshot.view.session.publicModeState.questionRoundUsed, true);
+  assert.equal(snapshot.view.actor.capabilities.START_SPY_QUESTION_ROUND.allowed, false);
+
+  const again = await h.command('host', 'START_SPY_QUESTION_ROUND', {
+    context: {
+      sessionId,
+      gameId,
+      voteSessionId: snapshot.view.session.publicModeState.voteSessionId
+    }
+  });
+  assert.equal(again.ok, false);
+  assert.equal(again.errCode, 'INVALID_TRANSITION');
+});
+
 test('Spy 中途淘汰只公开淘汰者身份，不公开任何词语或其他身份', async () => {
   const { h, sessionId, gameId } = await seedSpy(4);
   let snapshot = await finishSpeaking(h, sessionId, gameId);

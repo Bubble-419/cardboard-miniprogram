@@ -36,6 +36,7 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.equal(valid.ok, true);
   assert.deepEqual(COMMAND_CONTEXT.SUBMIT_SPY_VOTE, ['sessionId', 'gameId', 'voteSessionId']);
   assert.deepEqual(COMMAND_CONTEXT.OPEN_SPY_VOTE, ['sessionId', 'gameId', 'speakerTurnId']);
+  assert.deepEqual(COMMAND_CONTEXT.START_SPY_QUESTION_ROUND, ['sessionId', 'gameId', 'voteSessionId']);
   assert.deepEqual(COMMAND_CONTEXT.START_NEXT_SPY_ROUND, ['sessionId', 'gameId', 'roundNo']);
   assert.deepEqual(COMMAND_CONTEXT.APPEND_ARTIFACT, ['sessionId', 'turnId', 'workflowStep']);
   assert.deepEqual(COMMAND_CONTEXT.RESET_FIRST_PLAYER, ['sessionId', 'workflowRevision']);

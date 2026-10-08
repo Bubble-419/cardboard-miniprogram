@@ -123,6 +123,21 @@
   opacity: 0.7;
 }
 
+.host-question-actions {
+  margin: 24rpx 40rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.host-question-hint {
+  font-size: 22rpx;
+  color: #9ca3af;
+  text-align: center;
+  line-height: 1.4;
+}
+
 .tie-subtitle {
   display: block;
   color: #e08a1e;

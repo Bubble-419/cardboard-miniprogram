@@ -67,6 +67,10 @@ Page(withPageInteractionLock({
     acting: false,
     isCurrentSpeaker: false,
     currentSpeakerName: '',
+    questionRound: false,
+    phaseTitle: '发言阶段',
+    finishActionText: '我已完成发言',
+    waitingHintPrefix: '当前发言',
     tieBreak: false,
     tiedNamesText: '',
     viewerOpen: false,
@@ -172,10 +176,18 @@ Page(withPageInteractionLock({
 
         const myWord = (myCard && myCard.word) || '';
         const assets = getWordCardAssets(myWord);
+        const questionRound = spyGame.questionRound === true
+          || (result.view && result.view.session
+            && result.view.session.workflow
+            && result.view.session.workflow.step === 'SPY_QUESTION');
         const nextCard = {
           myCard,
           myWord,
           myBlurb: (myCard && myCard.blurb) || '',
+          questionRound,
+          phaseTitle: questionRound ? '提问阶段' : '发言阶段',
+          finishActionText: questionRound ? '我已提问完毕' : '我已完成发言',
+          waitingHintPrefix: questionRound ? '当前提问' : '当前发言',
           tieBreak: spyGame.tieBreak === true,
           tiedNamesText: buildTiedNames(spyGame).join('、')
         };

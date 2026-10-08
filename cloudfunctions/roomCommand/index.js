@@ -25,8 +25,8 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 7;
-    var VIEW_SCHEMA_VERSION = 14;
-    var EVENT_SCHEMA_VERSION = 5;
+    var VIEW_SCHEMA_VERSION = 15;
+    var EVENT_SCHEMA_VERSION = 6;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
     var MAX_SESSION_MESSAGES = 500;
@@ -65,6 +65,7 @@ var require_room_contracts = __commonJS({
       SPY_INTRO: "SPY_INTRO",
       SPY_SPEAK: "SPY_SPEAK",
       SPY_TIE_SPEAK: "SPY_TIE_SPEAK",
+      SPY_QUESTION: "SPY_QUESTION",
       SPY_VOTE: "SPY_VOTE",
       SPY_RESULT: "SPY_RESULT",
       SPY_SETTLED: "SPY_SETTLED"
@@ -131,6 +132,7 @@ var require_room_contracts = __commonJS({
       START_SPY_GAME: "START_SPY_GAME",
       ADVANCE_SPY_SPEAKER: "ADVANCE_SPY_SPEAKER",
       OPEN_SPY_VOTE: "OPEN_SPY_VOTE",
+      START_SPY_QUESTION_ROUND: "START_SPY_QUESTION_ROUND",
       SUBMIT_SPY_VOTE: "SUBMIT_SPY_VOTE",
       START_NEXT_SPY_ROUND: "START_NEXT_SPY_ROUND",
       RESTART_SPY_GAME: "RESTART_SPY_GAME",
@@ -196,6 +198,7 @@ var require_room_contracts = __commonJS({
       "SPY_ROLES_ASSIGNED",
       "SPY_SPEAKER_STARTED",
       "SPY_SPEAKER_FINISHED",
+      "SPY_QUESTION_ROUND_STARTED",
       "SPY_VOTE_OPENED",
       "SPY_VOTE_RECORDED",
       "SPY_VOTE_TIED",
@@ -290,6 +293,7 @@ var require_room_contracts = __commonJS({
       START_SPY_GAME: ["sessionId"],
       ADVANCE_SPY_SPEAKER: ["sessionId", "gameId", "speakerTurnId"],
       OPEN_SPY_VOTE: ["sessionId", "gameId", "speakerTurnId"],
+      START_SPY_QUESTION_ROUND: ["sessionId", "gameId", "voteSessionId"],
       SUBMIT_SPY_VOTE: ["sessionId", "gameId", "voteSessionId"],
       START_NEXT_SPY_ROUND: ["sessionId", "gameId", "roundNo"],
       RESTART_SPY_GAME: ["sessionId", "gameId"],
@@ -339,6 +343,7 @@ var require_room_contracts = __commonJS({
       START_SPY_GAME: [],
       ADVANCE_SPY_SPEAKER: [],
       OPEN_SPY_VOTE: [],
+      START_SPY_QUESTION_ROUND: [],
       SUBMIT_SPY_VOTE: ["targetMemberId", "abstain"],
       START_NEXT_SPY_ROUND: [],
       RESTART_SPY_GAME: [],
@@ -2062,27 +2067,45 @@ var require_spy = __commonJS({
         spyBlurb: swap ? pair.blurbA : pair.blurbB
       };
     }
-    function startSpeaker(aggregate, order, deps, tieBreak) {
+    function normalizeSpeakerOptions(options) {
+      if (options === true || options === false) return { tieBreak: options === true, question: false };
+      return {
+        tieBreak: !!(options && options.tieBreak),
+        question: !!(options && options.question)
+      };
+    }
+    function startSpeaker(aggregate, order, deps, options) {
       const session = aggregate.currentSession;
       const spy = spyState(aggregate);
+      const opts = normalizeSpeakerOptions(options);
       spy.speakOrder = order.slice();
       spy.currentSpeakerIndex = 0;
       spy.speakerTurnId = idOf(deps, "speaker");
       spy.speakRoundStartedAt = nowOf(deps);
       spy.speakTurnStartedAt = nowOf(deps);
       spy.voteProgress = null;
-      spy.tieBreak = tieBreak === true;
-      transitionWorkflow(session, tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK, deps, {
+      spy.voteStartedAt = null;
+      spy.tieBreak = opts.tieBreak;
+      spy.questionRound = opts.question;
+      if (!opts.question) spy.questionRoundUsed = false;
+      const step = opts.question ? WORKFLOW_STEP.SPY_QUESTION : opts.tieBreak ? WORKFLOW_STEP.SPY_TIE_SPEAK : WORKFLOW_STEP.SPY_SPEAK;
+      transitionWorkflow(session, step, deps, {
         roundNo: spy.roundNo,
         activeMemberId: order[0] || null,
         turnId: spy.speakerTurnId
       });
-      return event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: order[0] || null, tieBreak: spy.tieBreak });
+      return event(EVENT_TYPES.SPY_SPEAKER_STARTED, {
+        speakerTurnId: spy.speakerTurnId,
+        memberId: order[0] || null,
+        tieBreak: spy.tieBreak,
+        questionRound: spy.questionRound === true
+      });
     }
     function openVote(aggregate, deps) {
       const session = aggregate.currentSession;
       const spy = spyState(aggregate);
       const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
+      spy.questionRound = false;
       spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
       spy.voteStartedAt = nowOf(deps);
       transitionWorkflow(session, WORKFLOW_STEP.SPY_VOTE, deps, {
@@ -2144,6 +2167,8 @@ var require_spy = __commonJS({
         voteProgress: null,
         voteStartedAt: null,
         tieBreak: false,
+        questionRound: false,
+        questionRoundUsed: false,
         lastResult: null,
         winnerSide: null,
         reveal: []
@@ -2236,12 +2261,25 @@ var require_spy = __commonJS({
       const actor = assertParticipant(aggregate, actorUserId);
       if (!actor.ok) return actor;
       if (command.type === COMMAND_TYPES.ADVANCE_SPY_SPEAKER) {
-        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK]);
+        const check = assertSpy(aggregate, command.context, [
+          WORKFLOW_STEP.SPY_SPEAK,
+          WORKFLOW_STEP.SPY_TIE_SPEAK,
+          WORKFLOW_STEP.SPY_QUESTION
+        ]);
         if (!check.ok) return check;
         if (check.spy.speakerTurnId !== command.context.speakerTurnId) return fail(ERR.STALE_CONTEXT, "\u53D1\u8A00\u8F6E\u5DF2\u7ECF\u53D8\u5316");
         const current = check.spy.speakOrder[check.spy.currentSpeakerIndex];
-        if (current !== actor.member.memberId) return fail(ERR.INVALID_TRANSITION, "\u4EC5\u5F53\u524D\u53D1\u8A00\u8005\u53EF\u4EE5\u7ED3\u675F\u53D1\u8A00");
-        const events = [event(EVENT_TYPES.SPY_SPEAKER_FINISHED, { speakerTurnId: check.spy.speakerTurnId, memberId: current })];
+        if (current !== actor.member.memberId) {
+          return fail(
+            ERR.INVALID_TRANSITION,
+            check.session.workflow.step === WORKFLOW_STEP.SPY_QUESTION ? "\u4EC5\u5F53\u524D\u63D0\u95EE\u8005\u53EF\u4EE5\u7ED3\u675F\u63D0\u95EE" : "\u4EC5\u5F53\u524D\u53D1\u8A00\u8005\u53EF\u4EE5\u7ED3\u675F\u53D1\u8A00"
+          );
+        }
+        const events = [event(EVENT_TYPES.SPY_SPEAKER_FINISHED, {
+          speakerTurnId: check.spy.speakerTurnId,
+          memberId: current,
+          questionRound: check.spy.questionRound === true
+        })];
         check.spy.currentSpeakerIndex += 1;
         while (check.spy.currentSpeakerIndex < check.spy.speakOrder.length) {
           const player = playerByMemberId(check.spy, check.spy.speakOrder[check.spy.currentSpeakerIndex]);
@@ -2259,13 +2297,42 @@ var require_spy = __commonJS({
           events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, {
             speakerTurnId: check.spy.speakerTurnId,
             memberId: check.session.workflow.activeMemberId,
-            tieBreak: check.spy.tieBreak
+            tieBreak: check.spy.tieBreak,
+            questionRound: check.spy.questionRound === true
           }));
         }
         return domainOk(aggregate, events);
       }
       if (command.type === COMMAND_TYPES.OPEN_SPY_VOTE) {
         return fail(ERR.INVALID_TRANSITION, "\u5168\u90E8\u53D1\u8A00\u5B8C\u6210\u540E\u7CFB\u7EDF\u81EA\u52A8\u8FDB\u5165\u6295\u7968");
+      }
+      if (command.type === COMMAND_TYPES.START_SPY_QUESTION_ROUND) {
+        const host = assertHost(aggregate, actorUserId);
+        if (!host.ok) return host;
+        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_VOTE]);
+        if (!check.ok) return check;
+        const progress = check.spy.voteProgress;
+        if (!progress || progress.voteSessionId !== command.context.voteSessionId) {
+          return fail(ERR.STALE_CONTEXT, "\u6295\u7968\u573A\u6B21\u5DF2\u7ECF\u53D8\u5316");
+        }
+        if (check.spy.questionRoundUsed === true) {
+          return fail(ERR.INVALID_TRANSITION, "\u672C\u8F6E\u5DF2\u5F00\u542F\u8FC7\u63D0\u95EE");
+        }
+        const order = shuffle(alivePlayers(check.spy).map((player) => player.memberId), randomOf(deps));
+        if (order.length < 2) return fail(ERR.INVALID_TRANSITION, "\u5B58\u6D3B\u4EBA\u6570\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u63D0\u95EE");
+        check.spy.questionRoundUsed = true;
+        check.spy.voteProgress = null;
+        check.spy.voteStartedAt = null;
+        const events = [
+          event(EVENT_TYPES.SPY_QUESTION_ROUND_STARTED, {
+            gameId: check.spy.gameId,
+            roundNo: check.spy.roundNo,
+            playerCount: order.length,
+            tieBreak: check.spy.tieBreak === true
+          }),
+          startSpeaker(aggregate, order, deps, { question: true, tieBreak: check.spy.tieBreak === true })
+        ];
+        return domainOk(aggregate, events);
       }
       if (command.type === COMMAND_TYPES.SUBMIT_SPY_VOTE) {
         const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_VOTE]);
@@ -2386,7 +2453,8 @@ var require_spy = __commonJS({
         return { events, dirtyFacts: [] };
       }
       const current = spy.speakOrder[spy.currentSpeakerIndex];
-      if ([WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(session.workflow.step) && current === memberId) {
+      const speakLike = [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK, WORKFLOW_STEP.SPY_QUESTION];
+      if (speakLike.includes(session.workflow.step) && current === memberId) {
         spy.currentSpeakerIndex += 1;
         while (spy.currentSpeakerIndex < spy.speakOrder.length) {
           const next = playerByMemberId(spy, spy.speakOrder[spy.currentSpeakerIndex]);
@@ -2402,7 +2470,12 @@ var require_spy = __commonJS({
             activeMemberId: spy.speakOrder[spy.currentSpeakerIndex],
             turnId: spy.speakerTurnId
           });
-          events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, { speakerTurnId: spy.speakerTurnId, memberId: session.workflow.activeMemberId, tieBreak: spy.tieBreak }));
+          events.push(event(EVENT_TYPES.SPY_SPEAKER_STARTED, {
+            speakerTurnId: spy.speakerTurnId,
+            memberId: session.workflow.activeMemberId,
+            tieBreak: spy.tieBreak,
+            questionRound: spy.questionRound === true
+          }));
         }
       }
       return { events, dirtyFacts: [] };
@@ -2505,6 +2578,7 @@ var require_room_domain = __commonJS({
       COMMAND_TYPES.START_SPY_GAME,
       COMMAND_TYPES.ADVANCE_SPY_SPEAKER,
       COMMAND_TYPES.OPEN_SPY_VOTE,
+      COMMAND_TYPES.START_SPY_QUESTION_ROUND,
       COMMAND_TYPES.SUBMIT_SPY_VOTE,
       COMMAND_TYPES.START_NEXT_SPY_ROUND,
       COMMAND_TYPES.RESTART_SPY_GAME,
@@ -3404,9 +3478,12 @@ var require_room_projection = __commonJS({
           voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
           voteDeadlineAt: spy.voteStartedAt == null ? null : spy.voteStartedAt + SPY_VOTE_DURATION_MS,
           tieBreak: spy.tieBreak === true,
+          questionRound: spy.questionRound === true || session.workflow.step === WORKFLOW_STEP.SPY_QUESTION,
+          questionRoundUsed: spy.questionRoundUsed === true,
           lastResult: clone(spy.lastResult || null),
           winnerSide: spy.winnerSide || null,
-          reveal: session.workflow.step === WORKFLOW_STEP.SPY_SETTLED ? clone(spy.reveal || []) : []
+          // 结算后直至返回大厅都保持公开 reveal，避免 COMPLETED 瞬间清空对照表。
+          reveal: spy.winnerSide ? clone(spy.reveal || []) : []
         };
       }
       publicView.session = view;
@@ -3529,8 +3606,12 @@ var require_room_projection = __commonJS({
       const spy = currentSpy(aggregate);
       const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
       caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step) && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK, WORKFLOW_STEP.SPY_QUESTION].includes(step) && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(false, "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.START_SPY_QUESTION_ROUND] = capability(
+        isHost && step === WORKFLOW_STEP.SPY_VOTE && spy && spy.questionRoundUsed !== true,
+        "INVALID_TRANSITION"
+      );
       caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
         alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
         "INVALID_TRANSITION"
@@ -3568,6 +3649,7 @@ var require_room_projection = __commonJS({
         [WORKFLOW_STEP.SPY_INTRO]: "spyIntro",
         [WORKFLOW_STEP.SPY_SPEAK]: "spySpeak",
         [WORKFLOW_STEP.SPY_TIE_SPEAK]: "spySpeak",
+        [WORKFLOW_STEP.SPY_QUESTION]: "spySpeak",
         [WORKFLOW_STEP.SPY_VOTE]: "spyVote",
         [WORKFLOW_STEP.SPY_RESULT]: "spyResult",
         [WORKFLOW_STEP.SPY_SETTLED]: "spySettle"

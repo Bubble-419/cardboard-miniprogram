@@ -107,7 +107,8 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | Halli / Gan Deng Yan `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
 | `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
 | `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 全员可见当前发言人；当前发言者可结束发言；全员讲完后自动开票 |
-| `SPY_VOTE` | `spyVote` | `spyVote` | 仅存活且未投票成员可提交 |
+| `SPY_QUESTION` | `spySpeak` | `spySpeak` | 每人最多提问一次；全员问完后自动回到投票 |
+| `SPY_VOTE` | `spyVote` | `spyVote` | 仅存活且未投票成员可提交；Host 可开启一轮提问 |
 | `SPY_RESULT` | `spyResult` | `spyResult` | 任一本场参与者可推进下一轮 |
 | `SPY_SETTLED` | `spySettle` | `spySettle` | 只有 Host 可重开或结束场次 |
 | Spy `COMPLETED` | `spySettle` | `spySettle` | — |
@@ -527,6 +528,7 @@ flowchart LR
   INTRO[SPY_INTRO<br/>spyIntro<br/>规则/词库/等待开局]
   SPEAK[SPY_SPEAK<br/>spySpeak<br/>每人只见本人密牌]
   VOTE[SPY_VOTE<br/>spyVote]
+  ASK[SPY_QUESTION<br/>spySpeak<br/>每人最多一问]
   TIE[SPY_TIE_SPEAK<br/>spySpeak<br/>并列者加时]
   RESULT[SPY_RESULT<br/>spyResult<br/>本轮未决胜负]
   SETTLE[SPY_SETTLED<br/>spySettle<br/>公开身份与词语]
@@ -536,6 +538,8 @@ flowchart LR
   INTRO -->|Host“开始游戏”<br/>START_SPY_GAME| SPEAK
   SPEAK -->|当前人“我已完成发言”<br/>ADVANCE_SPY_SPEAKER| SPEAK
   SPEAK -->|全部讲完自动开票| VOTE
+  VOTE -->|Host“开始提问”<br/>START_SPY_QUESTION_ROUND| ASK
+  ASK -->|每人提问完毕| VOTE
   VOTE -->|最高票并列| TIE
   TIE -->|并列者讲完| VOTE
   VOTE -->|无胜负| RESULT
@@ -553,6 +557,7 @@ flowchart TD
   ORDER[随机发言顺序]
   SPEAK[ADVANCE_SPY_SPEAKER]
   OPEN[最后一人讲完自动开票]
+  ASK[Host 开启提问轮<br/>每人最多一问]
   SUBMIT[SUBMIT_SPY_VOTE]
   SHAPE{票型}
   TIE[并列者重新发言]
@@ -563,6 +568,7 @@ flowchart TD
   NEXT[下一轮]
 
   START --> SECRET --> ORDER --> SPEAK --> OPEN --> SUBMIT --> SHAPE
+  OPEN -->|信息不足| ASK --> OPEN
   SHAPE -->|并列| TIE --> OPEN
   SHAPE -->|无目标票| ABSTAIN --> NEXT
   SHAPE -->|唯一最高票| ELIM --> WIN
@@ -571,6 +577,8 @@ flowchart TD
 ```
 
 无人淘汰时，下一轮对存活成员重新随机洗牌；有人淘汰时，保留上轮随机顺序，移除淘汰者后从其下一位继续。
+
+投票阶段若信息不足，Host 可点击“开始提问”开启一轮提问：存活成员按随机顺序每人最多提出一个问题；全员问完后自动回到新的投票场次。同一发言→投票周期内仅允许开启一次提问。
 
 平票加时的确认提示以“并列成员集合 + 加时轮起点”作为一次性键。同一加时轮切换发言者时
 不得重复弹出；只有进入新的平票加时轮才生成新的确认提示。
