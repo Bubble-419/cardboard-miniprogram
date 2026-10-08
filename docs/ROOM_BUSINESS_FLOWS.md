@@ -279,7 +279,7 @@ flowchart TD
 
 ## 4. 公共配置流程
 
-Session 创建时冻结当前 Room Members 为本场 Participants；此后加入者留在 `addPlayer?observing=true`，直到下一场才进入参与者集合。
+Session 创建时冻结当前 Room Members 为本场 Participants；此后加入者留在 `addPlayer?observing=true`，直到下一场才进入参与者集合。场次进行中，Participant 的资格和 `seatNoAtStart` 保持冻结，但仍在 Room 的成员修改本人昵称、头像或颜色后，当前场次各端展示随 `room.members` 更新；归档回看与已完成/取消场次的结算展示仍使用开场时冻结的资料，不改写历史记录。
 
 ```mermaid
 flowchart TD

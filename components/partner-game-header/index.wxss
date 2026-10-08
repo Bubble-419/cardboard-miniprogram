@@ -39,6 +39,7 @@
 .problem-chip-expanded { align-items: flex-start; z-index: 20; }
 .problem-chip-tappable { cursor: pointer; }
 .problem-chip-tappable:active { opacity: 0.82; }
+.problem-chip-disabled { opacity: 0.58; }
 .problem-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; margin-top: 2rpx; }
 .problem-text-wrap { flex: 1; min-width: 0; position: relative; }
 .problem-text {

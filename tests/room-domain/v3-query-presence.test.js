@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
-const { projectPageSnapshot, memberSeat } = require('../../modules/room-session/page-model');
+const { projectPageSnapshot, pageMembers, memberSeat } = require('../../modules/room-session/page-model');
 const {
   VIEW_SCHEMA_VERSION, EVENT_SCHEMA_VERSION, MAX_INCREMENTAL_SYNC_EVENTS,
   MAX_SYNC_RESPONSE_BYTES, SIGNAL_TYPES, SIGNAL_TTL_MS, DESIGN_PROBLEM_NUDGE_COOLDOWN_MS,
@@ -16,6 +16,85 @@ test('场次内座位映射优先使用冻结 Participant，而不是后来调�
     session: { participants: [{ memberId: 'm1', seatNoAtStart: 1 }] }
   };
   assert.equal(memberSeat(view, 'm1'), 1);
+});
+
+test('进行中的场次展示成员最新资料，但历史回看保留开场时冻结资料', () => {
+  const view = {
+    room: {
+      hostMemberId: 'm1',
+      members: [{
+        memberId: 'm1', seatNo: 1, nickName: '新昵称', avatarRef: 'new-avatar',
+        avatarIndex: 3, color: '#00AA00', joinedAt: 10
+      }]
+    },
+    session: {
+      status: 'RUNNING',
+      participants: [{
+        memberId: 'm1', seatNoAtStart: 1, nickName: '旧昵称', avatarRef: 'old-avatar',
+        avatarIndex: 1, color: '#AA0000', status: 'ACTIVE'
+      }]
+    },
+    actor: { memberId: 'm1', isParticipant: true }
+  };
+
+  const liveMember = pageMembers(view, false)[0];
+  const historicalMember = pageMembers(view, true)[0];
+
+  assert.deepEqual(
+    {
+      nickName: liveMember.nickName,
+      avatarUrl: liveMember.avatarUrl,
+      avatarIndex: liveMember.avatarIndex,
+      avatarColor: liveMember.avatarColor
+    },
+    { nickName: '新昵称', avatarUrl: 'new-avatar', avatarIndex: 3, avatarColor: '#00AA00' }
+  );
+  assert.deepEqual(
+    {
+      nickName: historicalMember.nickName,
+      avatarUrl: historicalMember.avatarUrl,
+      avatarIndex: historicalMember.avatarIndex,
+      avatarColor: historicalMember.avatarColor
+    },
+    { nickName: '旧昵称', avatarUrl: 'old-avatar', avatarIndex: 1, avatarColor: '#AA0000' }
+  );
+});
+
+test('进行中 Partner 的当前行动者和回合纪要也使用最新昵称', () => {
+  const view = {
+    room: {
+      roomId: '12345678', lifecycle: 'OPEN', hostMemberId: 'm1', workshopName: '测试', createdAt: 1,
+      members: [{ memberId: 'm1', seatNo: 1, nickName: '新昵称', avatarRef: null, avatarIndex: 2, color: '#0A0' }]
+    },
+    session: {
+      sessionId: 's1', mode: 'PARTNER', status: 'RUNNING', workflow: { step: 'PARTNER_TURN' },
+      setup: { scenario: null, selectedProblem: null },
+      participants: [{
+        memberId: 'm1', seatNoAtStart: 1, nickName: '旧昵称', avatarRef: null,
+        avatarIndex: 1, color: '#A00', status: 'ACTIVE'
+      }],
+      publicModeState: { turnOrdinal: 2, roundNo: 1, closing: null },
+      activeTurn: {
+        turnId: 't2', ordinal: 2, roundNo: 1, activeMemberId: 'm1',
+        scoredCount: 0, requiredScoreCount: 0
+      },
+      activeArtifacts: [], recentMessages: [],
+      turnSummaries: [{
+        turnId: 't1', turnOrdinal: 1, roundNo: 1, activeMemberId: 'm1',
+        artifacts: [], completedAt: 20
+      }]
+    },
+    actor: {
+      memberId: 'm1', role: 'HOST', seatNo: 1, isParticipant: true,
+      scoreStatus: { submitted: false }, capabilities: {}
+    },
+    route: { name: 'partnerGame', params: {} }
+  };
+
+  const page = projectPageSnapshot(view, { seq: 2, stateVersion: 2, ephemeral: {} });
+
+  assert.equal(page.roomState.currentPlayerName, '新昵称');
+  assert.equal(page.roomState.partnerRoundSummaries[0].playerName, '新昵称');
 });
 
 test('Partner 页面模型把计时锚点换算到本机时钟域', () => {

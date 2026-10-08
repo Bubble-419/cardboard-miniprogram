@@ -762,10 +762,7 @@ Page(withPageInteractionLock({
     const cardIndex = (jumpToAction || wasOnAction)
       ? Math.max(0, cardSlides.length - 1)
       : Math.min(prevIndex, Math.max(0, cardCount - 1));
-    const indicatorPlayerIndex = cardIndex < displayRoundSummaries.length
-      && displayRoundSummaries[cardIndex]
-      ? displayRoundSummaries[cardIndex].playerIndex
-      : (this.data.currentPlayerIndex || 1);
+    const indicatorPlayerIndex = this.data.currentPlayerIndex || 1;
     const sameList = fingerprint === this._summariesFp
       && cardCount === this.data.cardCount
       && cardIndex === this.data.cardIndex
@@ -829,13 +826,10 @@ Page(withPageInteractionLock({
     const index = e.detail && e.detail.current != null ? e.detail.current : 0;
     const maxIndex = Math.max(0, ((this.data.cardSlides || []).length || this.data.cardCount || 1) - 1);
     const cardIndex = Math.min(index, maxIndex);
-    const summaries = this.data.displayRoundSummaries || [];
     this.setData({
       cardIndex,
       paginationDots: buildPaginationDots(cardIndex, this.data.cardCount),
-      indicatorPlayerIndex: cardIndex < summaries.length && summaries[cardIndex]
-        ? summaries[cardIndex].playerIndex
-        : this.data.currentPlayerIndex
+      indicatorPlayerIndex: this.data.currentPlayerIndex
     });
   },
 
@@ -1175,6 +1169,7 @@ Page(withPageInteractionLock({
 
   /** 点击设计问题：进入情境详情，navigateTo 保留特殊行动页实例与当前进度。 */
   handleViewSituation() {
+    if (!(this.data.selectedProblemText || '').trim()) return undefined;
     return runPageNavigation(this, async () => {
       const app = getApp();
       const roomId = this.data.roomId || (app.globalData && app.globalData.roomId) || '';

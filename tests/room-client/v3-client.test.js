@@ -11,6 +11,7 @@ const {
 } = require('@cardboard/room-contracts');
 const { applyProjectedEvent } = require('@cardboard/room-projection');
 const { createHarness } = require('../helpers/room-v3');
+const { projectPageSnapshot } = require('../../modules/room-session/page-model');
 
 function inertTimers() {
   let id = 0;
@@ -451,6 +452,41 @@ test('Snapshot@N + 公共/Actor 投影事件等于 Snapshot@M', async () => {
   batch.events.forEach((event) => { reduced = applyProjectedEvent(reduced, event); });
   const latest = await h.snapshot('u2');
   assert.deepEqual(reduced, latest.view);
+});
+
+test('游戏中成员改名会通过公共 Event 广播到其他成员的页面模型', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'PARTNER' } });
+  let current = await h.snapshot('host');
+  const sessionId = current.view.session.sessionId;
+  await h.command('host', 'SET_SCENARIO', {
+    context: { sessionId, workflowStep: 'CHOOSE_SCENARIO' }, payload: { source: 'OFFLINE' }
+  });
+  const hostMemberId = (await h.snapshot('host')).view.actor.memberId;
+  await h.command('host', 'SELECT_FIRST_PLAYER', {
+    context: { sessionId, workflowStep: 'SELECT_FIRST_PLAYER' }, payload: { memberId: hostMemberId }
+  });
+  await h.command('host', 'CONFIRM_FIRST_PLAYER', {
+    context: { sessionId }, payload: { memberId: hostMemberId }
+  });
+
+  const hostBeforeRename = await h.snapshot('host');
+  await h.command('u2', 'UPDATE_MEMBER_PROFILE', { payload: { nickName: '游戏中新昵称' } });
+  const batch = await h.app.sync('12345678', hostBeforeRename.seq, { userId: 'host' });
+  let hostView = hostBeforeRename.view;
+  batch.events.forEach((event) => { hostView = applyProjectedEvent(hostView, event); });
+  const hostPage = projectPageSnapshot(hostView, {
+    seq: batch.throughSeq,
+    stateVersion: batch.events.at(-1).stateVersion,
+    ephemeral: {}
+  });
+
+  assert.equal(batch.delivery, 'EVENTS');
+  assert.equal(batch.events.some((event) => (event.publicEvents || [])
+    .some((item) => item.type === 'MEMBER_PROFILE_UPDATED')), true);
+  assert.equal(hostPage.members.find((member) => member.memberId !== hostPage.view.actor.memberId).nickName,
+    '游戏中新昵称');
 });
 
 test('跨配置、Partner 换轮和中途加入后，分批 Event 仍与最新 Snapshot 等价', async () => {

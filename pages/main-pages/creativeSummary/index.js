@@ -317,4 +317,12 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在返回房间…' });
   },
 
-}, ['handleEditIdea', 'handleSaveIdea', 'onIdeaInput', 'onIdeaBlur', 'handleFinish', 'handleGoRoom']));
+}, [
+  'handleEditIdea',
+  'handleSaveIdea',
+  'onIdeaInput',
+  'onIdeaBlur',
+  'stopPropagation',
+  'handleFinish',
+  'handleGoRoom'
+]));

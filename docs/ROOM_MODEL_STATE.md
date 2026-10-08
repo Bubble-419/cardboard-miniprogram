@@ -138,7 +138,7 @@ RoomSession
 │   ├── memberId / userId
 │   ├── seatNoAtStart
 │   ├── status: ACTIVE | LEFT
-│   └── 冻结展示资料
+│   └── 开场展示资料快照（供归档/结算回看）
 ├── setup
 ├── workflow
 │   ├── step
@@ -180,6 +180,8 @@ stateDiagram-v2
 一个 Room 同时最多一个 current Session
 ordinal 在同一 Room 内单调递增
 participants 在 Session 创建时冻结；中途加入者不会补入
+进行中页面的参与资格与席位仍以 Participant 为准，但仍在 Room 的 Participant 展示资料叠加对应 Member 的最新昵称、头像与颜色
+历史回看及 COMPLETED / CANCELLED 结算展示使用 Participant 的开场资料快照，不被后续资料修改改写
 成员离开只把 Participant 标为 LEFT，不删除历史事实
 COMPLETED / CANCELLED Session 归档后不再修改
 Facts 只能属于同一 sessionId

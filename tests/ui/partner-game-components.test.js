@@ -97,7 +97,7 @@ test('等待屏幕是只消费 Shell Model 的无状态组件，不持有订阅�
 
 test('游戏页头只输出返回、房间和情境语义意图', () => {
   const definition = loadComponent('components/partner-game-header/index.js');
-  const component = componentInstance(definition);
+  const component = componentInstance(definition, { problemText: '如何改善协作体验？' });
 
   component.emitIntent({ currentTarget: { dataset: { intent: 'OPEN_ROOM' } } });
   component.emitIntent({ currentTarget: { dataset: { intent: 'VIEW_SITUATION' } } });
@@ -106,6 +106,18 @@ test('游戏页头只输出返回、房间和情境语义意图', () => {
     { name: 'intent', detail: { type: 'VIEW_SITUATION' } }
   ]);
   assert.doesNotMatch(read('components/partner-game-header/index.js'), /room-session|wx\.(?:navigate|redirect|reLaunch)/);
+});
+
+test('没有设计问题时页头显示禁用态且不发出查看情境意图', () => {
+  const definition = loadComponent('components/partner-game-header/index.js');
+  const component = componentInstance(definition, { problemText: '   ' });
+
+  component.emitIntent({ currentTarget: { dataset: { intent: 'VIEW_SITUATION' } } });
+
+  assert.deepEqual(component.events, []);
+  const markup = read('components/partner-game-header/index.wxml');
+  assert.match(markup, /problemText \? 'problem-chip-tappable' : 'problem-chip-disabled'/);
+  assert.match(markup, /aria-disabled="\{\{!problemText\}\}"/);
 });
 
 test('玩家条只转发头像和计时事件，不持有业务状态机', () => {

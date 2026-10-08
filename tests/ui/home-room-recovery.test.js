@@ -251,6 +251,30 @@ test('首页 onLoad/onShow 的并发房间发现复用同一请求', async () =>
   assert.equal(page._joinedStatePromise, null);
 });
 
+test('已在进行中房间时修改昵称，失焦会提交资料更新命令供其他成员同步', async () => {
+  const commands = [];
+  const page = loadHomePage({
+    async dispatchRoomCommand(type, payload, context, options) {
+      commands.push({ type, payload, context, options });
+      return { ok: true };
+    },
+    async getCurrentRoomPageSnapshot() { return roomSnapshot('12345678'); }
+  });
+  page.setData({ isJoinedRoom: true, roomId: '12345678', userNickName: '旧昵称' });
+
+  page.onNickNameInput({ type: 'input', detail: { value: '新的昵称' } });
+  assert.equal(commands.length, 0, '输入过程中不能逐字广播命令');
+
+  await page.onNickNameInput({ type: 'blur', detail: { value: '新的昵称' } });
+
+  assert.deepEqual(commands, [{
+    type: 'UPDATE_MEMBER_PROFILE',
+    payload: { nickName: '新的昵称' },
+    context: {},
+    options: { roomId: '12345678' }
+  }]);
+});
+
 test('创建成功后导航丢失全部回调时会超时释放，不会一直加载', async () => {
   let redirectCalls = 0;
   let relaunchCalls = 0;

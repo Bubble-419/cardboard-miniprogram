@@ -50,27 +50,32 @@ function memberSeat(view, memberId) {
 function pageMembers(view, historical) {
   if (!view || !view.room) return [];
   const liveById = new Map((view.room.members || []).map((member) => [member.memberId, member]));
-  // 当前场次页面只能展示场次开始时冻结的 Participant；中途加入者在大厅仍看 Room Member。
+  // 当前场次页面只展示开场时冻结的 Participant 集合；中途加入者在大厅仍看 Room Member。
   const useFrozenParticipants = !!(view.session && Array.isArray(view.session.participants)
     && (historical || (view.actor && view.actor.isParticipant)));
   const includeDeparted = !!(historical || (view.session
     && ['COMPLETED', 'CANCELLED'].includes(view.session.status)));
+  const useLiveProfile = !historical && !!(view.session
+    && !['COMPLETED', 'CANCELLED'].includes(view.session.status));
   const participants = useFrozenParticipants
     ? view.session.participants.filter((participant) => includeDeparted || participant.status === 'ACTIVE')
     : [];
   const source = useFrozenParticipants
-    ? participants.map((participant) => ({
-      memberId: participant.memberId,
-      seatNo: participant.seatNoAtStart,
-      nickName: participant.nickName,
-      avatarRef: participant.avatarRef || null,
-      avatarIndex: participant.avatarIndex,
-      color: participant.color,
-      joinedAt: liveById.get(participant.memberId) && liveById.get(participant.memberId).joinedAt,
-      participantStatus: participant.status
-    }))
+    ? participants.map((participant) => {
+      const live = useLiveProfile ? liveById.get(participant.memberId) : null;
+      return {
+        memberId: participant.memberId,
+        seatNo: participant.seatNoAtStart,
+        nickName: live ? live.nickName : participant.nickName,
+        avatarRef: live ? (live.avatarRef || null) : (participant.avatarRef || null),
+        avatarIndex: live ? live.avatarIndex : participant.avatarIndex,
+        color: live ? live.color : participant.color,
+        joinedAt: liveById.get(participant.memberId) && liveById.get(participant.memberId).joinedAt,
+        participantStatus: participant.status
+      };
+    })
     : view.room.members;
-  // 历史/结算页保留全部冻结资料；进行中页只展示仍在场的 Participant，不能让离房者继续参与 UI 选择。
+  // 历史/结算页保留全部冻结资料；进行中页只展示仍在场的 Participant，并叠加仍在房成员的最新资料。
   return source.slice().sort((a, b) => a.seatNo - b.seatNo).map((member) => ({
     _id: member.memberId,
     memberId: member.memberId,
@@ -110,12 +115,14 @@ function partnerContent(session, acceptedStages) {
   return content;
 }
 
-function partnerSummary(view, summary) {
-  const member = (view.session.participants || []).find((item) => item.memberId === summary.activeMemberId)
+function partnerSummary(view, summary, projectedMembers) {
+  const member = (projectedMembers || []).find((item) => item.memberId === summary.activeMemberId)
+    || (view.session.participants || []).find((item) => item.memberId === summary.activeMemberId)
     || view.room.members.find((item) => item.memberId === summary.activeMemberId);
+  const playerIndex = member && (member.playerIndex || member.seatNo || member.seatNoAtStart);
   const content = partnerContent({ activeArtifacts: summary.artifacts || [] }, ['PLAY', 'DISCUSSION']);
   const turnRecord = {
-    playerIndex: member && (member.seatNo || member.seatNoAtStart),
+    playerIndex,
     playerName: member && member.nickName,
     statementResult: summary.statementResult,
     statementLabel: getStatementLabel(summary.statementResult),
@@ -128,7 +135,7 @@ function partnerSummary(view, summary) {
     ...summary,
     // 旧页面把 round 当作全局行动序号，V3 的业务 roundNo 另行保留。
     round: summary.turnOrdinal,
-    playerIndex: member && (member.seatNo || member.seatNoAtStart),
+    playerIndex,
     playerName: member && member.nickName,
     archivedAt: summary.completedAt,
     ...content,
@@ -142,24 +149,30 @@ function clientClockTimestamp(value, offsetMs) {
   return timestamp - (Number(offsetMs) || 0);
 }
 
-function spyPageState(view, session) {
+function spyPageState(view, session, projectedMembers) {
   const state = session.publicModeState || {};
+  const memberById = new Map((projectedMembers || []).map((member) => [member.memberId, member]));
   const revealByMember = {};
   (state.reveal || []).forEach((item) => { revealByMember[item.memberId] = item; });
   const phaseByStep = {
     SPY_INTRO: 'intro', SPY_SPEAK: 'speak', SPY_TIE_SPEAK: 'speak', SPY_QUESTION: 'speak',
     SPY_VOTE: 'vote', SPY_RESULT: 'result', SPY_SETTLED: 'settle'
   };
-  const players = (state.players || []).map((player) => ({
-    playerIndex: player.seatNoAtStart,
-    memberId: player.memberId,
-    name: player.nickName,
-    nickName: player.nickName,
-    avatarUrl: player.avatarRef || null,
-    alive: player.alive,
-    left: player.left,
-    ...(revealByMember[player.memberId] || {})
-  }));
+  const players = (state.players || []).map((player) => {
+    const current = memberById.get(player.memberId);
+    return {
+      playerIndex: player.seatNoAtStart,
+      memberId: player.memberId,
+      name: current ? current.nickName : player.nickName,
+      nickName: current ? current.nickName : player.nickName,
+      avatarUrl: current ? current.avatarUrl : (player.avatarRef || null),
+      avatarIndex: current ? current.avatarIndex : player.avatarIndex,
+      color: current ? current.avatarColor : player.color,
+      alive: player.alive,
+      left: player.left,
+      ...(revealByMember[player.memberId] || {})
+    };
+  });
   const rawResult = state.lastResult || {};
   const tallies = {};
   Object.entries(rawResult.tallies || {}).forEach(([memberId, count]) => {
@@ -302,7 +315,8 @@ function projectPageSnapshot(view, clientState) {
       round: item.turnOrdinal, roundNo: item.roundNo, phase: item.phase || roomState.partnerGamePhase
     }));
     roomState.partnerCurrentRoundContent = partnerContent(session, ['PLAY', 'DISCUSSION']);
-    roomState.partnerRoundSummaries = (session.turnSummaries || []).map((item) => partnerSummary(view, item));
+    roomState.partnerRoundSummaries = (session.turnSummaries || [])
+      .map((item) => partnerSummary(view, item, members));
     const closingContent = partnerContent(session, ['CLOSING_RUNE', 'CLOSING_REVIEW']);
     roomState.partnerClosingCreativePoints = { blocks: closingContent.playBlocks,
       texts: closingContent.playHistory, images: closingContent.playImages };
@@ -313,7 +327,7 @@ function projectPageSnapshot(view, clientState) {
     const first = members.find((item) => item.playerIndex === roomState.currentPlayerIndex);
     roomState.currentPlayerName = first && first.nickName || '';
   } else if (session && session.mode === MODE.SPY) {
-    roomState.spyGame = spyPageState(view, session);
+    roomState.spyGame = spyPageState(view, session, members);
   }
   const editingSignal = state.ephemeral && state.ephemeral.signals
     && state.ephemeral.signals.DESIGN_PROBLEM_EDITING;

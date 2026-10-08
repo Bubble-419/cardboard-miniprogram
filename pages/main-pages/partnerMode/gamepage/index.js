@@ -5603,6 +5603,7 @@ Page(withPageInteractionLock({
 
   /** 点击设计问题：回看情境详情（confirmBG），navigateTo 保留本页实例与进度 */
   handleViewSituation() {
+    if (!(this.data.selectedProblemText || '').trim()) return undefined;
     return runPageNavigation(this, async () => {
       const roomId = this.data.roomId || getApp().globalData.roomId || '';
       if (!roomId) {

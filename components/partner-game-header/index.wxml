@@ -25,10 +25,12 @@
       />
     </view>
     <view
-      class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} problem-chip-tappable"
+      class="problem-chip {{problemExpanded ? 'problem-chip-expanded' : ''}} {{problemText ? 'problem-chip-tappable' : 'problem-chip-disabled'}}"
       style="min-height: {{iconSize}}px;"
       data-intent="VIEW_SITUATION"
       bindtap="emitIntent"
+      role="button"
+      aria-disabled="{{!problemText}}"
     >
       <image class="problem-icon" src="/assets/partnerMode/icon-problem-chip.svg" mode="aspectFit" />
       <view class="problem-text-wrap">

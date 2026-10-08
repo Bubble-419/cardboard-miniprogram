@@ -360,6 +360,7 @@ Page(withPageInteractionLock({
       const timeTs = isHost ? (createdAt || joinedAt) : (joinedAt || createdAt);
       const me = (result.members || []).find(m => m.isMe);
       const userPatch = this._getUserDisplayFromMember(me);
+      this._lastBroadcastNickName = me && me.nickName ? String(me.nickName).trim() : '';
 
       getApp().globalData.roomId = roomId;
       wx.setStorageSync(JOINED_ROOM_STORAGE_KEY, roomId);
@@ -550,6 +551,7 @@ Page(withPageInteractionLock({
     });
     this._hydrateCloudAvatar(next.avatarUrl, ['userAvatarUrl']);
     forceEndUserAuthFlow();
+    return this._broadcastNickNameToCurrentRoom(next.nickName);
   },
 
   onSkipProfileAuth() {
@@ -579,10 +581,40 @@ Page(withPageInteractionLock({
   },
 
   onNickNameInput(e) {
-    const nickName = (e.detail && e.detail.value) || '';
+    const rawNickName = (e.detail && e.detail.value) || '';
+    const isBlur = !!(e && e.type === 'blur');
+    const nickName = isBlur ? rawNickName.trim() : rawNickName;
     const stored = getStoredProfile() || {};
     saveStoredProfile({ ...stored, nickName });
     this.setData({ userNickName: nickName || '微信用户' });
+    if (!isBlur) return undefined;
+    return this._broadcastNickNameToCurrentRoom(nickName);
+  },
+
+  async _broadcastNickNameToCurrentRoom(nickName) {
+    const normalized = String(nickName || '').trim();
+    const roomId = this.data.isJoinedRoom ? String(this.data.roomId || '') : '';
+    if (!normalized || !roomId || normalized === this._lastBroadcastNickName) return null;
+    try {
+      const result = await dispatchRoomCommand(
+        'UPDATE_MEMBER_PROFILE',
+        { nickName: normalized },
+        {},
+        { roomId }
+      );
+      if (result && result.ok === true) {
+        this._lastBroadcastNickName = normalized;
+        return result;
+      }
+      wx.showToast({ title: (result && result.errMsg) || '昵称同步失败，请重试', icon: 'none' });
+      return result || null;
+    } catch (error) {
+      wx.showToast({
+        title: (error && (error.errMsg || error.message)) || '昵称同步失败，请重试',
+        icon: 'none'
+      });
+      return null;
+    }
   },
 
   _clearJoinedRoom(roomId) {

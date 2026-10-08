@@ -23,7 +23,9 @@ Component({
     /** 为 true 时不展示背面，直接从词语开始 */
     skipBack: { type: Boolean, value: false },
     /** 为 true 时仅背面 ↔ 词语两态翻转，跳过词语1（第三态） */
-    twoFaceOnly: { type: Boolean, value: false }
+    twoFaceOnly: { type: Boolean, value: false },
+    /** 已展示分配词时，再次点击改为请求父级全屏展示，不翻回背面 */
+    fullscreenOnAssigned: { type: Boolean, value: false }
   },
 
   data: {
@@ -196,6 +198,10 @@ Component({
     onTap() {
       if (this._swiped) {
         this._swiped = false;
+        return;
+      }
+      if (this.data.fullscreenOnAssigned && this.data.cardState === 'assignedWord') {
+        this.triggerEvent('fullscreen', { word: this.data.word || '' });
         return;
       }
       this._requestFlip('next', 'up');

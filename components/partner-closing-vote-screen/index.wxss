@@ -97,3 +97,11 @@
 }
 .status-icon { width: 40rpx; height: 40rpx; flex-shrink: 0; }
 .status-text { font-size: 28rpx; font-weight: 500; color: #6eba62; line-height: 56rpx; white-space: nowrap; }
+
+@media screen and (min-width: 768px) {
+  :host {
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+}

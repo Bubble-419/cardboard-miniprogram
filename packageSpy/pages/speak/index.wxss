@@ -458,6 +458,62 @@
   line-height: 1.55;
 }
 
+/* ===== 本人身份卡全屏（纯本地叠层） ===== */
+.identity-card-fullscreen-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(32px + env(safe-area-inset-top)) 32px calc(32px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: rgba(10, 18, 28, 0.92);
+}
+
+.identity-card-fullscreen-content {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 16 / 10;
+}
+
+.identity-card-fullscreen-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.identity-card-fullscreen-close {
+  position: absolute;
+  right: 0;
+  top: -48px;
+  min-width: 64px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 16px;
+}
+
+@media screen and (min-width: 768px) {
+  .page-shell {
+    max-width: 640px;
+  }
+
+  .viewer-sheet {
+    max-width: 640px;
+  }
+}
+
 /* ===== 窄屏 ===== */
 .is-compact .page-shell {
   width: calc(100vw - 48rpx);

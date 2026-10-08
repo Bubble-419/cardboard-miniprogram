@@ -633,7 +633,7 @@ flowchart TD
 ```
 
 已离房成员的事实仍用于审计和历史展示，但会同时移出 `required/submitted` 进度集合；Partner 收尾与 Spy 淘汰裁决只统计当前 `requiredMemberIds` 中的票。
-进行中的页面模型只把 `status=ACTIVE` 的冻结 Participant 投影为可见/可选成员；历史回看与已完成场次的结算页仍投影全部冻结 Participant。
+进行中的页面模型只把 `status=ACTIVE` 的冻结 Participant 投影为可见/可选成员，席位与参与资格不随 Room Member 变化；对仍在 Room 的 Participant，则从 `room.members` 叠加最新昵称、头像和颜色。这样 `UPDATE_MEMBER_PROFILE` 经 Snapshot 或 Event Patch 更新后，各端当前场次使用同一份最新资料。历史回看与已完成场次的结算页仍投影全部 Participant，并使用开场时冻结的展示资料，避免后续改名改写归档记录。
 
 设计问题的公共投影保留服务端 `createdAt`。客户端必须按该字段稳定排序，不能使用随机
 `contributionId` 或本地接收顺序推断提交先后；该字段同时经 Snapshot 和 Event Patch 更新。

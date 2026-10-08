@@ -16,6 +16,7 @@ Component({
       const type = e && e.currentTarget && e.currentTarget.dataset
         && e.currentTarget.dataset.intent;
       if (!type) return;
+      if (type === 'VIEW_SITUATION' && !(this.data.problemText || '').trim()) return;
       this.triggerEvent('intent', { type });
     }
   }

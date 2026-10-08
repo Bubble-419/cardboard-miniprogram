@@ -28,6 +28,8 @@
             wx:if="{{cardReady}}"
             word="{{myWord}}"
             twoFaceOnly="{{true}}"
+            fullscreenOnAssigned="{{true}}"
+            bind:fullscreen="onOpenIdentityCardFullscreen"
             backSrc="{{cardBackSrc}}"
             assignedWordSrc="{{assignedWordSrc}}"
             assignedWordFallbackSrc="{{assignedWordFallbackSrc}}"
@@ -154,6 +156,28 @@
         {{waitingHintPrefix}}：{{currentSpeakerName}}
       </view>
     </view>
+  </view>
+</view>
+
+<!-- 身份卡只使用当前成员已获得的私密卡面，不创建新 Route 或远端状态。 -->
+<view
+  class="identity-card-fullscreen-mask"
+  wx:if="{{identityCardFullscreenOpen}}"
+  catchtouchmove="noop"
+  bindtap="onCloseIdentityCardFullscreen"
+>
+  <view class="identity-card-fullscreen-content" catchtap="noop">
+    <view
+      class="identity-card-fullscreen-close"
+      bindtap="onCloseIdentityCardFullscreen"
+      role="button"
+      aria-label="关闭身份卡全屏"
+    >关闭</view>
+    <image
+      class="identity-card-fullscreen-image"
+      src="{{assignedWordSrc || assignedWordFallbackSrc}}"
+      mode="aspectFit"
+    />
   </view>
 </view>
 

@@ -74,6 +74,7 @@ Page(withPageInteractionLock({
     tieBreak: false,
     tiedNamesText: '',
     viewerOpen: false,
+    identityCardFullscreenOpen: false,
     selectedWord: '',
     selectedCard: null,
     panelScrollY: true
@@ -108,6 +109,9 @@ Page(withPageInteractionLock({
 
   onHide() {
     this._pageAlive = false;
+    if (this.data.identityCardFullscreenOpen) {
+      this.setData({ identityCardFullscreenOpen: false });
+    }
     this.stopPolling();
   },
 
@@ -303,6 +307,15 @@ Page(withPageInteractionLock({
     });
   },
 
+  onOpenIdentityCardFullscreen() {
+    if (!this.data.cardReady || !this.data.myWord) return;
+    this.setData({ identityCardFullscreenOpen: true });
+  },
+
+  onCloseIdentityCardFullscreen() {
+    if (!this.data.identityCardFullscreenOpen) return;
+    this.setData({ identityCardFullscreenOpen: false });
+  },
   onFinishSpeak() {
     return runPageInteraction(this, () => this._finishSpeak(), {
       loadingText: '正在结束发言…'
@@ -344,6 +357,8 @@ Page(withPageInteractionLock({
   'onPanelTouchEnd',
   'onTapLibraryCard',
   'onCloseViewer',
+  'onOpenIdentityCardFullscreen',
+  'onCloseIdentityCardFullscreen',
   'onFinishSpeak',
   'handleGoRoom'
 ]));
