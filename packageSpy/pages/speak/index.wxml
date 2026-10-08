@@ -6,6 +6,7 @@
         avatarList="{{avatarList}}"
         maxVisible="{{5}}"
         padLeftRpx="{{0}}"
+        compactAvatars="{{true}}"
         bind:goroom="handleGoRoom"
       />
 

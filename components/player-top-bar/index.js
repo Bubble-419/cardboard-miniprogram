@@ -114,6 +114,12 @@ Component({
     padRightPx: 8
   },
 
+  observers: {
+    compactAvatars() {
+      this._applyMetrics();
+    }
+  },
+
   lifetimes: {
     attached() {
       this._applyMetrics();
@@ -131,7 +137,10 @@ Component({
 
   methods: {
     _applyMetrics() {
-      const m = getCapsuleTopBarMetrics();
+      const compact = !!this.properties.compactAvatars;
+      const m = getCapsuleTopBarMetrics(
+        compact ? { avatarNeedRpx: 64 } : undefined
+      );
       this.setData({
         padTop: m.padTop,
         barHeight: m.barHeight,

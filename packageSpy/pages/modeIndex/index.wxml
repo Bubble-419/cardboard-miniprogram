@@ -1,11 +1,11 @@
 <view class="container {{isHost ? 'is-host' : 'is-member'}}">
   <view class="page-body">
+    <player-top-bar
+      showAvatars="{{false}}"
+      padLeftRpx="{{48}}"
+      bind:goroom="handleGoRoom"
+    />
     <view class="header-section">
-      <player-top-bar
-        showAvatars="{{false}}"
-        padLeftRpx="{{48}}"
-        bind:goroom="handleGoRoom"
-      />
       <view class="title-block">
         <text class="page-title">谁是卧底</text>
         <text class="page-subtitle">{{statusText}}</text>

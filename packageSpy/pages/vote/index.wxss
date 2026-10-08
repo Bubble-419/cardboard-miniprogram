@@ -113,6 +113,11 @@
   gap: 20rpx;
 }
 
+.vote-actions .primary-btn {
+  height: 120rpx;
+  font-size: 36rpx;
+}
+
 .abstain-link {
   font-size: 24rpx;
   color: #9ca3af;
@@ -124,11 +129,16 @@
 }
 
 .host-question-actions {
-  margin: 24rpx 40rpx 40rpx;
+  margin: 0 40rpx 20rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12rpx;
+}
+
+.host-question-actions .secondary-btn {
+  width: 100%;
+  margin-top: 0;
 }
 
 .host-question-hint {

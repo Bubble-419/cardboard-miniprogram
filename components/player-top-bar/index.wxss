@@ -1,3 +1,10 @@
+/* 宿主必须 block，否则页面侧 width/负 margin 无法稳定撑满与左对齐 */
+:host {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .player-top-bar-wrap {
   width: 100%;
   box-sizing: border-box;

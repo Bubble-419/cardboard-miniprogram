@@ -13,10 +13,12 @@ test('德国心脏病与干瞪眼共用活动页启用胶囊对齐的紧凑头�
   const pageWxml = read('pages/main-pages/halliGalli/gamepage/index.wxml');
   const pageWxss = read('pages/main-pages/halliGalli/gamepage/index.wxss');
   const topBarWxml = read('components/player-top-bar/index.wxml');
+  const topBarJs = read('components/player-top-bar/index.js');
   const userListWxss = read('components/user-list/index.wxss');
 
   assert.match(pageWxml, /<player-top-bar[\s\S]*?compactAvatars="\{\{true\}\}"/);
   assert.match(topBarWxml, /compactStack="\{\{compactAvatars\}\}"/);
+  assert.match(topBarJs, /avatarNeedRpx:\s*64/);
   assert.match(userListWxss, /\.layout-stack\.compact-stack[\s\S]*?height:\s*64rpx/);
   assert.match(userListWxss, /\.layout-stack\.compact-stack\.fold \.avatar-wrap[\s\S]*?width:\s*64rpx/);
   assert.match(pageWxss, /\.topbar-fixed\s*\{[\s\S]*?width:\s*100%/);

@@ -62,8 +62,10 @@ function getCapsuleTopBarMetrics(options = {}) {
   }
 
   const windowWidth = getWindowWidth();
-  // 头像组合略大于胶囊时，以较大者作为行高，仍保证与胶囊垂直中心对齐
-  const avatarNeedPx = Math.ceil((80 * windowWidth) / 750);
+  // 头像组合略大于胶囊时，以较大者作为行高，仍保证与胶囊垂直中心对齐。
+  // 紧凑叠放（64rpx）与微信胶囊/房间入口同视觉高度；默认叠放仍按 80rpx 预算。
+  const avatarNeedRpx = options.avatarNeedRpx != null ? options.avatarNeedRpx : 80;
+  const avatarNeedPx = Math.ceil((avatarNeedRpx * windowWidth) / 750);
   const barHeight = Math.max(capsuleHeight, avatarNeedPx, minBarPx);
   const capsuleCenter = capsuleTop + capsuleHeight / 2;
   const padTop = Math.max(0, Math.round(capsuleCenter - barHeight / 2));

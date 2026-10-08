@@ -10,7 +10,8 @@
   padding: 0 48rpx 24rpx;
 }
 
-/* player-top-bar 已自带左右预留，需抵消父级 padding，否则入口图标比标题更靠右 */
+/* 顶栏应作为 header-section 的兄弟节点（padLeftRpx=48 与标题左对齐）。
+   若仍嵌套在 header-section 内，需抵消父级 padding，避免入口比标题更靠右。 */
 .header-section > player-top-bar {
   margin-left: -48rpx;
   margin-right: -48rpx;
