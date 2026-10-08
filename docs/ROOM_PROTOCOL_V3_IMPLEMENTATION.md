@@ -573,7 +573,7 @@ stateDiagram-v2
   [*] --> SPY_INTRO
   SPY_INTRO --> SPY_SPEAK: 分配身份/词语
   SPY_SPEAK --> SPY_SPEAK: 下一发言者
-  SPY_SPEAK --> SPY_VOTE: 发言结束/房主开票
+  SPY_SPEAK --> SPY_VOTE: 全员发言结束后自动开票
   SPY_VOTE --> SPY_TIE_SPEAK: 最高票并列
   SPY_TIE_SPEAK --> SPY_VOTE: 平票成员重新发言后开票
   SPY_VOTE --> SPY_RESULT: 淘汰或全员弃票且未决胜负

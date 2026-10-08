@@ -25,7 +25,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 7;
-    var VIEW_SCHEMA_VERSION = 13;
+    var VIEW_SCHEMA_VERSION = 14;
     var EVENT_SCHEMA_VERSION = 5;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -1316,12 +1316,14 @@ var require_partner = __commonJS({
         [{ kind: "artifacts", id: key }]
       );
     }
+    function randomOf(deps) {
+      return deps && typeof deps.random === "function" ? deps.random : Math.random;
+    }
     function pickClosingQuestioner(rows, deps) {
       const questions = rows.filter((row) => row.vote === "question");
       if (!questions.length) return null;
       if (questions.length === 1) return questions[0];
-      const random = deps && typeof deps.random === "function" ? deps.random : Math.random;
-      const index = Math.floor(random() * questions.length);
+      const index = Math.floor(randomOf(deps)() * questions.length);
       return questions[Math.min(questions.length - 1, Math.max(0, index))];
     }
     function resolveClosing(aggregate, deps) {
@@ -1674,7 +1676,14 @@ var require_partner = __commonJS({
       }
       return { events, dirtyFacts };
     }
-    module2.exports = { reducePartnerCommand, startPartnerFlow, startPartnerTurn, handlePartnerParticipantLeft, archiveActiveTurn };
+    module2.exports = {
+      reducePartnerCommand,
+      startPartnerFlow,
+      startPartnerTurn,
+      handlePartnerParticipantLeft,
+      archiveActiveTurn,
+      pickClosingQuestioner
+    };
   }
 });
 
@@ -2256,14 +2265,7 @@ var require_spy = __commonJS({
         return domainOk(aggregate, events);
       }
       if (command.type === COMMAND_TYPES.OPEN_SPY_VOTE) {
-        const host = assertHost(aggregate, actorUserId);
-        if (!host.ok) return host;
-        const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK]);
-        if (!check.ok) return check;
-        if (check.spy.speakerTurnId !== command.context.speakerTurnId) {
-          return fail(ERR.STALE_CONTEXT, "\u53D1\u8A00\u8F6E\u5DF2\u7ECF\u53D8\u5316");
-        }
-        return domainOk(aggregate, [openVote(aggregate, deps)]);
+        return fail(ERR.INVALID_TRANSITION, "\u5168\u90E8\u53D1\u8A00\u5B8C\u6210\u540E\u7CFB\u7EDF\u81EA\u52A8\u8FDB\u5165\u6295\u7968");
       }
       if (command.type === COMMAND_TYPES.SUBMIT_SPY_VOTE) {
         const check = assertSpy(aggregate, command.context, [WORKFLOW_STEP.SPY_VOTE]);
@@ -3528,7 +3530,7 @@ var require_room_projection = __commonJS({
       const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
       caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step) && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, "INVALID_TRANSITION");
-      caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(isHost && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step), "INVALID_TRANSITION");
+      caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(false, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
         alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
         "INVALID_TRANSITION"
@@ -3581,7 +3583,6 @@ var require_room_projection = __commonJS({
         if (isHalliLikeMode(session.mode)) return { name: "creativeSummary", params: {} };
         return { name: "spySettle", params: {} };
       }
-      // 已提交后的修改在 creativeSummary 原地完成，不再投影到 creativeInput。
       if (step === WORKFLOW_STEP.HALLI_CREATIVE && actorView.contributionStatus.submitted) {
         return { name: "creativeSummary", params: {} };
       }

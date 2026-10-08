@@ -263,9 +263,12 @@ function projectPublicView(aggregate) {
       voteStartedAt: spy.voteStartedAt == null ? null : spy.voteStartedAt,
       voteDeadlineAt: spy.voteStartedAt == null ? null : spy.voteStartedAt + SPY_VOTE_DURATION_MS,
       tieBreak: spy.tieBreak === true,
+      questionRound: spy.questionRound === true || session.workflow.step === WORKFLOW_STEP.SPY_QUESTION,
+      questionRoundUsed: spy.questionRoundUsed === true,
       lastResult: clone(spy.lastResult || null),
       winnerSide: spy.winnerSide || null,
-      reveal: session.workflow.step === WORKFLOW_STEP.SPY_SETTLED ? clone(spy.reveal || []) : []
+      // 结算后直至返回大厅都保持公开 reveal，避免 COMPLETED 瞬间清空对照表。
+      reveal: spy.winnerSide ? clone(spy.reveal || []) : []
     };
   }
   publicView.session = view;
@@ -407,9 +410,13 @@ function projectCapabilities(aggregate, actor) {
   const alive = !!(spy && actor && (spy.players || []).find((item) => item.memberId === actor.memberId && item.alive));
   caps[COMMAND_TYPES.START_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_INTRO, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.ADVANCE_SPY_SPEAKER] = capability(alive && spy
-    && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step)
+    && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK, WORKFLOW_STEP.SPY_QUESTION].includes(step)
     && spy.speakOrder[spy.currentSpeakerIndex] === actor.memberId, 'INVALID_TRANSITION');
-  caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(isHost && [WORKFLOW_STEP.SPY_SPEAK, WORKFLOW_STEP.SPY_TIE_SPEAK].includes(step), 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.OPEN_SPY_VOTE] = capability(false, 'INVALID_TRANSITION');
+  caps[COMMAND_TYPES.START_SPY_QUESTION_ROUND] = capability(
+    isHost && step === WORKFLOW_STEP.SPY_VOTE && spy && spy.questionRoundUsed !== true,
+    'INVALID_TRANSITION'
+  );
   caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
     alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
     'INVALID_TRANSITION'
@@ -445,6 +452,7 @@ function projectRoute(aggregate, actorView) {
     [WORKFLOW_STEP.HALLI_ACTIVITY]: 'halliGame', [WORKFLOW_STEP.HALLI_CREATIVE]: 'creativeInput',
     [WORKFLOW_STEP.HALLI_SUMMARY]: 'creativeSummary', [WORKFLOW_STEP.SPY_INTRO]: 'spyIntro',
     [WORKFLOW_STEP.SPY_SPEAK]: 'spySpeak', [WORKFLOW_STEP.SPY_TIE_SPEAK]: 'spySpeak',
+    [WORKFLOW_STEP.SPY_QUESTION]: 'spySpeak',
     [WORKFLOW_STEP.SPY_VOTE]: 'spyVote', [WORKFLOW_STEP.SPY_RESULT]: 'spyResult',
     [WORKFLOW_STEP.SPY_SETTLED]: 'spySettle'
   };

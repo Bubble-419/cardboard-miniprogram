@@ -49,6 +49,48 @@ function winnerLabel(side) {
   return '';
 }
 
+/**
+ * 结算页玩家-词语对照。服务端 reveal 用 nickName，页面模型可能已合并到 players。
+ */
+function buildSpyRevealPlayers(spyGame) {
+  const game = spyGame || {};
+  const players = Array.isArray(game.players) ? game.players : [];
+  const byMemberId = {};
+  players.forEach((player) => {
+    if (player && player.memberId) byMemberId[player.memberId] = player;
+  });
+
+  let source = [];
+  if (Array.isArray(game.reveal) && game.reveal.length) {
+    source = game.reveal;
+  } else if (Array.isArray(game.lastResult && game.lastResult.reveal) && game.lastResult.reveal.length) {
+    source = game.lastResult.reveal;
+  } else {
+    source = players.filter((player) => player && (player.role || player.word));
+  }
+
+  return source.map((item) => {
+    const player = (item && item.memberId && byMemberId[item.memberId]) || {};
+    const role = item.role || player.role || null;
+    const playerIndex = item.playerIndex != null
+      ? Number(item.playerIndex)
+      : (player.playerIndex != null ? Number(player.playerIndex) : null);
+    return {
+      memberId: item.memberId || player.memberId || null,
+      playerIndex,
+      name: item.name || item.nickName || player.name || player.nickName || '',
+      word: item.word || player.word || '',
+      role,
+      roleLabel: roleLabel(role),
+      alive: item.alive !== false && player.alive !== false
+    };
+  }).sort((a, b) => {
+    const left = a.playerIndex == null ? Number.MAX_SAFE_INTEGER : a.playerIndex;
+    const right = b.playerIndex == null ? Number.MAX_SAFE_INTEGER : b.playerIndex;
+    return left - right;
+  });
+}
+
 function pageForPhase(phase) {
   return SPY_PAGE[phase] || SPY_PAGE.intro;
 }
@@ -74,6 +116,7 @@ module.exports = {
   computeMsLeft,
   roleLabel,
   winnerLabel,
+  buildSpyRevealPlayers,
   pageForPhase,
   phaseForPage
 };

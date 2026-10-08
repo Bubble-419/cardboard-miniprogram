@@ -13,12 +13,7 @@
     wx:if="{{borderVariant === 'master' && displayMode !== 'expiring'}}"
     class="gct-master-frame"
     aria-hidden="true"
-  >
-    <view class="gct-master-corner gct-master-corner-tl"></view>
-    <view class="gct-master-corner gct-master-corner-tr"></view>
-    <view class="gct-master-corner gct-master-corner-br"></view>
-    <view class="gct-master-corner gct-master-corner-bl"></view>
-  </view>
+  ></view>
   <canvas
     wx:if="{{borderVariant === 'sound' && displayMode !== 'expiring'}}"
     type="2d"

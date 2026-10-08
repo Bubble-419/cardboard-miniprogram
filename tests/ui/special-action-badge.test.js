@@ -31,8 +31,11 @@ test('特殊行动卡统一使用 Master模式 / 反面随机拼 / 静默模式 
   assert.match(specialWxss, /\.special-mode-badge\s*\{/);
   assert.match(gameJs, /partnerMasterMode === true\s*\? 'master'/);
   assert.match(timerWxml, /borderVariant === 'master' \? 'gct-wrap-master'/);
-  assert.match(timerWxml, /class="gct-master-corner gct-master-corner-tl"/);
-  assert.match(timerWxss, /\.gct-wrap-master:not\(\.gct-wrap-expiring\)/);
-  assert.match(timerWxss, /@keyframes gct-master-sweep/);
+  assert.match(timerWxml, /class="gct-master-frame"/);
+  assert.doesNotMatch(timerWxml, /gct-master-corner/);
+  assert.match(timerWxss, /\.gct-wrap-master:not\(\.gct-wrap-expiring\)\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?border-radius:\s*28rpx;/);
+  assert.match(timerWxss, /\.gct-master-frame\s*\{[\s\S]*?border-radius:\s*28rpx;[\s\S]*?overflow:\s*hidden;/);
+  assert.doesNotMatch(timerWxss, /gct-master-corner/);
+  assert.doesNotMatch(timerWxss, /gct-master-glow|gct-master-sweep|gct-master-frame::(?:before|after)/);
   assert.doesNotMatch(timerWxss, /gct-rainbow/);
 });

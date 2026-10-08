@@ -65,7 +65,6 @@ Page(withPageInteractionLock({
     libraryCards: [],
     contentTab: 0,
     acting: false,
-    isHost: false,
     isCurrentSpeaker: false,
     currentSpeakerName: '',
     tieBreak: false,
@@ -147,13 +146,11 @@ Page(withPageInteractionLock({
           ? captureSpyCommandContext(result)
           : null;
         const members = result.members || [];
-        const isHost = result.isHost === true;
         const currentSpeakerSeat = spyGame && spyGame.speakOrder
           && spyGame.speakOrder[spyGame.currentSpeakerIndex];
         const currentSpeaker = members.find((member) => Number(member.playerIndex) === Number(currentSpeakerSeat));
         this.setData({
           avatarList: buildAvatarList(members),
-          isHost,
           isCurrentSpeaker: !!(currentSpeaker && currentSpeaker.isMe),
           currentSpeakerName: currentSpeaker && currentSpeaker.nickName || ''
         }, () => {
@@ -294,12 +291,6 @@ Page(withPageInteractionLock({
     });
   },
 
-  onStartVote() {
-    return runPageInteraction(this, () => this._startVote(), {
-      loadingText: '正在开始投票…'
-    });
-  },
-
   onFinishSpeak() {
     return runPageInteraction(this, () => this._finishSpeak(), {
       loadingText: '正在结束发言…'
@@ -326,29 +317,6 @@ Page(withPageInteractionLock({
     }
   },
 
-  async _startVote() {
-    if (!this.data.isHost || this.data.acting) return;
-    this.setData({ acting: true });
-    try {
-      const result = await callSpyAction('startVote', {
-        roomId: this.data.roomId,
-        context: this._spyCommandContext
-      });
-      if (result.ok !== true) {
-        const hint = result.errCode === 'DEPRECATED'
-          ? '请重新上传云函数 roomCommand 后再试'
-          : (result.errMsg || '操作失败');
-        wx.showToast({ title: hint, icon: 'none', duration: 2500 });
-        return;
-      }
-      bumpSpyRoomSession();
-    } catch (e) {
-      wx.showToast({ title: (e && e.errMsg) || '操作失败', icon: 'none' });
-    } finally {
-      if (this._pageAlive) this.setData({ acting: false });
-    }
-  },
-
   handleGoRoom() {
     return runPageInteraction(this, async () => {
       this._pageAlive = false;
@@ -365,6 +333,5 @@ Page(withPageInteractionLock({
   'onTapLibraryCard',
   'onCloseViewer',
   'onFinishSpeak',
-  'onStartVote',
   'handleGoRoom'
 ]));

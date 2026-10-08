@@ -19,11 +19,12 @@
   </view>
 
   <view class="section">
-    <view class="section-title">全员身份</view>
-    <view class="player-row" wx:for="{{revealPlayers}}" wx:key="playerIndex">
+    <view class="section-title">全员身份与词语</view>
+    <view wx:if="{{!revealPlayers.length}}" class="section-body">正在揭晓身份…</view>
+    <view class="player-row" wx:for="{{revealPlayers}}" wx:key="memberId">
       <view>
         <view class="player-name">{{item.name}}</view>
-        <view class="player-meta">{{item.word}}</view>
+        <view class="player-meta">词语：{{item.word}}</view>
       </view>
       <view class="player-meta">{{item.roleLabel}}{{item.alive ? '' : ' · 已出局'}}</view>
     </view>

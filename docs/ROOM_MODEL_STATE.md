@@ -269,7 +269,7 @@ facts.secrets[gameId:memberId]
 facts.votes[voteSessionId:memberId]
 ```
 
-密牌只存在权威 Facts 和对应成员的 Actor View。`reveal` 只有在最终结算后才进入公共模式状态。
+密牌只存在权威 Facts 和对应成员的 Actor View。`reveal` 在产生 `winnerSide` 后进入公共模式状态，并保留到返回大厅；结算页据此展示每名玩家的词语与身份对照。
 
 ### 设计问题事实与投影
 

@@ -329,9 +329,13 @@ test('Spy：发言、投票、平票、轮次结果、下一轮和结算均投�
 
   host = await h.snapshot('host');
   const gameId = host.view.session.publicModeState.gameId;
-  await runCommand(h, 'host', 'OPEN_SPY_VOTE', {
-    context: { sessionId, gameId, speakerTurnId: host.view.session.publicModeState.speakerTurnId }
-  });
+  while ((await h.snapshot('host')).view.session.workflow.step === 'SPY_SPEAK') {
+    host = await h.snapshot('host');
+    const state = host.view.session.publicModeState;
+    await runCommand(h, userForMember(host, state.currentSpeakerMemberId), 'ADVANCE_SPY_SPEAKER', {
+      context: { sessionId, gameId, speakerTurnId: state.speakerTurnId }
+    });
+  }
   await assertRoutes(h, { host: 'spyVote', u2: 'spyVote', u3: 'spyVote' }, 'Spy 投票');
 
   host = await h.snapshot('host');
@@ -374,10 +378,13 @@ test('Spy：发言、投票、平票、轮次结果、下一轮和结算均投�
   });
   await assertRoutes(h, { host: 'spySpeak', u2: 'spySpeak', u3: 'spySpeak' }, 'Spy 下一轮');
 
-  host = await h.snapshot('host');
-  await runCommand(h, 'host', 'OPEN_SPY_VOTE', {
-    context: { sessionId, gameId, speakerTurnId: host.view.session.publicModeState.speakerTurnId }
-  });
+  while ((await h.snapshot('host')).view.session.workflow.step === 'SPY_SPEAK') {
+    host = await h.snapshot('host');
+    const state = host.view.session.publicModeState;
+    await runCommand(h, userForMember(host, state.currentSpeakerMemberId), 'ADVANCE_SPY_SPEAKER', {
+      context: { sessionId, gameId, speakerTurnId: state.speakerTurnId }
+    });
+  }
   const cards = {};
   for (const userId of ['host', 'u2', 'u3']) {
     cards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;

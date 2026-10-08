@@ -11,9 +11,9 @@ const ELAPSED_COLOR = '#b0e0ae';
 const BORDER_RADIUS_RPX = 28;
 const EXPIRE_ANIM_MS = 2000;
 
-/** 静默边框：0–80 dB 走完整半周；40 dB 为黄绿阈值 */
+/** 静默边框：0–80 dB 走完整半周；50 dB 为告警阈值 */
 const SOUND_MAX_DB = 80;
-const SOUND_WARN_DB = 40;
+const SOUND_WARN_DB = 50;
 const SOUND_EASE_MS = 180;
 const SOUND_TICK_MS = 32;
 const SOUND_WARN_HOLD_MS = 700;
@@ -191,7 +191,7 @@ Component({
       value: ''
     },
     /**
-     * 声贝等级 0~1：1 ≈ 80 dB，0.5 ≈ 40 dB。
+     * 声贝等级 0~1：1 ≈ 80 dB，0.625 ≈ 50 dB（告警阈值）。
      * 由外部页面传入（发起者本地采样或轮询同步值）
      */
     soundLevel: {
@@ -643,8 +643,8 @@ Component({
     _stopSoundVisual() {
       this._soundStarting = false;
       this._soundToken = (this._soundToken || 0) + 1;
-      this._over40Since = 0;
-      this._under40Since = 0;
+      this._overWarnSince = 0;
+      this._underWarnSince = 0;
       if (this._soundTimer) {
         clearTimeout(this._soundTimer);
         this._soundTimer = null;
@@ -747,19 +747,19 @@ Component({
 
       const now = Date.now();
       if (db >= SOUND_WARN_DB) {
-        this._under40Since = 0;
-        if (!this._over40Since) this._over40Since = now;
-        const loud = now - this._over40Since >= SOUND_WARN_HOLD_MS;
+        this._underWarnSince = 0;
+        if (!this._overWarnSince) this._overWarnSince = now;
+        const loud = now - this._overWarnSince >= SOUND_WARN_HOLD_MS;
         if (loud !== this.data.soundTooLoud) {
           this.setData({ soundTooLoud: loud });
         }
       } else {
-        this._over40Since = 0;
-        if (!this._under40Since) this._under40Since = now;
-        // 稳定低于 40dB 即消标；此前要求 <38 会在 38–40 区间永远挂着“声音过大”
+        this._overWarnSince = 0;
+        if (!this._underWarnSince) this._underWarnSince = now;
+        // 稳定低于告警阈值即消标，不得再要求更低滞回阈值
         if (
           this.data.soundTooLoud
-          && now - this._under40Since >= SOUND_WARN_CLEAR_MS
+          && now - this._underWarnSince >= SOUND_WARN_CLEAR_MS
         ) {
           this.setData({ soundTooLoud: false });
         }

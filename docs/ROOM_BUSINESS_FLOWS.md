@@ -106,7 +106,7 @@ Room 在多个 Workshop Session 之间长期存在。Session 完成或取消后�
 | `HALLI_SUMMARY` | `creativeSummary` | `creativeSummary` | 任一成员修改自己的创意时，仍留在 `creativeSummary` 原地编辑 |
 | Halli / Gan Deng Yan `COMPLETED` | `creativeSummary` | `creativeSummary` | — |
 | `SPY_INTRO` | `spyIntro` | `spyIntro` | 只有 Host 可“开始游戏” |
-| `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 当前发言者可结束发言；Host 可开票 |
+| `SPY_SPEAK` / `SPY_TIE_SPEAK` | `spySpeak` | `spySpeak` | 全员可见当前发言人；当前发言者可结束发言；全员讲完后自动开票 |
 | `SPY_VOTE` | `spyVote` | `spyVote` | 仅存活且未投票成员可提交 |
 | `SPY_RESULT` | `spyResult` | `spyResult` | 任一本场参与者可推进下一轮 |
 | `SPY_SETTLED` | `spySettle` | `spySettle` | 只有 Host 可重开或结束场次 |
@@ -453,7 +453,7 @@ Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后�
 手势和动画均属于本地 UI 状态；无关 Event/Snapshot 不得重建输入节点或关闭键盘。
 
 静默模式的录音权限只在进入静默测声时通过运行时授权申请；拒绝后本页不重复弹出授权窗口。
-当前静默行动者使用本机麦克风判断 40dB 边框效果并广播瞬时声级；其他成员消费同一声级，保持外圈与声音过大提示一致，且只有
+当前静默行动者使用本机麦克风判断 50dB 边框效果并广播瞬时声级；其他成员消费同一声级，保持外圈与声音过大提示一致，且只有
 当前特殊行动玩家可以结束静默。
 
 ### 5.2 收尾裁决
@@ -535,7 +535,7 @@ flowchart LR
 
   INTRO -->|Host“开始游戏”<br/>START_SPY_GAME| SPEAK
   SPEAK -->|当前人“我已完成发言”<br/>ADVANCE_SPY_SPEAKER| SPEAK
-  SPEAK -->|全部讲完自动开票<br/>或 Host“开始投票”| VOTE
+  SPEAK -->|全部讲完自动开票| VOTE
   VOTE -->|最高票并列| TIE
   TIE -->|并列者讲完| VOTE
   VOTE -->|无胜负| RESULT
@@ -552,7 +552,7 @@ flowchart TD
   SECRET[为每名成员写入私密 Actor Event]
   ORDER[随机发言顺序]
   SPEAK[ADVANCE_SPY_SPEAKER]
-  OPEN[OPEN_SPY_VOTE<br/>或最后一人自动开票]
+  OPEN[最后一人讲完自动开票]
   SUBMIT[SUBMIT_SPY_VOTE]
   SHAPE{票型}
   TIE[并列者重新发言]
@@ -579,7 +579,7 @@ flowchart TD
 
 - 本人身份、词语和说明只在本人的 `actor.privateModeState`。
 - 公共 Event 不含密牌；每个成员的 Actor Event 单独扇出。
-- 中途淘汰只公开被淘汰者身份；`SPY_SETTLED` 才公开全部身份和词语。
+- 中途淘汰只公开被淘汰者身份；产生 `winnerSide` 后公开全部身份和词语，结算页展示每名玩家的词语与身份对照，直至返回大厅。
 - 个人投票选择不进入公共 View；公共 View 只包含进度与结算票型。
 - 投票截止由服务端时间裁决；迟到目标票按弃票记录。
 

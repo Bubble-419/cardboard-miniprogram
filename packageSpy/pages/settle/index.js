@@ -4,7 +4,7 @@ const {
   captureSpyCommandContext,
   goRoomPage,
   buildAvatarList,
-  roleLabel,
+  buildSpyRevealPlayers,
   winnerLabel,
   withSpyRefreshGuard,
   startSpyRoomPoll,
@@ -77,18 +77,7 @@ Page(withPageInteractionLock({
           ? captureSpyCommandContext(result)
           : null;
         const winnerSide = spyGame.winnerSide || '';
-        let revealPlayers = [];
-        if (Array.isArray(spyGame.reveal) && spyGame.reveal.length) {
-          revealPlayers = spyGame.reveal.map((p) => ({
-            ...p,
-            roleLabel: roleLabel(p.role)
-          }));
-        } else if (Array.isArray(spyGame.lastResult && spyGame.lastResult.reveal)) {
-          revealPlayers = spyGame.lastResult.reveal.map((p) => ({
-            ...p,
-            roleLabel: roleLabel(p.role)
-          }));
-        }
+        const revealPlayers = buildSpyRevealPlayers(spyGame);
 
         this.setData({
           avatarList: buildAvatarList(result.members || []),

@@ -54,6 +54,11 @@
   <view class="section" wx:else>
     <view class="section-body" style="text-align: center">你已出局，本轮无需投票，请等待结果公布</view>
   </view>
+
+  <view class="host-question-actions" wx:if="{{canStartQuestion}}">
+    <view class="secondary-btn {{acting ? 'dimmed' : ''}}" bindtap="onStartQuestion">开始提问</view>
+    <text class="host-question-hint">信息不足时可开启一轮提问，每人最多提一个问题</text>
+  </view>
 </view>
 
 <interaction-lock-layer

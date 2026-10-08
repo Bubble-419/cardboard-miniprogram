@@ -8,7 +8,8 @@ const {
   getDefaultSpyCount,
   MIN_PLAYERS,
   roleLabel,
-  winnerLabel
+  winnerLabel,
+  buildSpyRevealPlayers
 } = require('./spyGameState');
 const { openUrl } = require('../../utils/pageNavigate');
 const { goRoomPage } = require('../../utils/goRoomPage');
@@ -88,11 +89,11 @@ function spyCommandContextForAction(action, captured) {
   if (['startAssign', 'startGame', 'returnToLobby'].includes(action)) {
     return { sessionId: context.sessionId || '' };
   }
-  if (['advanceSpeak', 'finishSpeak', 'startVote'].includes(action)) {
+  if (['advanceSpeak', 'finishSpeak'].includes(action)) {
     return { sessionId: context.sessionId || '', gameId: context.gameId || '',
       speakerTurnId: context.speakerTurnId || '' };
   }
-  if (action === 'submitVote') {
+  if (['submitVote', 'startQuestion'].includes(action)) {
     return { sessionId: context.sessionId || '', gameId: context.gameId || '',
       voteSessionId: context.voteSessionId || '' };
   }
@@ -161,8 +162,8 @@ async function callSpyAction(action, data = {}) {
     case 'finishSpeak':
       type = 'ADVANCE_SPY_SPEAKER';
       break;
-    case 'startVote':
-      type = 'OPEN_SPY_VOTE';
+    case 'startQuestion':
+      type = 'START_SPY_QUESTION_ROUND';
       break;
     case 'submitVote':
       type = 'SUBMIT_SPY_VOTE';
@@ -360,6 +361,7 @@ module.exports = {
   getDefaultSpyCount,
   roleLabel,
   winnerLabel,
+  buildSpyRevealPlayers,
   buildSpyPageUrl,
   filterPlayerMembers,
   parseIsHostOption,

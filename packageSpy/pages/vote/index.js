@@ -62,7 +62,9 @@ Page(withPageInteractionLock({
     tieBreak: false,
     showTieBanner: false,
     tiedNamesText: '',
-    tieBannerTitle: '并列玩家需重新投票'
+    tieBannerTitle: '并列玩家需重新投票',
+    isHost: false,
+    canStartQuestion: false
   },
 
   onLoad(options) {

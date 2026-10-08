@@ -147,8 +147,8 @@ function spyPageState(view, session) {
   const revealByMember = {};
   (state.reveal || []).forEach((item) => { revealByMember[item.memberId] = item; });
   const phaseByStep = {
-    SPY_INTRO: 'intro', SPY_SPEAK: 'speak', SPY_TIE_SPEAK: 'speak', SPY_VOTE: 'vote',
-    SPY_RESULT: 'result', SPY_SETTLED: 'settle'
+    SPY_INTRO: 'intro', SPY_SPEAK: 'speak', SPY_TIE_SPEAK: 'speak', SPY_QUESTION: 'speak',
+    SPY_VOTE: 'vote', SPY_RESULT: 'result', SPY_SETTLED: 'settle'
   };
   const players = (state.players || []).map((player) => ({
     playerIndex: player.seatNoAtStart,
@@ -173,7 +173,18 @@ function spyPageState(view, session) {
     tallies
   };
   const actorSeat = view.actor && view.actor.seatNo;
-  const reveal = state.reveal || [];
+  const reveal = (state.reveal || []).map((item) => {
+    const seat = memberSeat(view, item.memberId);
+    return {
+      ...item,
+      playerIndex: seat,
+      name: item.nickName || item.name || '',
+      word: item.word || '',
+      role: item.role || null,
+      alive: item.alive !== false,
+      left: item.left === true
+    };
+  });
   const civilian = reveal.find((item) => item.role === 'civilian');
   const spy = reveal.find((item) => item.role === 'spy');
   return {
@@ -202,6 +213,8 @@ function spyPageState(view, session) {
       ? state.voteDeadlineAt - state.voteStartedAt
       : null,
     tieBreak: state.tieBreak,
+    questionRound: state.questionRound === true,
+    questionRoundUsed: state.questionRoundUsed === true,
     tiedPlayerIndexes: (result.tiedMemberIds || []).map((memberId) => memberSeat(view, memberId)),
     eliminatedPlayerIndex: memberSeat(view, result.eliminatedMemberId),
     lastResult: result,

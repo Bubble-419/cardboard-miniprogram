@@ -56,7 +56,7 @@ const EXPRESS_ANON_AVATAR = '/assets/home/user-avatar-default.png';
 const SILENT_HINT_LINES = [
   '选择全场静默',
   '将会获得5min的安静思考时间',
-  '期间所有玩家需要保持分贝40dB以下'
+  '期间所有玩家需要保持分贝50dB以下'
 ];
 
 const MASTER_HINT_LINES = [
@@ -330,7 +330,7 @@ Page(withPageInteractionLock({
       silentStartedAt: startedAt,
       silentTimerActive: true
     });
-    // 当前行动者本机采麦测 40dB；无麦时再回退到房主广播的瞬时信号
+    // 当前行动者本机采麦测 50dB；无麦时再回退到房主广播的瞬时信号
     this._startSoundLevelSampling();
     if (!this._canEndSilent()) return;
     // 兜底：边框倒计时 + 结束动效之后仍未回调时强制结束
@@ -945,7 +945,7 @@ Page(withPageInteractionLock({
           if (res.authSetting && res.authSetting['scope.record'] === false) {
             wx.showModal({
               title: '需要麦克风权限',
-              content: '静默模式要用本机麦克风监测是否低于 40dB',
+              content: '静默模式要用本机麦克风监测是否低于 50dB',
               confirmText: '去设置',
               success: (modal) => {
                 if (!modal.confirm) {
@@ -1015,7 +1015,7 @@ Page(withPageInteractionLock({
           }
           const rms = Math.sqrt(sumSq / samples.length);
           const dbfs = rms > 0 ? 20 * Math.log10(rms / 32768) : -100;
-          // 0 dBFS ≈ 94 dB SPL 经验映射，使 40 dB 落在半周中段
+          // 0 dBFS ≈ 94 dB SPL 经验映射到 0–80 dB 量程（告警阈值 50 dB）
           const approxDb = Math.min(90, Math.max(0, dbfs + 94));
           const lv = Math.min(1, approxDb / 80);
           this._soundEma = this._soundEma == null

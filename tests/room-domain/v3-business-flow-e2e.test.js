@@ -362,4 +362,9 @@ test('E2E Spy：分牌、逐人发言、投票、结算与完成', async () => {
   });
   assert.equal(state.snapshot.view.session.status, 'COMPLETED');
   assertScreen(state.snapshot, 'SPY_SETTLED', 'spySettle');
+  assert.equal(state.snapshot.view.session.publicModeState.reveal.length, 3);
+  assert.equal(
+    state.snapshot.view.session.publicModeState.reveal.every((item) => item.word && item.role && item.nickName),
+    true
+  );
 });

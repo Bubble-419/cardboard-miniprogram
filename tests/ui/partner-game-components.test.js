@@ -177,7 +177,7 @@ test('静默模式边缘对声音变化提供清晰的长度、粗细和光晕�
   assert.match(source, /SOUND_BAND_MAX_WIDTH_RPX - SOUND_BAND_MIN_WIDTH_RPX\) \* progress/);
   assert.match(source, /\{ w: lineWidth \* 4, a: 0\.2 \}/);
   assert.match(source, /alpha \*= 1 - 0\.55 \* fadeT \* fadeT;/);
-  assert.match(source, /const SOUND_WARN_DB = 40;/);
+  assert.match(source, /const SOUND_WARN_DB = 50;/);
   assert.match(source, /const SOUND_WARN_CLEAR_MS = 280;/);
   assert.doesNotMatch(source, /SOUND_WARN_DB\s*-\s*2/, '不得用更低滞回阈值卡住警告标签');
 });
@@ -218,20 +218,20 @@ function createSoundTimerHarness(overrides = {}) {
     _soundH: 300,
     _soundSmooth: overrides.soundSmooth,
     _soundTarget: overrides.soundTarget,
-    _over40Since: overrides.over40Since || 0,
-    _under40Since: overrides.under40Since || 0
+    _overWarnSince: overrides.overWarnSince || 0,
+    _underWarnSince: overrides.underWarnSince || 0
   };
   return component;
 }
 
-test('音量稳定低于 40dB 后声音过大提示应及时消失', () => {
+test('音量稳定低于 50dB 后声音过大提示应及时消失', () => {
   const now = Date.now();
   const component = createSoundTimerHarness({
     data: { soundTooLoud: true },
-    // 0.4875 ≈ 39 dB：旧逻辑要求 <38 才会消标，会永远挂着
-    soundSmooth: 0.4875,
-    soundTarget: 0.4875,
-    under40Since: now - 300
+    // 0.6125 ≈ 49 dB：稳定低于 50dB 即应消标
+    soundSmooth: 0.6125,
+    soundTarget: 0.6125,
+    underWarnSince: now - 300
   });
 
   component._tickSoundVisual();
@@ -242,9 +242,10 @@ test('音量再次稳定超标后声音过大提示应重新显示', () => {
   const now = Date.now();
   const component = createSoundTimerHarness({
     data: { soundTooLoud: false },
-    soundSmooth: 0.6,
-    soundTarget: 0.6,
-    over40Since: now - 800
+    // 0.65 ≈ 52 dB：超过 50dB 告警阈值
+    soundSmooth: 0.65,
+    soundTarget: 0.65,
+    overWarnSince: now - 800
   });
 
   component._tickSoundVisual();

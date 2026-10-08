@@ -202,22 +202,24 @@ test('Spy 平票加时只能投首轮并列成员', async () => {
   assert.equal((await h.snapshot('host')).view.actor.voteStatus.submitted, false);
 });
 
-test('Spy 房主强制开票必须绑定当前发言令牌', async () => {
+test('Spy 开票仅在全员发言完成后自动触发，房主不能手动开票', async () => {
   const { h, sessionId, gameId } = await seedSpy();
   let snapshot = await h.snapshot('host');
-  const oldSpeakerTurnId = snapshot.view.session.publicModeState.speakerTurnId;
-  const speakerUserId = userForMember(snapshot, snapshot.view.session.publicModeState.currentSpeakerMemberId);
-  await h.command(speakerUserId, 'ADVANCE_SPY_SPEAKER', {
-    context: { sessionId, gameId, speakerTurnId: oldSpeakerTurnId }
+  assert.equal(snapshot.view.actor.capabilities.OPEN_SPY_VOTE.allowed, false);
+  const rejected = await h.command('host', 'OPEN_SPY_VOTE', {
+    context: {
+      sessionId,
+      gameId,
+      speakerTurnId: snapshot.view.session.publicModeState.speakerTurnId
+    }
   });
-  snapshot = await h.snapshot('host');
-  const stale = await h.command('host', 'OPEN_SPY_VOTE', {
-    context: { sessionId, gameId, speakerTurnId: oldSpeakerTurnId }
-  });
-  assert.equal(stale.errCode, 'STALE_CONTEXT');
-  assert.equal((await h.command('host', 'OPEN_SPY_VOTE', {
-    context: { sessionId, gameId, speakerTurnId: snapshot.view.session.publicModeState.speakerTurnId }
-  })).ok, true);
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.errCode, 'INVALID_TRANSITION');
+  assert.equal((await h.snapshot('host')).view.session.workflow.step, 'SPY_SPEAK');
+
+  snapshot = await finishSpeaking(h, sessionId, gameId);
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_VOTE');
+  assert.ok(snapshot.view.session.publicModeState.voteSessionId);
 });
 
 test('Spy 中途淘汰只公开淘汰者身份，不公开任何词语或其他身份', async () => {
