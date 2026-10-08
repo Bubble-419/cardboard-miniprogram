@@ -2,6 +2,7 @@
   <view class="header-section">
     <player-top-bar
       maxVisible="{{5}}"
+      padLeftRpx="{{48}}"
       bind:goroom="handleGoRoom"
     />
     <view class="title-block">

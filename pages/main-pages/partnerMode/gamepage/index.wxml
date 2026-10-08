@@ -59,21 +59,20 @@
               <text class="closing-card-desc">请根据以下操作提示，补全符文</text>
               <view class="closing-divider"></view>
               <view class="closing-rune-grid closing-rune-grid-fill">
-                <view class="closing-rune-col">
-                  <view class="closing-rune-slot closing-rune-slot-top">
-                    <text class="closing-rune-label">延时符文</text>
+                <view
+                  class="closing-rune-slot"
+                  wx:for="{{closingRuneCards}}"
+                  wx:key="id"
+                >
+                  <view class="closing-rune-image-wrap">
+                    <image
+                      class="closing-rune-image"
+                      src="{{item.src}}"
+                      mode="aspectFit"
+                      lazy-load
+                    />
                   </view>
-                  <view class="closing-rune-slot closing-rune-slot-bottom">
-                    <text class="closing-rune-label">稳定态符文</text>
-                  </view>
-                </view>
-                <view class="closing-rune-col">
-                  <view class="closing-rune-slot closing-rune-slot-top">
-                    <text class="closing-rune-label">延时符文</text>
-                  </view>
-                  <view class="closing-rune-slot closing-rune-slot-bottom">
-                    <text class="closing-rune-label">属性类型符文</text>
-                  </view>
+                  <text class="closing-rune-label">{{item.label}}</text>
                 </view>
               </view>
             </view>

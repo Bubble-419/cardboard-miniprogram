@@ -61,18 +61,37 @@ test('身份卡使用上下翻 rotateX，不再使用左右翻 rotateY', () => {
   assert.match(markup, /catchtouchstart="onTouchStart"/);
   assert.match(markup, /catchtouchmove="onTouchMove"/);
   assert.match(markup, /catchtouchend="onTouchEnd"/);
-  assert.match(markup, /bindtap="onTap"/);
+  assert.match(markup, /catchtap="onTap"/);
 });
 
 test('点击与上滑前进、下滑后退切换卡面', () => {
-  const forward = createFlipCard({ data: { cardState: 'back', twoFaceOnly: true } });
-  assert.equal(forward._nextState('back'), 'assignedWord');
-  assert.equal(forward._prevState('assignedWord'), 'back');
+  const threeFace = createFlipCard({ data: { cardState: 'back' } });
+  assert.equal(threeFace._nextState('back'), 'assignedWord');
+  assert.equal(threeFace._nextState('assignedWord'), 'word1');
+  assert.equal(threeFace._nextState('word1'), 'back');
+  assert.equal(threeFace._prevState('assignedWord'), 'back');
+  assert.equal(threeFace._prevState('word1'), 'assignedWord');
+  assert.equal(threeFace._prevState('back'), 'word1');
+
+  const twoFace = createFlipCard({ data: { cardState: 'back', twoFaceOnly: true } });
+  assert.equal(twoFace._nextState('back'), 'assignedWord');
+  assert.equal(twoFace._prevState('assignedWord'), 'back');
 
   const library = createFlipCard({ data: { skipBack: true, cardState: 'assignedWord' } });
   assert.equal(library._nextState('assignedWord'), 'word1');
   assert.equal(library._prevState('word1'), 'assignedWord');
   assert.equal(library._prevState('assignedWord'), 'word1');
+});
+
+test('发言页我的词语卡使用三面循环并接入背面图', () => {
+  const markup = read('packageSpy/pages/speak/index.wxml');
+  const myCard = markup.match(/my-word-card-frame[\s\S]*?<\/view>\s*<\/view>\s*<\/view>/)[0];
+  assert.match(myCard, /<flip-word-card/);
+  assert.match(myCard, /backSrc="\{\{cardBackSrc\}\}"/);
+  assert.match(myCard, /assignedWordSrc="\{\{assignedWordSrc\}\}"/);
+  assert.match(myCard, /word1Src="\{\{word1Src\}\}"/);
+  assert.doesNotMatch(myCard, /twoFaceOnly/);
+  assert.doesNotMatch(myCard, /skipBack/);
 });
 
 test('竖直滑动超过阈值才翻牌，水平滑动不触发', () => {
@@ -134,6 +153,29 @@ test('滑动翻牌后忽略紧随其后的 tap，避免连翻', () => {
 
   component.onTap();
   assert.equal(flips.length, 1, '滑动后的 tap 不应再次翻牌');
+});
+
+test('小位移点击在 touchend 即翻面，不依赖系统 tap', () => {
+  const component = createFlipCard({
+    data: {
+      cardState: 'back',
+      twoFaceOnly: true,
+      assignedWordSrc: 'word.png'
+    }
+  });
+  const flips = [];
+  component._flipTo = (next, dir) => { flips.push({ next, dir }); };
+
+  component.onTouchStart({
+    changedTouches: [{ clientX: 120, clientY: 160 }]
+  });
+  component.onTouchEnd({
+    changedTouches: [{ clientX: 124, clientY: 163 }]
+  });
+  assert.deepEqual(flips, [{ next: 'assignedWord', dir: 'up' }]);
+
+  component.onTap();
+  assert.equal(flips.length, 1, 'touchend 已翻面后的 tap 不应连翻');
 });
 
 test('发言页与牌库提示支持点击或上下滑动，并禁用侧滑返回', () => {

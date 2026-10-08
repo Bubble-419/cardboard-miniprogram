@@ -2,12 +2,14 @@
  * 翻牌组件（三态循环，上下翻）
  * 默认：背面 back → 词语 assignedWord → 词语1 word1 → 背面 …
  * skipBack：跳过背面，词语 → 词语1 → 词语 …（牌库浏览用）
- * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1（发言页"我的词语卡"用）
+ * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1
  *
  * 交互：点击前进一态；上滑前进、下滑后退。手势在组件内 catch，避免误触页面返回。
  */
 
 const SWIPE_THRESHOLD_PX = 36;
+/** 小于该位移视为点击，避免微小 touchmove 导致系统不再派发 tap */
+const TAP_SLOP_PX = 14;
 /** 竖直位移需明显大于水平，才认定为上下翻手势 */
 const VERTICAL_AXIS_RATIO = 1.2;
 
@@ -179,14 +181,20 @@ Component({
       if (!t) return;
       const dx = t.clientX - start.x;
       const dy = t.clientY - start.y;
-      if (Math.abs(dy) < SWIPE_THRESHOLD_PX) return;
-      if (Math.abs(dy) < Math.abs(dx) * VERTICAL_AXIS_RATIO) return;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
 
-      this._guardTapAfterSwipe();
-      if (dy < 0) {
+      if (absDy >= SWIPE_THRESHOLD_PX && absDy >= absDx * VERTICAL_AXIS_RATIO) {
+        this._guardTapAfterSwipe();
+        if (dy < 0) this._requestFlip('next', 'up');
+        else this._requestFlip('prev', 'down');
+        return;
+      }
+
+      // 点击翻面：不依赖 bindtap（真机上轻微滑动常会取消 tap）
+      if (absDx <= TAP_SLOP_PX && absDy <= TAP_SLOP_PX) {
+        this._guardTapAfterSwipe();
         this._requestFlip('next', 'up');
-      } else {
-        this._requestFlip('prev', 'down');
       }
     },
 
@@ -196,6 +204,7 @@ Component({
     },
 
     onTap() {
+      // 兜底：部分环境仍会派发 tap；若 touchend 已处理则忽略，避免连翻
       if (this._swiped) {
         this._swiped = false;
         return;

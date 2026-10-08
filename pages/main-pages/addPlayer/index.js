@@ -1587,14 +1587,37 @@ Page(withPageInteractionLock({
 
     let navigated = false;
     try {
-      const result = await dispatchRoomCommand('BEGIN_MODE_SELECTION', {}, {}, { roomId });
-      if (!result || result.ok !== true) {
-        wx.showToast({ title: result && result.errMsg || '打开失败，请重试', icon: 'none' });
-        return result;
+      const session = getActiveRoomSession();
+      const view = session && session.getView && session.getView();
+      const caps = view && view.actor && view.actor.capabilities;
+      const canBegin = !!(caps && caps.BEGIN_MODE_SELECTION && caps.BEGIN_MODE_SELECTION.allowed === true);
+      const alreadySelecting = !!(view && view.route && view.route.name === 'brainstormMode')
+        || !!(caps && caps.CANCEL_MODE_SELECTION && caps.CANCEL_MODE_SELECTION.allowed === true);
+
+      let result;
+      if (canBegin) {
+        result = await dispatchRoomCommand('BEGIN_MODE_SELECTION', {}, {}, { roomId });
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '打开失败，请重试', icon: 'none' });
+          return result;
+        }
+      } else if (alreadySelecting) {
+        // 权威态已在选模式，只补导航，避免重复 BEGIN 被能力校验打成「当前不能执行该操作」。
+        result = { ok: true, reusedModeSelection: true };
+      } else {
+        const reason = caps && caps.BEGIN_MODE_SELECTION && caps.BEGIN_MODE_SELECTION.reason;
+        const errMsg = reason === 'HOST_REQUIRED'
+          ? '仅房主可操作'
+          : '当前不能执行该操作';
+        wx.showToast({ title: errMsg, icon: 'none' });
+        return { ok: false, errCode: reason || 'FORBIDDEN', errMsg };
       }
+
       this._stayOnLobby = false;
       clearSpyLobbyStay();
-      const navigation = await followRoomRouteAfterCommand(result, roomId);
+      const navigation = canBegin
+        ? await followRoomRouteAfterCommand(result, roomId)
+        : await followRoomRoute(session.getSnapshot(), roomId);
       navigated = !!(navigation && navigation.ok === true);
       if (!navigated) {
         wx.showToast({ title: '房间状态正在同步，请重试', icon: 'none' });

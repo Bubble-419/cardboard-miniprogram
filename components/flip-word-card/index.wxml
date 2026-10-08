@@ -7,7 +7,7 @@
   catchtouchmove="onTouchMove"
   catchtouchend="onTouchEnd"
   catchtouchcancel="onTouchCancel"
-  bindtap="onTap"
+  catchtap="onTap"
 >
   <view class="flip-card {{flipClass}}">
     <!-- 1. 背面 -->

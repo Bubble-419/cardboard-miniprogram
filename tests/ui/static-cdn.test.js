@@ -76,9 +76,26 @@ test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大�
   assert.doesNotMatch(homeWxml, /\/assets\/home\/empty-history-6f27f1\.webp/);
   assert.match(subAwaitJs, /WAIT_HERO_SRC/);
   assert.match(closingJs, /WAIT_HERO_SRC/);
+  assert.match(closingJs, /CLOSING_RUNE_CARDS/);
   assert.match(homeJs, /EMPTY_HISTORY_SRC/);
   assert.match(brainstormJs, /staticCdnUrl\('assets\/brainstormMode\/mode-cover-/);
   assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{key\}\.webp`\)/);
+});
+
+test('补全符文四张图按原比例接入，不拉伸', () => {
+  const { CLOSING_RUNE_CARDS } = require('../../utils/staticCdn');
+  const wxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const wxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+  assert.equal(CLOSING_RUNE_CARDS.length, 4);
+  CLOSING_RUNE_CARDS.forEach((card) => {
+    assert.match(card.src, /^\/assets\/partnerMode\/closing-runes\/.+\.jpg$/);
+    assert.ok(fs.existsSync(path.join(ROOT, card.src.replace(/^\//, ''))));
+  });
+  assert.match(wxml, /closingRuneCards/);
+  assert.match(wxml, /mode="aspectFit"/);
+  assert.match(wxss, /\.closing-rune-image-wrap/);
+  assert.match(wxss, /\.closing-rune-image/);
+  assert.doesNotMatch(wxss, /object-fit:\s*cover/);
 });
 
 test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {

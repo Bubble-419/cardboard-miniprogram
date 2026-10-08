@@ -3,6 +3,7 @@
     <player-top-bar
       avatarList="{{avatarList}}"
       maxVisible="{{5}}"
+      padLeftRpx="{{48}}"
       bind:goroom="handleGoRoom"
     />
     <view class="title-block">

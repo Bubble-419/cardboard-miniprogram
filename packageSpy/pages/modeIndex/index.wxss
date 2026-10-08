@@ -143,11 +143,22 @@
   flex-shrink: 0;
 }
 
+/* scroll-view 默认按父级 100% 宽，叠加 .section 左右 margin 会撑出视口导致右侧截断 */
 .section-rules {
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  width: calc(100% - 80rpx);
   margin-top: 8rpx;
   height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.rules-content {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* 非房主底栏：与主按钮同高的等待条，占满主操作位 */

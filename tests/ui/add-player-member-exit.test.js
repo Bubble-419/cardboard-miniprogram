@@ -179,6 +179,92 @@ test('非房主确认成员身份后才启动订阅，首次权威路由不会�
   assert.equal(followedInitialSnapshot, true);
 });
 
+test('已在模式选择态时再次点选择模式只补导航，不重复 BEGIN', async () => {
+  const definition = loadPageDefinition();
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  const originalGetCurrentPages = global.getCurrentPages;
+  const roomId = '12345678';
+  const commands = [];
+  const toasts = [];
+  let navigatedUrl = '';
+  let revision = 3;
+
+  const currentView = () => ({
+    session: null,
+    actor: {
+      capabilities: {
+        BEGIN_MODE_SELECTION: { allowed: false, reason: 'INVALID_TRANSITION' },
+        CANCEL_MODE_SELECTION: { allowed: true, reason: null }
+      }
+    },
+    route: { name: 'brainstormMode', params: { isHost: 1 } }
+  });
+
+  const roomSession = {
+    roomId,
+    getView: currentView,
+    getSnapshot: () => ({ ok: true, roomId, revision, view: currentView() }),
+    dispatch: async (command) => {
+      commands.push(command.type);
+      revision += 1;
+      return { ok: true, outcome: { committedThroughSeq: revision } };
+    }
+  };
+  const app = { globalData: { roomId, roomSession } };
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/addPlayer/index', data: { roomId } }];
+  global.wx = {
+    hideLoading() {},
+    showToast(options) { toasts.push(options && options.title); },
+    navigateTo(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    },
+    redirectTo(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    },
+    reLaunch(options) {
+      navigatedUrl = options.url;
+      if (typeof options.success === 'function') options.success({});
+    }
+  };
+
+  const page = {
+    ...definition,
+    data: {
+      ...definition.data,
+      roomId,
+      isHost: true,
+      memberCount: 2,
+      hasSelectedMode: false,
+      primaryBtnAction: 'selectMode'
+    },
+    _pageAlive: true,
+    _stayOnLobby: true,
+    setData(patch) {
+      Object.assign(this.data, patch);
+    },
+    _stopMemberPolling() {},
+    _startMemberPolling() {}
+  };
+
+  try {
+    const result = await page._goBrainstormMode();
+    assert.equal(result && result.ok, true);
+    assert.equal(result.reusedModeSelection, true);
+    assert.deepEqual(commands, [], '不应再发 BEGIN_MODE_SELECTION');
+    assert.equal(toasts.includes('当前不能执行该操作'), false);
+    assert.match(navigatedUrl, /brainstormMode/);
+    assert.equal(page._stayOnLobby, false);
+  } finally {
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+    global.getCurrentPages = originalGetCurrentPages;
+  }
+});
+
 test('房主退出当前模式后再次选择模式可以正常进入选择页', async () => {
   const definition = loadPageDefinition();
   const originalGetApp = global.getApp;

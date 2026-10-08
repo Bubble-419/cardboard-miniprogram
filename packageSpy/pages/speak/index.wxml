@@ -5,6 +5,7 @@
       <player-top-bar
         avatarList="{{avatarList}}"
         maxVisible="{{5}}"
+        padLeftRpx="{{0}}"
         bind:goroom="handleGoRoom"
       />
 
@@ -27,7 +28,6 @@
           <flip-word-card
             wx:if="{{cardReady}}"
             word="{{myWord}}"
-            twoFaceOnly="{{true}}"
             fullscreenOnAssigned="{{true}}"
             bind:fullscreen="onOpenIdentityCardFullscreen"
             backSrc="{{cardBackSrc}}"

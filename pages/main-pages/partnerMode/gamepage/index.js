@@ -113,7 +113,7 @@ const {
   runPageNavigation,
   withPageInteractionLock
 } = require('../../../../utils/pageInteractionLock');
-const { WAIT_HERO_SRC } = require('../../../../utils/staticCdn');
+const { WAIT_HERO_SRC, CLOSING_RUNE_CARDS } = require('../../../../utils/staticCdn');
 const {
   PARTNER_SHELL_SCREEN,
   projectPartnerRoomShell
@@ -137,6 +137,7 @@ Page(withPageInteractionLock({
     closingVoteModel: null,
     closingVoteSubmitting: false,
     waitHeroSrc: WAIT_HERO_SRC,
+    closingRuneCards: CLOSING_RUNE_CARDS,
     isHost: false,
     avatarList: [],
     currentPlayerIndex: 1,
