@@ -366,6 +366,47 @@ test('普通玩家从等待首位玩家原地进入游戏时同步显示设计�
   assert.equal(page.data.selectedProblemText, '如何改善团队协作体验？');
 });
 
+test('迟到的首次加载即使 resetTurnUi 也不能清空较新 View 的设计问题', async () => {
+  const page = makeGamePage();
+  const current = gameSnapshot(20);
+  current.selectedDesignProblem = { contributionId: 'problem-1', text: '如何改善团队协作？' };
+  await page._awaitRoomContext(current);
+  await page._awaitRoomContext(gameSnapshot(19), { resetTurnUi: true });
+  assert.equal(page.data.selectedProblemText, '如何改善团队协作？');
+  assert.equal(page._appliedRoomRevision, 20);
+});
+
+test('首次加载与订阅交错时，loadRoomData 的后续页头写入也不得覆盖新问题', async (t) => {
+  const page = makeGamePage();
+  const latest = gameSnapshot(20);
+  latest.selectedDesignProblem = { contributionId: 'problem-new', text: '最新设计问题' };
+  const older = gameSnapshot(19);
+  older.protocolVersion = 3;
+  const previousGetApp = global.getApp;
+  const previousWx = global.wx;
+  global.wx = { showToast() {}, nextTick(callback) { callback(); } };
+  global.getApp = () => ({ globalData: { roomSession: {
+    roomId: '12345678',
+    getState: () => ({ status: 'READY', roomId: '12345678', lastRequestCompletedAt: Date.now() }),
+    getSnapshot() {
+      // 模拟读取完成后、loadRoomData 恢复执行前，订阅先安装更高水位。
+      queueMicrotask(() => page._applyRoomContext(latest));
+      return older;
+    }
+  } } });
+  t.after(() => { global.getApp = previousGetApp; global.wx = previousWx; });
+  page._startStatePolling = () => {};
+  page.refreshScoreStatus = () => {};
+  page._syncRoundContentToRoom = async () => {};
+  page._checkProblemTextOverflow = () => {};
+  page._maybeShowHostStatementTip = () => {};
+  await page.loadRoomData();
+  assert.equal(page.data.selectedProblemText, '最新设计问题');
+  assert.equal(page._appliedRoomRevision, 20);
+  assert.equal(page._roomLoaded, true);
+  assert.equal(page._roomDataReady, true);
+});
+
 test('收尾存在疑问后可在同一页面实例恢复游戏屏幕', async () => {
   const page = makeGamePage();
   let applied = page._applyRoomContext(closingSnapshot());

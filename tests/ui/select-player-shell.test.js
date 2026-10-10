@@ -54,6 +54,52 @@ function waitingSnapshot(scene, revision = 5) {
   };
 }
 
+for (const endEvent of ['onTouchEnd', 'onTouchCancel']) {
+  test(`六人齐全后倒计时中第六人 ${endEvent} 必须取消抽取，重新凑齐后才选`, (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const app = { globalData: {} };
+    const previousGetApp = global.getApp;
+    global.getApp = () => app;
+    t.after(() => { global.getApp = previousGetApp; });
+    const page = makePage();
+    const touches = Array.from({ length: 6 }, (_, i) => ({
+      identifier: i + 1, clientX: 30 + i * 40, clientY: 300
+    }));
+    page.data.activeTouches = [];
+    page.data.members = touches.map((touch) => ({ playerIndex: touch.identifier }));
+    page.data.minPlayers = 6;
+    page.onTouchStart({ touches, changedTouches: touches });
+    t.mock.timers.tick(50);
+    assert.equal(page.data.isSelecting, true);
+    t.mock.timers.tick(200);
+    page[endEvent]({ touches: touches.slice(0, 5), changedTouches: [touches[5]] });
+    t.mock.timers.tick(500);
+    assert.equal(page.data.selectedPlayerIndex == null, true, '不得从剩余五人中抽取');
+    assert.equal(page.data.isSelecting, false);
+    assert.equal(app.globalData.selectedPlayer, undefined);
+    page.onTouchStart({ touches, changedTouches: [touches[5]] });
+    t.mock.timers.tick(50);
+    t.mock.timers.tick(499);
+    assert.equal(page.data.selectedPlayerIndex == null, true, '重新凑齐必须重新等待完整倒计时');
+    t.mock.timers.tick(1);
+    assert.ok(page.data.selectedPlayerIndex >= 1 && page.data.selectedPlayerIndex <= 6);
+  });
+}
+
+test('抽取倒计时期间切到后台应取消抽取，返回后重新收集触点', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const page = makePage();
+  page.data.activeTouches = [{ id: 1 }, { id: 2 }];
+  page.data.members = [{ playerIndex: 1 }, { playerIndex: 2 }];
+  page.data.minPlayers = 2;
+  page.startSelection();
+  page.onHide();
+  t.mock.timers.tick(1000);
+  assert.equal(page.data.selectedPlayerIndex == null, true);
+  assert.equal(page.data.isSelecting, false);
+  assert.deepEqual(page.data.activeTouches, []);
+});
+
 test('情境等待与选择首位等待共用 selectPlayer Setup Shell', async () => {
   const scenario = describeRoute({ name: 'subAwait', params: { scene: 'bg' } }, '12345678');
   const firstPlayer = describeRoute({ name: 'subAwait', params: { scene: 'player' } }, '12345678');

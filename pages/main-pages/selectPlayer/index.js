@@ -85,6 +85,10 @@ Page({
 
   onHide() {
     this._stopStatePolling();
+    if (!this.data.selectedPlayerIndex) {
+      this._cancelSelectionCountdown();
+      this.setData({ activeTouches: [], playerCount: 0 });
+    }
   },
 
   onUnload() {
@@ -280,6 +284,7 @@ Page({
       this._startLongPressTimer();
     } else {
       this._clearLongPressTimer();
+      if (count < minPlayers || minPlayers <= 0) this._cancelSelectionCountdown();
     }
   },
 
@@ -301,9 +306,19 @@ Page({
     }
   },
 
+  _cancelSelectionCountdown() {
+    this._clearLongPressTimer();
+    if (this.selectionTimer) clearTimeout(this.selectionTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    this.selectionTimer = null;
+    this.countdownTimer = null;
+    this.setData({ isSelecting: false, countdown: 0 });
+  },
+
   // 开始选择玩家
   startSelection() {
     if (this.data.isSelecting) return;
+    if (!(this.data.minPlayers > 0) || this.data.activeTouches.length < this.data.minPlayers) return;
     
     this.setData({
       isSelecting: true
@@ -314,6 +329,7 @@ Page({
     
     // 0.5 秒后随机选择
     this.selectionTimer = setTimeout(() => {
+      this.selectionTimer = null;
       this.selectRandomPlayer();
     }, 500);
   },
@@ -339,6 +355,12 @@ Page({
   // 随机选择玩家：被选中的位置播放水波纹；结束后显示几号玩家被选中 + 确认按钮
   selectRandomPlayer() {
     const { activeTouches, members } = this.data;
+    // 倒计时期间触点或参与人数可能变化，抽取前再次检查完整参与条件。
+    const required = members.length || Number(this.data.minPlayers);
+    if (!(required > 0) || activeTouches.length < required) {
+      this._cancelSelectionCountdown();
+      return;
+    }
     let currentPlayerIndex = 1;
     let selectedPosition = null;
 

@@ -2147,9 +2147,10 @@ Page(withPageInteractionLock({
       || (result.roomState && result.roomState.revision)
       || 0
     );
-    if (!shouldApplyRoomSnapshot(this._appliedRoomRevision, incomingRevision)
-      && !options.force && !options.resetTurnUi) {
+    if (!shouldApplyRoomSnapshot(this._appliedRoomRevision, incomingRevision)) {
       return {
+        skipped: true,
+        reason: 'STALE_REVISION',
         playerChanged: false,
         phaseChanged: false,
         roundChanged: false,
@@ -3004,13 +3005,21 @@ Page(withPageInteractionLock({
         ? selectedProblem.text
         : '';
 
-      await this._awaitRoomContext(result, {
+      const context = await this._awaitRoomContext(result, {
         fallbackPlayerIndex: this.data.currentPlayerIndex,
         resetTurnUi: true,
         onApplied: isHistoryReview
           ? () => this._finalizeHistoryReviewUi(selectedProblemText)
           : null
       });
+
+      // 首次读取与订阅可能交错完成；过期结果不能在归约后再次覆盖页头。
+      if (context.skipped || !shouldApplyRoomSnapshot(this._appliedRoomRevision, result.revision)) {
+        this._startStatePolling();
+        this._roomLoaded = true;
+        this._roomDataReady = true;
+        return;
+      }
 
       if (this.data.roomShellScreen !== PARTNER_SHELL_SCREEN.GAME) {
         this.setData({ isHost: result.isHost === true });
