@@ -106,11 +106,13 @@ test('小程序运行时协议包不依赖未上传的 workspace node_modules', 
 
 test('语音转写不再绕过 V3 协议写旧房间', () => {
   const source = fs.readFileSync(path.join(root, 'cloudfunctions/speechToText/src/entry.js'), 'utf8');
-  const client = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/utils/partnerRoundSpeech.js'), 'utf8');
+  const client = fs.readFileSync(path.join(root, 'modules/room-session/partner-speech.js'), 'utf8');
+  const audio = fs.readFileSync(path.join(root, 'modules/room-session/partner-audio.js'), 'utf8');
   assert.doesNotMatch(source, /ROOMS_COLLECTION|partnerCurrentRoundContent|collection\s*\(\s*['"]rooms['"]\s*\)/);
   assert.match(client, /dispatchRoomCommand\s*\(\s*['"]APPEND_ARTIFACT['"]/);
-  assert.match(client, /segmentContext\s*=\s*\{ roomId, sessionId: session\.sessionId, turnId: turn\.turnId, phase \}/);
-  assert.match(client, /workflowStep: context\.phase === ['"]discussion['"]/);
+  assert.match(audio, /context: Object\.freeze\(/);
+  assert.match(client, /workflowStep: context\.workflowStep/);
+  assert.doesNotMatch(client, /getActiveRoomSession|getView\(/);
 });
 
 test('历史回看按 sessionId 读取归档 View，不使用当前房间快照', () => {
@@ -143,9 +145,8 @@ test('扫码路径只在尚未加入时携带 fromScan，房间号主动加入�
 test('瞬时声贝信号必须绑定当前 sessionId 和 turnId', () => {
   const source = fs.readFileSync(path.join(root, 'cloudfunctions/roomSignal/src/entry.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(root, 'packages/room-cloudbase-adapter/index.js'), 'utf8');
-  const page = fs.readFileSync(path.join(root, 'pages/main-pages/partnerMode/specialMove/index.js'), 'utf8');
   assert.match(source, /app\.writeSignal\(\{ roomId, signalType, sessionId, turnId/);
   assert.match(adapter, /scope\.sessionId !== input\.sessionId/);
   assert.match(adapter, /scope\.turnId !== input\.turnId/);
-  assert.match(page, /data:\s*\{ roomId, sessionId, turnId, signalType:/);
+  // 客户端作用域绑定由 partner-silent-sound 运行时测试验证，不绑定页面内实现形状。
 });

@@ -212,20 +212,28 @@ Component({
   },
 
   lifetimes: {
+    attached() {
+      this._visualsAttached = true;
+      this._visualsActive = true;
+      this._visualRevision = (this._visualRevision || 0) + 1;
+    },
     ready() {
       this._syncDisplayMode();
       this._syncSoundVisual();
     },
     detached() {
-      this._stopLocalTimer();
-      this._clearExpireTimer();
-      this._clearCanvasResizeTimer();
-      this._stopSoundVisual();
+      this._visualsAttached = false;
+      this._pauseVisuals();
     }
   },
 
   pageLifetimes: {
     show() {
+      if (!this._visualsAttached) return;
+      this._pauseVisuals();
+      this._visualsActive = true;
+      // 保留隐藏前的最后一帧，但恢复时重新测量，不能复用旧键盘视口的位图。
+      this._ctx = null;
       // 页面重新可见时重置上一次生命周期留下的倒计时状态，
       // 防止旧的过期 startedAt 被 _hasNaturallyExpired 误判为需要触发震动
       this._timerWasActive = false;
@@ -233,23 +241,21 @@ Component({
       this._expiringTriggered = false;
       this._localCycleStartedAt = 0;
       this._clearExpireTimer();
+      if (this.data.displayMode === 'expiring') this.setData({ displayMode: 'idle' });
       this._syncDisplayMode();
-      this._restartLocalTimer();
       this._syncSoundVisual();
     },
     hide() {
       // 只停绘制，保持最后一帧视觉态，避免转场时卡片框布局突变
-      this._stopLocalTimer();
-      this._clearExpireTimer();
-      this._stopSoundVisual();
+      this._pauseVisuals();
     }
   },
 
   observers: {
     suppressCanvas(hidden) {
-      if (!hidden && this.data.displayMode === 'timer') {
+      if (!hidden && this._canRunVisuals() && this.data.displayMode === 'timer') {
         // 蒙层关闭后重建 canvas
-        setTimeout(() => this._initCanvas(), 16);
+        this._scheduleVisualTimeout('_canvasRevealTimer', () => this._initCanvas(), 16);
       }
     },
     'startedAt, timerActive, borderVariant'() {
@@ -282,38 +288,87 @@ Component({
   },
 
   methods: {
+    _canRunVisuals(revision = this._visualRevision) {
+      return this._visualsActive === true && revision === this._visualRevision;
+    },
+
+    _clearVisualTimeout(key) {
+      if (this[key] != null) clearTimeout(this[key]);
+      this[key] = null;
+    },
+
+    /** 组件拥有的延迟任务统一校验生命周期，不能跨 hide/show 或销毁后继续执行。 */
+    _scheduleVisualTimeout(key, callback, delay) {
+      this._clearVisualTimeout(key);
+      if (!this._canRunVisuals()) return;
+      const revision = this._visualRevision;
+      const timer = setTimeout(() => {
+        if (this[key] !== timer || !this._canRunVisuals(revision)) return;
+        this[key] = null;
+        callback();
+      }, delay);
+      this[key] = timer;
+    },
+
+    _pauseVisuals() {
+      this._visualsActive = false;
+      this._visualRevision = (this._visualRevision || 0) + 1;
+      this._clearCanvasResizeTimer();
+      this._clearVisualTimeout('_canvasRetryTimer');
+      this._clearVisualTimeout('_canvasRevealTimer');
+      this._stopLocalTimer();
+      this._clearExpireTimer();
+      this._stopSoundVisual();
+    },
+
     _clearCanvasResizeTimer() {
-      if (this._canvasResizeTimer) {
-        clearTimeout(this._canvasResizeTimer);
-        this._canvasResizeTimer = null;
-      }
+      // nextTick 不能取消，使用布局水位让旧回调和已在途查询一起失效。
+      this._canvasLayoutRevision = (this._canvasLayoutRevision || 0) + 1;
+      this._clearVisualTimeout('_canvasResizeTimer');
+      this._clearVisualTimeout('_canvasResizeTickTimer');
+    },
+
+    _canResizeCanvas() {
+      if (!this._canRunVisuals() || this._useCssBorder() || this.properties.suppressCanvas) return false;
+      // 静默卡片不启用普通倒计时，但仍有独立声浪画布需要按键盘视口校准。
+      return this.data.displayMode === 'timer'
+        || (this.properties.borderVariant === 'sound' && this.data.displayMode !== 'expiring');
     },
 
     _scheduleCanvasResize() {
       this._clearCanvasResizeTimer();
-      if (this.data.displayMode !== 'timer' || this._useCssBorder() || this.properties.suppressCanvas) return;
+      if (!this._canResizeCanvas()) return;
 
+      const revision = this._visualRevision;
+      const layoutRevision = this._canvasLayoutRevision;
       const resize = () => {
-        if (this.data.displayMode === 'timer') this._initCanvas();
+        if (!this._canRunVisuals(revision) || layoutRevision !== this._canvasLayoutRevision) return;
+        if (!this._canResizeCanvas()) return;
+        if (this.properties.borderVariant === 'sound') {
+          // 同一可见声浪只重建位图，保留连续超标时间，键盘变化不能清掉警告。
+          const overWarnSince = this._overWarnSince;
+          const underWarnSince = this._underWarnSince;
+          this._stopSoundVisual();
+          this._overWarnSince = overWarnSince;
+          this._underWarnSince = underWarnSince;
+          this._syncSoundVisual();
+        } else {
+          this._initCanvas();
+        }
       };
       if (typeof wx !== 'undefined' && typeof wx.nextTick === 'function') {
         wx.nextTick(resize);
       } else {
-        setTimeout(resize, 0);
+        this._scheduleVisualTimeout('_canvasResizeTickTimer', resize, 0);
       }
       // 部分真机的键盘视口会晚于 setData 完成布局，再校准一次，避免旧位图
       // 被 CSS 纵向压缩后把顶部和底部的倒计时线条一并压细。
-      this._canvasResizeTimer = setTimeout(() => {
-        this._canvasResizeTimer = null;
-        resize();
-      }, 260);
+      this._scheduleVisualTimeout('_canvasResizeTimer', resize, 260);
     },
 
     _clearExpireTimer() {
-      if (this._expireTimer) {
-        clearTimeout(this._expireTimer);
-        this._expireTimer = null;
-      }
+      this._clearVisualTimeout('_expireTimer');
+      this._clearVisualTimeout('_expireVibrationTimer');
     },
 
     _hasNaturallyExpired() {
@@ -330,6 +385,7 @@ Component({
     },
 
     _syncDisplayMode() {
+      if (!this._canRunVisuals()) return;
       const startedAt = this._resolveStartedAt();
       const timerOn = this.properties.timerActive === true && (startedAt > 0 || this.properties.loop === true);
 
@@ -392,6 +448,7 @@ Component({
     },
 
     _restartCountdownCycle() {
+      if (!this._canRunVisuals()) return;
       const startedAt = Date.now();
       this._localCycleStartedAt = startedAt;
       this._expiringTriggered = false;
@@ -412,10 +469,11 @@ Component({
       };
       // zeng~ zeng~：两下短震，间隔约半拍
       buzz();
-      setTimeout(buzz, 600);
+      this._scheduleVisualTimeout('_expireVibrationTimer', buzz, 600);
     },
 
     _triggerExpireAnimation() {
+      if (!this._canRunVisuals()) return;
       if (this._expiringTriggered || this.data.displayMode === 'expiring') return;
       // 没有真正跑过倒计时就到期 → 静默，不震（进页旧戳/竞态覆盖）
       if (!this._sawActiveCountdown) {
@@ -433,11 +491,12 @@ Component({
       this._hideBorder();
       this._vibrateExpireFeedback();
       this.setData({ displayMode: 'expiring' });
-      this._expireTimer = setTimeout(() => {
-        this._expireTimer = null;
+      const revision = this._visualRevision;
+      this._scheduleVisualTimeout('_expireTimer', () => {
         this._expiringTriggered = false;
         this._localCycleStartedAt = 0;
         this.setData({ displayMode: 'idle' }, () => {
+          if (!this._canRunVisuals(revision)) return;
           this.triggerEvent('timerexpire', {
             startedAt: this._getRawStartedAt(),
             loop: this.properties.loop === true
@@ -449,18 +508,30 @@ Component({
     },
 
     _initCanvas() {
-      if (this.data.displayMode !== 'timer') return;
-      if (this._useCssBorder() || this.properties.suppressCanvas) {
+      if (!this._canRunVisuals() || this.data.displayMode !== 'timer') return;
+      this._clearVisualTimeout('_canvasRetryTimer');
+      if (this._useCssBorder() || this.properties.suppressCanvas || this.properties.borderVariant === 'sound') {
         this._restartLocalTimer();
         return;
       }
 
+      const revision = this._visualRevision;
+      const layoutRevision = this._canvasLayoutRevision;
+      const queryRevision = this._canvasQueryRevision = (this._canvasQueryRevision || 0) + 1;
+      const isCurrent = () => this._canRunVisuals(revision)
+        && layoutRevision === this._canvasLayoutRevision && queryRevision === this._canvasQueryRevision
+        && this.data.displayMode === 'timer' && !this._useCssBorder()
+        && !this.properties.suppressCanvas && this.properties.borderVariant !== 'sound';
+      const retry = () => this._scheduleVisualTimeout('_canvasRetryTimer', () => {
+        if (isCurrent()) this._initCanvas();
+      }, 80);
       const query = this.createSelectorQuery().in(this);
       query.select('#gctCanvas')
         .fields({ node: true, size: true })
         .exec((res) => {
+          if (!isCurrent()) return;
           if (!res || !res[0] || !res[0].node) {
-            setTimeout(() => this._initCanvas(), 80);
+            retry();
             return;
           }
           const canvas = res[0].node;
@@ -470,7 +541,7 @@ Component({
           const height = res[0].height;
 
           if (!width || !height) {
-            setTimeout(() => this._initCanvas(), 80);
+            retry();
             return;
           }
 
@@ -522,9 +593,13 @@ Component({
 
     _restartLocalTimer() {
       this._stopLocalTimer();
-      if (this.data.displayMode !== 'timer') return;
-      const tick = () => this._drawBorder();
+      if (!this._canRunVisuals() || this.data.displayMode !== 'timer') return;
+      const revision = this._visualRevision;
+      const tick = () => {
+        if (this._canRunVisuals(revision)) this._drawBorder();
+      };
       tick();
+      if (!this._canRunVisuals(revision) || this.data.displayMode !== 'timer') return;
       this._localTimer = setInterval(tick, 200);
     },
 
@@ -607,6 +682,7 @@ Component({
     },
 
     _syncSoundVisual() {
+      if (!this._canRunVisuals()) return;
       if (this.properties.borderVariant === 'sound' && this.data.displayMode !== 'expiring') {
         this._startSoundVisual();
         return;
@@ -618,7 +694,7 @@ Component({
     },
 
     _startSoundVisual() {
-      if (this._soundTimer || this._soundStarting) return;
+      if (!this._canRunVisuals() || this._soundTimer || this._soundStarting) return;
       this._soundStarting = true;
       this._soundToken = (this._soundToken || 0) + 1;
       const token = this._soundToken;
@@ -627,8 +703,8 @@ Component({
       );
       if (this._soundSmooth == null) this._soundSmooth = this._soundTarget;
       this._ensureSoundCanvas(() => {
-        this._soundStarting = false;
         if (token !== this._soundToken) return;
+        this._soundStarting = false;
         if (this.properties.borderVariant !== 'sound') return;
         const tick = () => {
           if (token !== this._soundToken) return;
@@ -645,6 +721,7 @@ Component({
       this._soundToken = (this._soundToken || 0) + 1;
       this._overWarnSince = 0;
       this._underWarnSince = 0;
+      this._clearVisualTimeout('_soundCanvasRetryTimer');
       if (this._soundTimer) {
         clearTimeout(this._soundTimer);
         this._soundTimer = null;
@@ -654,7 +731,8 @@ Component({
     },
 
     _ensureSoundCanvas(done) {
-      if (this.properties.borderVariant !== 'sound') {
+      if (!this._canRunVisuals() || this.properties.borderVariant !== 'sound'
+        || this.data.displayMode === 'expiring') {
         this._soundStarting = false;
         return;
       }
@@ -662,16 +740,20 @@ Component({
         if (done) done();
         return;
       }
+      const revision = this._visualRevision;
+      const token = this._soundToken;
+      const isCurrent = () => this._canRunVisuals(revision) && token === this._soundToken
+        && this.properties.borderVariant === 'sound' && this.data.displayMode !== 'expiring';
+      const retry = () => this._scheduleVisualTimeout('_soundCanvasRetryTimer', () => {
+        if (isCurrent()) this._ensureSoundCanvas(done);
+      }, 80);
       const query = this.createSelectorQuery().in(this);
       query.select('#gctSoundCanvas')
         .fields({ node: true, size: true })
         .exec((res) => {
-          if (this.properties.borderVariant !== 'sound') {
-            this._soundStarting = false;
-            return;
-          }
+          if (!isCurrent()) return;
           if (!res || !res[0] || !res[0].node) {
-            setTimeout(() => this._ensureSoundCanvas(done), 80);
+            retry();
             return;
           }
           const canvas = res[0].node;
@@ -680,7 +762,7 @@ Component({
           const width = res[0].width;
           const height = res[0].height;
           if (!width || !height) {
-            setTimeout(() => this._ensureSoundCanvas(done), 80);
+            retry();
             return;
           }
           canvas.width = Math.floor(width * dpr);
@@ -696,7 +778,7 @@ Component({
     },
 
     _tickSoundVisual() {
-      if (this.properties.borderVariant !== 'sound' || this.data.displayMode === 'expiring') {
+      if (!this._canRunVisuals() || this.properties.borderVariant !== 'sound' || this.data.displayMode === 'expiring') {
         this._stopSoundVisual();
         return;
       }

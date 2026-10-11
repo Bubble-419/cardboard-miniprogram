@@ -233,6 +233,8 @@ function createSoundTimerHarness(overrides = {}) {
     _overWarnSince: overrides.overWarnSince || 0,
     _underWarnSince: overrides.underWarnSince || 0
   };
+  // 合并后的组件有可见生命周期门禁；真实挂载后才允许消费声级与告警时间。
+  definition.lifetimes.attached.call(component);
   return component;
 }
 
@@ -278,7 +280,8 @@ test('键盘缩短卡片时按实际尺寸重建倒计时画布', () => {
   assert.ok(definition.properties.layoutKey);
   assert.equal(typeof definition.observers.layoutKey, 'function');
   assert.match(source, /layoutKey\(\)\s*\{\s*this\._scheduleCanvasResize\(\);/);
-  assert.match(source, /this\._canvasResizeTimer\s*=\s*setTimeout/);
+  // 位图尺寸与异步离页行为由 game-card-timer-lifecycle.test.js 执行真实组件方法验证。
+  assert.match(source, /_scheduleVisualTimeout\('_canvasResizeTimer', resize, 260\)/);
 });
 
 test('Partner 头像裁切层和圆环使用明确的共同圆心', () => {

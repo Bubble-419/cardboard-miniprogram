@@ -156,7 +156,8 @@ test('模式选择代次阻止旧选择页启动新场次', async () => {
   await h.command('host', 'BEGIN_MODE_SELECTION');
   snapshot = await h.snapshot('host');
   const secondRevision = snapshot.view.room.modeSelectionRevision;
-  assert.equal(secondRevision, 2);
+  // 取消与重新进入均产生新代次，旧页面不能复用任一阶段的令牌。
+  assert.equal(secondRevision, firstRevision + 2);
 
   const stale = await h.command('host', 'START_WORKSHOP_SESSION', {
     context: { modeSelectionRevision: firstRevision },

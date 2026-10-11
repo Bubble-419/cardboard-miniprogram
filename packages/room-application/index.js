@@ -229,6 +229,22 @@ function createRoomApplication(repo, options) {
     }
   }
 
+  /** 仅借用同一房间、同一成员的续租；旧 Receipt 不得污染重入后的成员投影。 */
+  function activityForMember(roomId, memberId, actorContext, activity) {
+    if (!activity) return touchActivity(roomId, memberId, actorContext);
+    return activity.roomId === roomId && activity.memberId === memberId
+      ? activity.promise : Promise.resolve(null);
+  }
+
+  /** 已授权分页读取与辅助续租并行，读取失败也不能遗留未完成的云端写入。 */
+  async function readWithActivity(roomId, memberId, actorContext, read) {
+    const [result] = await Promise.allSettled([
+      Promise.resolve().then(read), touchActivity(roomId, memberId, actorContext)
+    ]);
+    if (result.status === 'rejected') throw result.reason;
+    return result.value;
+  }
+
   function signalScopeFromSession(aggregate) {
     if (!aggregate || !aggregate.room || !aggregate.currentSession) return null;
     const session = aggregate.currentSession;
@@ -316,15 +332,20 @@ function createRoomApplication(repo, options) {
     return okResult({ roomId: found.roomId, membershipId: found.memberId });
   }
 
-  async function projectSnapshot(roomId, actorContext, aggregate, touchedPromise) {
+  async function projectSnapshot(roomId, actorContext, aggregate, activity) {
     const actorUserId = actorContext && actorContext.userId;
     const auth = authorizeRoomRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     const [rawEphemeral, touched] = await Promise.all([
       ephemeral(roomId, aggregate),
-      touchedPromise || touchActivity(roomId, auth.member.memberId, actorContext)
+      activityForMember(roomId, auth.member.memberId, actorContext, activity)
     ]);
-    const projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
+    return snapshotFromAggregate(roomId, actorUserId, aggregate, mergeTouchedPresence(rawEphemeral, touched));
+  }
+
+  function snapshotFromAggregate(roomId, actorUserId, aggregate, projectedEphemeral) {
+    const auth = authorizeRoomRead(aggregate, actorUserId);
+    if (!auth.ok) return auth;
     return okResult({
       protocolVersion: PROTOCOL_VERSION,
       roomId,
@@ -339,11 +360,27 @@ function createRoomApplication(repo, options) {
   }
 
   async function readSnapshot(roomId, actorContext) {
+    return snapshotWithActivity(roomId, actorContext);
+  }
+
+  async function snapshotWithActivity(roomId, actorContext, activity) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
     const aggregate = await repo.readAggregate(roomId);
-    return projectSnapshot(roomId, actorContext, aggregate);
+    return projectSnapshot(roomId, actorContext, aggregate, activity);
+  }
+
+  /** 可再生公共媒体只需成员权限，不应加载 Session/Facts 或重建 Member View。 */
+  async function readRoomAccess(roomId, actorContext) {
+    const actorUserId = actorContext && actorContext.userId;
+    if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+    if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
+    const room = await repo.readRoom(roomId);
+    const auth = authorizeRoomRead(room ? { room } : null, actorUserId);
+    if (!auth.ok) return auth;
+    await touchActivity(roomId, auth.member.memberId, actorContext);
+    return okResult({ role: auth.member.memberId === room.hostMemberId ? 'HOST' : 'MEMBER' });
   }
 
   async function writeSignal(input, actorContext) {
@@ -432,16 +469,16 @@ function createRoomApplication(repo, options) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
-    const aggregate = await repo.readAggregate(roomId);
-    const auth = authorizeRoomRead(aggregate, actorUserId);
+    // 列表只依赖 Room 成员权限，不必读取当前场次的全部 Facts。
+    const room = await repo.readRoom(roomId);
+    const auth = authorizeRoomRead(room ? { room } : null, actorUserId);
     if (!auth.ok) return auth;
-    await touchActivity(roomId, auth.member.memberId, actorContext);
     if (typeof repo.listSessions !== 'function') return fail(ERR.DEPENDENCY_UNAVAILABLE);
     const limit = Math.min(50, Math.max(1, Number(requestOptions && requestOptions.limit) || 20));
-    const rows = await repo.listSessions(roomId, {
+    const rows = await readWithActivity(roomId, auth.member.memberId, actorContext, () => repo.listSessions(roomId, {
       limit,
       beforeOrdinal: requestOptions && requestOptions.beforeOrdinal
-    });
+    }));
     const hasMore = rows.length > limit;
     const selected = rows.slice(0, limit);
     const sessions = selected.map((session) => ({
@@ -485,14 +522,14 @@ function createRoomApplication(repo, options) {
     const auth = authorizeSessionRead(aggregate, actorUserId);
     if (!auth.ok) return auth;
     const liveMember = memberByUserId(aggregate.room, actorUserId);
-    await touchActivity(roomId, liveMember && liveMember.memberId, actorContext);
     const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || 100));
     const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
     const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === '' ? null : Number(rawBeforeSeq);
     if (beforeSeq != null && (!Number.isInteger(beforeSeq) || beforeSeq < 1)) {
       return fail(ERR.INVALID_ARGUMENT, 'beforeSeq 必须是正整数');
     }
-    const rows = await repo.listMessages(roomId, sessionId, { limit, beforeSeq });
+    const rows = await readWithActivity(roomId, liveMember && liveMember.memberId, actorContext,
+      () => repo.listMessages(roomId, sessionId, { limit, beforeSeq }));
     const hasMore = rows.length > limit;
     const selected = rows.slice(0, limit).map((item) => ({
       messageId: item.messageId,
@@ -517,6 +554,10 @@ function createRoomApplication(repo, options) {
   }
 
   async function sync(roomId, afterSeq, actorContext, requestOptions) {
+    return syncWithActivity(roomId, afterSeq, actorContext, requestOptions);
+  }
+
+  async function syncWithActivity(roomId, afterSeq, actorContext, requestOptions, activity) {
     const actorUserId = actorContext && actorContext.userId;
     if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
     if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, 'roomId 必须是 8 位数字');
@@ -534,10 +575,11 @@ function createRoomApplication(repo, options) {
       eventSchemaVersion: EVENT_SCHEMA_VERSION,
       afterSeq: baseSeq, throughSeq: baseSeq, roomCurrentSeq: currentSeq, hasMore: false,
       delivery: 'EVENTS', events: [], ephemeral: {}, serverTime: now() };
-    const activityPromise = touchActivity(roomId, auth.member.memberId, actorContext);
+    const activityPromise = activityForMember(roomId, auth.member.memberId, actorContext, activity);
     const inlineSnapshot = async () => {
       const aggregate = await repo.readAggregate(roomId);
-      const snapshot = await projectSnapshot(roomId, actorContext, aggregate, activityPromise);
+      const snapshot = await projectSnapshot(roomId, actorContext, aggregate,
+        { roomId, memberId: auth.member.memberId, promise: activityPromise });
       if (!snapshot.ok) return snapshot;
       return okResult({ protocolVersion: PROTOCOL_VERSION, viewSchemaVersion: VIEW_SCHEMA_VERSION,
         eventSchemaVersion: EVENT_SCHEMA_VERSION, delivery: 'SNAPSHOT', snapshot });
@@ -609,6 +651,7 @@ function createRoomApplication(repo, options) {
       presenceMs: 0,
       syncMs: 0
     };
+    let activity;
     try {
       const actorUserId = actorContext && actorContext.userId;
       if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
@@ -692,19 +735,21 @@ function createRoomApplication(repo, options) {
       const receipt = transaction.receipt;
       metrics.status = receipt.accepted ? 'ACCEPTED' : 'REJECTED';
       const presenceStartedAt = performanceNow();
-      try {
-        await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
-      } finally {
-        metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
-      }
+      const departed = receipt.accepted && [COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type);
+      // 事务已经提交：续租与响应同步准备可重叠，返回前仍须等待续租结束。
+      activity = { roomId: receipt.activityRoomId, memberId: receipt.memberId,
+        promise: (departed ? Promise.resolve(null)
+          : touchActivity(receipt.activityRoomId, receipt.memberId, actorContext)).finally(() => {
+          metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
+        }) };
       if (!receipt.accepted) {
         const rejected = { ...receipt.error, commandId: envelope.commandId };
         if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
           const syncStartedAt = performanceNow();
           metrics.syncSource = 'QUERY';
           try {
-            const catchup = await sync(commandRoomId, envelope.knownSeq,
-              { ...actorContext, touchPresence: false }).catch(() => null);
+            const catchup = await syncWithActivity(commandRoomId, envelope.knownSeq,
+              { ...actorContext, touchPresence: false }, undefined, activity).catch(() => null);
             if (catchup && catchup.ok) rejected.sync = catchup;
           } finally {
             metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
@@ -715,6 +760,25 @@ function createRoomApplication(repo, options) {
       const outcome = receipt.outcome;
       const response = okResult({ commandId: envelope.commandId, outcome,
         traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}` });
+      if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
+        const syncStartedAt = performanceNow();
+        try {
+          // 新命令复用已提交聚合；回执不保存私有 View，重放时必须重新授权并读取当前状态。
+          const committed = !transaction.replayed && transaction.aggregate;
+          metrics.syncSource = committed ? 'INLINE_SNAPSHOT' : 'QUERY';
+          const snapshot = committed
+            ? snapshotFromAggregate(outcome.roomId, actorUserId,
+              { ...committed, minAvailableSeq: committed.room.eventSeq },
+              { stale: { presence: true, signals: true } })
+            : await snapshotWithActivity(outcome.roomId, { ...actorContext, touchPresence: false }, activity);
+          if (snapshot.ok) response.snapshot = snapshot;
+        } catch (syncError) {
+          // 已提交结果不可变；客户端在附带 Snapshot 不可用时执行普通权威恢复。
+          metrics.syncSource = 'FAILED';
+        } finally {
+          metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+        }
+      }
       if (![COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM,
         COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type)) {
         const syncStartedAt = performanceNow();
@@ -728,8 +792,8 @@ function createRoomApplication(repo, options) {
             serverTime: now()
           });
           metrics.syncSource = attached ? 'INLINE_EVENTS' : 'QUERY';
-          response.sync = attached || await sync(outcome.roomId, envelope.knownSeq,
-            { ...actorContext, touchPresence: false });
+          response.sync = attached || await syncWithActivity(outcome.roomId, envelope.knownSeq,
+            { ...actorContext, touchPresence: false }, undefined, activity);
         } catch (syncError) {
           metrics.syncSource = 'FAILED';
           // Command 已原子提交；附带同步失败不能把成功伪装成写失败，客户端按下一轮正常同步恢复。
@@ -742,6 +806,8 @@ function createRoomApplication(repo, options) {
       metrics.status = 'ERROR';
       throw error;
     } finally {
+      // 包括内联响应及同步失败分支，禁止响应返回后继续写 Presence。
+      if (activity) await activity.promise;
       if (typeof appOptions.onCommandMetrics === 'function') {
         const completed = { ...metrics, totalMs: Math.max(0, performanceNow() - startedAt) };
         try {
@@ -753,7 +819,7 @@ function createRoomApplication(repo, options) {
     }
   }
 
-  return { executeCommand, readCurrentRoom, readSnapshot, readSessionSnapshot,
+  return { executeCommand, readCurrentRoom, readSnapshot, readRoomAccess, readSessionSnapshot,
     readHistory, readLeaderboard, readMessages, sync, writeSignal };
 }
 

@@ -76,7 +76,8 @@ test('gamepage 首屏读取统一经过 RoomSession，由请求静默窗口合�
   assert.match(source, /emitCurrent:\s*false/);
   assert.match(source, /await this\._ensureSharedRoundTimerOnEnter\(\)/);
   assert.match(source, /getRoomPageSnapshot\(this\.data\.roomId, \{ refresh: true \}\)/);
-  assert.match(source, /await this\._syncRoundSpeech\(\)/);
+  assert.match(source, /this\._syncPartnerAudio\(\)/);
+  assert.doesNotMatch(source, /await this\._syncPartnerAudio|\.isActive\(/);
   assert.match(source, /await this\._syncRoundContentToRoom\(\)/);
   assert.match(source, /await this\._refreshInspirationCount\(\)/);
 });

@@ -78,7 +78,7 @@ function assertBack(snapshot, commandType, after = 'FOLLOW_ROUTE') {
   assert.equal(back.commandType, commandType);
   assert.equal(back.after, after);
   if (commandType === 'CANCEL_MODE_SELECTION') {
-    assert.deepEqual(back.context, {});
+    assert.deepEqual(back.context, { modeSelectionRevision: snapshot.view.room.modeSelectionRevision });
     return;
   }
   assert.equal(back.context.sessionId, snapshot.view.session.sessionId);

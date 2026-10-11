@@ -2,7 +2,7 @@
 
 const PROTOCOL_VERSION = 3;
 const SCHEMA_VERSION = 7;
-const VIEW_SCHEMA_VERSION = 16;
+const VIEW_SCHEMA_VERSION = 17;
 const EVENT_SCHEMA_VERSION = 6;
 const MAX_INCREMENTAL_SYNC_EVENTS = 25;
 const MAX_SEATS = 6;
@@ -154,6 +154,8 @@ const ERR_MSG = Object.freeze({
 });
 
 const COMMAND_CONTEXT = Object.freeze({
+  BEGIN_MODE_SELECTION: ['modeSelectionRevision'],
+  CANCEL_MODE_SELECTION: ['modeSelectionRevision'],
   START_WORKSHOP_SESSION: ['modeSelectionRevision'],
   SET_SCENARIO: ['sessionId', 'workflowStep', 'workflowRevision'],
   SUBMIT_DESIGN_PROBLEM: ['sessionId', 'workflowRevision'],
@@ -586,6 +588,8 @@ function validProjectedBack(back) {
   if (expectedKeys.includes('sessionId') && !isNonEmptyString(back.context.sessionId)) return false;
   if (expectedKeys.includes('workflowRevision')
     && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
+  if (expectedKeys.includes('modeSelectionRevision')
+    && (!Number.isInteger(back.context.modeSelectionRevision) || back.context.modeSelectionRevision < 0)) return false;
   const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION
     ? 'OPEN_MODE_PICKER'
     : 'FOLLOW_ROUTE';

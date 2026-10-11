@@ -7,7 +7,8 @@ let ackedKey = '';
 let modalShowing = false;
 
 function getTiePromptKey(spyGame) {
-  if (!spyGame || spyGame.tieBreak !== true) return '';
+  // 提问仍保留加时投票范围，但不是新的平票加时，不能因发言计时重置再次提示。
+  if (!spyGame || spyGame.tieBreak !== true || spyGame.questionRound === true) return '';
   const last = spyGame.lastResult || {};
   if (!last.tied) return '';
   const ids = Array.isArray(last.tiedIndexes)

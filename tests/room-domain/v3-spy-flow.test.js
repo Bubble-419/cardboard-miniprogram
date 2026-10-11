@@ -4,6 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHarness } = require('../helpers/room-v3');
 const { reduceCommand } = require('@cardboard/room-domain');
+const { applyProjectedEvent } = require('@cardboard/room-projection');
+const { projectPageSnapshot } = require('../../modules/room-session/page-model');
+const { isTieReturnPending, markTiePromptAcked } = require('../../packageSpy/utils/spyTiePrompt');
 
 async function seedSpy(playerCount = 3) {
   const h = createHarness({ wordPairPicker: () => ({ id: 'fixed', civilianWord: '苹果', civilianBlurb: '水果', spyWord: '梨', spyBlurb: '另一种水果' }) });
@@ -200,6 +203,50 @@ test('Spy 平票加时只能投首轮并列成员', async () => {
   assert.equal(invalid.ok, false);
   assert.equal(invalid.errCode, 'INVALID_ARGUMENT');
   assert.equal((await h.snapshot('host')).view.actor.voteStatus.submitted, false);
+});
+
+test('Spy 平票加时后开启提问不重复提示平票，新的真实平票仍需确认', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  const users = ['host', 'u2', 'u3'];
+  const hostId = (await h.snapshot('host')).view.actor.memberId;
+  const u2Id = (await h.snapshot('u2')).view.actor.memberId;
+  const pageState = (view) => projectPageSnapshot(view).roomState.spyGame;
+  async function castTie() {
+    const snapshot = await finishSpeaking(h, sessionId, gameId);
+    const context = { sessionId, gameId, voteSessionId: snapshot.view.session.publicModeState.voteSessionId };
+    for (const [userId, payload] of [
+      ['host', { targetMemberId: u2Id }],
+      ['u2', { targetMemberId: hostId }],
+      ['u3', { abstain: true }]
+    ]) {
+      assert.equal((await h.command(userId, 'SUBMIT_SPY_VOTE', { context, payload })).ok, true);
+    }
+    return h.snapshot('host');
+  }
+
+  const firstTie = await castTie();
+  assert.equal(isTieReturnPending(pageState(firstTie.view)), true);
+  markTiePromptAcked(pageState(firstTie.view));
+  const vote = await finishSpeaking(h, sessionId, gameId);
+  const before = await Promise.all(users.map((userId) => h.snapshot(userId)));
+  assert.equal((await h.command('host', 'START_SPY_QUESTION_ROUND', {
+    context: { sessionId, gameId, voteSessionId: vote.view.session.publicModeState.voteSessionId }
+  })).ok, true);
+
+  for (let index = 0; index < users.length; index += 1) {
+    const snapshot = await h.snapshot(users[index]);
+    const sync = await h.app.sync('12345678', before[index].seq, { userId: users[index] });
+    const reduced = sync.events.reduce(applyProjectedEvent, before[index].view);
+    assert.deepEqual(reduced, snapshot.view);
+    assert.equal(snapshot.view.session.workflow.step, 'SPY_QUESTION');
+    assert.equal(pageState(snapshot.view).tieBreak, true, '提问不应清除加时的投票约束');
+    assert.equal(isTieReturnPending(pageState(snapshot.view)), false, 'Snapshot 恢复提问时不能误弹加时提示');
+    assert.equal(isTieReturnPending(pageState(reduced)), false, 'Event 进入提问时不能误弹加时提示');
+  }
+
+  const nextTie = await castTie();
+  assert.equal(nextTie.view.session.workflow.step, 'SPY_TIE_SPEAK');
+  assert.equal(isTieReturnPending(pageState(nextTie.view)), true, '再次真实平票必须重新确认');
 });
 
 test('Spy 开票仅在全员发言完成后自动触发，房主不能手动开票', async () => {

@@ -32,6 +32,8 @@ V3 遵循以下不可拆分的原则：
 1. **服务端权威**：Room、当前 Session 和 Facts 是唯一业务事实源。客户端只提交意图，不提交最终状态、身份或权限结论。
 2. **Command 原子化**：每个已接受 Command 在同一事务内提交 State、一个 Event Group 和 Command Receipt；失败不得留下部分结果。
 3. **精确上下文**：并发冲突通过 `modeSelectionRevision`、`sessionId`、`turnId`、`workflowStep`、`workflowRevision`、`voteSessionId` 等领域令牌识别；`knownSeq` 只用于同步，不用于业务裁决。
+   Room 级模式选择使用 `modeSelectionRevision`，开始选择、取消选择和创建场次均校验该令牌；
+   每次进出选择提升令牌，防止旧选择页的延迟命令影响新一轮选择。
 4. **事件只负责同步**：Event 是有保留期的有序同步日志，不是从创世事件重建服务端状态的完整事件溯源。Event 不可用时直接恢复 Snapshot。
 5. **View 是成员投影**：页面只消费由服务端为当前成员投影的完整 `Member View`，不得读取 Aggregate、Raw Event 或其他成员的 Actor 投影。
 6. **Snapshot 与 Event 等价**：同一个 `Member View` 必须既能由 Snapshot 完整替换，也能由前一 View 顺序应用 Event Patch 得到；页面不能根据来源执行不同业务逻辑。
@@ -99,6 +101,9 @@ sequenceDiagram
   C->>C: 追平后发布 Member View
 ```
 
+合并各自升级过 View Schema 的分支时，不能取两侧较大的版本号就沿用：若组合后的结构或语义
+不同于任一已使用版本，需分配更高的新版本，再重新构建云函数，避免同版本表示不同投影契约。
+
 新增或修改任何 View 字段时，必须同时验证：
 
 - Snapshot projector 可以独立产生该字段；
@@ -108,6 +113,36 @@ sequenceDiagram
 - 页面只依赖最终 `Member View`，不感知本次更新来自 Snapshot 还是 Event。
 
 对应自动化契约位于 [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)，覆盖公共状态、Actor 状态、跨配置流程、Partner 换轮、Spy 私密牌、分批追赶以及异常回退。四种模式从配置到完成的 Snapshot/Event 等价验收位于 [`tests/room-domain/v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js)。
+
+### 0.3 请求内部的局部并行
+
+客户端 Command/Query 队列及同一 CloudBase 事务仍串行；只在请求内部重叠无依赖的事务外 I/O。
+并行编排封装在 Application / 媒体入口，不增加页面队列、协议字段或通用任务调度层。
+
+```mermaid
+flowchart LR
+  TX[Command 原子提交] --> P[Presence 续租]
+  TX --> S[内联投影 / 同步读取]
+  P --> J[等待全部完成]
+  S --> J
+  J --> R[返回 Outcome + Snapshot / Sync]
+```
+
+| 路径 | 并行任务 | 不可拆分的先后关系 |
+|---|---|---|
+| Command 提交后 | Presence 与响应同步准备 | 先提交 State/Event/Receipt；Sync/Snapshot 借用同一续租，重新授权后仅合并同 room/member 的结果 |
+| History / Messages | 分页读取与 Presence | 先授权、校验参数；History 只读 Room 授权，Messages 保留 Session 与归档参与者授权 |
+| 二维码入口 | Room 成员授权与缓存预读 | 非法参数先拒绝；授权成功前不能生成、上传、签名或返回缓存；授权错误优先 |
+| 二维码上传后 | 缓存持久化与临时 URL | 生成 → 上传保持串行；全部完成后返回，写入错误优先，不遗留后台写入 |
+
+分页和媒体使用 `allSettled` 收口，即使另一项失败也等待必要写入结束。Presence 失败仍只影响在线
+提示；附带同步失败仍不改变已提交 Command 的结果。借用续租需校验新读取的成员身份，旧 Receipt
+的 memberId 不得进入离房重入后的 Snapshot。核心 Room 水位 → Event 查询、权限 → 私有文件白名单
+→ URL 签名保持串行。该优化不改变稳定 Member View Schema。
+
+可控延迟、相反完成顺序、失败等待、权限隔离与旧成员作用域测试见
+[`v3-application-parallel.test.js`](../tests/room-domain/v3-application-parallel.test.js) 和
+[`v3-room-media-entry.test.js`](../tests/room-contract/v3-room-media-entry.test.js)。
 
 ## 1. 最终运行拓扑
 
@@ -255,9 +290,11 @@ sequenceDiagram
 `roomV3ActiveByUser` 只参与 `CREATE_ROOM/JOIN_ROOM` 的“是否已在其他开放房间”裁决。
 普通业务 Command 直接以目标 Room Aggregate 校验成员资格，不读 Active 索引；
 Join 的 Active Room 与目标 Room 相同时复用已读文档，不在同一事务内重复点读。
+Create 候选房号已读为不存在时，不重复加载空 Aggregate。已接受的离房/解散跳过 Presence 续租。
 
 每个调用在云函数日志输出一条 `[roomCommand:perf]` 结构化记录，包含
 `transactionMs/presenceMs/syncMs/totalMs`、`syncSource`、重放标志与脱敏 `commandIdHash`。
+Presence 与同步阶段可以重叠，阶段耗时不能相加当作总耗时；性能结论以 `totalMs` 及客户端 P50/P95 为准。
 观测回调失败不得改变 Command 成功或失败语义，日志中不记录 Payload 或 OpenID。
 
 对会跨步骤复用同一 `turnId` 的写操作，Envelope 额外冻结 `workflowStep`：
@@ -303,6 +340,29 @@ flowchart TD
 ```
 
 ## 4. Snapshot + Event 同步
+
+创建/加入成功的 Command 直接附带 `snapshot`：首次执行从已提交事务返回的 Aggregate 做同一
+Member View 投影，不再追加一次数据库读事务和客户端 Query。Receipt 只保存 outcome，不缓存
+私有 View；重放创建/加入时重新授权并读取最新 Snapshot。客户端验证版本、成员 View 以及
+`snapshot.seq >= outcome.committedThroughSeq` 后走统一安装路径；附带快照不可用时普通权威恢复，
+不能把已提交的 Command 伪装成写失败。该优化不改变 Member View Schema。
+
+```mermaid
+flowchart LR
+  CMD[CREATE / JOIN] --> TX[事务提交 State + Event + Receipt]
+  TX --> P[复用已提交 Aggregate<br/>按调用成员投影 Snapshot]
+  P --> C[Command Response + snapshot]
+  C --> V[统一安装 Member View]
+  V --> S[静默 2 秒后<br/>sync afterSeq = snapshot.seq]
+```
+
+内联 Snapshot 不为 Presence/Signal 增加查询，显式携带 `stale`，下一次正常 Sync 刷新瞬时态。
+其 `minAvailableSeq` 使用本次新提交 Event 的保守可用下界，不代表已查询最早日志。
+连接恢复只合并同一前台周期的请求；`pause/close` 提升连接世代，作废旧排队任务和在途读响应。
+`current → Snapshot` 握手、每批 Sync、缺口回退及错误处理均在异步返回后再次校验世代；旧响应
+不得安装 View、发布旧 Route/错误、校准时钟或继续握手。随后的 `resume` 串行读取新 Snapshot。
+Command 不因前后台切换被取消：保留原回执、重试 ID 和已提交的创建/加入/离房结果；仅丢弃
+旧世代附带的 Snapshot/Sync，恢复前台后按已确认房间归属读取当前 Snapshot。
 
 ```mermaid
 sequenceDiagram
@@ -429,6 +489,8 @@ Shell 不能用本地计时器、页面生命周期、URL 参数或临时叠层�
 projector 共用同一个纯 Route 分类器，不能各自重复解释 `subAwait.params.scene`。
 
 本地叠层不是第二个业务页面。`specialMove` 正常完成时只关闭叠层并恢复下层 Partner RoomShell；
+权威 Route 变为 `closingStatement` 时，订阅通过 `beforeNavigate` 委托同一单飞叠层退出任务，
+不能让全局 `redirectTo` 与 Command 回调的 `navigateBack` 并发修改页面栈。
 Master / Silent 等不改变逻辑 Route 的 View 字段变化仍是强制可见的 Shell 刷新，不能因为 route
 相同或游戏区指纹相同而丢弃。静默声级属于高频瞬时字段，应窄刷新对应效果，不能为它重建卡片
 swiper。从叠层返回时，下层页面先消费 RoomSession 内已提交的当前 View，再恢复订阅和屏幕副作用，
@@ -524,6 +586,8 @@ Active Turn 后进入讨论。`ADVANCE_PARTNER_TURN` 可选用 `statementResult`
 `activeTurn.specialPreview` 让所有成员在采用决策前同步看到与行动者一致的“反面随机拼”标签；该状态不消耗
 特殊行动。只有用户选择“取消采用”或“采用卡组”时才发送
 `USE_PARTNER_SPECIAL(HELP_LUCK)`，提交时清除预览并记录 `specialUsed`。
+`specialMove` 首次加载与订阅都从最新完整 View 投影预览屏幕；指令成功后先追平提交水位再投影，
+不能仅靠按钮回调保存 `viewMode`。页面重建后仍恢复预览，返回转盘正常清除全员徽章。
 
 ```mermaid
 flowchart LR
@@ -647,7 +711,7 @@ flowchart TD
 | 设计问题催促 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_NUDGE`；校验当前 Session 处于 `COLLECT_DESIGN_PROBLEMS`、调用者已提交且仍有未提交者；房间级最新信号供客户端投影，Session + Member 级冷却凭证保证同一成员 15 秒内幂等 | 否 |
 | 设计问题编辑态 | `roomSignal` + `roomV3Signals` 的 `DESIGN_PROBLEM_EDITING`；仅 Host 在 `SELECT_DESIGN_PROBLEM` 可写；绑定精确 `sessionId + workflowRevision`，value 为 `contributionId` 或空字符串结束编辑；TTL 60 秒。它不推进 seq，每次 idle Sync 仍返回当前 ephemeral，Page Model 校验步骤、Session、workflow revision 和过期时间后投影 `roomState.editingProblemId`；页面不得直读 raw ephemeral | 否 |
 | 房间二维码 | `roomMedia` + `roomV3Media` | 否 |
-| 语音转写 | `speechToText`；录音开始时冻结 session/turn/workflowStep，结果通过 Artifact Command 入房间 | 只有入房间时 |
+| 语音转写 | `speechToText`；partner-audio 的每个 run 冻结 room/session/turn/workflowStep/phase，自然分段结果通过 Artifact Command 入房间，主动停止丢弃部分旧音频。MP3/PCM 共用持久设备控制器；onStart 才确认录音，未开始且明确未取得轨道的 NotFoundError/NotAllowedError 直接结束失败 run，同作用域不重试；其他错误/停止超时保留最新意图，迟到 onStop 自动恢复，不依赖额外 Sync，也不刷新已离页 UI | 只有入房间时 |
 | Inspiration | 独立 `inspirations` 业务 | 否 |
 | History / Session / Leaderboard | `roomQuery` | 否 |
 

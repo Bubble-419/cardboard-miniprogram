@@ -150,6 +150,16 @@ flowchart TD
 | `packageSpy/pages/nextRound` | 兼容页 | V3 用 `SPY_RESULT → START_NEXT_SPY_ROUND → SPY_SPEAK` 表达 |
 | `partnerMode/statement`、`discussion`、`closingEnd` | 历史兼容页 | 当前权威流程分别收敛到 `partnerGame`、`closingStatement`、`leaderboard` |
 
+模式选择的开始、取消和创建场次都绑定 Room 的 `modeSelectionRevision`，旧选择轮次的延迟操作
+不得影响后来重新打开的选择页。错误角色或缺省 `isHost` 的 URL 入口读取当前 View 后跟随权威 Route。
+反面随机拼预览已提交后，叠层重建仍从完整 View 恢复预览；返回转盘须清除预览，不消耗特殊行动。
+旧 `silent=1` URL 重建叠层时，若权威 View 已结束静默，首屏读取和订阅都应关闭叠层恢复下层
+RoomShell，不以本地计时器是否启动为条件；订阅与按钮回调共用退出任务，成功关闭后迟到回调
+也不重复后退。收尾指令将 Route 改为 `closingStatement` 时，订阅在全局导航前拦截为同一叠层
+退出任务，禁止同时执行 `redirectTo` 与 `navigateBack`；下层 Shell 在 `onShow` 安装最新 View。
+失败恢复订阅时跳过当前 View 的立即回放，等待后续发布或用户重试，避免循环导航。
+权威 Route 已离开游戏时交还全局导航，不重建旧 gamepage。
+
 本地叠层使用精确的 Route Owner：`selectBG→modeIndex`、`case→submitProblem`、
 `specialMove/imageCrop/inspiration→partnerGame`、`cardLibrary→spyIntro`。
 只有 Owner 未变化才保留；不得使用通配 Owner 把过期叠层留在新的业务状态上。
@@ -243,8 +253,11 @@ sequenceDiagram
     F->>T: 校验容量和 ActiveByUser，分配最小空席
     T->>T: Member + Event + Receipt
   end
-  F-->>C: Outcome
-  C->>C: 读取 Snapshot
+  F-->>C: Outcome + 已提交成员 Snapshot
+  C->>C: 校验版本与提交水位，统一安装 Snapshot
+  opt 附带 Snapshot 不可用
+    C->>C: 权威 Snapshot 恢复，已提交写入仍成功
+  end
   C-->>V: route = addPlayer
 ```
 
@@ -258,7 +271,7 @@ sequenceDiagram
 | 将头像拖至踢出区 | `KICK_MEMBER` | Host；不能踢自己 |
 | “退出房间” | `LEAVE_ROOM` | 非 Host |
 | “解散房间” | `DISSOLVE_ROOM` | Host；终止当前连接 |
-| “选择模式” | `BEGIN_MODE_SELECTION` | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页，并生成新的 `modeSelectionRevision` |
+| “选择模式” | `BEGIN_MODE_SELECTION`；已在选择中只跟随 View | Host；Host 进入 `brainstormMode`，Player 自动进入空状态等待页，并生成新的 `modeSelectionRevision`；首页主动查看大厅不会取消已有选择，再打开须恢复原选择，不能重复发送 BEGIN |
 | “确认模式” | `START_WORKSHOP_SESSION` | Host；Partner/Gan Deng Yan/Halli 至少 2 人，Spy 至少 3 人 |
 | “继续游戏” | 无写操作 | 读取最新 View 并跟随 `view.route` |
 
@@ -459,9 +472,51 @@ Partner 的 `roundNo` 只在所有当前有效参与者各完成一个 Turn 后�
 `fixed/transform` 位移，避免系统顶页与手工顶起产生双重偏移。输入焦点、键盘高度、草稿、
 手势和动画均属于本地 UI 状态；无关 Event/Snapshot 不得重建输入节点或关闭键盘。
 
+键盘改变卡片可用高度时，倒计时/声浪画布按实际尺寸重新建立位图，避免边框被缩放压细。
+绘制任务属于可见组件生命周期：页面隐藏或组件销毁时停止计时、声浪、震动与校准/查询重试；
+排队的 `nextTick`、selector 和旧布局回调必须失效。再次显示时按当前属性与尺寸恢复，
+不补发隐藏期间的到期反馈，也不能让旧回调覆盖新尺寸。
+
 静默模式的录音权限只在进入静默测声时通过运行时授权申请；拒绝后本页不重复弹出授权窗口。
+当前行动者的静默卡片同时展示权威评分进度，并可展开查看同场次、同行动轮、出牌阶段的匿名表达；
+此面板只投影现有 PageSnapshot，不新增消息同步或评分协议。
 当前静默行动者使用本机麦克风判断 50dB 边框效果并广播瞬时声级；其他成员消费同一声级，保持外圈与声音过大提示一致，且只有
 当前特殊行动玩家可以结束静默。
+非行动房主与其他成员不重复采麦；声级为 PCM 的近似视觉映射，不是校准的分贝仪。
+两页统一使用 [`partner-audio.js`](../modules/room-session/partner-audio.js)：页面仅提交完整
+PageSnapshot + 可见性/历史标记，不自行编排 `start/stop/isActive`。非行动房主保留既有 MP3
+纪要职责，但不采 PCM、不广播声级；当前静默行动者优先 PCM。
+控制器按原生单例持久存在，区分期望 `OFF/TRANSCRIPT/SILENT` 与设备实际状态；同作用域的
+Snapshot/Event、时钟校准不重启设备。权限拒绝在本页记忆；设备失败只在新作用域或新的
+前后台周期重试，不随同作用域 View 刷新重试。
+尚未收到 onStart 且启动返回 `NotFoundError/NotAllowedError` 表示没有取得音频轨道：直接
+结束失败 run、清除确认计时，不额外 stop，也不等待不存在的 onStop；失败只标记原意图，
+已换页/换作用域的最新意图不受旧失败污染。启动确认超时只提示仍在等待，不伪造启动失败或主动
+取消仍有效的意图；迟到 onStart 正常开始。其他未知错误需停止，仍保留设备所有权，等待真实停止确认。
+每个 run 冻结 `runId/ownerGeneration/roomId/sessionId/turnId/workflowStep/phase`；主动停止丢弃
+部分旧音频，自然分段通过既有转写 + Artifact Command 入房间。已离页的上传结果不刷新旧 UI。
+
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> STARTING: 最新可见意图有效且授权成功
+  STARTING --> RECORDING: 原生 onStart
+  STARTING --> STARTING: 启动确认超时<br/>只提示等待，不取消当前意图
+  STARTING --> IDLE: NotFoundError/NotAllowedError<br/>结束失败 run，同作用域不重试
+  STARTING --> STOPPING: 意图撤销/未知错误
+  RECORDING --> STOPPING: 后台/离页/换轮/切格式
+  RECORDING --> IDLE: 自然 onStop<br/>按冻结上下文处理结果
+  STOPPING --> STOPPING: 超时或未知 onError<br/>报告 blocked，保留最新意图
+  STOPPING --> IDLE: 尚未 onStart 的终止启动错误<br/>协调最新意图
+  STOPPING --> STOPPING: 首次迟到 onStart<br/>补发一次 stop，不恢复旧提交资格
+  STOPPING --> IDLE: 原生 onStop<br/>自动协调最新意图，无须新 View/轮询
+```
+
+启动未确认时的 stop 失败，不代表启动已取消；同一 run 首次迟到 onStart 只补一次停止，
+重复 onStart、View 刷新或超时不循环重试。错误通知允许同步离页或换意图，通知后只收口
+捕获的原 run，并重新检查设备所有权，不能操作已释放或新启动的 run。
+迟到确认之前不抢占资源；原生始终不确认时只降级录音，不阻塞房间流程。旧页面销毁撤销自己的
+意图和回调，不销毁控制器，也不能停止新所有者。等待、投票、历史及外部屏幕统一投影为 OFF。
 
 ### 5.2 收尾裁决
 
@@ -520,6 +575,11 @@ flowchart LR
 V2 规则页的 Host 底部按钮原文就是“结束游戏”。它表示结束线下卡牌活动，不是直接结束 Session；对应 `END_HALLI_ACTIVITY`，随后所有成员进入创意阶段。
 
 线下翻牌过程不逐次写云端；V3 同步活动阶段、首位参与者、创意提交进度和最终汇总。创意提交后立即进入公共 Member View，已提交成员在 `creativeSummary` 中渐进看到已有创意；最后一人提交时自动进入 `HALLI_SUMMARY`。已提交成员可通过 `REOPEN_HALLI_IDEA` 在汇总页本人创意条原地编辑；修改期间其他成员仍停留在原权威路由；任一成员尚未保存修改时，Host 不能完成场次。
+
+汇总页的草稿与光标属于本地 UI：首次进入编辑态才定位末尾，随后跟随原生输入光标；
+Event 或 Snapshot 刷新不覆盖草稿、不重设选区。刷新比较完整可见模型，成员头像等资料变化也必须更新对应创意条。
+失焦自动保存与确认按钮共用排他交互，保存期间禁用编辑，避免旧响应清空新草稿；
+失败释放锁并保留草稿供重试，页面卸载后迟到结果不再写回 UI。
 
 干瞪眼以独立协议模式 `GAN_DENG_YAN`（客户端 modeId 为 `ganDengYan`）存在。首版 baseline
 选择模式后直接进入选择首位玩家，不创建、展示或回退到情境；随后复用本节的线下活动、全员提交创意、汇总、完成与重玩流程；
@@ -588,6 +648,11 @@ flowchart TD
 
 平票加时的确认提示以“并列成员集合 + 加时轮起点”作为一次性键。同一加时轮切换发言者时
 不得重复弹出；只有进入新的平票加时轮才生成新的确认提示。
+提问轮虽保留 `tieBreak` 来约束后续投票目标，但 `questionRound` 不属于平票加时提示的触发条件；
+通过 Event 进入提问或直接从 Snapshot 恢复提问都不应再弹出加时确认。
+
+身份词语卡的轻触在 `touchend` 与 `tap` 中共用一个点击意图，真实触摸最多处理一次。
+已揭示卡片再次轻触打开本地全屏叠层；上下滑动仍翻面，翻面动画期间忽略再次点击。
 
 隐私边界：
 
@@ -647,6 +712,8 @@ flowchart TD
 
 首页「历史工作坊」是本地回看入口：普通态点卡片打开回看；管理态可单选、全选并删除本地索引与缓存 Snapshot。删除不会写入房间协议，也不会解散云端 Room 或删除归档 Session；本地存储失败时必须保留管理态和选中项。
 
+退出、被移出或解散时，清理仅刷新该房间历史记录的时间，保留已缓存的名称、创建者、`sessionId` 与回看 Snapshot；不得用没有房间作用域的 `globalData.workshopName` 覆盖历史资料。
+
 ## 10. View 正确性与端到端验收
 
 ```mermaid
@@ -677,14 +744,18 @@ flowchart LR
 | 四种模式完整 Command 主链、Event 与 Snapshot 等价、Page Model 可还原 | [`v3-business-flow-e2e.test.js`](../tests/room-domain/v3-business-flow-e2e.test.js) |
 | `workflow.step → role-specific route → physical page` 矩阵 | [`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
 | Halli / Gan Deng Yan baseline、离房、门槛缩减、重玩与归档 | [`v3-halli-flow.test.js`](../tests/room-domain/v3-halli-flow.test.js)、[`v3-room-lifecycle.test.js`](../tests/room-domain/v3-room-lifecycle.test.js) |
+| Halli / Gan Deng Yan 汇总页头像刷新、草稿/光标、自动保存锁、失败重试与离页迟到响应 | [`halli-idea-edit.test.js`](../tests/ui/halli-idea-edit.test.js)、[`keyboard-visibility-contract.test.js`](../tests/ui/keyboard-visibility-contract.test.js) |
 | Partner 特殊行动、两种收尾票型、离房、容量边界 | [`v3-partner-flow.test.js`](../tests/room-domain/v3-partner-flow.test.js) |
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
 | 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js) |
 | 导航失败重试、等待页退出与无回调超时释放 | [`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js)、[`sub-await-scene.test.js`](../tests/ui/sub-await-scene.test.js)、[`page-interaction-lock.test.js`](../tests/ui/page-interaction-lock.test.js) |
 | Partner 输入键盘、草稿与原生焦点稳定性 | [`inspiration-keyboard-lift.test.js`](../tests/ui/inspiration-keyboard-lift.test.js)、[`room-local-draft.test.js`](../tests/ui/room-local-draft.test.js) |
+| 卡片画布键盘校准、离页/销毁停止副作用、迟到回调与恢复尺寸 | [`game-card-timer-lifecycle.test.js`](../tests/ui/game-card-timer-lifecycle.test.js) |
 | Setup Shell 等待/抽取切换、乱序 View 防回退 | [`select-player-shell.test.js`](../tests/ui/select-player-shell.test.js)、[`select-player-back.test.js`](../tests/ui/select-player-back.test.js) |
 | Partner 低耦合组件、RoomShell 屏幕切换、特殊行动返回与同路径导航 | [`partner-game-components.test.js`](../tests/ui/partner-game-components.test.js)、[`partner-room-shell.test.js`](../tests/ui/partner-room-shell.test.js)、[`special-move-help-luck.test.js`](../tests/ui/special-move-help-luck.test.js)、[`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
-| Spy 平票提示每轮只展示一次 | [`spy-tie-prompt.test.js`](../tests/ui/spy-tie-prompt.test.js) |
+| 录音声明式交接、跨页重建、迟到确认自动恢复、冻结上下文、授权/设备失败和生命周期轨迹 | [`partner-audio.test.js`](../tests/ui/partner-audio.test.js)；同一公开 Interface 覆盖 MP3/PCM 四种交接、启动中停止失败/迟到开始、重复回调、错误 hook 重入和真实页面接线 |
+| Spy 平票提示每轮只展示一次、提问不重复提示、Snapshot/Event 等价 | [`spy-tie-prompt.test.js`](../tests/ui/spy-tie-prompt.test.js)、[`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
+| Spy 身份卡真实触摸、轻微位移无 tap、全屏与上下翻面 | [`spy-identity-card-fullscreen.test.js`](../tests/ui/spy-identity-card-fullscreen.test.js)、[`flip-word-card.test.js`](../tests/ui/flip-word-card.test.js) |
 
 手工多端验收每个关键 Step 至少覆盖：
 

@@ -144,7 +144,8 @@ test('Command 上报事务、Presence、Sync 和总耗时，且观测失败不�
     touchPresence: true,
     syncSource: 'INLINE_EVENTS',
     transactionMs: 1,
-    presenceMs: 1,
+    // 续租区间与内联 Sync 重叠，递增测试时钟的两次 Sync 采样也落在该区间。
+    presenceMs: 3,
     syncMs: 1,
     totalMs: 7
   });

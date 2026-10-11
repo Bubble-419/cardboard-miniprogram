@@ -94,9 +94,9 @@ function clearRoomLocalState(roomId) {
   // 房间结束/退出：刷新一次首页历史工作坊记录的时间，方便回看
   if (id) {
     try {
-      const app = getApp();
-      const workshopName = (app && app.globalData && app.globalData.workshopName) || '';
-      upsertHistoryWorkshop({ roomId: id, name: workshopName });
+      // globalData.workshopName 没有房间作用域，重启后可能是占位名或其他房间的名称。
+      // 清理仅刷新时间；名称、场次 ID 与回看快照继续使用此前缓存的资料。
+      upsertHistoryWorkshop({ roomId: id });
     } catch (e) {
       // ignore
     }

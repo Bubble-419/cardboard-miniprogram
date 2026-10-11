@@ -191,10 +191,10 @@ Component({
         return;
       }
 
-      // 点击翻面：不依赖 bindtap（真机上轻微滑动常会取消 tap）
+      // 真机轻微滑动可能取消 tap；两个原生入口必须执行同一个点击意图。
       if (absDx <= TAP_SLOP_PX && absDy <= TAP_SLOP_PX) {
         this._guardTapAfterSwipe();
-        this._requestFlip('next', 'up');
+        this._handleCardTap();
       }
     },
 
@@ -209,6 +209,11 @@ Component({
         this._swiped = false;
         return;
       }
+      this._handleCardTap();
+    },
+
+    _handleCardTap() {
+      if (this.data.animating) return;
       if (this.data.fullscreenOnAssigned && this.data.cardState === 'assignedWord') {
         this.triggerEvent('fullscreen', { word: this.data.word || '' });
         return;

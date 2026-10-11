@@ -51,11 +51,10 @@ function makePage(definition) {
     commands.push({ type, payload });
     return { ok: true };
   };
-  page._stopRoundSpeech = () => {};
   page._stopStatePolling = () => {};
   page._stopRoundTimerBurstPoll = () => {};
   page._startStatePolling = () => {};
-  page._syncRoundSpeech = () => {};
+  page._syncPartnerAudio = () => {};
   page._applyRoomContext = () => {};
   page._cancelStarPanelCollapse = () => {};
   return { page, commands };

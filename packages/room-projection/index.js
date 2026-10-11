@@ -508,7 +508,7 @@ function projectNavigation(aggregate, actorView) {
   if (!session) {
     return aggregate.room.modeSelectionActive === true
       ? { back: { kind: 'COMMAND', commandType: COMMAND_TYPES.CANCEL_MODE_SELECTION,
-        context: {}, after: 'FOLLOW_ROUTE' } }
+        context: { modeSelectionRevision: aggregate.room.modeSelectionRevision || 0 }, after: 'FOLLOW_ROUTE' } }
       : { back: noBack() };
   }
   if (!actorView.isParticipant) return { back: noBack() };

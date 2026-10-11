@@ -51,7 +51,6 @@ function makeGamePage() {
   Object.keys(definition).forEach((key) => {
     if (typeof definition[key] === 'function') page[key] = definition[key].bind(page);
   });
-  page._stopRoundSpeech = () => {};
   page._stopRoundTimerBurstPoll = () => {};
   page._bindInspirationKeyboard = () => {};
   page._unbindInspirationKeyboard = () => {};
@@ -61,7 +60,6 @@ function makeGamePage() {
   page._ingestExpressMessages = () => {};
   page._hydrateCloudRoundMedia = () => {};
   page._persistHistoryReviewSnapshot = () => {};
-  page._syncRoundSpeech = () => {};
   page._applySharedRoundTimer = () => {};
   page._restartRoundTimer = () => {};
   page._syncRoundTimerVisible = () => {};
@@ -150,6 +148,51 @@ function waitingForFirstPlayerSnapshot(revision = 10) {
     }
   };
 }
+
+test('非行动房主消费远端 Silent 声级；成为行动者才采样，后台立即释放', async () => {
+  const previousWx = global.wx;
+  const events = {};
+  const formats = [];
+  let stops = 0;
+  const page = makeGamePage();
+  const recorder = {
+      onStart: (cb) => { events.start = cb; },
+      onFrameRecorded: (cb) => { events.frame = cb; }, onError: () => {},
+      onStop: (cb) => { events.stop = cb; }, start: (args) => { formats.push(args.format); events.start(); },
+      stop: () => { stops += 1; events.stop({}); }
+  };
+  global.wx = { getSetting: ({ success }) => success({ authSetting: { 'scope.record': true } }),
+    getRecorderManager: () => recorder, getStorageSync: () => null, setStorageSync() {} };
+  try {
+    page._pageVisible = true;
+    const state = nonCurrentPlayerGameSnapshot(false, 30);
+    state.roomState.partnerSilentMode = true;
+    state.roomState.partnerSilentSoundLevel = 0.7;
+    state.roomState.partnerSilentStartedAt = Date.now();
+    state.view.actor = { memberId: 'member-host', role: 'HOST', seatNo: 1 };
+    state.view.session.mode = 'PARTNER';
+    state.view.session.workflow = { step: 'PARTNER_TURN' };
+    state.view.session.activeTurn = { turnId: 'turn-1', activeMemberId: 'member-2',
+      silentStartedAt: Date.now(), silentDeadlineAt: Date.now() + 300000 };
+    page._applyRoomContext(state);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(formats, ['mp3'], '非行动房主只保留既有语音纪要，不采 PCM 或广播声级');
+    assert.equal(page.data.silentSoundLevel, 0.7);
+    state.revision += 1;
+    state.roomState.currentPlayerIndex = 1;
+    state.view.session.activeTurn.activeMemberId = 'member-host';
+    state.view.session.activeTurn.turnId = 'turn-2';
+    page._applyRoomContext(state);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(formats, ['mp3', 'pcm']);
+    assert.equal(page.data.roomShellScreen, PARTNER_SHELL_SCREEN.GAME);
+    page._applyRoomContext(JSON.parse(JSON.stringify(state)));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(formats, ['mp3', 'pcm']);
+    page._prepareLeavePage();
+    assert.equal(stops, 2);
+  } finally { page._partnerAudio?.dispose(); global.wx = previousWx; }
+});
 
 function nonCurrentPlayerGameSnapshot(masterMode, revision = 20) {
   const snapshot = gameSnapshot(revision);

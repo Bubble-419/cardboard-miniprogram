@@ -9,7 +9,7 @@ const {
   unbindPageFromRoomSession,
   canRoomCommand,
   getActiveRoomSession,
-  goRoomPage,
+  followRoomRoute,
   followRoomRouteAfterCommand,
   executeProjectedBack
 } = require('../../../modules/room-session/index');
@@ -112,13 +112,14 @@ Page(withPageInteractionLock({
     });
 
     if (!isHost) {
-      goRoomPage(roomId);
+      return this._followCurrentRoute();
     }
   },
 
   onReady() {
     this._readyOnce = true;
-    if (!this._pageAlive || !this.data.roomId || !this.data.isHost) return;
+    // 角色读取可能晚于 onReady；订阅不能依赖 URL 的 isHost，最终由权威 View 裁决。
+    if (!this._pageAlive || !this.data.roomId) return;
     this._bindRoomRoute();
     // 先刷房间数据，封面再延后一帧挂载，降低首屏解码压力
     this._scheduleRoomRefresh({ silent: true });
@@ -131,7 +132,7 @@ Page(withPageInteractionLock({
   },
 
   onShow() {
-    if (!this._pageAlive || !this._readyOnce || !this.data.roomId || !this.data.isHost) return;
+    if (!this._pageAlive || !this._readyOnce || !this.data.roomId) return;
     this._scheduleRoomRefresh({ silent: true });
   },
 
@@ -162,8 +163,27 @@ Page(withPageInteractionLock({
   _bindRoomRoute() {
     bindPageToRoomSession(this, {
       getRoomId: () => this.data.roomId || '',
-      followNavigation: true
+      followNavigation: true,
+      onSnapshot(snapshot) { this._installModeContext(snapshot); }
     }).catch((e) => console.warn('brainstormMode bind room', e));
+  },
+
+  _installModeContext(snapshot) {
+    const view = snapshot && snapshot.view;
+    if (snapshot && snapshot.ok && view && view.room) {
+      this._renderedModeContext = Object.freeze({ modeSelectionRevision: view.room.modeSelectionRevision });
+      this.setData({ isHost: !!(view.actor && view.actor.role === 'HOST') });
+    }
+  },
+
+  async _followCurrentRoute(snapshot) {
+    const latest = snapshot || await getRoomPageSnapshot(this.data.roomId);
+    if (!this._pageAlive) return;
+    if (latest && latest.ok && latest.view) {
+      this._installModeContext(latest);
+      this.setData({ isHost: !!(latest.view.actor && latest.view.actor.role === 'HOST') });
+      return followRoomRoute(latest, this.data.roomId);
+    }
   },
 
   _scheduleRoomRefresh(opts = {}) {
@@ -192,6 +212,7 @@ Page(withPageInteractionLock({
         }
         return;
       }
+      this._installModeContext(result);
 
       let avatarList = [];
       try {
@@ -209,7 +230,7 @@ Page(withPageInteractionLock({
       });
 
       if (!isHost) {
-        goRoomPage(this.data.roomId);
+        await this._followCurrentRoute(result);
         return;
       }
     } catch (err) {
@@ -258,15 +279,7 @@ Page(withPageInteractionLock({
         wx.showToast({ title: '当前不能选择模式', icon: 'none' });
         return;
       }
-      const modeSelectionRevision = view && view.room
-        && view.room.modeSelectionRevision != null
-        ? view.room.modeSelectionRevision
-        : view && view.route && view.route.params
-          ? view.route.params.modeSelectionRevision
-          : undefined;
-      const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, {
-        modeSelectionRevision
-      }, {
+      const result = await dispatchRoomCommand('START_WORKSHOP_SESSION', { mode: mode.id }, this._renderedModeContext, {
         roomId: this.data.roomId
       });
 

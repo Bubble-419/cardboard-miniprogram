@@ -105,7 +105,9 @@ function createInMemoryRoomRepository(options) {
         afterUsers.forEach((item) => activeRooms.set(item.userId, item.roomId));
       }
       actions.set(key, copy(receipt));
-      return { replayed: false, receipt: copy(receipt), events: copy(decision.events || []) };
+      return { replayed: false, receipt: copy(receipt), events: copy(decision.events || []),
+        aggregate: decision.accepted && [COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(input.type)
+          ? copy(decision.aggregate) : undefined };
     },
     async findActiveRoom(userId) {
       const roomId = activeRooms.get(userId);
@@ -118,6 +120,10 @@ function createInMemoryRoomRepository(options) {
         return null;
       }
       return { roomId, memberId: member.memberId };
+    },
+    async readRoom(roomId) {
+      const aggregate = rooms.get(roomId);
+      return aggregate && compatibleRoom(aggregate.room) ? copy(aggregate.room) : null;
     },
     async readAggregate(roomId) {
       if (!rooms.has(roomId) || !compatibleRoom(rooms.get(roomId).room)) return null;

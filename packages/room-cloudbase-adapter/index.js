@@ -205,7 +205,8 @@ function createCloudBaseRoomRepository(deps) {
         }
       }
       const reusableRoom = activeRoomId && activeRoomId === resolvedRoomId ? activeRoomDocument : null;
-      const current = resolvedRoomId
+      // CREATE 候选已在本事务确认不存在，无需再次点读同一空文档。
+      const current = resolvedRoomId && input.type !== COMMAND_TYPES.CREATE_ROOM
         ? await loadAggregate(transaction, resolvedRoomId, reusableRoom)
         : null;
       // handler 允许就地修改聚合；在调用前固定比较基线，避免漏写变更。
@@ -291,8 +292,14 @@ function createCloudBaseRoomRepository(deps) {
         await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
       }
       await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
-      return { replayed: false, receipt, events: (decision.events || []).map((item) => cleanDoc(item)) };
+      return { replayed: false, receipt, events: (decision.events || []).map((item) => cleanDoc(item)),
+        aggregate: decision.accepted && requiresActiveLookup ? cleanDoc(decision.aggregate) : undefined };
     });
+  }
+
+  async function readRoom(roomId) {
+    const room = await safeGet(db, COLLECTIONS.rooms, roomId);
+    return compatibleRoom(room) ? cleanDoc(room) : null;
   }
 
   async function readAggregate(roomId) {
@@ -502,7 +509,7 @@ function createCloudBaseRoomRepository(deps) {
     });
   }
 
-  return { generateRoomId, transactCommand, readAggregate, readSessionAggregate, listSessions, listMessages,
+  return { generateRoomId, transactCommand, readRoom, readAggregate, readSessionAggregate, listSessions, listMessages,
     readSyncState, findActiveRoom,
     upsertPresence, listPresence, listSignals, upsertSignal };
 }

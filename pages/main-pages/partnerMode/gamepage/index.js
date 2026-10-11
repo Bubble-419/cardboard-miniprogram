@@ -78,7 +78,7 @@ const {
   playerHasSummaryCards,
   isSamePlayerIndex
 } = require('../utils/partnerRoundNavigation');
-const { createPartnerRoundSpeech } = require('../utils/partnerRoundSpeech');
+const { createPartnerAudio } = require('../../../../modules/room-session/partner-audio');
 const {
   attachPrivateNotesToSummaries,
   loadAllPrivateNotes,
@@ -430,9 +430,6 @@ Page(withPageInteractionLock({
 
     this._applyTopBarSafeInset();
     this.loadRoomData();
-    this._roundSpeech = createPartnerRoundSpeech({
-      onText: () => this._syncRoomContext()
-    });
   },
 
   /** 反面随机拼「采用卡组」返回后：提示打分 / 房主开始表态 */
@@ -673,7 +670,7 @@ Page(withPageInteractionLock({
       if (this._roomDataReady) {
         this.refreshScoreStatus();
       }
-      this._syncRoundSpeech();
+      this._syncPartnerAudio();
       this._refreshInspirationCount();
     }).catch((e) => {
       console.warn('gamepage onShow timer sync', e);
@@ -704,6 +701,7 @@ Page(withPageInteractionLock({
 
   onHide() {
     this._pageVisible = false;
+    this._suspendPartnerAudio();
     this._unbindInspirationKeyboard();
     this._persistHistoryReviewSnapshot(true);
     this._closingPickingImage = false;
@@ -740,7 +738,6 @@ Page(withPageInteractionLock({
         ...this._resetClosingKeyboardUi()
       });
     }
-    this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
@@ -750,20 +747,19 @@ Page(withPageInteractionLock({
   /** 主动跳转前静默停计时/轮询/录音，避免 onHide 叠加重活导致卡片框卡顿 */
   _prepareLeavePage() {
     this._pageVisible = false;
-    this._stopRoundSpeech();
+    this._suspendPartnerAudio();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
   },
 
   onUnload() {
+    this._pageVisible = false;
+    this._suspendPartnerAudio();
     this._persistHistoryReviewSnapshot(true);
     this._unbindInspirationKeyboard();
-    this._stopRoundSpeech();
-    if (this._roundSpeech) {
-      this._roundSpeech.destroy();
-      this._roundSpeech = null;
-    }
+    if (this._partnerAudio) this._partnerAudio.dispose();
+    this._partnerAudio = null;
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
@@ -880,35 +876,25 @@ Page(withPageInteractionLock({
     };
   },
 
-  _shouldRunRoundSpeech() {
-    return this.data.isHost
-      && this._pageVisible
-      && this._roomLoaded
-      && !this.data.isHistoryReview
-      && !isClosingPhase(this.data.gamepagePhase)
-      && !!this.data.roomId;
+  _syncPartnerAudio(snapshot) {
+    if (!snapshot) {
+      const session = this._boundRoomSession || getActiveRoomSession();
+      snapshot = session && typeof session.getSnapshot === 'function' && session.getSnapshot();
+    }
+    if (!this._partnerAudio) {
+      this._partnerAudio = createPartnerAudio({
+        transcription: true,
+        onText: () => this._syncRoomContext(),
+        onLevel: (silentSoundLevel) => {
+          if (Math.abs(silentSoundLevel - this.data.silentSoundLevel) > 0.01) this.setData({ silentSoundLevel });
+        }
+      });
+    }
+    this._partnerAudio.update(snapshot, { visible: this._pageVisible === true, history: this.data.isHistoryReview });
   },
 
-  async _syncRoundSpeech() {
-    if (!this._roundSpeech) return;
-    if (!this._shouldRunRoundSpeech()) {
-      this._roundSpeech.stop();
-      return;
-    }
-    this._roundSpeech.setPhase(
-      isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
-    );
-    if (this._roundSpeech.isActive()) return;
-    await this._roundSpeech.start({
-      roomId: this.data.roomId,
-      phase: isDiscussionPhase(this.data.gamepagePhase) ? 'discussion' : 'play'
-    });
-  },
-
-  _stopRoundSpeech() {
-    if (this._roundSpeech) {
-      this._roundSpeech.stop();
-    }
+  _suspendPartnerAudio() {
+    if (this._partnerAudio) this._partnerAudio.update(null, { visible: false });
   },
 
   _resolveActivePlayerFilter() {
@@ -2117,6 +2103,7 @@ Page(withPageInteractionLock({
 
   /** 切入稳定 Shell 的非游戏屏幕时，立即终止只属于 game 屏幕的局部副作用。 */
   _suspendGameScreenEffects() {
+    this._suspendPartnerAudio();
     this._dismissInputsBeforeCardNavigation();
     this._unbindInspirationKeyboard();
     this._closingNativeFocused = false;
@@ -2125,7 +2112,6 @@ Page(withPageInteractionLock({
       closingCreativeWantFocus: false,
       ...this._resetClosingKeyboardUi()
     });
-    this._stopRoundSpeech();
     this._stopRoundTimerBurstPoll();
     this._stopRoundTimer();
     if (this._cardSwipeBusyTimer) {
@@ -2164,6 +2150,8 @@ Page(withPageInteractionLock({
       };
     }
 
+    // 副作用先消费完整 View，不能被卡片手势/输入保护或内容指纹的提前返回吞掉。
+    this._syncPartnerAudio(result);
     const shell = projectPartnerRoomShell(result);
     if (!this._isHistoryReviewMode() && shell.screen === PARTNER_SHELL_SCREEN.WAITING) {
       if (incomingRevision) this._appliedRoomRevision = incomingRevision;
@@ -2819,6 +2807,8 @@ Page(withPageInteractionLock({
       patch.discussionDraftFocused = false;
     }
 
+    const localSoundLevel = this._partnerAudio && this._partnerAudio.getLevel();
+    if (patch.isSilentMode && localSoundLevel != null) patch.silentSoundLevel = localSoundLevel;
     const contextFingerprint = [
       player.currentPlayerIndex,
       roomPhase,
@@ -2948,7 +2938,6 @@ Page(withPageInteractionLock({
         this._restartRoundTimer();
         this._syncRoundTimerVisible(patch.partnerRoundStartedAt);
       }
-      this._syncRoundSpeech();
     };
     let applied = Promise.resolve();
     if (this._isHistoryReviewMode() && forcePatch) {
@@ -3072,7 +3061,7 @@ Page(withPageInteractionLock({
       this.refreshScoreStatus();
       this._roomLoaded = true;
       await this._ensureSharedRoundTimerOnEnter();
-      await this._syncRoundSpeech();
+      this._syncPartnerAudio();
       await this._syncRoundContentToRoom();
       await this._refreshInspirationCount();
       this._roomDataReady = true;
@@ -5505,7 +5494,6 @@ Page(withPageInteractionLock({
     if (this.data.statementSwitching || this._startingStatement) return;
     this._startingStatement = true;
 
-    this._stopRoundSpeech();
     this._stopStatePolling();
     this._stopRoundTimerBurstPoll();
     this.setData({
@@ -5534,7 +5522,7 @@ Page(withPageInteractionLock({
       if (this.data.statementSwitching) {
         this.setData({ statementSwitching: false, statementSwitchAction: '' });
       }
-      this._syncRoundSpeech();
+      this._syncPartnerAudio();
       this._startStatePolling();
     }
   },
@@ -5592,8 +5580,7 @@ Page(withPageInteractionLock({
     } finally {
       this._endingDiscussion = false;
       if (this.data.discussionSwitching) this.setData({ discussionSwitching: false, discussionSwitchAction: '' });
-      this._roundSpeech && this._roundSpeech.stop();
-      this._syncRoundSpeech();
+      this._syncPartnerAudio();
       this._startStatePolling();
     }
   },
@@ -5656,7 +5643,7 @@ Page(withPageInteractionLock({
         fail: () => {
           this._pageVisible = true;
           this._startStatePolling();
-          this._syncRoundSpeech();
+          this._syncPartnerAudio();
         }
       };
     }, { loadingText: '正在查看情境…' });

@@ -31,7 +31,9 @@ test('干瞪眼活动页隐藏情境并展示独立的四步图文规则', () =>
     assert.ok(fs.existsSync(path.join(root, 'assets/ganDengYan', file)), `missing ${file}`);
   });
 
-  assert.doesNotMatch(wxml, /isGanDengYan\s*\?/);
+  // 布局允许按模式选择滚动/适配，规则正文仍须独立，不能用三元表达式复用 Halli 文案。
+  const rulesContent = wxml.slice(wxml.indexOf('<view class="rules-section">'));
+  assert.doesNotMatch(rulesContent, /isGanDengYan\s*\?/);
   assert.match(wxml, /class="steps-card" wx:else/);
   assert.match(wxml, /class="key-highlight" wx:if="\{\{!isGanDengYan\}\}"/);
 });

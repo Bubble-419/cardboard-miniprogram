@@ -7,6 +7,7 @@ const {
 const { createNavigationCoordinator } = require('../room-navigation/index');
 const { projectPageSnapshot } = require('./page-model');
 const { waitForPageNavigation } = require('../../utils/pageInteractionLock');
+const { callCloudFunction } = require('../../utils/cloudApi');
 
 const SPY_ROUTE_NAMES = new Set(['spyIntro', 'spySpeak', 'spyVote', 'spyResult', 'spySettle']);
 
@@ -149,6 +150,10 @@ function getActiveRoomSession() {
 
 function getRoomRequestContext() {
   return ensureRoomSession().getRequestContext();
+}
+
+function publishRoomSignal(signal) {
+  return callCloudFunction('roomSignal', { ...signal, clientContext: getRoomRequestContext() });
 }
 
 async function openRoomSession(roomId) {
@@ -434,7 +439,7 @@ function canRoomCommand(type) {
   return !!(cap && cap.allowed === true);
 }
 
-module.exports = { getActiveRoomSession, getRoomRequestContext, ensureRoomSession, openRoomSession, dispatchRoomCommand,
+module.exports = { getActiveRoomSession, getRoomRequestContext, publishRoomSignal, ensureRoomSession, openRoomSession, dispatchRoomCommand,
   getRoomPageSnapshot, getCurrentRoomPageSnapshot, getRoomHistory, getRoomSessionMessages, getRoomSessionPageSnapshot,
   disposeRoomSession, pauseRoomSession, resumeRoomSession,
   bindPageToRoomSession, unbindPageFromRoomSession, followRoomRoute, followRoomRouteAfterCommand,

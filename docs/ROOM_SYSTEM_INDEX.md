@@ -27,7 +27,7 @@ flowchart TD
 | [协议 V3 实现说明](./ROOM_PROTOCOL_V3_IMPLEMENTATION.md) | Command、Snapshot、Event、View 和恢复如何工作？ | 活跃、协议主文档 |
 | [房间业务流程](./ROOM_BUSINESS_FLOWS.md) | 四种模式和成员变化如何推进？ | 活跃 |
 | [房间模型与状态](./ROOM_MODEL_STATE.md) | 权威数据放在哪里、有哪些状态与不变量？ | 活跃 |
-| [部署与验收清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md) | 云端需要创建和发布什么？静态插图如何上传到云存储？ | 活跃 |
+| [部署与验收清单](./ROOM_PROTOCOL_V3_DEPLOYMENT.md) | 云端需要创建和发布什么？哪些插图本地打包，哪些上传到云存储？ | 活跃 |
 | [ADR-0001](./adr/0001-room-snapshot-event-protocol.md) | 为什么不是全量轮询或完整事件溯源？ | Accepted |
 
 ## 当前系统一图
@@ -110,9 +110,9 @@ flowchart LR
 RoomClient 最小轮询间隔 = 2000ms
 Presence 续租请求间隔 = 5000ms
 Presence 在线窗口 = 15000ms
-单次 Sync 上限 = 100 Event Groups
+单次增量 Sync 上限 = 25 Event Groups
 单次 Sync 响应预算 = 512 KiB（事件区预留 16 KiB 给协议外壳与 ephemeral）
-允许追赶的最大积压 = 300 Event Groups
+积压超过 25 Event Groups = 同一响应内直接 Snapshot
 Session/Facts 安全预算 = 6 MiB
 Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 ```
@@ -130,6 +130,8 @@ Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 | CloudBase Adapter | [`packages/room-cloudbase-adapter/index.js`](../packages/room-cloudbase-adapter/index.js) |
 | 客户端 View 状态机 | [`packages/room-client/index.js`](../packages/room-client/index.js) |
 | 小程序接线与页面模型 | [`modules/room-session/index.js`](../modules/room-session/index.js)、[`page-model.js`](../modules/room-session/page-model.js) |
+| Partner 跨页面 MP3/PCM 声明式录音控制器 | [`partner-audio.js`](../modules/room-session/partner-audio.js)；页面只 update/dispose，按原生确认自动协调最新意图，不持有第二份业务状态 |
+| 控制器私有声级/纪要策略 | [`partner-silent-sound.js`](../modules/room-session/partner-silent-sound.js)、[`partner-speech.js`](../modules/room-session/partner-speech.js)；只处理 PCM Frame/冻结上下文的 MP3，不管理设备生命周期 |
 | 导航协调 | [`modules/room-navigation/index.js`](../modules/room-navigation/index.js) |
 | Setup / Partner 稳定 RoomShell 与页面组件 | [`selectPlayer/shell.js`](../pages/main-pages/selectPlayer/shell.js)、[`partnerRoomShell.js`](../pages/main-pages/partnerMode/utils/partnerRoomShell.js)、[`gamepage`](../pages/main-pages/partnerMode/gamepage)、[`room-wait-screen`](../components/room-wait-screen)、[`components/partner-*`](../components) |
 | 云函数薄入口 | [`cloudfunctions/roomCommand/src/entry.js`](../cloudfunctions/roomCommand/src/entry.js)、[`roomQuery/src/entry.js`](../cloudfunctions/roomQuery/src/entry.js) |

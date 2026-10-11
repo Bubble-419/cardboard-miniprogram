@@ -11,7 +11,7 @@ var require_room_contracts = __commonJS({
     "use strict";
     var PROTOCOL_VERSION = 3;
     var SCHEMA_VERSION = 7;
-    var VIEW_SCHEMA_VERSION = 16;
+    var VIEW_SCHEMA_VERSION = 17;
     var EVENT_SCHEMA_VERSION = 6;
     var MAX_INCREMENTAL_SYNC_EVENTS = 25;
     var MAX_SEATS = 6;
@@ -246,6 +246,8 @@ var require_room_contracts = __commonJS({
       [ERR.SNAPSHOT_REQUIRED]: "\u9700\u8981\u91CD\u65B0\u83B7\u53D6\u5FEB\u7167"
     });
     var COMMAND_CONTEXT = Object.freeze({
+      BEGIN_MODE_SELECTION: ["modeSelectionRevision"],
+      CANCEL_MODE_SELECTION: ["modeSelectionRevision"],
       START_WORKSHOP_SESSION: ["modeSelectionRevision"],
       SET_SCENARIO: ["sessionId", "workflowStep", "workflowRevision"],
       SUBMIT_DESIGN_PROBLEM: ["sessionId", "workflowRevision"],
@@ -636,6 +638,7 @@ var require_room_contracts = __commonJS({
       if (actualKeys.length !== expectedKeys.length || expectedKeys.some((key) => !hasOwn(back.context, key))) return false;
       if (expectedKeys.includes("sessionId") && !isNonEmptyString(back.context.sessionId)) return false;
       if (expectedKeys.includes("workflowRevision") && (!Number.isInteger(back.context.workflowRevision) || back.context.workflowRevision < 1)) return false;
+      if (expectedKeys.includes("modeSelectionRevision") && (!Number.isInteger(back.context.modeSelectionRevision) || back.context.modeSelectionRevision < 0)) return false;
       const expectedAfter = back.commandType === COMMAND_TYPES.CANCEL_WORKSHOP_SESSION ? "OPEN_MODE_PICKER" : "FOLLOW_ROUTE";
       return back.after === expectedAfter;
     }
@@ -891,6 +894,15 @@ var require_model = __commonJS({
       if (!auth.ok) return auth;
       return isHost(aggregate.room, auth.member) ? auth : fail(ERR.HOST_REQUIRED);
     }
+    function setModeSelection(room, active) {
+      if (room.modeSelectionActive === true !== active) {
+        room.modeSelectionRevision = (room.modeSelectionRevision || 0) + 1;
+      }
+      room.modeSelectionActive = active;
+    }
+    function assertModeSelection(aggregate, context) {
+      return context && context.modeSelectionRevision === (aggregate.room.modeSelectionRevision || 0) ? okResult() : fail(ERR.STALE_CONTEXT, "\u6A21\u5F0F\u9009\u62E9\u8F6E\u6B21\u5DF2\u7ECF\u53D8\u5316");
+    }
     function assertParticipant(aggregate, actorUserId) {
       const auth = assertMember(aggregate, actorUserId);
       if (!auth.ok) return auth;
@@ -959,7 +971,7 @@ var require_model = __commonJS({
         updatedAt: now
       };
       aggregate.room.sessionOrdinal = ordinal;
-      aggregate.room.modeSelectionActive = false;
+      setModeSelection(aggregate.room, false);
       aggregate.room.currentSessionId = session.sessionId;
       aggregate.currentSession = session;
       return session;
@@ -1028,6 +1040,8 @@ var require_model = __commonJS({
       assertTurn,
       transitionWorkflow,
       newSession,
+      setModeSelection,
+      assertModeSelection,
       normalizeScenario,
       markParticipantLeft,
       isNonEmptyString,
@@ -2527,6 +2541,8 @@ var require_room_domain = __commonJS({
       designProblemNudgeDeniedReason,
       designProblemEditingDeniedReason,
       transitionWorkflow,
+      setModeSelection,
+      assertModeSelection,
       newSession,
       normalizeScenario,
       markParticipantLeft,
@@ -2670,26 +2686,29 @@ var require_room_domain = __commonJS({
       aggregate.archivedFacts = clone(ensureFacts(aggregate));
       aggregate.currentSession = null;
       aggregate.room.currentSessionId = null;
-      aggregate.room.modeSelectionActive = false;
+      setModeSelection(aggregate.room, false);
       aggregate.facts = emptyFacts();
       events.push(event(EVENT_TYPES.WORKSHOP_SESSION_CANCELLED, { sessionId: session.sessionId, reason }));
     }
-    function beginModeSelection(aggregate, actorUserId) {
+    function beginModeSelection(aggregate, command, actorUserId) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
+      const scope = assertModeSelection(aggregate, command.context);
+      if (!scope.ok) return scope;
       if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
       if (aggregate.room.modeSelectionActive === true) return fail(ERR.INVALID_TRANSITION, "\u5DF2\u5728\u9009\u62E9\u6A21\u5F0F");
-      aggregate.room.modeSelectionActive = true;
-      aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
+      setModeSelection(aggregate.room, true);
       return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_STARTED)]);
     }
-    function cancelModeSelection(aggregate, actorUserId) {
+    function cancelModeSelection(aggregate, command, actorUserId) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
+      const scope = assertModeSelection(aggregate, command.context);
+      if (!scope.ok) return scope;
       if (aggregate.currentSession || aggregate.room.modeSelectionActive !== true) {
         return fail(ERR.INVALID_TRANSITION);
       }
-      aggregate.room.modeSelectionActive = false;
+      setModeSelection(aggregate.room, false);
       return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_CANCELLED)]);
     }
     function removeMember(aggregate, target, kicked, deps) {
@@ -2747,6 +2766,7 @@ var require_room_domain = __commonJS({
         aggregate.archivedFacts = clone(ensureFacts(aggregate));
       }
       aggregate.room.lifecycle = LIFECYCLE.DISSOLVED;
+      setModeSelection(aggregate.room, false);
       aggregate.room.currentSessionId = null;
       aggregate.dissolvedMemberUserIds = aggregate.room.members.map((member) => member.userId);
       aggregate.currentSession = null;
@@ -2760,14 +2780,13 @@ var require_room_domain = __commonJS({
     function startSession(aggregate, command, actorUserId, deps) {
       const auth = assertHost(aggregate, actorUserId);
       if (!auth.ok) return auth;
+      const scope = assertModeSelection(aggregate, command.context);
+      if (!scope.ok) return scope;
       if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, "\u8BF7\u5148\u7ED3\u675F\u5F53\u524D\u573A\u6B21");
-      if (Number(command.context.modeSelectionRevision) !== Number(aggregate.room.modeSelectionRevision || 0)) {
-        return fail(ERR.STALE_CONTEXT, "\u6A21\u5F0F\u9009\u62E9\u9875\u5DF2\u7ECF\u53D8\u5316");
-      }
       const mode = normalizeMode(command.payload.mode);
       if (!mode) return fail(ERR.INVALID_ARGUMENT, "\u672A\u77E5\u6A21\u5F0F");
       if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} \u4EBA\u6570\u4E0D\u8DB3`);
-      aggregate.room.modeSelectionActive = false;
+      setModeSelection(aggregate.room, false);
       aggregate.facts = emptyFacts();
       const session = newSession(aggregate, mode, null, deps);
       return domainOk(
@@ -3008,8 +3027,7 @@ var require_room_domain = __commonJS({
       if ([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(check.session.status)) return fail(ERR.INVALID_TRANSITION);
       const events = [];
       cancelCurrentSession(aggregate, "HOST_CANCELLED", deps, events);
-      aggregate.room.modeSelectionActive = true;
-      aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
+      setModeSelection(aggregate.room, true);
       return domainOk(aggregate, events, { kind: "SESSION_CANCELLED" });
     }
     function returnToLobby(aggregate, command, actorUserId) {
@@ -3022,7 +3040,7 @@ var require_room_domain = __commonJS({
       aggregate.archivedFacts = clone(ensureFacts(aggregate));
       aggregate.currentSession = null;
       aggregate.room.currentSessionId = null;
-      aggregate.room.modeSelectionActive = false;
+      setModeSelection(aggregate.room, false);
       aggregate.facts = emptyFacts();
       return domainOk(aggregate, [event(EVENT_TYPES.ROOM_RETURNED_TO_LOBBY, { sessionId: check.session.sessionId })], { kind: "LOBBY" });
     }
@@ -3108,10 +3126,10 @@ var require_room_domain = __commonJS({
           result = dissolveRoom(aggregate, actorUserId, deps);
           break;
         case COMMAND_TYPES.BEGIN_MODE_SELECTION:
-          result = beginModeSelection(aggregate, actorUserId);
+          result = beginModeSelection(aggregate, command, actorUserId);
           break;
         case COMMAND_TYPES.CANCEL_MODE_SELECTION:
-          result = cancelModeSelection(aggregate, actorUserId);
+          result = cancelModeSelection(aggregate, command, actorUserId);
           break;
         case COMMAND_TYPES.START_WORKSHOP_SESSION:
           result = startSession(aggregate, command, actorUserId, deps);
@@ -3683,7 +3701,7 @@ var require_room_projection = __commonJS({
         return aggregate.room.modeSelectionActive === true ? { back: {
           kind: "COMMAND",
           commandType: COMMAND_TYPES.CANCEL_MODE_SELECTION,
-          context: {},
+          context: { modeSelectionRevision: aggregate.room.modeSelectionRevision || 0 },
           after: "FOLLOW_ROUTE"
         } } : { back: noBack() };
       }
@@ -4093,6 +4111,18 @@ var require_room_application = __commonJS({
           return null;
         }
       }
+      function activityForMember(roomId, memberId, actorContext, activity) {
+        if (!activity) return touchActivity(roomId, memberId, actorContext);
+        return activity.roomId === roomId && activity.memberId === memberId ? activity.promise : Promise.resolve(null);
+      }
+      async function readWithActivity(roomId, memberId, actorContext, read) {
+        const [result] = await Promise.allSettled([
+          Promise.resolve().then(read),
+          touchActivity(roomId, memberId, actorContext)
+        ]);
+        if (result.status === "rejected") throw result.reason;
+        return result.value;
+      }
       function signalScopeFromSession(aggregate) {
         if (!aggregate || !aggregate.room || !aggregate.currentSession) return null;
         const session = aggregate.currentSession;
@@ -4179,15 +4209,19 @@ var require_room_application = __commonJS({
         await touchActivity(found.roomId, found.memberId, actorContext);
         return okResult({ roomId: found.roomId, membershipId: found.memberId });
       }
-      async function projectSnapshot(roomId, actorContext, aggregate, touchedPromise) {
+      async function projectSnapshot(roomId, actorContext, aggregate, activity) {
         const actorUserId = actorContext && actorContext.userId;
         const auth = authorizeRoomRead(aggregate, actorUserId);
         if (!auth.ok) return auth;
         const [rawEphemeral, touched] = await Promise.all([
           ephemeral(roomId, aggregate),
-          touchedPromise || touchActivity(roomId, auth.member.memberId, actorContext)
+          activityForMember(roomId, auth.member.memberId, actorContext, activity)
         ]);
-        const projectedEphemeral = mergeTouchedPresence(rawEphemeral, touched);
+        return snapshotFromAggregate(roomId, actorUserId, aggregate, mergeTouchedPresence(rawEphemeral, touched));
+      }
+      function snapshotFromAggregate(roomId, actorUserId, aggregate, projectedEphemeral) {
+        const auth = authorizeRoomRead(aggregate, actorUserId);
+        if (!auth.ok) return auth;
         return okResult({
           protocolVersion: PROTOCOL_VERSION,
           roomId,
@@ -4201,11 +4235,24 @@ var require_room_application = __commonJS({
         });
       }
       async function readSnapshot(roomId, actorContext) {
+        return snapshotWithActivity(roomId, actorContext);
+      }
+      async function snapshotWithActivity(roomId, actorContext, activity) {
         const actorUserId = actorContext && actorContext.userId;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
         const aggregate = await repo.readAggregate(roomId);
-        return projectSnapshot(roomId, actorContext, aggregate);
+        return projectSnapshot(roomId, actorContext, aggregate, activity);
+      }
+      async function readRoomAccess(roomId, actorContext) {
+        const actorUserId = actorContext && actorContext.userId;
+        if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
+        if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
+        const room = await repo.readRoom(roomId);
+        const auth = authorizeRoomRead(room ? { room } : null, actorUserId);
+        if (!auth.ok) return auth;
+        await touchActivity(roomId, auth.member.memberId, actorContext);
+        return okResult({ role: auth.member.memberId === room.hostMemberId ? "HOST" : "MEMBER" });
       }
       async function writeSignal(input, actorContext) {
         const actorUserId = actorContext && actorContext.userId;
@@ -4287,16 +4334,15 @@ var require_room_application = __commonJS({
         const actorUserId = actorContext && actorContext.userId;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
-        const aggregate = await repo.readAggregate(roomId);
-        const auth = authorizeRoomRead(aggregate, actorUserId);
+        const room = await repo.readRoom(roomId);
+        const auth = authorizeRoomRead(room ? { room } : null, actorUserId);
         if (!auth.ok) return auth;
-        await touchActivity(roomId, auth.member.memberId, actorContext);
         if (typeof repo.listSessions !== "function") return fail(ERR.DEPENDENCY_UNAVAILABLE);
         const limit = Math.min(50, Math.max(1, Number(requestOptions && requestOptions.limit) || 20));
-        const rows = await repo.listSessions(roomId, {
+        const rows = await readWithActivity(roomId, auth.member.memberId, actorContext, () => repo.listSessions(roomId, {
           limit,
           beforeOrdinal: requestOptions && requestOptions.beforeOrdinal
-        });
+        }));
         const hasMore = rows.length > limit;
         const selected = rows.slice(0, limit);
         const sessions = selected.map((session) => ({
@@ -4348,14 +4394,18 @@ var require_room_application = __commonJS({
         const auth = authorizeSessionRead(aggregate, actorUserId);
         if (!auth.ok) return auth;
         const liveMember = memberByUserId(aggregate.room, actorUserId);
-        await touchActivity(roomId, liveMember && liveMember.memberId, actorContext);
         const limit = Math.min(100, Math.max(1, Number(requestOptions && requestOptions.limit) || 100));
         const rawBeforeSeq = requestOptions && requestOptions.beforeSeq;
         const beforeSeq = rawBeforeSeq == null || rawBeforeSeq === "" ? null : Number(rawBeforeSeq);
         if (beforeSeq != null && (!Number.isInteger(beforeSeq) || beforeSeq < 1)) {
           return fail(ERR.INVALID_ARGUMENT, "beforeSeq \u5FC5\u987B\u662F\u6B63\u6574\u6570");
         }
-        const rows = await repo.listMessages(roomId, sessionId, { limit, beforeSeq });
+        const rows = await readWithActivity(
+          roomId,
+          liveMember && liveMember.memberId,
+          actorContext,
+          () => repo.listMessages(roomId, sessionId, { limit, beforeSeq })
+        );
         const hasMore = rows.length > limit;
         const selected = rows.slice(0, limit).map((item) => ({
           messageId: item.messageId,
@@ -4379,6 +4429,9 @@ var require_room_application = __commonJS({
         });
       }
       async function sync(roomId, afterSeq, actorContext, requestOptions) {
+        return syncWithActivity(roomId, afterSeq, actorContext, requestOptions);
+      }
+      async function syncWithActivity(roomId, afterSeq, actorContext, requestOptions, activity) {
         const actorUserId = actorContext && actorContext.userId;
         if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
         if (!isRoomId(roomId)) return fail(ERR.INVALID_ARGUMENT, "roomId \u5FC5\u987B\u662F 8 \u4F4D\u6570\u5B57");
@@ -4407,10 +4460,15 @@ var require_room_application = __commonJS({
           ephemeral: {},
           serverTime: now()
         };
-        const activityPromise = touchActivity(roomId, auth.member.memberId, actorContext);
+        const activityPromise = activityForMember(roomId, auth.member.memberId, actorContext, activity);
         const inlineSnapshot = async () => {
           const aggregate = await repo.readAggregate(roomId);
-          const snapshot = await projectSnapshot(roomId, actorContext, aggregate, activityPromise);
+          const snapshot = await projectSnapshot(
+            roomId,
+            actorContext,
+            aggregate,
+            { roomId, memberId: auth.member.memberId, promise: activityPromise }
+          );
           if (!snapshot.ok) return snapshot;
           return okResult({
             protocolVersion: PROTOCOL_VERSION,
@@ -4490,6 +4548,7 @@ var require_room_application = __commonJS({
           presenceMs: 0,
           syncMs: 0
         };
+        let activity;
         try {
           const actorUserId = actorContext && actorContext.userId;
           if (!isNonEmptyString(actorUserId)) return fail(ERR.UNAUTHENTICATED);
@@ -4597,21 +4656,26 @@ var require_room_application = __commonJS({
           const receipt = transaction.receipt;
           metrics.status = receipt.accepted ? "ACCEPTED" : "REJECTED";
           const presenceStartedAt = performanceNow();
-          try {
-            await touchActivity(receipt.activityRoomId, receipt.memberId, actorContext);
-          } finally {
-            metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
-          }
+          const departed = receipt.accepted && [COMMAND_TYPES.LEAVE_ROOM, COMMAND_TYPES.DISSOLVE_ROOM].includes(envelope.type);
+          activity = {
+            roomId: receipt.activityRoomId,
+            memberId: receipt.memberId,
+            promise: (departed ? Promise.resolve(null) : touchActivity(receipt.activityRoomId, receipt.memberId, actorContext)).finally(() => {
+              metrics.presenceMs = Math.max(0, performanceNow() - presenceStartedAt);
+            })
+          };
           if (!receipt.accepted) {
             const rejected = { ...receipt.error, commandId: envelope.commandId };
             if (!isCreate && envelope.type !== COMMAND_TYPES.LEAVE_ROOM && envelope.type !== COMMAND_TYPES.DISSOLVE_ROOM) {
               const syncStartedAt = performanceNow();
               metrics.syncSource = "QUERY";
               try {
-                const catchup = await sync(
+                const catchup = await syncWithActivity(
                   commandRoomId,
                   envelope.knownSeq,
-                  { ...actorContext, touchPresence: false }
+                  { ...actorContext, touchPresence: false },
+                  void 0,
+                  activity
                 ).catch(() => null);
                 if (catchup && catchup.ok) rejected.sync = catchup;
               } finally {
@@ -4626,6 +4690,24 @@ var require_room_application = __commonJS({
             outcome,
             traceId: `trace_${hash(`${envelope.commandId}:${commandNow}`).slice(0, 16)}`
           });
+          if ([COMMAND_TYPES.CREATE_ROOM, COMMAND_TYPES.JOIN_ROOM].includes(envelope.type)) {
+            const syncStartedAt = performanceNow();
+            try {
+              const committed = !transaction.replayed && transaction.aggregate;
+              metrics.syncSource = committed ? "INLINE_SNAPSHOT" : "QUERY";
+              const snapshot = committed ? snapshotFromAggregate(
+                outcome.roomId,
+                actorUserId,
+                { ...committed, minAvailableSeq: committed.room.eventSeq },
+                { stale: { presence: true, signals: true } }
+              ) : await snapshotWithActivity(outcome.roomId, { ...actorContext, touchPresence: false }, activity);
+              if (snapshot.ok) response.snapshot = snapshot;
+            } catch (syncError) {
+              metrics.syncSource = "FAILED";
+            } finally {
+              metrics.syncMs = Math.max(0, performanceNow() - syncStartedAt);
+            }
+          }
           if (![
             COMMAND_TYPES.CREATE_ROOM,
             COMMAND_TYPES.JOIN_ROOM,
@@ -4643,10 +4725,12 @@ var require_room_application = __commonJS({
                 serverTime: now()
               });
               metrics.syncSource = attached ? "INLINE_EVENTS" : "QUERY";
-              response.sync = attached || await sync(
+              response.sync = attached || await syncWithActivity(
                 outcome.roomId,
                 envelope.knownSeq,
-                { ...actorContext, touchPresence: false }
+                { ...actorContext, touchPresence: false },
+                void 0,
+                activity
               );
             } catch (syncError) {
               metrics.syncSource = "FAILED";
@@ -4659,6 +4743,7 @@ var require_room_application = __commonJS({
           metrics.status = "ERROR";
           throw error;
         } finally {
+          if (activity) await activity.promise;
           if (typeof appOptions.onCommandMetrics === "function") {
             const completed = { ...metrics, totalMs: Math.max(0, performanceNow() - startedAt) };
             try {
@@ -4672,6 +4757,7 @@ var require_room_application = __commonJS({
         executeCommand,
         readCurrentRoom,
         readSnapshot,
+        readRoomAccess,
         readSessionSnapshot,
         readHistory,
         readLeaderboard,
@@ -4882,7 +4968,7 @@ var require_room_cloudbase_adapter = __commonJS({
             }
           }
           const reusableRoom = activeRoomId && activeRoomId === resolvedRoomId ? activeRoomDocument : null;
-          const current = resolvedRoomId ? await loadAggregate(transaction, resolvedRoomId, reusableRoom) : null;
+          const current = resolvedRoomId && input.type !== COMMAND_TYPES.CREATE_ROOM ? await loadAggregate(transaction, resolvedRoomId, reusableRoom) : null;
           const beforeUsersSnapshot = openUsers(current);
           const beforeSessionSnapshot = persistedSession(current, resolvedRoomId);
           const decision = handler({ aggregate: current, activeRoomId, resolvedRoomId });
@@ -4964,8 +5050,17 @@ var require_room_cloudbase_adapter = __commonJS({
             await transaction.collection(COLLECTIONS.active).doc(docId(input.actorUserId)).remove();
           }
           await transaction.collection(COLLECTIONS.actions).doc(actionId).set({ data: receipt });
-          return { replayed: false, receipt, events: (decision.events || []).map((item) => cleanDoc(item)) };
+          return {
+            replayed: false,
+            receipt,
+            events: (decision.events || []).map((item) => cleanDoc(item)),
+            aggregate: decision.accepted && requiresActiveLookup ? cleanDoc(decision.aggregate) : void 0
+          };
         });
+      }
+      async function readRoom(roomId) {
+        const room = await safeGet(db, COLLECTIONS.rooms, roomId);
+        return compatibleRoom(room) ? cleanDoc(room) : null;
       }
       async function readAggregate(roomId) {
         return db.runTransaction(async (transaction) => {
@@ -5169,6 +5264,7 @@ var require_room_cloudbase_adapter = __commonJS({
       return {
         generateRoomId,
         transactCommand,
+        readRoom,
         readAggregate,
         readSessionAggregate,
         listSessions,

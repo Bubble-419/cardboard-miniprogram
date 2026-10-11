@@ -123,6 +123,272 @@ test('并发 open/refresh 合并为一次连接恢复，避免写命令排在重
   client.close();
 });
 
+test('恢复途中切换前后台会重新读取 Snapshot，且继续轮询', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const oldSnapshot = await h.snapshot('host');
+  const gate = deferred();
+  const entered = deferred();
+  const timers = manualTimers();
+  let snapshotCalls = 0;
+  let syncCalls = 0;
+  const client = createRoomClient({
+    ...timers,
+    gateway: {
+      currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+      snapshot: () => {
+        snapshotCalls += 1;
+        if (snapshotCalls === 1) { entered.resolve(); return gate.promise; }
+        return h.snapshot('host');
+      },
+      sync: (roomId, seq) => { syncCalls += 1; return h.app.sync(roomId, seq, { userId: 'host' }); }
+    }
+  });
+  const opening = client.open();
+  await entered.promise;
+  client.pause();
+  const updated = await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '前台最新房间' } });
+  assert.equal(updated.ok, true);
+  const resumed = client.resume();
+  gate.resolve(oldSnapshot);
+  await Promise.all([opening, resumed]);
+  assert.equal(client.getView().room.workshopName, '前台最新房间');
+  await timers.run();
+  assert.equal(syncCalls, 1, '恢复后不能保持 paused 而永久停轮询');
+  client.close();
+});
+
+test('前后台切换后丢弃在途旧 Snapshot，不能先发布旧 View 再恢复', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const oldSnapshot = await h.snapshot('host');
+  const gates = [deferred(), deferred()];
+  const entered = [deferred(), deferred()];
+  let snapshotCalls = 0;
+  const published = [];
+  const client = createRoomClient({ ...inertTimers(), gateway: {
+    currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+    snapshot: () => {
+      const index = snapshotCalls++;
+      entered[index].resolve();
+      return gates[index].promise;
+    }
+  } });
+  client.subscribe((view) => { if (view) published.push(view.room.workshopName); });
+  try {
+    const opening = client.open();
+    await entered[0].promise;
+    client.pause();
+    await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '前台最新房间' } });
+    const resumed = client.resume();
+    gates[0].resolve(oldSnapshot);
+    await opening;
+    await entered[1].promise;
+    assert.deepEqual(published, [], '旧恢复响应不能驱动订阅导航或屏幕副作用');
+    assert.equal(client.getView(), null);
+    gates[1].resolve(await h.snapshot('host'));
+    await resumed;
+    assert.deepEqual(published, ['前台最新房间']);
+  } finally {
+    gates.forEach((gate) => gate.resolve(oldSnapshot));
+    client.close();
+  }
+});
+
+test('自动 Sync 的在途 Snapshot 也不能跨前后台周期发布旧 View', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const oldSnapshot = await h.snapshot('host');
+  const syncGate = deferred(), syncEntered = deferred();
+  const recoveryGate = deferred(), recoveryEntered = deferred();
+  const timers = manualTimers();
+  let snapshotCalls = 0;
+  const published = [];
+  const client = createRoomClient({ ...timers, gateway: {
+    currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+    snapshot: () => {
+      if (++snapshotCalls === 1) return h.snapshot('host');
+      recoveryEntered.resolve();
+      return recoveryGate.promise;
+    },
+    sync: () => { syncEntered.resolve(); return syncGate.promise; }
+  } });
+  client.subscribe((view) => { if (view) published.push(view.room.workshopName); });
+  try {
+    await client.open();
+    published.length = 0;
+    const polling = timers.run();
+    await syncEntered.promise;
+    client.pause();
+    await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '最新房间' } });
+    const resumed = client.resume();
+    syncGate.resolve({ ok: true, protocolVersion: oldSnapshot.protocolVersion,
+      viewSchemaVersion: VIEW_SCHEMA_VERSION, eventSchemaVersion: EVENT_SCHEMA_VERSION,
+      delivery: 'SNAPSHOT', snapshot: oldSnapshot });
+    await polling;
+    await recoveryEntered.promise;
+    assert.deepEqual(published, []);
+    recoveryGate.resolve(await h.snapshot('host'));
+    await resumed;
+    assert.deepEqual(published, ['最新房间']);
+  } finally {
+    syncGate.resolve(null);
+    recoveryGate.resolve(oldSnapshot);
+    client.close();
+  }
+});
+
+test('前后台切换丢弃旧创建快照，但保留已提交 Command 结果和房间归属', async () => {
+  const h = createHarness();
+  const commandGate = deferred(), commandEntered = deferred();
+  const snapshotGate = deferred(), snapshotEntered = deferred();
+  const published = [];
+  const client = createRoomClient({ ...inertTimers(), gateway: {
+    dispatch: () => { commandEntered.resolve(); return commandGate.promise; },
+    snapshot: () => { snapshotEntered.resolve(); return snapshotGate.promise; },
+    currentRoom: () => h.app.readCurrentRoom({ userId: 'host' })
+  } });
+  client.subscribe((view) => { if (view) published.push(view.room.workshopName); });
+  let committed;
+  try {
+    const creating = client.dispatch({ type: 'CREATE_ROOM', payload: {} });
+    await commandEntered.promise;
+    committed = await h.command('host', 'CREATE_ROOM');
+    assert.equal(committed.ok, true);
+    client.pause();
+    await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '最新创建房间' } });
+    const resumed = client.resume();
+    commandGate.resolve(committed);
+    assert.deepEqual(await creating, committed, '丢弃读模型不能把已提交写入改成失败');
+    await snapshotEntered.promise;
+    assert.deepEqual(published, []);
+    assert.equal(client.getState().roomId, committed.outcome.roomId);
+    snapshotGate.resolve(await h.snapshot('host'));
+    await resumed;
+    assert.deepEqual(published, ['最新创建房间']);
+  } finally {
+    commandGate.resolve(committed);
+    snapshotGate.resolve(null);
+    client.close();
+  }
+});
+
+test('旧 current 握手成功、空房间或失败都不能跨生命周期继续恢复或发布', async () => {
+  for (const result of [
+    { ok: true, roomId: '12345678' }, { ok: true, roomId: null },
+    { ok: false, errCode: 'DEPENDENCY_UNAVAILABLE', errMsg: '旧失败' },
+    Object.assign(new Error('旧网络异常'), { code: 'DEPENDENCY_UNAVAILABLE' })
+  ]) {
+    const gate = deferred(), entered = deferred();
+    let snapshotCalls = 0, currentCalls = 0;
+    const published = [];
+    const client = createRoomClient({ ...inertTimers(), gateway: {
+      currentRoom: () => {
+        if (++currentCalls === 1) { entered.resolve(); return gate.promise; }
+        return { ok: true, roomId: null };
+      },
+      snapshot: () => { snapshotCalls += 1; return null; }
+    } });
+    client.subscribe((_view, state) => published.push(state.status), { emitCurrent: false });
+    try {
+      const opening = client.open();
+      await entered.promise;
+      client.pause();
+      const resumed = client.resume();
+      if (result instanceof Error) gate.reject(result);
+      else gate.resolve(result);
+      await Promise.all([opening, resumed]);
+      assert.deepEqual(published, ['READY']);
+      assert.equal(snapshotCalls, 0, '旧 current 成功也不能继续读取旧房 Snapshot');
+    } finally { client.close(); }
+  }
+});
+
+test('旧 Snapshot 终态错误、传输失败或无效结构不得断开新恢复', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const expectedRoomId = (await h.snapshot('host')).roomId;
+  for (const result of [
+    { ok: false, errCode: 'NOT_MEMBER', errMsg: '旧成员错误' },
+    Object.assign(new Error('旧超时'), { code: 'DEPENDENCY_UNAVAILABLE' }),
+    { ok: true, roomId: expectedRoomId }
+  ]) {
+    const gate = deferred(), entered = deferred();
+    let snapshotCalls = 0;
+    const published = [];
+    const client = createRoomClient({ ...inertTimers(), gateway: {
+      currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+      snapshot: () => {
+        if (++snapshotCalls === 1) { entered.resolve(); return gate.promise; }
+        return h.snapshot('host');
+      }
+    } });
+    client.subscribe((_view, state) => published.push(state.status), { emitCurrent: false });
+    try {
+      const opening = client.open();
+      await entered.promise;
+      client.pause();
+      const resumed = client.resume();
+      if (result instanceof Error) gate.reject(result);
+      else gate.resolve(result);
+      await Promise.all([opening, resumed]);
+      assert.deepEqual(published, ['READY']);
+      assert.equal(client.getState().error, null);
+      assert.equal(client.getView().room.roomId, expectedRoomId);
+    } finally { client.close(); }
+  }
+});
+
+test('close 使在途读取失效，后续显式 open 不被旧恢复覆盖', async () => {
+  const h = createHarness();
+  await h.seedMembers(2);
+  const oldSnapshot = await h.snapshot('host');
+  const gate = deferred(), entered = deferred();
+  let snapshotCalls = 0;
+  const client = createRoomClient({ ...inertTimers(), gateway: {
+    currentRoom: () => h.app.readCurrentRoom({ userId: 'host' }),
+    snapshot: () => {
+      if (++snapshotCalls === 1) { entered.resolve(); return gate.promise; }
+      return h.snapshot('host');
+    }
+  } });
+  const published = [];
+  try {
+    const opening = client.open();
+    await entered.promise;
+    client.close();
+    client.subscribe((view) => { if (view) published.push(view.room.workshopName); });
+    gate.resolve(oldSnapshot);
+    await opening;
+    assert.equal(client.getState().status, 'CLOSED');
+    assert.equal(client.getView(), null);
+    assert.deepEqual(published, []);
+    await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '重新打开的房间' } });
+    await client.open();
+    assert.deepEqual(published, ['重新打开的房间']);
+  } finally { client.close(); }
+});
+
+test('恢复尚在队列中再次进入后台，不得被旧恢复任务重新开启轮询', async () => {
+  const gate = deferred();
+  const entered = deferred();
+  const timers = manualTimers();
+  let currentCalls = 0;
+  const client = createRoomClient({ ...timers, gateway: {
+    currentRoom: () => { currentCalls += 1; entered.resolve(); return gate.promise; }
+  } });
+  const opening = client.open();
+  await entered.promise;
+  client.pause();
+  const resumed = client.resume();
+  client.pause();
+  gate.resolve({ ok: true, roomId: null });
+  await Promise.all([opening, resumed]);
+  await timers.run();
+  assert.equal(currentCalls, 1);
+  client.close();
+});
+
 test('启动查询丢失回调超时后，排队的创建命令仍会执行', async () => {
   const calls = [];
   const gateway = createCloudRoomGateway({
@@ -1103,6 +1369,43 @@ test('结构化 retryable 响应后，用户重试仍复用未确认的 commandI
   assert.equal(first.retryable, true);
   assert.equal(second.retryable, false);
   assert.deepEqual(sent, ['retryable-1', 'retryable-1', 'retryable-1']);
+  client.close();
+});
+
+test('创建直接安装附带 Snapshot，后续按其 seq 拉取事件', async () => {
+  const h = createHarness();
+  const timers = manualTimers();
+  let snapshotCalls = 0;
+  const afterSeqs = [];
+  const client = createRoomClient({ ...timers, gateway: {
+    dispatch: (command) => h.app.executeCommand(command, { userId: 'host' }),
+    snapshot: (roomId) => { snapshotCalls += 1; return h.snapshot('host', roomId); },
+    sync: (roomId, afterSeq) => { afterSeqs.push(afterSeq); return h.app.sync(roomId, afterSeq, { userId: 'host' }); }
+  } });
+  const response = await client.dispatch({ type: 'CREATE_ROOM', payload: { nickName: '房主' } });
+  assert.equal(response.ok, true);
+  assert.equal(snapshotCalls, 0);
+  assert.deepEqual(client.getView(), response.snapshot.view);
+  await timers.run();
+  assert.deepEqual(afterSeqs, [response.snapshot.seq]);
+  client.close();
+});
+
+test('附带 Snapshot 低于提交水位时重新读取，不能安装旧 View', async () => {
+  const h = createHarness();
+  await h.seedMembers(1);
+  const old = await h.snapshot('host');
+  await h.command('host', 'UPDATE_ROOM_PROFILE', { payload: { workshopName: '最新名称' } });
+  const current = await h.snapshot('host');
+  let reads = 0;
+  const client = createRoomClient({ ...inertTimers(), gateway: {
+    dispatch: async () => ({ ok: true, outcome: { kind: 'ROOM_JOINED', roomId: old.roomId,
+      committedThroughSeq: current.seq }, snapshot: old }),
+    snapshot: async () => { reads += 1; return current; }
+  } });
+  await client.dispatch({ type: 'JOIN_ROOM', roomId: old.roomId });
+  assert.equal(reads, 1);
+  assert.deepEqual(client.getView(), current.view);
   client.close();
 });
 

@@ -120,6 +120,7 @@ function createRoomClient(options) {
   let listenerSeq = 0;
   let queue = Promise.resolve();
   let connectionPromise = null;
+  let connectionGeneration = 0;
   const listeners = new Map();
   const uncertainCommands = new Map();
 
@@ -218,13 +219,20 @@ function createRoomClient(options) {
 
   function enqueueConnection(operation) {
     if (connectionPromise) return connectionPromise;
-    const request = enqueueForeground(operation);
+    const generation = connectionGeneration;
+    // 只合并同一前台周期。后台前的 Snapshot 不能代替回前台后的权威恢复；
+    // 仍在队列中的旧恢复也不能在下一次 onHide 后把 paused 重新清掉。
+    const request = enqueueForeground(() => isCurrentConnection(generation) ? operation(generation) : view);
     connectionPromise = request;
     const clear = () => {
       if (connectionPromise === request) connectionPromise = null;
     };
     request.then(clear, clear);
     return request;
+  }
+
+  function isCurrentConnection(generation) {
+    return generation === connectionGeneration;
   }
 
   function resetConnection(nextStatus) {
@@ -340,10 +348,12 @@ function createRoomClient(options) {
     return view;
   }
 
-  async function replaceFromSnapshot(targetRoomId) {
+  async function replaceFromSnapshot(targetRoomId, generation = connectionGeneration) {
     const requestedAt = now();
     const snapshot = await gateway.snapshot(targetRoomId,
       getRequestContext({ readPresence: true, forcePresence: true }));
+    // 网络请求无法撤销，但旧前台周期的结果不能安装 View、发布路由或校准时钟。
+    if (!isCurrentConnection(generation)) return view;
     return installSnapshot(snapshot, targetRoomId, requestedAt);
   }
 
@@ -437,7 +447,7 @@ function createRoomClient(options) {
     return { hasMore: false };
   }
 
-  async function syncUntilCurrent(initialBatch) {
+  async function syncUntilCurrent(initialBatch, generation = connectionGeneration) {
     if (disposed || paused || !roomId) return view;
     cancelTimer();
     status = stagingView ? 'CATCHING_UP' : 'SYNCING';
@@ -446,6 +456,7 @@ function createRoomClient(options) {
       let batch = initialBatch || await gateway.sync(roomId, stagingView ? stagingSeq : appliedSeq,
         syncLimit, getRequestContext({ readPresence: true }));
       while (true) {
+        if (!isCurrentConnection(generation)) return view;
         const consumed = consumeBatch(batch, initialBatch ? undefined : requestedAt);
         if (consumed.snapshotApplied) break;
         if (!consumed.hasMore) break;
@@ -455,6 +466,7 @@ function createRoomClient(options) {
       }
       return view;
     } catch (syncError) {
+      if (!isCurrentConnection(generation)) return view;
       if (isTerminalRoomError(syncError)) {
         disconnectFromError(syncError);
         return null;
@@ -464,8 +476,9 @@ function createRoomClient(options) {
         stagingSeq = 0;
         stagingStateVersion = 0;
         try {
-          return await replaceFromSnapshot(roomId);
+          return await replaceFromSnapshot(roomId, generation);
         } catch (snapshotError) {
+          if (!isCurrentConnection(generation)) return view;
           if (isTerminalRoomError(snapshotError)) {
             disconnectFromError(snapshotError);
             return null;
@@ -479,11 +492,11 @@ function createRoomClient(options) {
       publish();
       return view;
     } finally {
-      schedule(nextPollDelay());
+      if (isCurrentConnection(generation)) schedule(nextPollDelay());
     }
   }
 
-  async function openInternal() {
+  async function openInternal(generation = connectionGeneration) {
     disposed = false;
     paused = false;
     status = 'OPENING';
@@ -492,6 +505,7 @@ function createRoomClient(options) {
     try {
       current = await gateway.currentRoom(getRequestContext());
     } catch (openError) {
+      if (!isCurrentConnection(generation)) return view;
       status = 'DEGRADED';
       consecutiveSyncFailures += 1;
       error = { errCode: openError.code || ERR.DEPENDENCY_UNAVAILABLE,
@@ -500,6 +514,7 @@ function createRoomClient(options) {
       schedule(Math.min(15000, intervalMs * (2 ** Math.min(consecutiveSyncFailures, 4))));
       return null;
     }
+    if (!isCurrentConnection(generation)) return view;
     if (!current || current.ok !== true) {
       status = 'DEGRADED';
       consecutiveSyncFailures += 1;
@@ -515,10 +530,12 @@ function createRoomClient(options) {
     }
     try {
       if (roomId !== current.roomId) resetRoomBoundState(current.roomId);
-      await replaceFromSnapshot(current.roomId);
+      await replaceFromSnapshot(current.roomId, generation);
+      if (!isCurrentConnection(generation)) return view;
       schedule(0);
       return view;
     } catch (snapshotError) {
+      if (!isCurrentConnection(generation)) return view;
       if (isTerminalRoomError(snapshotError)) {
         disconnectFromError(snapshotError);
         return null;
@@ -533,16 +550,17 @@ function createRoomClient(options) {
     }
   }
 
-  async function resumeInternal() {
+  async function resumeInternal(generation = connectionGeneration) {
     if (disposed) return null;
     paused = false;
-    if (!roomId) return openInternal();
+    if (!roomId) return openInternal(generation);
     cancelTimer();
     status = 'RECOVERING';
     error = null;
     try {
-      return await replaceFromSnapshot(roomId);
+      return await replaceFromSnapshot(roomId, generation);
     } catch (resumeError) {
+      if (!isCurrentConnection(generation)) return view;
       if (isTerminalRoomError(resumeError)) {
         disconnectFromError(resumeError);
       } else {
@@ -554,11 +572,12 @@ function createRoomClient(options) {
       if (!isTerminalRoomError(resumeError)) publish();
       return view;
     } finally {
-      schedule(nextPollDelay());
+      if (isCurrentConnection(generation)) schedule(nextPollDelay());
     }
   }
 
   async function dispatchCommand(input) {
+    const generation = connectionGeneration;
     const signature = stableStringify({ roomId: input.type === 'CREATE_ROOM' ? '' : (input.roomId || roomId || ''),
       type: input.type, context: input.context || {}, payload: input.payload || {} });
     const uncertain = uncertainCommands.get(signature);
@@ -569,7 +588,9 @@ function createRoomClient(options) {
       context: clone(input.context || {}), payload: clone(input.payload || {}), clientSentAt: now() };
     let result;
     let attempts = 0;
+    let requestedAt;
     do {
+      requestedAt = now();
       try { result = await gateway.dispatch(envelope, getRequestContext()); } catch (dispatchError) {
         attempts += 1;
         if (attempts >= 2) {
@@ -589,13 +610,27 @@ function createRoomClient(options) {
     }
     if (result.retryable === true) uncertainCommands.set(signature, { commandId });
     else uncertainCommands.delete(signature);
+    // Command 本身不可取消，必须交还原回执；已关闭客户端只停止安装附带读模型。
+    if (disposed) return result;
     const outcome = result.outcome || {};
     if (result.ok && ['ROOM_CREATED', 'ROOM_JOINED'].includes(outcome.kind)) {
       if (roomId !== outcome.roomId) resetRoomBoundState(outcome.roomId);
+      if (!isCurrentConnection(generation)) {
+        status = 'RECOVERING';
+        error = null;
+        return result;
+      }
       try {
-        await replaceFromSnapshot(outcome.roomId);
+        const attached = result.snapshot;
+        if (validateSnapshot(attached, outcome.roomId)
+          && attached.seq >= Number(outcome.committedThroughSeq || 0)) {
+          installSnapshot(attached, outcome.roomId, requestedAt);
+        } else {
+          await replaceFromSnapshot(outcome.roomId, generation);
+        }
         schedule(0);
       } catch (snapshotError) {
+        if (!isCurrentConnection(generation)) return result;
         // 写入结果已经明确成功；首次 Snapshot 失败只影响读模型恢复，不能把 Command 伪装成失败。
         roomId = outcome.roomId;
         status = 'DEGRADED';
@@ -608,13 +643,13 @@ function createRoomClient(options) {
     } else if (result.ok && ['LEFT_ROOM', 'ROOM_DISSOLVED'].includes(outcome.kind)) {
       resetConnection('READY');
       publish();
-    } else if (roomId && result.ok !== true
+    } else if (isCurrentConnection(generation) && roomId && result.ok !== true
       && [ERR.NOT_MEMBER, ERR.ROOM_DISSOLVED, ERR.ROOM_NOT_FOUND].includes(result.errCode)) {
       const terminalError = new Error(result.errMsg || '房间连接已经失效');
       terminalError.code = result.errCode;
       disconnectFromError(terminalError);
-    } else if (result.sync && result.sync.ok === true) {
-      await syncUntilCurrent(result.sync);
+    } else if (isCurrentConnection(generation) && result.sync && result.sync.ok === true) {
+      await syncUntilCurrent(result.sync, generation);
     }
     return result;
   }
@@ -675,9 +710,21 @@ function createRoomClient(options) {
     getView() { return clone(view); },
     getState: state,
     getRequestContext,
-    pause() { paused = true; cancelTimer(); },
+    pause() {
+      paused = true;
+      connectionGeneration += 1;
+      connectionPromise = null;
+      cancelTimer();
+    },
     resume() { return enqueueConnection(resumeInternal); },
-    close() { disposed = true; paused = false; resetConnection('CLOSED'); listeners.clear(); }
+    close() {
+      disposed = true;
+      paused = false;
+      connectionGeneration += 1;
+      connectionPromise = null;
+      resetConnection('CLOSED');
+      listeners.clear();
+    }
   };
 }
 

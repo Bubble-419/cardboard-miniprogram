@@ -28,14 +28,7 @@ test('静默模式其他成员留在游戏卡片并保留匿名表达与打分',
   assert.match(gameWxml, /class="star-rating-shell/);
   assert.match(gameWxml, /class="spectator-express-slot/);
   assert.match(gameWxml, /borderVariant="\{\{cardBorderVariant\}\}"/);
-  const sampling = special.match(/async _startSoundLevelSampling\(\) \{[\s\S]*?manager\.start\([\s\S]*?\}\);/);
-  assert.ok(sampling, '当前行动者应在静默页本机采麦');
-  assert.doesNotMatch(sampling[0], /if \(!this\.data\.isHost\) return;/);
-  assert.match(sampling[0], /_ensureRecordAuth/);
-  assert.match(sampling[0], /this\._broadcastSilentSoundLevel\(smooth\)/);
-  assert.doesNotMatch(sampling[0], /if \(this\.data\.isHost\)/);
-  assert.match(special, /const granted = !!\(settingRes\.authSetting[\s\S]*?if \(!granted\) this\._silentRecordDenied = true;/,
-    '设置页仍未授权时应记住本页拒绝，避免轮询重复弹窗');
+  // 采麦、授权与多角色广播行为由 partner-silent-sound 的运行时测试覆盖。
   assert.doesNotMatch(
     appJson,
     /"scope\.record"/,

@@ -13,6 +13,7 @@ const {
   createMember, createRoomAggregate, assertRoom, assertMember, assertHost, assertParticipant, assertSession,
   designProblemNudgeDeniedReason, designProblemEditingDeniedReason,
   transitionWorkflow,
+  setModeSelection, assertModeSelection,
   newSession, normalizeScenario, markParticipantLeft, normalizeMode, LIFECYCLE, MODE, SESSION_STATUS,
   WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS
 } = model;
@@ -125,26 +126,27 @@ function cancelCurrentSession(aggregate, reason, deps, events) {
   aggregate.archivedSession = clone(session);
   aggregate.archivedFacts = clone(ensureFacts(aggregate));
   aggregate.currentSession = null; aggregate.room.currentSessionId = null;
-  aggregate.room.modeSelectionActive = false;
+  setModeSelection(aggregate.room, false);
   aggregate.facts = emptyFacts();
   events.push(event(EVENT_TYPES.WORKSHOP_SESSION_CANCELLED, { sessionId: session.sessionId, reason }));
 }
 
-function beginModeSelection(aggregate, actorUserId) {
+function beginModeSelection(aggregate, command, actorUserId) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const scope = assertModeSelection(aggregate, command.context); if (!scope.ok) return scope;
   if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, '请先结束当前场次');
   if (aggregate.room.modeSelectionActive === true) return fail(ERR.INVALID_TRANSITION, '已在选择模式');
-  aggregate.room.modeSelectionActive = true;
-  aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
+  setModeSelection(aggregate.room, true);
   return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_STARTED)]);
 }
 
-function cancelModeSelection(aggregate, actorUserId) {
+function cancelModeSelection(aggregate, command, actorUserId) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const scope = assertModeSelection(aggregate, command.context); if (!scope.ok) return scope;
   if (aggregate.currentSession || aggregate.room.modeSelectionActive !== true) {
     return fail(ERR.INVALID_TRANSITION);
   }
-  aggregate.room.modeSelectionActive = false;
+  setModeSelection(aggregate.room, false);
   return domainOk(aggregate, [event(EVENT_TYPES.MODE_SELECTION_CANCELLED)]);
 }
 
@@ -197,6 +199,7 @@ function dissolveRoom(aggregate, actorUserId, deps) {
     aggregate.archivedFacts = clone(ensureFacts(aggregate));
   }
   aggregate.room.lifecycle = LIFECYCLE.DISSOLVED;
+  setModeSelection(aggregate.room, false);
   aggregate.room.currentSessionId = null;
   aggregate.dissolvedMemberUserIds = aggregate.room.members.map((member) => member.userId);
   aggregate.currentSession = null;
@@ -207,15 +210,12 @@ function dissolveRoom(aggregate, actorUserId, deps) {
 
 function startSession(aggregate, command, actorUserId, deps) {
   const auth = assertHost(aggregate, actorUserId); if (!auth.ok) return auth;
+  const scope = assertModeSelection(aggregate, command.context); if (!scope.ok) return scope;
   if (aggregate.currentSession) return fail(ERR.INVALID_TRANSITION, '请先结束当前场次');
-  if (Number(command.context.modeSelectionRevision)
-    !== Number(aggregate.room.modeSelectionRevision || 0)) {
-    return fail(ERR.STALE_CONTEXT, '模式选择页已经变化');
-  }
   const mode = normalizeMode(command.payload.mode);
   if (!mode) return fail(ERR.INVALID_ARGUMENT, '未知模式');
   if (aggregate.room.members.length < minimumPlayers(mode)) return fail(ERR.NOT_ENOUGH_PLAYERS, `${mode} 人数不足`);
-  aggregate.room.modeSelectionActive = false;
+  setModeSelection(aggregate.room, false);
   aggregate.facts = emptyFacts();
   const session = newSession(aggregate, mode, null, deps);
   return domainOk(aggregate, [event(EVENT_TYPES.WORKSHOP_SESSION_STARTED, { sessionId: session.sessionId, mode })],
@@ -423,8 +423,7 @@ function cancelSession(aggregate, command, actorUserId, deps) {
   const check = assertSession(aggregate, command.context); if (!check.ok) return check;
   if ([SESSION_STATUS.COMPLETED, SESSION_STATUS.CANCELLED].includes(check.session.status)) return fail(ERR.INVALID_TRANSITION);
   const events = []; cancelCurrentSession(aggregate, 'HOST_CANCELLED', deps, events);
-  aggregate.room.modeSelectionActive = true;
-  aggregate.room.modeSelectionRevision = Number(aggregate.room.modeSelectionRevision || 0) + 1;
+  setModeSelection(aggregate.room, true);
   return domainOk(aggregate, events, { kind: 'SESSION_CANCELLED' });
 }
 
@@ -435,7 +434,7 @@ function returnToLobby(aggregate, command, actorUserId) {
   aggregate.archivedSession = clone(check.session);
   aggregate.archivedFacts = clone(ensureFacts(aggregate));
   aggregate.currentSession = null; aggregate.room.currentSessionId = null;
-  aggregate.room.modeSelectionActive = false; aggregate.facts = emptyFacts();
+  setModeSelection(aggregate.room, false); aggregate.facts = emptyFacts();
   return domainOk(aggregate, [event(EVENT_TYPES.ROOM_RETURNED_TO_LOBBY, { sessionId: check.session.sessionId })], { kind: 'LOBBY' });
 }
 
@@ -498,8 +497,8 @@ function reduceCommand(input) {
     case COMMAND_TYPES.LEAVE_ROOM: result = leaveRoom(aggregate, actorUserId, deps); break;
     case COMMAND_TYPES.KICK_MEMBER: result = kickMember(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.DISSOLVE_ROOM: result = dissolveRoom(aggregate, actorUserId, deps); break;
-    case COMMAND_TYPES.BEGIN_MODE_SELECTION: result = beginModeSelection(aggregate, actorUserId); break;
-    case COMMAND_TYPES.CANCEL_MODE_SELECTION: result = cancelModeSelection(aggregate, actorUserId); break;
+    case COMMAND_TYPES.BEGIN_MODE_SELECTION: result = beginModeSelection(aggregate, command, actorUserId); break;
+    case COMMAND_TYPES.CANCEL_MODE_SELECTION: result = cancelModeSelection(aggregate, command, actorUserId); break;
     case COMMAND_TYPES.START_WORKSHOP_SESSION: result = startSession(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.SET_SCENARIO: result = setScenario(aggregate, command, actorUserId, deps); break;
     case COMMAND_TYPES.SUBMIT_DESIGN_PROBLEM: result = submitDesignProblem(aggregate, command, actorUserId, deps); break;

@@ -15,6 +15,30 @@ const CURRENT_ROOM_VERSION = Object.freeze({
   schemaVersion: SCHEMA_VERSION
 });
 
+test('创建事务只读一次候选房号，提交聚合仅返回应用层，不保存到 Receipt', async () => {
+  const documents = new Map(), reads = [];
+  const store = { collection(name) { return { doc(id) { const key = `${name}:${id}`; return {
+    async get() { reads.push(key); return { data: documents.get(key) || null }; },
+    async set({ data }) { documents.set(key, data); }
+  }; } }; } };
+  const repo = createCloudBaseRoomRepository({ db: { runTransaction: (run) => run(store) } });
+  const input = { type: 'CREATE_ROOM', scopeKey: 'actor:host', commandId: 'create-1', actorUserId: 'host',
+    roomId: '12345678', roomIdCandidates: ['12345678'], requestHash: 'hash', createdAt: 1 };
+  const result = await repo.transactCommand(input, ({ aggregate }) => {
+    assert.equal(aggregate, null);
+    return { accepted: true, aggregate: { room: { ...CURRENT_ROOM_VERSION, roomId: '12345678',
+      lifecycle: 'OPEN', eventSeq: 1, members: [{ memberId: 'host-member', userId: 'host' }] },
+    currentSession: null, facts: {} }, events: [{ seq: 1 }], outcome: { roomId: '12345678', committedThroughSeq: 1 } };
+  });
+  assert.equal(reads.filter((key) => key === `${COLLECTIONS.rooms}:12345678`).length, 1);
+  assert.equal(result.aggregate.room.eventSeq, 1);
+  const replay = await repo.transactCommand(input, () => { throw new Error('不得重复执行业务'); });
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.aggregate, undefined);
+  assert.equal(replay.receipt.aggregate, undefined);
+  assert.equal(replay.receipt.snapshot, undefined);
+});
+
 function storeRejecting(error) {
   return {
     collection() {

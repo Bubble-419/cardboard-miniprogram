@@ -53,6 +53,7 @@
 - 在线 Shell 首屏保持无交互加载态，禁止按 URL 参数猜业务屏幕；导航与各 Shell projector 必须共用同一个 Route 分类器。离开 Shell 边界时先进入无交互过渡态并停止旧屏幕副作用，导航失败仍保留重试水位。
 - Shell 不维护第二份业务状态，不以生命周期、计时器或临时叠层猜测当前屏幕。旧 revision 必须丢弃；相同 route 下的可见字段变化仍需刷新，不能被游戏区优化吞掉。
 - 屏幕副作用按当前 Shell screen 启停：等待页、投票页不得启动游戏计时、录音等副作用。离开 Shell 的权威 Route 交还全局导航处理，不能闪回旧游戏屏幕。
+- 原生单例录音统一经过 `modules/room-session/partner-audio.js`；页面只提交完整 PageSnapshot + 本地可见性并在卸载时 dispose，不用 `start/stop/isActive/beforeStart` 编排 MP3/PCM 交接。控制器区分期望意图与设备实际状态，原生 onStart 才算开始，迟到 onStop 自动协调最新意图。尚未 onStart 且原生明确返回未取得音频轨道的 `NotFoundError/NotAllowedError` 时，直接结束失败 run、清除确认计时，不调用 stop 或等待不存在的 onStop；同作用域 View 不重试，新作用域或前后台周期可重试。启动确认超时只报告仍在等待，不伪造失败或取消仍有效的意图，迟到 onStart 正常开始。其他错误、超时或已开始的设备错误不代表设备已释放，禁止靠下一轮 View 或固定延时抢占。已取消 run 首次迟到 onStart 只补一次停止，重复回调不得形成重试循环；UI hook 可同步离页或换意图，通知前结束失败 run，通知后必须重新校验捕获 run 的所有权。每段音频冻结业务上下文，旧页回调不得操作新资源或刷新已离页 UI。
 - 本地叠层不是新 Route。完成后优先关闭叠层并恢复下层 Shell；页面栈不符合预期时，才使用有超时的权威 URL 重建路径。
 
 ### 输入框与软键盘

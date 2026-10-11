@@ -109,6 +109,7 @@ test('新房间首次选择模式会携带当前 modeSelectionRevision', async (
     room: { roomId, modeSelectionRevision },
     session: modeStarted ? { sessionId: 'session-1', status: 'CONFIGURING' } : null,
     actor: {
+      role: 'HOST',
       capabilities: {
         START_WORKSHOP_SESSION: { allowed: !modeStarted, reason: 'INVALID_TRANSITION' }
       }
@@ -164,6 +165,7 @@ test('新房间首次选择模式会携带当前 modeSelectionRevision', async (
   };
 
   try {
+    page._installModeContext(roomSession.getSnapshot());
     await page._confirmMode();
 
     assert.equal(
@@ -176,5 +178,121 @@ test('新房间首次选择模式会携带当前 modeSelectionRevision', async (
     global.getApp = originalGetApp;
     global.wx = originalWx;
     global.getCurrentPages = originalGetCurrentPages;
+  }
+});
+
+test('大厅真实点击处理函数在 Command 成功后跟随提交后的模式页，不被订阅跳转掩盖缺失导入', async () => {
+  const originalPage = global.Page;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalGetPages = global.getCurrentPages;
+  const calls = [];
+  let definition;
+  const view = { room: { modeSelectionRevision: 0 },
+    actor: { capabilities: { BEGIN_MODE_SELECTION: { allowed: true } } },
+    route: { name: 'addPlayer', params: {} } };
+  const snapshot = { ok: true, revision: 499, roomId: '12345678', view };
+  global.Page = (value) => { definition = value; };
+  const app = { globalData: { roomSession: {
+    roomId: '12345678', getView: () => view, getSnapshot: () => snapshot,
+    dispatch: async (command) => {
+      calls.push(command.type);
+      view.route = { name: 'brainstormMode', params: { isHost: 1 } };
+      return { ok: true, outcome: { committedThroughSeq: 499 } };
+    }
+  } } };
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/addPlayer/index', data: {} }];
+  global.wx = { hideLoading() {}, showLoading() {}, showToast() {},
+    removeStorageSync() {}, redirectTo(options) { calls.push(options.url); options.success({}); } };
+  const modulePath = require.resolve('../../pages/main-pages/addPlayer/index');
+  try {
+    delete require.cache[modulePath];
+    require(modulePath);
+    const page = { ...definition, _pageAlive: true, data: { ...definition.data, roomId: '12345678' },
+      setData(patch) { Object.assign(this.data, patch); }, _stopMemberPolling() {}, _startMemberPolling() {} };
+    const result = await page.handleGoBrainstormMode();
+    assert.equal(result.ok, true);
+    assert.equal(calls[0], 'BEGIN_MODE_SELECTION');
+    assert.match(calls[1], /brainstormMode\/index/);
+    assert.equal(page._navigatingToBrainstorm, false);
+    // 从首页主动查看大厅后，选择过程可能已经存在；应恢复它而非重复 BEGIN。
+    calls.length = 0;
+    view.actor.capabilities.BEGIN_MODE_SELECTION = { allowed: false, reason: 'INVALID_TRANSITION' };
+    page._stayOnLobby = true;
+    const resumed = await page.handleGoBrainstormMode();
+    assert.equal(resumed.ok, true);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /brainstormMode\/index/);
+    assert.equal(page._stayOnLobby, false);
+  } finally {
+    delete require.cache[modulePath];
+    global.Page = originalPage;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalGetPages;
+  }
+});
+
+test('模式页错误角色入口使用权威 View 跟随等待页，不因缺少导航导出崩溃', async () => {
+  const definition = loadPageDefinition();
+  const navigations = [];
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalGetPages = global.getCurrentPages;
+  const snapshot = { ok: true, revision: 500, roomId: '12345678',
+    view: { route: { name: 'subAwait', params: { scene: 'brainstormMode' } } } };
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/brainstormMode/index', data: {} }];
+  global.getApp = () => ({ globalData: { roomSession: {
+    roomId: '12345678', getState: () => ({ status: 'READY', roomId: '12345678' }),
+    getSnapshot: () => snapshot
+  } } });
+  global.wx = { showToast() {}, redirectTo(options) { navigations.push(options.url); options.success({}); } };
+  const page = { ...definition, data: { ...definition.data },
+    setData(patch) { Object.assign(this.data, patch); } };
+  try {
+    await page.onLoad({ roomId: '12345678', isHost: '0' });
+    assert.equal(navigations.length, 1);
+    assert.match(navigations[0], /subAwait\/index.*scene=brainstormMode/);
+  } finally {
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalGetPages;
+  }
+});
+
+test('缺省角色入口即使 onReady 先于权威角色读取完成，仍建立订阅并加载模式封面', async () => {
+  const definition = loadPageDefinition();
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalGetPages = global.getCurrentPages;
+  const snapshot = { ok: true, revision: 501, roomId: '12345678',
+    view: { room: { modeSelectionRevision: 6 }, actor: { role: 'HOST' },
+      route: { name: 'brainstormMode', params: {} } } };
+  global.getCurrentPages = () => [{ route: 'pages/main-pages/brainstormMode/index', data: {} }];
+  global.getApp = () => ({ globalData: { roomSession: {
+    roomId: '12345678', getState: () => ({ status: 'READY', roomId: '12345678' }),
+    getSnapshot: () => snapshot
+  } } });
+  global.wx = { showToast() {} };
+  let binds = 0;
+  let refreshes = 0;
+  const page = { ...definition, data: { ...definition.data },
+    setData(patch) { Object.assign(this.data, patch); },
+    _bindRoomRoute() { binds += 1; }, _scheduleRoomRefresh() { refreshes += 1; } };
+  try {
+    const loading = page.onLoad({ roomId: '12345678' });
+    page.onReady();
+    await loading;
+    assert.equal(page.data.isHost, true);
+    assert.equal(binds, 1, '订阅不能由尚未完成的角色读取决定');
+    assert.equal(refreshes, 1);
+    assert.ok(page._coverLoadTimer, '封面挂载不能因为 URL 缺省角色而遗漏');
+    assert.deepEqual(page._renderedModeContext, { modeSelectionRevision: 6 });
+  } finally {
+    if (page._coverLoadTimer) clearTimeout(page._coverLoadTimer);
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalGetPages;
   }
 });

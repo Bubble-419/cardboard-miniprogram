@@ -141,20 +141,23 @@ Page(withPageInteractionLock({
         });
       }
 
-      const fingerprint = summaryList
-        .map((item) => `${item.playerIndex || ''}:${item.ideaText || ''}`)
-        .join('|') + `#${allFilled ? 1 : 0}:${canEditIdea ? 1 : 0}:${canComplete ? 1 : 0}:${editing ? 1 : 0}:${editDraft}`;
-      if (fingerprint === this._summaryFingerprint) return;
-      this._summaryFingerprint = fingerprint;
-
-      this.setData({
+      // 比较完整可见模型；资料 Event 只改头像/本人标记时也不能被文字指纹吞掉。
+      const model = {
         summaryList,
         canEditIdea,
         canRestartRound: allFilled && (!result.isHost || canComplete),
         editing,
-        editDraft,
-        editingCursor: editing ? (editDraft || '').length : 0
-      });
+        editDraft
+      };
+      const fingerprint = JSON.stringify(model);
+      if (fingerprint === this._summaryFingerprint) return;
+      this._summaryFingerprint = fingerprint;
+
+      // 仅首次进入编辑态定位末尾；后续 View 刷新不能重置原生输入框的光标。
+      if (editing !== this.data.editing) {
+        model.editingCursor = editing ? editDraft.length : 0;
+      }
+      this.setData(model);
   },
 
   _startStatePolling() {
@@ -187,12 +190,14 @@ Page(withPageInteractionLock({
 
   onIdeaInput(e) {
     const value = (e.detail && e.detail.value) || '';
+    const cursor = e.detail && e.detail.cursor;
     this._editingHasInput = true;
     const summaryList = (this.data.summaryList || []).map((item) => (
       item.isMe ? { ...item, ideaText: value } : item
     ));
     this._summaryFingerprint = '';
-    this.setData({ editDraft: value, summaryList });
+    this.setData({ editDraft: value, summaryList,
+      ...(Number.isInteger(cursor) && cursor >= 0 ? { editingCursor: cursor } : {}) });
   },
 
   handleEditIdea() {
@@ -234,6 +239,8 @@ Page(withPageInteractionLock({
     this._savingIdea = true;
     try {
       const result = await dispatchRoomCommand('SUBMIT_HALLI_IDEA', { text });
+      // Command 可继续完成，但已卸载页面不能再被迟到响应写回。
+      if (this._pageAlive === false) return false;
       if (!result || result.ok !== true) {
         wx.showToast({ title: result && result.errMsg || '保存失败', icon: 'none' });
         return false;
@@ -253,6 +260,9 @@ Page(withPageInteractionLock({
         this._applySummary(snapshot, members);
       }
       return true;
+    } catch (error) {
+      if (this._pageAlive !== false) wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+      return false;
     } finally {
       this._savingIdea = false;
     }
@@ -274,7 +284,9 @@ Page(withPageInteractionLock({
     this._ignoreInitialIdeaBlurUntil = 0;
     this._editingHasInput = false;
     const value = e && e.detail ? e.detail.value : this.data.editDraft;
-    await this._saveIdeaText(value, { toastEmpty: false });
+    // 原生 blur 与确认按钮是同一保存意图；请求结束前禁止重新聚焦编辑，避免旧响应清掉新草稿。
+    return runPageInteraction(this, () => this._saveIdeaText(value, { toastEmpty: false }),
+      { loadingText: '正在保存…' });
   },
 
   handleFinish() {

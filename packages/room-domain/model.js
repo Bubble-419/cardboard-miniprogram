@@ -170,6 +170,19 @@ function assertHost(aggregate, actorUserId) {
   if (!auth.ok) return auth;
   return isHost(aggregate.room, auth.member) ? auth : fail(ERR.HOST_REQUIRED);
 }
+
+/** 模式选择是 Room 级流程；仅流程进出提升令牌，资料更新不影响待提交的模式选择。 */
+function setModeSelection(room, active) {
+  if ((room.modeSelectionActive === true) !== active) {
+    room.modeSelectionRevision = (room.modeSelectionRevision || 0) + 1;
+  }
+  room.modeSelectionActive = active;
+}
+
+function assertModeSelection(aggregate, context) {
+  return context && context.modeSelectionRevision === (aggregate.room.modeSelectionRevision || 0)
+    ? okResult() : fail(ERR.STALE_CONTEXT, '模式选择轮次已经变化');
+}
 function assertParticipant(aggregate, actorUserId) {
   const auth = assertMember(aggregate, actorUserId);
   if (!auth.ok) return auth;
@@ -239,7 +252,7 @@ function newSession(aggregate, mode, copiedSetup, deps) {
     progress: {}, modeState: {}, result: null, startedAt: now, completedAt: null, updatedAt: now
   };
   aggregate.room.sessionOrdinal = ordinal;
-  aggregate.room.modeSelectionActive = false;
+  setModeSelection(aggregate.room, false);
   aggregate.room.currentSessionId = session.sessionId;
   aggregate.currentSession = session;
   return session;
@@ -281,6 +294,7 @@ module.exports = {
   designProblemEditingDeniedReason,
   nextSeat, nextColor, createMember, createRoomAggregate,
   assertRoom, assertMember, assertHost, assertParticipant, assertSession, assertTurn, transitionWorkflow, newSession,
+  setModeSelection, assertModeSelection,
   normalizeScenario, markParticipantLeft, isNonEmptyString, MODE, SESSION_STATUS, WORKFLOW_STEP, EVENT_TYPES, ERR, MAX_SEATS,
   normalizeMode, LIFECYCLE
 };

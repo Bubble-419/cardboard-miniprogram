@@ -46,8 +46,6 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.REOPEN_HALLI_IDEA, {
     context: { sessionId: 's1' }, payload: {}
   })).ok, true);
-  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.BEGIN_MODE_SELECTION)).ok, true);
-  assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.CANCEL_MODE_SELECTION)).ok, true);
   assert.deepEqual(COMMAND_CONTEXT.START_WORKSHOP_SESSION, ['modeSelectionRevision']);
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_WORKSHOP_SESSION, {
     context: {}, payload: { mode: 'PARTNER' }
@@ -55,6 +53,11 @@ test('按命令注册表验证精确上下文令牌', () => {
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.START_WORKSHOP_SESSION, {
     context: { modeSelectionRevision: 1 }, payload: { mode: 'PARTNER' }
   })).ok, true);
+  for (const type of [COMMAND_TYPES.BEGIN_MODE_SELECTION, COMMAND_TYPES.CANCEL_MODE_SELECTION]) {
+    assert.equal(validateCommandEnvelope(envelope(type)).ok, false);
+    assert.equal(validateCommandEnvelope(envelope(type, { context: { modeSelectionRevision: 0 } })).ok, true);
+    assert.equal(validateCommandEnvelope(envelope(type, { context: { modeSelectionRevision: -1 } })).ok, false);
+  }
   assert.equal(validateCommandEnvelope(envelope(COMMAND_TYPES.RESET_FIRST_PLAYER, {
     context: { sessionId: 's1', workflowRevision: 1 }
   })).ok, true);
@@ -157,7 +160,8 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
   const view = {
     room: {
       roomId: '12345678', lifecycle: 'OPEN', workshopName: '工作坊', createdAt: 1,
-      hostMemberId: 'member-1', modeSelectionRevision: 1,
+      hostMemberId: 'member-1',
+      modeSelectionRevision: 0,
       members: [{
         memberId: 'member-1', seatNo: 1, nickName: '房主', avatarRef: null,
         avatarIndex: null, color: '#5EC159', joinedAt: 1
@@ -193,7 +197,7 @@ test('MemberView 必须包含页面可独立恢复所需的完整稳定骨架', 
   modeSelectionView.actor.isParticipant = false;
   modeSelectionView.route = { name: 'brainstormMode', params: { isHost: 1 } };
   modeSelectionView.navigation.back = {
-    kind: 'COMMAND', commandType: 'CANCEL_MODE_SELECTION', context: {}, after: 'FOLLOW_ROUTE'
+    kind: 'COMMAND', commandType: 'CANCEL_MODE_SELECTION', context: { modeSelectionRevision: 0 }, after: 'FOLLOW_ROUTE'
   };
   assert.equal(validateMemberView(modeSelectionView, '12345678'), true);
 

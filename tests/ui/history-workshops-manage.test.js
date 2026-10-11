@@ -101,6 +101,31 @@ test('removeHistoryWorkshops 按 roomId 删除本地历史', () => {
   });
 });
 
+test('退出或解散只刷新历史时间，不以无作用域的全局名称覆盖已缓存资料', () => {
+  const storage = new Map();
+  const reviewSnapshot = { roomState: { sessionId: 'archived-session' }, workshopName: '脑暴工作坊' };
+  storage.set('historyWorkshops', [{
+    roomId: '73781867', name: '脑暴工作坊', creator: '房主', time: '2026-10-10 22:22',
+    sessionId: 'archived-session', reviewSnapshot
+  }]);
+  storage.set('joinedRoomId', '73781867');
+  withWx(storage, {}, () => {
+    // IDE 重启后 globalData 仍可能是占位名或上一个房间的名称。
+    const app = { globalData: { roomId: '73781867', workshopName: '工作坊名称' } };
+    global.getApp = () => app;
+    const { clearRoomLocalState } = require('../../utils/roomDissolved');
+    clearRoomLocalState('73781867');
+    const history = storage.get('historyWorkshops')[0];
+    assert.equal(history.name, '脑暴工作坊');
+    assert.equal(history.creator, '房主');
+    assert.equal(history.sessionId, 'archived-session');
+    assert.deepEqual(history.reviewSnapshot, reviewSnapshot);
+    assert.notEqual(history.time, '2026-10-10 22:22');
+    assert.equal(storage.has('joinedRoomId'), false);
+    assert.equal(app.globalData.roomId, null);
+  });
+});
+
 test('管理态点卡片只切换选中，不打开回顾页', () => {
   const storage = new Map();
   storage.set('historyWorkshops', [

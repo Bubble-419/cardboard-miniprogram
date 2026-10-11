@@ -107,6 +107,48 @@ async function tempUrls(fileList, actorContext, scope) {
   return { ok: true, fileList: (response && response.fileList) || [] };
 }
 
+async function qrcode(event, actorContext, measure) {
+  const roomId = String(event && event.roomId || '');
+  if (!/^\d{8}$/.test(roomId)) {
+    return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId 必须是 8 位数字' };
+  }
+  const mediaId = docId(`${roomId}:QRCODE`);
+  // 仅预读缓存，不产生文件或签名；两个任务都收口，授权错误始终优先。
+  const [accessResult, mediaResult] = await Promise.allSettled([
+    measure('authorizeMs', () => app.readRoomAccess(roomId, actorContext)),
+    measure('cacheReadMs', () => safeGet(db, COLLECTIONS.media, mediaId))
+  ]);
+  if (accessResult.status === 'rejected') throw accessResult.reason;
+  const access = accessResult.value;
+  if (!access.ok) return access;
+  if (mediaResult.status === 'rejected') throw mediaResult.reason;
+  const media = mediaResult.value;
+  const force = event && event.force === true;
+  if ((!media || !media.fileRef || force) && access.role !== 'HOST') {
+    return { ok: false, errCode: 'HOST_REQUIRED', errMsg: '请等待房主生成二维码' };
+  }
+  let fileRef = media && media.fileRef;
+  if (!fileRef || force) {
+    const fileContent = await measure('generateMs', () => generate(roomId));
+    const upload = await measure('uploadMs', () => cloud.uploadFile({
+      cloudPath: `room-v3/qrcodes/${roomId}.png`, fileContent
+    }));
+    fileRef = upload.fileID;
+    // 上传完成后两者只依赖 fileID；任一失败也等待另一项结束，避免脱离请求的写入。
+    const [cacheResult, urlResult] = await Promise.allSettled([
+      measure('cacheWriteMs', () => db.collection(COLLECTIONS.media).doc(mediaId).set({
+        data: { roomId, mediaType: 'QRCODE', fileRef, updatedAt: Date.now() }
+      })),
+      measure('tempUrlMs', () => tempUrl(fileRef))
+    ]);
+    if (cacheResult.status === 'rejected') throw cacheResult.reason;
+    if (urlResult.status === 'rejected') throw urlResult.reason;
+    return { ok: true, qrcodeFileID: fileRef, qrcodeUrl: urlResult.value };
+  }
+  return { ok: true, qrcodeFileID: fileRef,
+    qrcodeUrl: await measure('tempUrlMs', () => tempUrl(fileRef)) };
+}
+
 /** 二维码属于可再生媒体，不改变房间业务版本。 */
 exports.main = async (event) => {
   if (initializationError) {
@@ -140,25 +182,21 @@ exports.main = async (event) => {
   if (!roomId || action !== 'qrcode') {
     return { ok: false, errCode: 'INVALID_ARGUMENT', errMsg: 'roomId/action 不合法' };
   }
+  const startedAt = Date.now();
+  const metrics = { action, roomId, status: 'ERROR' };
+  const measure = async (stage, run) => {
+    const start = Date.now();
+    try { return await run(); } finally { metrics[stage] = Date.now() - start; }
+  };
   try {
-    const snapshot = await app.readSnapshot(roomId, actorContext);
-    if (!snapshot.ok) return snapshot;
-    const mediaId = docId(`${roomId}:QRCODE`);
-    const media = await safeGet(db, COLLECTIONS.media, mediaId);
-    const force = event && event.force === true;
-    if ((!media || !media.fileRef || force) && snapshot.view.actor.role !== 'HOST') {
-      return { ok: false, errCode: 'HOST_REQUIRED', errMsg: '请等待房主生成二维码' };
-    }
-    if (!media || !media.fileRef || force) {
-      const fileContent = await generate(roomId);
-      const upload = await cloud.uploadFile({ cloudPath: `room-v3/qrcodes/${roomId}.png`, fileContent });
-      const nextMedia = { roomId, mediaType: 'QRCODE', fileRef: upload.fileID, updatedAt: Date.now() };
-      await db.collection(COLLECTIONS.media).doc(mediaId).set({ data: nextMedia });
-      return { ok: true, qrcodeFileID: nextMedia.fileRef, qrcodeUrl: await tempUrl(nextMedia.fileRef) };
-    }
-    return { ok: true, qrcodeFileID: media.fileRef, qrcodeUrl: await tempUrl(media.fileRef) };
+    const result = await qrcode(event, actorContext, measure);
+    metrics.status = result.ok ? 'OK' : result.errCode;
+    return result;
   } catch (e) {
     console.error('roomMedia error', e);
     return { ok: false, errCode: e.code || 'INTERNAL_ERROR', errMsg: e.message || 'roomMedia failed' };
+  } finally {
+    // 不记录用户身份、文件引用或签名 URL；运行耗时不包括平台调度、冷启动及网络。
+    console.info('roomMedia:perf', JSON.stringify({ ...metrics, totalMs: Date.now() - startedAt }));
   }
 };

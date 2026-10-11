@@ -55,6 +55,9 @@ flowchart TB
 - `Member View` 是对 Aggregate 的成员级投影，不是可写回的状态。
 - Event Group 是相邻投影之间的增量，不是权威事实。
 - Presence、Signal 和本地 UI 状态都不能改变业务流程。
+- 创建/加入的 Command 可从事务返回的已提交 Aggregate 临时投影 Snapshot；Aggregate 和私有 View
+  不写入 Receipt。重放仍以 Receipt 保证写入幂等，但重新读取/授权当前 Snapshot，避免复用旧状态。
+- 接受离房或解散后不再为该请求续写 Presence；旧租约按过期语义清理，不阻塞退出。
 
 ## 2. Room
 
@@ -74,7 +77,7 @@ Room
 │   └── profile
 ├── currentSessionId
 ├── modeSelectionActive     # 无活跃 Session 时，Host 正在选择模式
-├── modeSelectionRevision   # 每次进入模式选择时递增，防止旧选择页启动新场次
+├── modeSelectionRevision   # Room 级模式选择令牌，初始为 0，每次进出递增
 ├── sessionOrdinal
 ├── signalScope             # 当前 Silent 的轻量事务令牌（memberId 为当前行动者）或 null
 └── createdAt / updatedAt
@@ -110,9 +113,12 @@ modeSelectionRevision 是非负整数；每次进入新的模式选择代次时�
 
 `BEGIN_MODE_SELECTION` 与 `CANCEL_MODE_SELECTION` 原子切换 `modeSelectionActive`。创建 Session、
 返回大厅或清理失效场次时必须同步清零；Host 主动取消配置 Session 时则重新置为 `true`，使全员按
-同一权威状态回到“Host 选模式 / Player 等待”。`BEGIN_MODE_SELECTION` 和 Host 主动取消场次进入
-模式选择时都会递增 `modeSelectionRevision`；`START_WORKSHOP_SESSION` 必须携带当前值，旧页面提交
-会以 `STALE_CONTEXT` 被拒绝。
+同一权威状态回到“Host 选模式 / Player 等待”。
+
+`BEGIN_MODE_SELECTION`、`CANCEL_MODE_SELECTION`、`START_WORKSHOP_SESSION` 都携带精确
+`modeSelectionRevision`；过期命令返回 `STALE_CONTEXT`。进入/退出模式选择（含取消 Session 返回模式
+选择、创建 Session）提升该令牌，资料更新不提升。Public View 与 Event 同步该令牌，后退 context
+使用同一值；`knownSeq` 不参与此裁决。重复 `commandId` 仍重放原 Receipt，不重复改变状态。
 
 ## 3. RoomSession 与 Facts
 
@@ -234,6 +240,8 @@ modeState.partner
 `activeTurn.specialPreview` 是公开、可恢复的预览状态，目前仅取 `HELP_LUCK` 或 `null`。
 它用于在出牌玩家决定采用/不采用反面随机拼前同步“反面随机拼”标签，不代表特殊行动已经消耗；
 提交 `USE_PARTNER_SPECIAL`、返回转盘或离开当前 Turn 时必须清除。
+特殊行动叠层必须从完整 PageSnapshot 的预览字段还原 `reverseRandom`，首次恢复和订阅使用同一投影。
+指令回执追平提交水位后再应用该投影，旧 revision 不得覆盖已经清除的新预览。
 
 完成的 Turn 移入 `facts.turns`；评分、素材、匿名消息和收尾票分别进入对应 Facts。当前页面「开始表态」先进入讨论；讨论页「没有疑问」以 `allPass` 归档，「结束讨论」以 `allQuestion` 归档。协议仍允许 `START_PARTNER_STATEMENT(allPass)` 直接归档。排行榜从归档 Turn 汇总，评分次数累加每个 Turn 的 `scoredCount`，不由客户端提交。
 
@@ -461,6 +469,7 @@ flowchart LR
 | Signal | 否 | 否，进入 `ephemeral` | `roomSignal` |
 | 服务端时钟偏差 | 否 | 否，RoomClient 元数据 | 响应 `serverTime` |
 | 输入草稿、焦点、滚动、Swiper | 否 | 否 | 客户端本地；需恢复的草稿按房间/场次/Turn 隔离 |
+| 录音期望与设备实际状态 | 否 | 否 | partner-audio 本地设备控制器；期望由完整 PageSnapshot + 可见性投影，原生 onStart/onStop 确认实际状态；未开始且明确未取得轨道的 NotFoundError/NotAllowedError 结束失败 run，未知错误/超时仍等待停止确认，不反推房间 Workflow |
 
 Presence 使用 `roomId + memberId + deviceSessionId` 标识设备租约。续租是事务外的单次点写，
 `max(lastSeenAt)` 保证旧请求不会回退已写入的新时间戳；它失败不回滚已提交的业务 Command。
