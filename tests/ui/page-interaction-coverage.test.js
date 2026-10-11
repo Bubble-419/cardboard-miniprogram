@@ -35,12 +35,29 @@ function getBoundHandlers(wxml) {
   ].includes(name));
 }
 
+function readPresentation(file, visited = new Set()) {
+  if (visited.has(file)) return '';
+  visited.add(file);
+  let source = fs.readFileSync(file, 'utf8');
+  if (file.endsWith('.js')) {
+    const controller = source.match(/Page\(require\("([^"]+controller\.js)"\)/);
+    if (controller) source += readPresentation(path.resolve(path.dirname(file), controller[1]), visited);
+  }
+  if (file.endsWith('.wxml')) {
+    for (const include of source.matchAll(/<include src="([^"]+)"/g)) {
+      const target = include[1].startsWith('/') ? path.join(projectRoot, include[1]) : path.resolve(path.dirname(file), include[1]);
+      source += readPresentation(target, visited);
+    }
+  }
+  return source;
+}
+
 test('every registered interactive page includes the reusable full-page lock', () => {
   const missing = [];
   for (const route of getRegisteredRoutes()) {
     if (AUTO_ONLY_ROUTES.has(route)) continue;
-    const js = fs.readFileSync(path.join(projectRoot, `${route}.js`), 'utf8');
-    const wxml = fs.readFileSync(path.join(projectRoot, `${route}.wxml`), 'utf8');
+    const js = readPresentation(path.join(projectRoot, `${route}.js`));
+    const wxml = readPresentation(path.join(projectRoot, `${route}.wxml`));
     if (!js.includes('pageInteractionLock') || !wxml.includes('interaction-lock-layer')) {
       missing.push(route);
     }
@@ -53,16 +70,17 @@ test('decorated pages guard every WXML interaction while a request is active', (
   for (const route of getRegisteredRoutes()) {
     const jsPath = path.join(projectRoot, `${route}.js`);
     const wxmlPath = path.join(projectRoot, `${route}.wxml`);
-    const js = fs.readFileSync(jsPath, 'utf8');
-    if (!js.includes('Page(withPageInteractionLock')) continue;
+    const js = readPresentation(jsPath);
+    if (!js.includes('withPageInteractionLock({')) continue;
 
     const marker = js.lastIndexOf('}, [');
     assert.notEqual(marker, -1, `${route} 缺少交互处理器声明`);
     const guarded = new Set(
       [...js.slice(marker).matchAll(/'([^']+)'/g)].map((match) => match[1])
     );
-    const wxml = fs.readFileSync(wxmlPath, 'utf8');
-    const unguarded = getBoundHandlers(wxml).filter((name) => !guarded.has(name));
+    const wxml = readPresentation(wxmlPath);
+    const unguarded = getBoundHandlers(wxml).filter((name) => !guarded.has(name)
+      && !['onLocalScreenReady', 'onLocalScreenIntent'].includes(name));
     if (unguarded.length) failures.push({ route, unguarded });
   }
   assert.deepEqual(failures, []);

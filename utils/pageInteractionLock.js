@@ -1,6 +1,8 @@
 const DEFAULT_LOADING_DELAY_MS = 500;
+const { tryLocalNavigation } = require('../modules/room-navigation/localScreens');
+const { planPhysicalNavigation, NAVIGATION_TIMEOUT_MS } = require('../modules/room-navigation/physicalNavigation');
 // 微信导航在极少数运行时窗口中可能不触发任何回调；必须释放导航锁，让下一次 View 同步能够重试。
-const DEFAULT_NAVIGATION_TIMEOUT_MS = 6000;
+const DEFAULT_NAVIGATION_TIMEOUT_MS = NAVIGATION_TIMEOUT_MS;
 const INTERACTION_LOCK_DATA = Object.freeze({
   interactionLocked: false,
   interactionLoading: false,
@@ -61,7 +63,12 @@ function withPageInteractionLock(pageDefinition, interactionMethods = [], option
  * 将微信小程序的回调式导航 API 转成 Promise。
  * 正常等待导航 API 明确成功或失败；运行时丢失全部回调时按超时失败释放，供权威路由重试。
  */
-function waitForPageNavigation(method, options = {}) {
+function waitForPageNavigation(method, options = {}, page) {
+  const local = tryLocalNavigation(method, options, page);
+  if (local) return local;
+  const planned = planPhysicalNavigation(method, options);
+  method = planned.method;
+  options = planned.options;
   return new Promise((resolve) => {
     const navigation = typeof wx !== 'undefined' && wx && wx[method];
     if (typeof navigation !== 'function') {
@@ -142,7 +149,7 @@ function runPageNavigation(page, prepareNavigation, options = {}) {
       throw new TypeError('prepareNavigation 必须返回导航配置或空值');
     }
     const { method = 'navigateTo', ...navigationOptions } = target;
-    return waitForPageNavigation(method, navigationOptions);
+    return waitForPageNavigation(method, navigationOptions, page);
   }, options);
 }
 

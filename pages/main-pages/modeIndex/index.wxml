@@ -1,3 +1,4 @@
+<block wx:if="{{!localScreenActive}}">
 <view class="container">
   <!-- 等待视图（非房主 / 等待中） -->
   <block wx:if="{{!isHost || isWaiting}}">
@@ -122,3 +123,13 @@
   loading="{{interactionLoading}}"
   text="{{interactionLoadingText}}"
 />
+</block>
+
+<block wx:for="{{localScreens}}" wx:key="token">
+  <room-local-scenario-editor wx:if="{{item.visible && item.name === 'scenarioEditor'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+  <room-local-scenario-detail wx:if="{{item.visible && item.name === 'scenarioDetail'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+</block>

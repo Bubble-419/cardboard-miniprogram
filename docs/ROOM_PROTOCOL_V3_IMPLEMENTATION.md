@@ -472,7 +472,13 @@ Snapshot，再按 `view.route` 导航。订阅导航与动作导航由同一协�
 精确 context，成功后先跟随新的 `view.route`。模式选择已由 `BEGIN_MODE_SELECTION` /
 `CANCEL_MODE_SELECTION` 管理为权威房间状态；旧配置页保留的 `after=OPEN_MODE_PICKER` 仅作客户端兼容，
 提交 `CANCEL_WORKSHOP_SESSION` 后仍以新投影出的 `brainstormMode` Route 为准。运行期不可逆页面投影
-`NONE`，并关闭原生侧滑返回，不能用物理页面栈伪造状态倒退。
+`NONE`，不展示业务后退，不能用物理页面栈伪造状态倒退。
+
+房间主流程保持一个微信物理页面：进入和切换使用统一导航工具，`navigateTo` 意图不会新增物理
+栈层；发现遗留多层栈时只在导航协调边界执行一次根栈修复，不为每次 View 刷新调用 `reLaunch`。
+系统返回由微信宿主处理退出/收起，不发送退房、解散或取消场次指令；重开仍由 Snapshot 恢复当前
+成员资格和进度。`disableSwipeBack` 不再有效，不能依靠它禁用原生手势；Android 键盘和微信原生
+媒体预览可能先消费返回，不能承诺每次手势都立即退出，也不在页面隐藏/卸载时猜测返回原因。
 
 逻辑 Route 不要求与微信物理页面一一对应。连续运行且共享大量本地 UI 状态的屏幕可以由稳定
 RoomShell 承载：订阅必须先把完整 PageSnapshot 投影到 Shell，再调用全局导航协调器；当两个逻辑
@@ -488,13 +494,27 @@ Shell 不能用本地计时器、页面生命周期、URL 参数或临时叠层�
 `room-wait-screen` 只渲染 Shell Model，不订阅 RoomSession，也不执行导航。导航描述器与两个 Shell
 projector 共用同一个纯 Route 分类器，不能各自重复解释 `subAwait.params.scene`。
 
-本地叠层不是第二个业务页面。`specialMove` 正常完成时只关闭叠层并恢复下层 Partner RoomShell；
-权威 Route 变为 `closingStatement` 时，订阅通过 `beforeNavigate` 委托同一单飞叠层退出任务，
-不能让全局 `redirectTo` 与 Command 回调的 `navigateBack` 并发修改页面栈。
+本地叠层不是第二个微信业务页面。`withRoomLocalScreens` 将情境编辑/详情、案例、特殊行动、裁图、
+灵感和牌库挂在精确的所属页面内。组件只接收本地渲染 Model、发出语义意图；控制器由页面持有，
+共用原有 RoomSession，没有新增轮询或业务状态机。辅助屏幕覆盖 owner 时暂停其订阅/录音等
+副作用，嵌套返回只恢复直接下层；UI 树可重建，但 owner 实例、草稿和卡片选择保留。
+展示组件在完整 Model 安装后才渲染交互节点；被覆盖的组件作用域失效，嵌套返回须等新组件 ready。
+布局查询须在排队前捕获宿主的 `captureLayoutGuard`，并在访问原生节点前、安装异步结果前分别校验。
+覆盖、退后台、卸载或重新挂载都会使旧可见周期失效，即使组件对象相同也不能安装旧结果；
+恢复后由当前屏幕重新测量。裁图重算布局保留已选比例及原图裁剪区域，已关闭屏幕的迟到
+canvas/导出回调不再回传确认或干扰新屏幕。隐藏或卸载时立即结束本地导出任务并释放交互锁，
+不等待已销毁组件的回调，也不因此发送用户取消通知；返回后保留裁剪区域并允许重新确认。
+这些保护仅作用于本地 UI，不改变 Member View 或 Command。
+RoomSession 同步回放中关闭屏幕时，应立即释放刚创建的订阅，不重新安装到已卸载控制器。
+`specialMove` 正常完成只关闭页内屏幕。权威 Route 改变（包括同一路径的 `closingStatement`）时，
+协调器在同一个串行任务内先卸载局部屏幕，再安装/跟随最新 View。迟到回调只允许关闭所属实例，
+不能关闭后来打开的屏幕。辅助屏幕期间的权威 Route 监听共用 RoomClient，恢复 owner 前已具备最新
+PageSnapshot，不依赖下一次 Query 或微信 `navigateBack` 回调。
 Master / Silent 等不改变逻辑 Route 的 View 字段变化仍是强制可见的 Shell 刷新，不能因为 route
 相同或游戏区指纹相同而丢弃。静默声级属于高频瞬时字段，应窄刷新对应效果，不能为它重建卡片
-swiper。从叠层返回时，下层页面先消费 RoomSession 内已提交的当前 View，再恢复订阅和屏幕副作用，
-无需等待下一次网络轮询。页面栈异常时的 URL 重建仅是有超时的恢复路径。
+swiper。从局部屏幕返回时，owner 先消费 RoomSession 内已提交的当前 View，再恢复订阅和屏幕副作用；
+后台关闭屏幕不启动副作用，前台恢复只启动当前可见屏幕。挂载有统一超时，失败释放交互锁并恢复
+owner。全局只读回顾仍是独立页面，通过 `returnTo` 明确 UI 返回位置，不保留旧业务页在物理栈下。
 
 ```mermaid
 sequenceDiagram

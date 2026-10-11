@@ -29,7 +29,21 @@ const MODE_META = {
   spy: { title: '谁是卧底模式', gameMode: 'spy' }
 };
 
-Page({
+const { withRoomLocalScreens } = require('../../../modules/room-session/local-screens');
+const ROOM_LOCAL_SCREENS = {
+  '/pages/main-pages/selectBG/index': {
+    name: 'scenarioEditor', routes: ["modeIndex"],
+    create: require('../selectBG/controller.js'),
+    intents: require('../selectBG/view/intents')
+  },
+  '/pages/main-pages/partnerMode/confirmBG/index': {
+    name: 'scenarioDetail', routes: ["modeIndex"],
+    create: require('../../../components/room-scenario-detail/controller.js'),
+    intents: require('../../../components/room-scenario-detail/intents')
+  }
+};
+
+Page(withRoomLocalScreens({
   data: {
     roomId: '',
     modeId: 'partner',
@@ -340,4 +354,4 @@ Page({
     const result = await dispatchRoomCommand('CANCEL_WORKSHOP_SESSION', {}, { sessionId: session.sessionId });
     if (!result || result.ok !== true) throw new Error(result && result.errMsg || '取消场次失败');
   }
-});
+}, ROOM_LOCAL_SCREENS));

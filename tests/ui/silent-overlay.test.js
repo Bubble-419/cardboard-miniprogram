@@ -11,7 +11,7 @@ test('静默模式其他成员留在游戏卡片并保留匿名表达与打分',
     'utf8'
   );
   const special = fs.readFileSync(
-    path.resolve(__dirname, '../../pages/main-pages/partnerMode/specialMove/index.js'),
+    path.resolve(__dirname, '../../pages/main-pages/partnerMode/specialMove/controller.js'),
     'utf8'
   );
   const gameWxml = fs.readFileSync(

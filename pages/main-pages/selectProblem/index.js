@@ -24,7 +24,16 @@ const {
   unbindPageFromRoomSession
 } = require('../../../modules/room-session/index');
 
-Page(withPageInteractionLock({
+const { withRoomLocalScreens } = require('../../../modules/room-session/local-screens');
+const ROOM_LOCAL_SCREENS = {
+  '/pages/main-pages/partnerMode/confirmBG/index': {
+    name: 'scenarioDetail', routes: ["selectProblem"],
+    create: require('../../../components/room-scenario-detail/controller.js'),
+    intents: require('../../../components/room-scenario-detail/intents')
+  }
+};
+
+Page(withRoomLocalScreens(withPageInteractionLock({
   data: {
     roomId: '',
     workshopName: '脑暴工作坊',
@@ -628,4 +637,4 @@ Page(withPageInteractionLock({
   'goBack', 'handleGoRoom'
 ], {
   passthroughMethods: ['onProblemFocus', 'onProblemBlur']
-}));
+}), ROOM_LOCAL_SCREENS));

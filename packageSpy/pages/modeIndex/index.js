@@ -35,7 +35,16 @@ function shouldShowLibrary(spyGame) {
   );
 }
 
-Page(withPageInteractionLock({
+const { withRoomLocalScreens } = require('../../../modules/room-session/local-screens');
+const ROOM_LOCAL_SCREENS = {
+  '/packageSpy/pages/cardLibrary/index': {
+    name: 'cardLibrary', routes: ["spyIntro"],
+    create: require('../cardLibrary/controller.js'),
+    intents: require('../cardLibrary/view/intents')
+  }
+};
+
+Page(withRoomLocalScreens(withPageInteractionLock({
   data: {
     roomId: '',
     isHost: false,
@@ -59,7 +68,7 @@ Page(withPageInteractionLock({
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1200);
+      require('../../../modules/room-navigation/physicalNavigation').returnToHome();
       return;
     }
     getApp().globalData.roomId = roomId;
@@ -255,4 +264,4 @@ Page(withPageInteractionLock({
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });
   }
-}, ['onOpenLibrary', 'onToggleRules', 'onStartGame', 'handleGoBack', 'handleGoRoom']));
+}, ['onOpenLibrary', 'onToggleRules', 'onStartGame', 'handleGoBack', 'handleGoRoom']), ROOM_LOCAL_SCREENS));

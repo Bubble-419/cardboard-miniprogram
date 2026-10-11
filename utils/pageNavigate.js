@@ -2,6 +2,18 @@
  * 小程序页面跳转：统一防抖、排队与「未注册」重试，避免多页面轮询并发导航报错
  */
 
+const { tryLocalNavigation } = require('../modules/room-navigation/localScreens');
+const { waitForPageNavigation } = require('./pageInteractionLock');
+
+function openNavigation(method, options) {
+  const { success, fail, ...rest } = options;
+  return waitForPageNavigation(method, rest).then((result) => {
+    if (result.ok && success) success(result.result);
+    if (!result.ok && fail) fail(result.error || result);
+    return result;
+  });
+}
+
 const REGISTERED_ROUTES = new Set([
   'pages/main-pages/aaa/index',
   'pages/auth/index',
@@ -106,7 +118,7 @@ function _releaseNav() {
 /**
  * @param {string} url
  * @param {object} [options]
- * @param {boolean} [options.preferNavigate] 子页面栈内优先 navigateTo
+ * @param {boolean} [options.preferNavigate] 优先经过局部屏幕入口（非局部屏幕仍替换真实页）
  * @param {boolean} [options.preferReLaunch] 结算/收尾回局等场景清空页面栈，避免 navigateBack 退到选情境
  * @param {boolean} [options.immediate] 跳过首跳延迟
  * @param {number} [options.retryCount] 内部重试计数
@@ -177,7 +189,7 @@ function _runNav(url, targetRoute, options, retryCount) {
       return;
     }
     if (stage === 'navigateTo') {
-      wx.redirectTo({ url, success: onSuccess, fail: (e2) => onFail(e2, 'redirectTo') });
+      openNavigation('redirectTo', { url, success: onSuccess, fail: (e2) => onFail(e2, 'redirectTo') });
       return;
     }
     if (stage === 'redirectTo') {
@@ -197,7 +209,7 @@ function _runNav(url, targetRoute, options, retryCount) {
         _releaseNav();
         return;
       }
-      wx.reLaunch({
+      openNavigation('reLaunch', {
         url,
         success: onSuccess,
         fail: (e3) => {
@@ -212,7 +224,7 @@ function _runNav(url, targetRoute, options, retryCount) {
   };
 
   if (options.preferReLaunch && retryCount === 0) {
-    wx.reLaunch({
+    openNavigation('reLaunch', {
       url,
       success: onSuccess,
       fail: (e) => onFail(e, 'navigateTo')
@@ -221,11 +233,11 @@ function _runNav(url, targetRoute, options, retryCount) {
   }
 
   if (options.preferNavigate && retryCount === 0) {
-    wx.navigateTo({ url, success: onSuccess, fail: (e) => onFail(e, 'navigateTo') });
+    openNavigation('navigateTo', { url, success: onSuccess, fail: (e) => onFail(e, 'navigateTo') });
     return;
   }
 
-  wx.redirectTo({ url, success: onSuccess, fail: (e) => onFail(e, 'redirectTo') });
+  openNavigation('redirectTo', { url, success: onSuccess, fail: (e) => onFail(e, 'redirectTo') });
 }
 
 /** @deprecated 使用 openUrl；兼容旧调用，第二参数可为 retryCount 或 options */
@@ -252,66 +264,16 @@ function clearPendingNavigation() {
   _nav.lastAt = 0;
 }
 
-function getPrevRoute() {
-  const pages = getCurrentPages();
-  if (!pages || pages.length < 2) return '';
-  return pages[pages.length - 2].route || '';
-}
-
-function _openFallback(url) {
-  if (!url || typeof url !== 'string') return;
-  const route = normalizeRoute(url);
-  if (route === getCurrentRoute()) return;
-  wx.redirectTo({
-    url,
-    fail: () => {
-      wx.reLaunch({
-        url,
-        fail: (err) => console.warn('[pageNavigate] fallback 失败', err, url)
-      });
-    }
-  });
-}
-
-/**
- * 语义化返回：栈上一页不符合期望时走 fallback，避免房主 redirectTo 卸页后 navigateBack「退两级」。
- * @param {object} [options]
- * @param {string|string[]} [options.expectedPrev] 期望的上一页 route（可带/不带前导 /）
- * @param {string} [options.fallbackUrl] 期望不符或 navigateBack 失败时的去向
- * @param {number} [options.delta]
- */
-function safeNavigateBack(options = {}) {
-  const delta = options.delta > 0 ? options.delta : 1;
-  const fallbackUrl = options.fallbackUrl || '';
-  const expected = options.expectedPrev;
-  const expectedList = !expected
-    ? []
-    : (Array.isArray(expected) ? expected : [expected]).map(normalizeRoute).filter(Boolean);
-
-  const pages = getCurrentPages();
-  if (!pages || pages.length <= delta) {
-    _openFallback(fallbackUrl);
-    return false;
-  }
-
-  if (expectedList.length) {
-    const prevRoute = getPrevRoute();
-    if (!expectedList.includes(prevRoute)) {
-      _openFallback(fallbackUrl);
-      return false;
-    }
-  }
-
-  wx.navigateBack({
-    delta,
-    fail: () => _openFallback(fallbackUrl)
-  });
-  return true;
+/** UI 返回：局部屏幕原地关闭；独立只读页面显式恢复目标，不从真实页面栈猜测业务。 */
+function safeNavigateBack(options = {}, page) {
+  const local = tryLocalNavigation('navigateBack', {}, page);
+  if (local) return local;
+  const fallbackUrl = options.fallbackUrl || '/pages/main-pages/aaa/index';
+  return waitForPageNavigation('redirectTo', { url: fallbackUrl }, page);
 }
 
 module.exports = {
   getCurrentRoute,
-  getPrevRoute,
   normalizeRoute,
   isRouteRegistered,
   isFlowOverlayRoute,

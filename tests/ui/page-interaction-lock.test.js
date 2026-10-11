@@ -100,7 +100,7 @@ test('waits for the navigation success callback', async () => {
   const originalWx = global.wx;
   let succeed;
   global.wx = {
-    navigateTo(options) {
+    redirectTo(options) {
       succeed = () => options.success({ route: 'next' });
     }
   };

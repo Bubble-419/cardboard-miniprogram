@@ -10,9 +10,12 @@
     "partner-game-header": "/components/partner-game-header/index",
     "partner-player-strip": "/components/partner-player-strip/index",
     "partner-inspiration-composer": "/components/partner-inspiration-composer/index",
-    "partner-game-footer": "/components/partner-game-footer/index"
+    "partner-game-footer": "/components/partner-game-footer/index",
+    "room-local-special-move": "/pages/main-pages/partnerMode/specialMove/view/index",
+    "room-local-image-crop": "/pages/main-pages/partnerMode/imageCrop/view/index",
+    "room-local-inspiration": "/pages/inspiration/view/index",
+    "room-local-scenario-detail": "/components/room-scenario-detail/index"
   },
   "navigationStyle": "custom",
-  "disableSwipeBack": true,
   "disableScroll": true
 }

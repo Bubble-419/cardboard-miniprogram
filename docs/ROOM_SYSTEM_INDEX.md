@@ -133,6 +133,7 @@ Partner 单场上限 = 500 消息 / 1000 素材 / 200 常规 Turn
 | Partner 跨页面 MP3/PCM 声明式录音控制器 | [`partner-audio.js`](../modules/room-session/partner-audio.js)；页面只 update/dispose，按原生确认自动协调最新意图，不持有第二份业务状态 |
 | 控制器私有声级/纪要策略 | [`partner-silent-sound.js`](../modules/room-session/partner-silent-sound.js)、[`partner-speech.js`](../modules/room-session/partner-speech.js)；只处理 PCM Frame/冻结上下文的 MP3，不管理设备生命周期 |
 | 导航协调 | [`modules/room-navigation/index.js`](../modules/room-navigation/index.js) |
+| 单层物理栈与页内辅助屏幕 | [`physicalNavigation.js`](../modules/room-navigation/physicalNavigation.js)、[`localScreens.js`](../modules/room-navigation/localScreens.js)、[`localScreenView.js`](../modules/room-navigation/localScreenView.js)、[`room-session/local-screens.js`](../modules/room-session/local-screens.js)；组件只渲染，页面创建控制器，系统返回不倒退业务状态 |
 | Setup / Partner 稳定 RoomShell 与页面组件 | [`selectPlayer/shell.js`](../pages/main-pages/selectPlayer/shell.js)、[`partnerRoomShell.js`](../pages/main-pages/partnerMode/utils/partnerRoomShell.js)、[`gamepage`](../pages/main-pages/partnerMode/gamepage)、[`room-wait-screen`](../components/room-wait-screen)、[`components/partner-*`](../components) |
 | 云函数薄入口 | [`cloudfunctions/roomCommand/src/entry.js`](../cloudfunctions/roomCommand/src/entry.js)、[`roomQuery/src/entry.js`](../cloudfunctions/roomQuery/src/entry.js) |
 | 协议与业务验收 | [`tests/room-client/v3-client.test.js`](../tests/room-client/v3-client.test.js)、[`tests/room-domain`](../tests/room-domain) |

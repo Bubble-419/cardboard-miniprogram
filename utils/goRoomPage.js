@@ -1,6 +1,7 @@
 /** 跳转房间大厅页 addPlayer（清空页面栈，避免从深层流程 navigateBack 乱跳转） */
 const { setSpyLobbyStay, clearSpyFollowLock } = require('./spyFollow');
 const { clearPendingNavigation } = require('./pageNavigate');
+const { waitForPageNavigation } = require('./pageInteractionLock');
 
 function goRoomPage(roomId) {
   const id = roomId || (getApp().globalData && getApp().globalData.roomId) || '';
@@ -11,13 +12,7 @@ function goRoomPage(roomId) {
   const url = id
     ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(id)}&stayLobby=1`
     : '/pages/main-pages/addPlayer/index?stayLobby=1';
-  return new Promise((resolve) => {
-    wx.reLaunch({
-      url,
-      success: (result) => resolve({ ok: true, result }),
-      fail: (error) => resolve({ ok: false, error })
-    });
-  });
+  return waitForPageNavigation('reLaunch', { url });
 }
 
 /**

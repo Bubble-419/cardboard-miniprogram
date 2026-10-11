@@ -315,7 +315,7 @@ async function bindPageToRoomSession(page, options) {
   if (page._roomSessionBindGen !== generation) return null;
   if (page._roomSessionUnsub) page._roomSessionUnsub();
   let first = true;
-  page._roomSessionUnsub = session.subscribe((snapshot) => {
+  const unsubscribe = session.subscribe((snapshot) => {
     if (page._roomSessionBindGen !== generation) return;
     if (first && options.emitCurrent === false) { first = false; return; }
     first = false;
@@ -324,6 +324,8 @@ async function bindPageToRoomSession(page, options) {
     } catch (error) {
       console.warn('room snapshot listener', error);
     }
+    // 局部屏幕可能在回调中关闭并释放订阅；旧监听器不能再导航刚恢复的 owner。
+    if (page._roomSessionBindGen !== generation) return;
     const view = snapshot.view;
     if (options.followNavigation && view && view.route) {
       navigation.reconcile(view.route, snapshot.revision, { roomId,
@@ -333,6 +335,12 @@ async function bindPageToRoomSession(page, options) {
           : null }).catch((error) => console.warn('room navigation', error));
     }
   });
+  // subscribe 会同步回放；回放中关闭屏幕时，不能把已失效的订阅重新装回页面。
+  if (page._roomSessionBindGen !== generation) {
+    unsubscribe();
+    return null;
+  }
+  page._roomSessionUnsub = unsubscribe;
   page._boundRoomSession = session;
   return session;
 }

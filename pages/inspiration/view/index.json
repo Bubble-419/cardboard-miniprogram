@@ -1,0 +1,6 @@
+{
+  "component": true,
+  "usingComponents": {
+    "interaction-lock-layer": "/components/interaction-lock-layer/index"
+  }
+}

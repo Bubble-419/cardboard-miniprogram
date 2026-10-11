@@ -1,3 +1,4 @@
+<block wx:if="{{!localScreenActive}}">
 <view class="container {{isHost ? 'is-host' : 'is-member'}}">
   <view class="page-body">
     <player-top-bar
@@ -112,3 +113,10 @@
   loading="{{interactionLoading}}"
   text="{{interactionLoadingText}}"
 />
+</block>
+
+<block wx:for="{{localScreens}}" wx:key="token">
+  <room-local-card-library wx:if="{{item.visible && item.name === 'cardLibrary'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+</block>

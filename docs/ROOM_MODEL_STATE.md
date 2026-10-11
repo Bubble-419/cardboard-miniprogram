@@ -55,6 +55,7 @@ flowchart TB
 - `Member View` 是对 Aggregate 的成员级投影，不是可写回的状态。
 - Event Group 是相邻投影之间的增量，不是权威事实。
 - Presence、Signal 和本地 UI 状态都不能改变业务流程。
+- 页内辅助屏幕栈只保存本地可见性、草稿和实例所有权，不写入 Aggregate 或 Member View；权威 Route 变化清空不再属于该 Route 的屏幕。微信物理页面栈不表示业务历史，系统退出不改变 Member/Session 资格，恢复读取 Snapshot。
 - 创建/加入的 Command 可从事务返回的已提交 Aggregate 临时投影 Snapshot；Aggregate 和私有 View
   不写入 Receipt。重放仍以 Receipt 保证写入幂等，但重新读取/授权当前 Snapshot，避免复用旧状态。
 - 接受离房或解散后不再为该请求续写 Presence；旧租约按过期语义清理，不阻塞退出。

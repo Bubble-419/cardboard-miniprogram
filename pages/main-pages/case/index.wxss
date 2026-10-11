@@ -36,7 +36,7 @@
 }
 
 /* player-top-bar 已自带左右预留，需同时抵消父级左右 padding */
-.header-section > player-top-bar {
+.header-section > .case-top-bar {
   margin-left: -40rpx;
   margin-right: -40rpx;
   width: calc(100% + 80rpx);

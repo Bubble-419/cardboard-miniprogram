@@ -85,7 +85,7 @@ test('当前出牌卡上下边距一致且保持紧凑', () => {
 });
 
 test('反面随机拼参照静默模式展示说明层级和 4:3 图文步骤', () => {
-  const specialJs = read('pages/main-pages/partnerMode/specialMove/index.js');
+  const specialJs = read('pages/main-pages/partnerMode/specialMove/controller.js');
   const specialWxml = read('pages/main-pages/partnerMode/specialMove/index.wxml');
   const specialWxss = read('pages/main-pages/partnerMode/specialMove/index.wxss');
 

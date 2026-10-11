@@ -230,20 +230,22 @@ test('主动结束静默时，订阅退出与按钮返回共享一次在途导�
   };
   const originalPages = global.getCurrentPages;
   global.getCurrentPages = () => [
-    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} },
-    { route: 'pages/main-pages/partnerMode/specialMove/index', data: {} }
+    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} }
   ];
   const navigations = [];
+  page._localScreenHost = { close(controller) {
+    assert.equal(controller, page);
+    return new Promise((resolve) => navigations.push(() => resolve({ ok: true })));
+  } };
   try {
     await withRuntime(app, async () => {
-      global.wx.navigateBack = (options) => navigations.push(options);
       const ending = page._endSilent();
       try {
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(navigations.length, 1, 'Command 发布 View 后的按钮回调不能再次弹栈');
         assert.equal(page._endingSilent, true, '仍等待已发起的导航完成');
       } finally {
-        navigations.forEach((options) => options.success({}));
+        navigations.forEach((finish) => finish());
         await ending;
       }
       assert.equal(page._endingSilent, false);
@@ -371,9 +373,13 @@ test('Master 完成后关闭本地叠层并复用下层 gamepage，不用 redire
 
   const calls = [];
   const previousPages = global.getCurrentPages;
+  page._localScreenHost = { close(controller) {
+    assert.equal(controller, page);
+    calls.push('closeLocal');
+    return Promise.resolve({ ok: true });
+  } };
   global.getCurrentPages = () => [
-    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} },
-    { route: 'pages/main-pages/partnerMode/specialMove/index', data: {} }
+    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} }
   ];
   try {
     await withRuntime(app, async () => {
@@ -394,7 +400,7 @@ test('Master 完成后关闭本地叠层并复用下层 gamepage，不用 redire
       };
       const result = await page._returnToGamepage();
       assert.equal(result.ok, true);
-      assert.deepEqual(calls, ['navigateBack']);
+      assert.deepEqual(calls, ['closeLocal']);
     });
   } finally {
     global.getCurrentPages = previousPages;
@@ -417,7 +423,7 @@ test('进入收尾阶段后关闭本地叠层，由下层 RoomShell 消费权威
   assert.deepEqual(returnedState, { partnerGamePhase: 'closing', partnerSpecialMovePreview: null });
 });
 
-test('收尾 Command 同步发布真实订阅时，只弹栈一次，不与全局 redirect 竞争', async () => {
+test('收尾 Command 同步发布真实订阅时，只关闭页内屏幕一次，不与全局 redirect 竞争', async () => {
   const { app, page } = fixture();
   const definition = loadPageDefinition(app);
   page._stopStatePolling = definition._stopStatePolling.bind(page);
@@ -445,10 +451,14 @@ test('收尾 Command 同步发布真实订阅时，只弹栈一次，不与全�
   };
   const originalPages = global.getCurrentPages;
   global.getCurrentPages = () => [
-    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} },
-    { route: 'pages/main-pages/partnerMode/specialMove/index', data: {} }
+    { route: 'pages/main-pages/partnerMode/gamepage/index', data: {} }
   ];
   const calls = [];
+  page._localScreenHost = { close(controller) {
+    assert.equal(controller, page);
+    calls.push('closeLocal');
+    return Promise.resolve({ ok: true });
+  } };
   const callbacks = [];
   try {
     await withRuntime(app, async () => {
@@ -458,7 +468,7 @@ test('收尾 Command 同步发布真实订阅时，只弹栈一次，不与全�
         page._startStatePolling();
         await new Promise((resolve) => setImmediate(resolve));
         await page.activateClosing();
-        assert.deepEqual(calls, ['navigateBack'], '真实订阅与按钮必须共享同一次叠层退出');
+        assert.deepEqual(calls, ['closeLocal'], '真实订阅与按钮必须共享同一次叠层退出');
       } finally {
         callbacks.forEach((options) => options.success({}));
         page._stopStatePolling();
@@ -487,7 +497,7 @@ test('特殊行动页点击设计问题进入详情并传递当前情境', async
   await withRuntime(app, async () => {
     global.wx = {
       showToast() {},
-      navigateTo(options) {
+      redirectTo(options) {
         navigationOptions = options;
         options.success({
           eventChannel: {
@@ -529,7 +539,7 @@ test('特殊行动页设计问题区域绑定详情导航', () => {
   assert.match(wxml, /class="problem-chip[^\"]*"[\s\S]*?bindtap="handleViewSituation"/);
 
   const detailPageJs = fs.readFileSync(
-    path.resolve(__dirname, '../../pages/main-pages/partnerMode/confirmBG/index.js'),
+    path.resolve(__dirname, '../../components/room-scenario-detail/controller.js'),
     'utf8'
   );
   assert.match(detailPageJs, /from === 'specialMove'/);

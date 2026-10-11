@@ -67,20 +67,21 @@ function makePage() {
     },
     setData(patch) {
       Object.assign(this.data, patch);
-    }
+    },
+    _localScreens: { accepts: () => true, open: async () => ({ ok: true }), current: () => null }
   };
   return page;
 }
 
 test('ignores an existing-scenario tap while add-scenario navigation is locked', async () => {
   const page = makePage();
-  const originalNavigateTo = global.wx.navigateTo;
+  const originalNavigateTo = page._localScreens.open;
   let navigationCalls = 0;
   let finishNavigation = null;
-  global.wx.navigateTo = (options) => {
+  page._localScreens.open = () => new Promise((resolve) => {
     navigationCalls += 1;
-    finishNavigation = () => options.success({});
-  };
+    finishNavigation = () => resolve({ ok: true, result: {} });
+  });
 
   try {
     const addScenario = page._goAddScenario();
@@ -92,19 +93,19 @@ test('ignores an existing-scenario tap while add-scenario navigation is locked',
     finishNavigation();
     await addScenario;
   } finally {
-    global.wx.navigateTo = originalNavigateTo;
+    page._localScreens.open = originalNavigateTo;
   }
 });
 
 test('ignores add-scenario while existing-scenario navigation is locked', async () => {
   const page = makePage();
-  const originalNavigateTo = global.wx.navigateTo;
+  const originalNavigateTo = page._localScreens.open;
   let navigationCalls = 0;
   let finishNavigation = null;
-  global.wx.navigateTo = (options) => {
+  page._localScreens.open = () => new Promise((resolve) => {
     navigationCalls += 1;
-    finishNavigation = () => options.success({});
-  };
+    finishNavigation = () => resolve({ ok: true, result: {} });
+  });
 
   try {
     page.onCardArrow({ currentTarget: { dataset: { id: 'existing' } } });
@@ -116,7 +117,7 @@ test('ignores add-scenario while existing-scenario navigation is locked', async 
     finishNavigation();
     await Promise.resolve();
   } finally {
-    global.wx.navigateTo = originalNavigateTo;
+    page._localScreens.open = originalNavigateTo;
   }
 });
 
@@ -124,11 +125,11 @@ test('keeps the page locked while navigation is still transitioning', async () =
   const page = makePage();
   let navigationCalls = 0;
   let completeNavigation = null;
-  const originalNavigateTo = global.wx.navigateTo;
-  global.wx.navigateTo = (options) => {
+  const originalNavigateTo = page._localScreens.open;
+  page._localScreens.open = () => new Promise((resolve) => {
     navigationCalls += 1;
-    completeNavigation = () => options.success({});
-  };
+    completeNavigation = () => resolve({ ok: true, result: {} });
+  });
   try {
     page.handleAddScenario();
     await Promise.resolve();
@@ -145,7 +146,7 @@ test('keeps the page locked while navigation is still transitioning', async () =
     completeNavigation();
     await Promise.resolve();
   } finally {
-    global.wx.navigateTo = originalNavigateTo;
+    page._localScreens.open = originalNavigateTo;
   }
 });
 

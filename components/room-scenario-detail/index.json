@@ -1,0 +1,8 @@
+{
+  "component": true,
+  "usingComponents": {
+    "player-top-bar": "/components/player-top-bar/index",
+    "page-footer": "/components/page-footer/index",
+    "interaction-lock-layer": "/components/interaction-lock-layer/index"
+  }
+}

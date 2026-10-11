@@ -30,7 +30,21 @@ const NUDGE_SHAKE_MS = 500;
 const NUDGE_HINT_MS = 3000;
 const NUDGE_HINT_FADE_MS = 280;
 
-Page(withPageInteractionLock({
+const { withRoomLocalScreens } = require('../../../modules/room-session/local-screens');
+const ROOM_LOCAL_SCREENS = {
+  '/pages/main-pages/case/index': {
+    name: 'caseScreen', routes: ["submitProblem"],
+    create: require('../case/controller.js'),
+    intents: require('../case/view/intents')
+  },
+  '/pages/main-pages/partnerMode/confirmBG/index': {
+    name: 'scenarioDetail', routes: ["submitProblem"],
+    create: require('../../../components/room-scenario-detail/controller.js'),
+    intents: require('../../../components/room-scenario-detail/intents')
+  }
+};
+
+Page(withRoomLocalScreens(withPageInteractionLock({
   data: {
     roomId: '',
     workshopName: '脑暴工作坊',
@@ -62,7 +76,7 @@ Page(withPageInteractionLock({
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1500);
+      require('../../../modules/room-navigation/physicalNavigation').returnToHome();
       return;
     }
 
@@ -491,4 +505,4 @@ Page(withPageInteractionLock({
   'submitProblem', 'nudgeUnsubmittedPlayers'
 ], {
   passthroughMethods: ['onInputFocus', 'onInputBlur']
-}));
+}), ROOM_LOCAL_SCREENS));

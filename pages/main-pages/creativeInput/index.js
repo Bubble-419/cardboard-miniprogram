@@ -31,7 +31,7 @@ Page(withPageInteractionLock({
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1200);
+      require('../../../modules/room-navigation/physicalNavigation').returnToHome();
       return;
     }
     this.setData({ roomId });

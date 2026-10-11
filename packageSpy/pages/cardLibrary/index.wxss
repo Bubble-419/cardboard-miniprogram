@@ -1,6 +1,23 @@
 @import "../styles/common.wxss";
 
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
+}
+
+.container > player-top-bar,
+.header-section {
+  flex-shrink: 0;
+}
+
 .category-list {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+  width: 100%;
   padding: 0 28rpx 40rpx;
   box-sizing: border-box;
 }

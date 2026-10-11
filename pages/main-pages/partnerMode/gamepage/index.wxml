@@ -1,3 +1,4 @@
+<block wx:if="{{!localScreenActive}}">
 <room-wait-screen
   wx:if="{{roomShellScreen === 'waiting' && waitingModel}}"
   model="{{waitingModel}}"
@@ -987,3 +988,19 @@
   loading="{{interactionLoading}}"
   text="{{interactionLoadingText}}"
 />
+</block>
+
+<block wx:for="{{localScreens}}" wx:key="token">
+  <room-local-special-move wx:if="{{item.visible && item.name === 'specialMove'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+  <room-local-image-crop wx:if="{{item.visible && item.name === 'imageCrop'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+  <room-local-inspiration wx:if="{{item.visible && item.name === 'inspiration'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+  <room-local-scenario-detail wx:if="{{item.visible && item.name === 'scenarioDetail'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+</block>

@@ -122,21 +122,14 @@ function createNavigationCoordinator(options) {
     if (nextSeq < lastSeq) return { ok: false, skipped: true, reason: 'STALE_SEQ' };
     const descriptor = describeRoute(route, context && context.roomId);
     if (!descriptor) return { ok: false, skipped: true, reason: 'UNKNOWN_ROUTE' };
-    const current = currentPath();
-    if (current === descriptor.path.slice(1)) { lastSeq = nextSeq; return { ok: true, skipped: true, reason: 'SAME_ROUTE' }; }
-    // 灵感、裁剪、填情境等本地叠层：仍属于当前 route 时不拆；route 变化后跟随。
-    if (current && isLocalOverlay(current, route.name)) {
-      return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
-    }
-    if (context && typeof context.beforeNavigate === 'function'
-      && context.beforeNavigate(context.pageSnapshot, descriptor.pageKey) === true) {
-      lastSeq = nextSeq;
-      return { ok: true, skipped: true, reason: 'HANDLED' };
-    }
     if (active) {
       // 订阅与用户动作可能同时请求同一条权威 route。后发调用必须等待在途导航，
       // 否则页面交互锁会提前释放，甚至再次提交同一个操作。
       return new Promise((resolve, reject) => {
+        if (pending && nextSeq < pending.seq && nextRoomId === lastRoomId) {
+          resolve({ ok: false, skipped: true, reason: 'STALE_SEQ' });
+          return;
+        }
         const waiters = pending ? pending.waiters : [];
         waiters.push({ resolve, reject });
         pending = { route, seq: nextSeq, context, waiters };
@@ -144,6 +137,28 @@ function createNavigationCoordinator(options) {
     }
     active = true;
     try {
+      const page = currentPage();
+      // 收起局部屏幕也属于导航协调的一部分，不能在串行锁之外恢复旧 Shell。
+      if (page && page._localScreens) await page._localScreens.reconcileAuthority(route, nextRoomId);
+      if (lastRoomId !== nextRoomId) return { ok: false, skipped: true, reason: 'SUPERSEDED' };
+      const current = currentPath();
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+      const needsRootRepair = pages.length > 1;
+      if (needsRootRepair) descriptor.mode = 'reLaunch';
+      const samePageRoom = !page || !page.data || !page.data.roomId || page.data.roomId === nextRoomId;
+      if (!needsRootRepair && samePageRoom && current === descriptor.path.slice(1)) {
+        if (lastRoomId === nextRoomId) lastSeq = nextSeq;
+        return { ok: true, skipped: true, reason: 'SAME_ROUTE' };
+      }
+      // 独立打开的只读辅助页仍按 Owner 校验；正常流程使用页内屏幕，不再压栈。
+      if (!needsRootRepair && current && isLocalOverlay(current, route.name)) {
+        return { ok: false, skipped: true, reason: 'LOCAL_OVERLAY' };
+      }
+      if (context && typeof context.beforeNavigate === 'function'
+        && context.beforeNavigate(context.pageSnapshot, descriptor.pageKey) === true) {
+        if (lastRoomId === nextRoomId) lastSeq = nextSeq;
+        return { ok: true, skipped: true, reason: 'HANDLED' };
+      }
       if (typeof open === 'function') await open(descriptor);
       else if (typeof wx !== 'undefined' && typeof wx[descriptor.mode] === 'function') {
         const opened = await new Promise((resolve) => {
@@ -159,7 +174,7 @@ function createNavigationCoordinator(options) {
       } else {
         return { ok: false, reason: 'NAV_UNAVAILABLE' };
       }
-      lastSeq = nextSeq;
+      if (lastRoomId === nextRoomId) lastSeq = nextSeq;
       return { ok: true };
     } catch (error) {
       return { ok: false, reason: 'NAV_FAILED', error };

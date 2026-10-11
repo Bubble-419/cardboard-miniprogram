@@ -178,7 +178,7 @@ test('小位移点击在 touchend 即翻面，不依赖系统 tap', () => {
   assert.equal(flips.length, 1, 'touchend 已翻面后的 tap 不应连翻');
 });
 
-test('发言页与牌库提示支持点击或上下滑动，并禁用侧滑返回', () => {
+test('发言页与牌库提示支持点击或上下滑动，不依赖失效的侧滑配置', () => {
   const speakWxml = read('packageSpy/pages/speak/index.wxml');
   const libraryWxml = read('packageSpy/pages/cardLibrary/index.wxml');
   const speakJson = read('packageSpy/pages/speak/index.json');
@@ -186,8 +186,8 @@ test('发言页与牌库提示支持点击或上下滑动，并禁用侧滑返�
 
   assert.match(speakWxml, /点击或上下滑动/);
   assert.match(libraryWxml, /点击或上下滑动/);
-  assert.match(speakJson, /"disableSwipeBack":\s*true/);
-  assert.match(libraryJson, /"disableSwipeBack":\s*true/);
+  assert.doesNotMatch(speakJson, /disableSwipeBack/);
+  assert.doesNotMatch(libraryJson, /disableSwipeBack/);
 });
 
 test('谁是卧底牌库按四类分组且编号归属正确', () => {

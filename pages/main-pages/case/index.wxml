@@ -1,6 +1,7 @@
 <view class="container">
   <view class="header-section" id="caseHeader">
     <player-top-bar
+      class="case-top-bar"
       showAvatars="{{false}}"
       showRoomEntry="{{!!roomId}}"
       bind:goroom="handleGoRoom"

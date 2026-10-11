@@ -11,7 +11,8 @@
     </view>
   </view>
 
-  <view class="category-list">
+  <!-- 牌库也可挂在 disableScroll 的 owner 中，列表不能依赖原生页面滚动。 -->
+  <scroll-view class="category-list" scroll-y="{{!viewerOpen}}">
     <view class="category-block" wx:for="{{categories}}" wx:key="id" wx:for-item="group">
       <view class="category-heading">
         <view class="category-mark"></view>
@@ -37,7 +38,7 @@
         </view>
       </view>
     </view>
-  </view>
+  </scroll-view>
 
   <!-- 翻阅面板：词语 ↔ 词语1（不展示背面） -->
   <view class="viewer-mask" wx:if="{{viewerOpen}}" catchtouchmove="noop" bindtap="onCloseViewer">

@@ -4,6 +4,5 @@
     "context-display": "/components/context-display/index"
   },
   "navigationStyle": "custom",
-  "disableSwipeBack": true,
   "disableScroll": true
 }

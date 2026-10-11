@@ -143,9 +143,9 @@ flowchart TD
 | `brainstormMode` | Host 的权威模式选择页 | Snapshot / Event 恢复 `brainstormMode`；同一状态下 Player 恢复 `subAwait?scene=brainstormMode` |
 | `selectBG` | `modeIndex` 的本地编辑叠层 | 未提交前不进入聚合；重连回 `modeIndex` |
 | `confirmBG` | `modeIndex` 的提交叠层，或业务页的只读叠层 | 提交 `SET_SCENARIO` 后跟随权威 Route；只读打开不改状态 |
-| `specialMove` | `partnerGame` 的本地叠层 | Route 仍为 `partnerGame`；提交特殊行动后优先 `navigateBack` 关闭叠层并复用下层 RoomShell，只有页面栈异常时才按权威 URL 重建，导航全程有超时。Master / Silent 的 Event 刷新必须强制更新所有成员的游戏效果，不能被普通卡片指纹优化吞掉。静默模式仅当前行动者停留在特殊行动叠层并广播本机声级；其他成员留在 `gamepage`，使用同一瞬时声级显示相同的静默徽标、声浪边框和声音过大提示，同时保留匿名表达和打分功能。`PARTNER_SILENT_SOUND` 作为所有成员卡片声浪效果的共享瞬时信号，仅当前行动者可写。反面随机拼提交为 `HELP_LUCK` 后，所有成员依据同一 `activeTurn.specialUsed` 显示“反面随机拼”标签 |
+| `specialMove` | `partnerGame` 的页内特殊行动屏幕 | Route 仍为 `partnerGame`；完成后原地关闭并恢复同一 RoomShell，不调用微信 `navigateBack`。Master / Silent 的 Event 刷新必须更新全员效果，不能被卡片指纹优化吞掉。静默仅当前行动者进入控制屏幕并广播 `PARTNER_SILENT_SOUND`；其他成员保留匿名表达和打分，显示相同声浪与提示。`HELP_LUCK` 提交后全员显示“反面随机拼”标签 |
 | `imageCrop`、`inspiration`、`case` | 本地输入/浏览叠层 | 不写 `workflow.step`，关闭后回所属权威页 |
-| `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | Spy Route 未变化时不被导航协调器拆除 |
+| `packageSpy/pages/cardLibrary` | 当前 Spy 页的本地牌库叠层 | 四类词卡用有界内部 `scroll-view` 浏览，不依赖 owner 页面滚动；翻牌叠层在滚动区外，关闭仍回列表，UI 后退只关闭牌库；Spy Route 未变化时不被导航协调器拆除 |
 | `packageSpy/pages/assign` | 兼容重定向页 | V2 已改为自动进入 `spySpeak`，不是独立业务状态 |
 | `packageSpy/pages/nextRound` | 兼容页 | V3 用 `SPY_RESULT → START_NEXT_SPY_ROUND → SPY_SPEAK` 表达 |
 | `partnerMode/statement`、`discussion`、`closingEnd` | 历史兼容页 | 当前权威流程分别收敛到 `partnerGame`、`closingStatement`、`leaderboard` |
@@ -153,12 +153,10 @@ flowchart TD
 模式选择的开始、取消和创建场次都绑定 Room 的 `modeSelectionRevision`，旧选择轮次的延迟操作
 不得影响后来重新打开的选择页。错误角色或缺省 `isHost` 的 URL 入口读取当前 View 后跟随权威 Route。
 反面随机拼预览已提交后，叠层重建仍从完整 View 恢复预览；返回转盘须清除预览，不消耗特殊行动。
-旧 `silent=1` URL 重建叠层时，若权威 View 已结束静默，首屏读取和订阅都应关闭叠层恢复下层
-RoomShell，不以本地计时器是否启动为条件；订阅与按钮回调共用退出任务，成功关闭后迟到回调
-也不重复后退。收尾指令将 Route 改为 `closingStatement` 时，订阅在全局导航前拦截为同一叠层
-退出任务，禁止同时执行 `redirectTo` 与 `navigateBack`；下层 Shell 在 `onShow` 安装最新 View。
-失败恢复订阅时跳过当前 View 的立即回放，等待后续发布或用户重试，避免循环导航。
-权威 Route 已离开游戏时交还全局导航，不重建旧 gamepage。
+静默首屏恢复或订阅发现权威静默已结束时，都关闭辅助屏幕，不以本地计时器是否启动为条件。
+返回只关闭所属实例；迟到回调不得重复返回或关闭后来打开的屏幕。进入 `closingStatement` 时，
+协调器先清空局部屏幕，再由同一物理 gamepage 安装收尾投票 View；已离开游戏边界则交还全局
+导航，不闪回旧游戏屏幕。嵌套详情/灵感关闭只恢复特殊行动，后台关闭不启动录音等副作用。
 
 本地叠层使用精确的 Route Owner：`selectBG→modeIndex`、`case→submitProblem`、
 `specialMove/imageCrop/inspiration→partnerGame`、`cardLibrary→spyIntro`。
@@ -169,12 +167,15 @@ RoomShell，不以本地计时器是否启动为条件；订阅与按钮回调�
 ```mermaid
 flowchart LR
   VIEW[Member View<br/>navigation.back] --> KIND{kind}
-  KIND -->|NONE| STAY[不展示业务后退<br/>禁用侧滑返回]
+  KIND -->|NONE| STAY[不展示业务后退]
   KIND -->|COMMAND| SEND[提交投影的 Command + context]
   SEND --> ROUTE[跟随新 view.route]
   ROUTE --> AFTER{after}
   AFTER -->|FOLLOW_ROUTE| DONE[完成]
   AFTER -->|OPEN_MODE_PICKER 兼容值| PICK[跟随权威 brainstormMode Route]
+  LOCAL[局部屏幕 UI 返回] --> CLOSE[原地关闭当前屏幕<br/>不改变 Room/Session]
+  SYSTEM[系统返回] --> HOST[单层物理页面栈<br/>由微信宿主退出或收起]
+  HOST --> REOPEN[重开读取最新 Snapshot]
 ```
 
 | 当前权威状态 | 谁可后退 | 投影 Command | 结果 |
@@ -189,6 +190,12 @@ flowchart LR
 
 后退 Command 携带投影时的 `workflowRevision`。A→B→A 后重放旧按钮会被拒绝，页面再由
 Event 或 Snapshot 收敛到最新 View。
+
+局部屏幕由所属页的 `withRoomLocalScreens` 承载，不新增真实页面栈；权威 Route 变化先清空不再
+属于它的屏幕。独立全局回顾保留明确 `returnTo` UI 返回地址，不把活跃页压在历史页下面。
+系统退出不等于退房/解散/取消场次，也不通过 `onHide/onUnload` 推断用户意图；`disableSwipeBack`
+已失效，不使用隐藏 `page-container` 拦截返回。软键盘或微信原生预览可能先消费返回，iOS/Android
+的系统返回、重开恢复和原生媒体场景仍需真机验收。
 
 ### 2.4 断线、冷启动与 Snapshot 恢复
 

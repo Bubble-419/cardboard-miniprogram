@@ -1,3 +1,4 @@
+<block wx:if="{{!localScreenActive}}">
 <view class="container">
 
   <!-- 顶部：TopBar + 情境格（固定在滚动区之外，避免随内容滚走） -->
@@ -112,3 +113,10 @@
 </view>
 
 <interaction-lock-layer locked="{{interactionLocked}}" loading="{{interactionLoading}}" text="{{interactionLoadingText}}" />
+</block>
+
+<block wx:for="{{localScreens}}" wx:key="token">
+  <room-local-scenario-detail wx:if="{{item.visible && item.name === 'scenarioDetail'}}"
+    id="local-screen-{{item.token}}" model="{{item.model}}" token="{{item.token}}"
+    bind:screenready="onLocalScreenReady" bind:intent="onLocalScreenIntent" />
+</block>

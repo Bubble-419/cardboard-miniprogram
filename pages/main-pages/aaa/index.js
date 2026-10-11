@@ -820,7 +820,7 @@ Page(withPageInteractionLock({
 
   _openScannedPath(url) {
     return new Promise((resolve) => {
-      wx.navigateTo({
+      waitForPageNavigation('redirectTo', {
         url,
         success: () => resolve(true),
         fail: () => {

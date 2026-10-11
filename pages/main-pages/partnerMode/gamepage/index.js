@@ -10,7 +10,8 @@ const {
   getMemberAvatarFingerprint,
   getAvatarStableKey
 } = require('../../../../utils/avatars');
-const { safeNavigateBack } = require('../../../../utils/pageNavigate');
+const { safeNavigateBack, isRouteRegistered, normalizeRoute } = require('../../../../utils/pageNavigate');
+const { waitForPageNavigation } = require('../../../../utils/pageInteractionLock');
 const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../../utils/cloudDisplayUrl');
 const {
   buildKeyboardBottomStyle,
@@ -130,7 +131,31 @@ const STAR_CHIP_SCORE_MIN_TRAVEL_PX = 24;
 /** 星星面板离手后自动收起并提交前的宽限期；此期间再次操作会重置计时 */
 const STAR_PANEL_COLLAPSE_DELAY_MS = 120;
 
-Page(withPageInteractionLock({
+const { withRoomLocalScreens } = require('../../../../modules/room-session/local-screens');
+const ROOM_LOCAL_SCREENS = {
+  '/pages/main-pages/partnerMode/specialMove/index': {
+    name: 'specialMove', routes: ["partnerGame"],
+    create: require('../specialMove/controller.js'),
+    intents: require('../specialMove/view/intents')
+  },
+  '/pages/main-pages/partnerMode/imageCrop/index': {
+    name: 'imageCrop', routes: ["partnerGame"],
+    create: require('../imageCrop/controller.js'),
+    intents: require('../imageCrop/view/intents')
+  },
+  '/pages/inspiration/index': {
+    name: 'inspiration', routes: ["partnerGame"],
+    create: require('../../../inspiration/controller.js'),
+    intents: require('../../../inspiration/view/intents')
+  },
+  '/pages/main-pages/partnerMode/confirmBG/index': {
+    name: 'scenarioDetail', routes: ["partnerGame"],
+    create: require('../../../../components/room-scenario-detail/controller.js'),
+    intents: require('../../../../components/room-scenario-detail/intents')
+  }
+};
+
+Page(withRoomLocalScreens(withPageInteractionLock({
   data: {
     roomId: '',
     /** Partner 运行态固定留在本页，由权威 route 选择 Shell 内的屏幕。 */
@@ -358,7 +383,7 @@ Page(withPageInteractionLock({
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1500);
+      require('../../../../modules/room-navigation/physicalNavigation').returnToHome();
       return;
     }
 
@@ -372,7 +397,8 @@ Page(withPageInteractionLock({
       ? CLOSING_STEP_REVIEW
       : CLOSING_STEP_RUNE;
     const isHistoryReview = !!(options && (options.mode === 'review' || options.from === 'history'));
-    const reviewCanGoBack = !!(isHistoryReview && options && options.from === 'closing');
+    const reviewCanGoBack = !!(isHistoryReview && options && (options.from === 'closing'
+      || (options.returnTo && isRouteRegistered(normalizeRoute(options.returnTo)))));
     this._reviewReturnUrl = '';
     if (reviewCanGoBack) {
       const pages = getCurrentPages();
@@ -390,6 +416,10 @@ Page(withPageInteractionLock({
           sessionId: String(options && options.sessionId || prevData.sessionId || '')
         }
       );
+    }
+    // 单层页面栈的只读回顾通过显式 UI 返回地址恢复来源，不依赖系统后退。
+    if (isHistoryReview && options.returnTo && isRouteRegistered(normalizeRoute(options.returnTo))) {
+      this._reviewReturnUrl = options.returnTo;
     }
     // 从 URL 读取 currentRound，避免 discussion 重进时 loadRoomData 完成前本地值为初始的 1
     const initialRound = options && options.currentRound != null
@@ -3832,7 +3862,7 @@ Page(withPageInteractionLock({
         settled = true;
         resolve(path || '');
       };
-      wx.navigateTo({
+      waitForPageNavigation('navigateTo', {
         url: `/pages/main-pages/partnerMode/imageCrop/index?src=${encodeURIComponent(src)}`,
         events: {
           cropConfirm: (payload) => finish(payload && payload.tempFilePath),
@@ -3849,7 +3879,7 @@ Page(withPageInteractionLock({
           wx.showToast({ title: '无法打开裁剪', icon: 'none' });
           finish('');
         }
-      });
+      }, this).then((result) => { if (!result.ok) finish(''); });
     });
   },
 
@@ -5604,7 +5634,7 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在返回房间…' });
   },
 
-  /** 点击设计问题：回看情境详情（confirmBG），navigateTo 保留本页实例与进度 */
+  /** 点击设计问题：页内回看情境详情，保留本页实例与进度。 */
   handleViewSituation() {
     if (!(this.data.selectedProblemText || '').trim()) return undefined;
     return runPageNavigation(this, async () => {
@@ -6651,19 +6681,6 @@ Page(withPageInteractionLock({
           sessionId: this.data.sessionId || ''
         })
         : '');
-      const pages = getCurrentPages();
-      if (pages.length > 1) {
-        return {
-          method: 'navigateBack',
-          fail: () => {
-            if (!fallbackUrl) return;
-            wx.redirectTo({
-              url: fallbackUrl,
-              fail: () => safeOpenUrl(fallbackUrl)
-            });
-          }
-        };
-      }
       if (!fallbackUrl) {
         wx.showToast({ title: '无法返回', icon: 'none' });
         return null;
@@ -6676,30 +6693,32 @@ Page(withPageInteractionLock({
     return runPageInteraction(this, async () => {
       this._prepareLeavePage();
       if (this._isHistoryReviewMode()) {
+        if (this._reviewReturnUrl) {
+          return waitForPageNavigation('redirectTo', { url: this._reviewReturnUrl }, this);
+        }
         const roomId = this.data.roomId || '';
         const from = 'closingEnd';
         const sub = this._reviewOpenedAsHost === false ? '&isSubScreen=1' : '';
         const fallbackUrl = roomId
           ? `/pages/leaderboard/index?roomId=${encodeURIComponent(roomId)}&from=${from}${sub}`
           : '/pages/leaderboard/index';
-        safeNavigateBack({
+        return safeNavigateBack({
           expectedPrev: 'pages/leaderboard/index',
           fallbackUrl
-        });
-        return;
+        }, this);
       }
       const roomId = this.data.roomId || '';
       const fallbackUrl = roomId
         ? `/pages/main-pages/addPlayer/index?roomId=${encodeURIComponent(roomId)}`
         : '/pages/main-pages/aaa/index';
-      safeNavigateBack({
+      return safeNavigateBack({
         expectedPrev: [
           'pages/main-pages/partnerMode/confirmFirstPlayer/index',
           'pages/main-pages/selectPlayer/index',
           'pages/main-pages/partnerMode/specialMove/index'
         ],
         fallbackUrl
-      });
+      }, this);
     }, { loadingText: '正在返回…' });
   }
 }, [
@@ -6778,4 +6797,4 @@ Page(withPageInteractionLock({
     'onInspirationBlur', 'onInspirationFocus', 'onInspirationKeyboardHeightChange',
     'onGameHeaderIntent', 'onGameFooterIntent'
   ]
-}));
+}), ROOM_LOCAL_SCREENS));

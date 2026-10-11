@@ -317,7 +317,7 @@ test('Halli Galli 活动页保持原业务语义：房主使用短文案“结�
 test('游戏页设计问题详情隐藏房间入口，并用情境确认页同款叠卡', () => {
   const wxml = fs.readFileSync(path.join(
     __dirname,
-    '../../pages/main-pages/partnerMode/confirmBG/index.wxml'
+    '../../components/room-scenario-detail/content.wxml'
   ), 'utf8');
   const json = JSON.parse(fs.readFileSync(path.join(
     __dirname,
@@ -332,7 +332,7 @@ test('游戏页设计问题详情隐藏房间入口，并用情境确认页同�
 test('游戏页设计问题详情使用左上角返回图标，不再展示底部返回游戏按钮', () => {
   const detailWxml = fs.readFileSync(path.join(
     __dirname,
-    '../../pages/main-pages/partnerMode/confirmBG/index.wxml'
+    '../../components/room-scenario-detail/content.wxml'
   ), 'utf8');
   const topBarWxml = fs.readFileSync(path.join(
     __dirname,

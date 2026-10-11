@@ -145,7 +145,7 @@ test('收尾全局回顾绑定当前 Session，不猜测最近的历史场次', 
   let targetUrl = '';
   global.wx = {
     showToast() {},
-    navigateTo(options) {
+    redirectTo(options) {
       targetUrl = options.url;
       options.success({});
     }

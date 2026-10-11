@@ -48,7 +48,7 @@ Page(withPageInteractionLock({
 
     if (!roomId) {
       wx.showToast({ title: '缺少房间参数', icon: 'none' });
-      setTimeout(() => wx.navigateBack(), 1500);
+      require('../../../../modules/room-navigation/physicalNavigation').returnToHome();
       return;
     }
 
