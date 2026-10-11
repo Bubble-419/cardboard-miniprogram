@@ -39,6 +39,7 @@ test('游戏页灵感输入聚焦时向左覆盖入口并禁用入口点击', ()
   const styles = read('components/partner-inspiration-composer/index.wxss');
 
   assert.match(markup, /inputFocused \|\| keyboardHeight > 0 \? 'inspiration-composer-expanded'/);
+  assert.match(markup, /inputFocused \|\| keyboardHeight > 0 \? 'inspiration-bar-keyboard-open'/);
   assert.match(markup, /inputFocused \|\| keyboardHeight > 0 \? 'insp-icon-wrap-disabled'/);
   assert.match(styles, /\.inspiration-bar\s*\{[\s\S]*?background:\s*transparent;/);
   assert.match(styles, /\.inspiration-composer\s*\{[\s\S]*?transition:\s*margin-left 240ms ease-out;/);

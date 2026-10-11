@@ -900,7 +900,7 @@
     聚焦后只切换宿主定位，不重建原生 input；匿名表达时完全移出布局。
   -->
   <view
-    class="game-inspiration-dock {{inspirationKeyboardHeight > 0 ? 'game-inspiration-dock-keyboard' : ''}}"
+    class="game-inspiration-dock {{inspirationInputFocused || inspirationKeyboardHeight > 0 ? 'game-inspiration-dock-keyboard' : ''}}"
     style="{{inspirationDockStyle}}"
     hidden="{{expressComposerOpen || expressKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
   >

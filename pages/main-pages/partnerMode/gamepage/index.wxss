@@ -65,6 +65,7 @@
   position: fixed;
   left: 0;
   right: 0;
+  bottom: 0;
   z-index: 120;
 }
 
@@ -589,7 +590,7 @@
   display: block;
   width: 100%;
   text-align: center;
-  font-size: 24rpx;
+  font-size: 28rpx;
   color: rgba(0, 0, 0, 0.4);
   line-height: 1.3;
   letter-spacing: -0.06em;
@@ -624,14 +625,14 @@
 
 .action-desc-detail {
   max-width: 560rpx;
-  font-size: 22rpx;
+  font-size: 26rpx;
   line-height: 1.45;
   letter-spacing: 0;
   text-align: left;
 }
 
 .action-header-special .action-desc {
-  font-size: 24rpx;
+  font-size: 28rpx;
   text-align: left;
 }
 
@@ -690,7 +691,7 @@
 }
 
 .action-cell-label {
-  font-size: 23rpx;
+  font-size: 26rpx;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.62);
   text-align: center;

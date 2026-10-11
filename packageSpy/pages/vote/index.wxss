@@ -1,10 +1,24 @@
 @import "../styles/common.wxss";
 
+/* 一屏内顶栏 / 内容 / 底栏分层，标题与按钮略下移贴近安全区 */
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.header-section .title-block {
+  margin-top: 32rpx;
+}
+
 .circle-wrap {
   position: relative;
   width: 640rpx;
   height: 640rpx;
   margin: 12rpx auto 8rpx;
+  flex-shrink: 0;
 }
 
 .deco-ring {
@@ -106,11 +120,18 @@
 }
 
 .vote-actions {
-  margin: 0 30rpx 24rpx;
+  margin: auto 30rpx 0;
+  padding-bottom: 8rpx;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 20rpx;
+  flex-shrink: 0;
+}
+
+.container > .voted-wait {
+  margin-top: auto;
+  margin-bottom: 8rpx;
 }
 
 /* 对齐合伙人 partner-game-footer：特殊行动 + 主操作 */

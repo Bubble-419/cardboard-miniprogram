@@ -53,8 +53,8 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.doesNotMatch(composerWxml, /style="\{\{keyboardLiftStyle\}\}"/);
   assert.match(
     gameWxml,
-    /class="game-inspiration-dock[^\"]*"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
-    '灵感输入宿主应脱离 page-body 裁切，并在匿名表达时完全移出布局'
+    /class="game-inspiration-dock \{\{inspirationInputFocused \|\| inspirationKeyboardHeight > 0 \? 'game-inspiration-dock-keyboard' : ''\}\}"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
+    '灵感输入宿主应脱离 page-body 裁切，聚焦瞬间即 fixed，并在匿名表达时完全移出布局'
   );
   assert.match(
     gameWxml,
@@ -67,7 +67,7 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.ok(dockIndex >= 0 && composerIndex > dockIndex && composerIndex < footerIndex);
   assert.match(
     gameWxss,
-    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;/
+    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;/
   );
   assert.match(composerInputs[0], /cursor-spacing="24"/);
 
@@ -90,7 +90,7 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.doesNotMatch(gameWxml, /style="\{\{closingComposeLiftStyle\}\}"/);
 });
 
-test('游戏页首次聚焦时先从父布局移除底栏，再等待键盘高度事件', () => {
+test('游戏页首次聚焦时先移除底栏并钉住灵感宿主，再等待键盘高度事件', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
   const footer = gameWxml.match(/<partner-game-footer[\s\S]*?\/>/);
 
@@ -104,14 +104,65 @@ test('游戏页首次聚焦时先从父布局移除底栏，再等待键盘高�
   const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index');
   const page = makePage(definition, {
     inspirationInputFocused: false,
-    inspirationKeyboardHeight: 0
+    inspirationKeyboardHeight: 0,
+    inspirationDockStyle: ''
   });
 
   page.onInspirationFocus();
 
   assert.equal(page._inspirationNativeFocused, true);
   assert.equal(page.data.inspirationInputFocused, true);
-  assert.equal(page.data.inspirationKeyboardHeight, 0, 'focus 阶段不猜测键盘高度');
+  assert.equal(page.data.inspirationKeyboardHeight, 0, '无精确高度时不猜测键盘高度');
+  assert.equal(page.data.inspirationDockStyle, 'bottom: 0;', '聚焦瞬间先钉在屏幕底，脱离底栏文档流');
+});
+
+test('安卓首次 focus 携带键盘高度时立即停靠游戏页灵感输入栏', () => {
+  const definition = loadPageDefinition('../../pages/main-pages/partnerMode/gamepage/index', {
+    getWindowInfo() { return { windowHeight: 800, screenHeight: 800 }; }
+  });
+  const page = makePage(definition, {
+    inspirationInputFocused: false,
+    inspirationKeyboardHeight: 0,
+    inspirationDockStyle: '',
+    keyboardViewportStyle: ''
+  });
+  page._baseWindowHeight = 800;
+
+  page.onInspirationFocus({ detail: { height: 308 } });
+
+  assert.equal(page._inspirationNativeFocused, true);
+  assert.equal(page.data.inspirationInputFocused, true);
+  assert.equal(page.data.inspirationKeyboardHeight, 308);
+  assert.equal(page.data.inspirationDockStyle, 'bottom: 308px;');
+});
+
+test('游戏页窗口已被键盘压缩时不再叠加 fixed bottom', () => {
+  const originalWx = global.wx;
+  const wxMock = {
+    getWindowInfo() { return { windowHeight: 480, screenHeight: 800 }; }
+  };
+  const definition = loadPageDefinition(
+    '../../pages/main-pages/partnerMode/gamepage/index',
+    wxMock
+  );
+  const page = makePage(definition, {
+    inspirationInputFocused: true,
+    inspirationKeyboardHeight: 0,
+    inspirationDockStyle: 'bottom: 0;',
+    keyboardViewportStyle: ''
+  });
+  page._inspirationNativeFocused = true;
+  page._baseWindowHeight = 800;
+
+  global.wx = wxMock;
+  try {
+    page.onInspirationKeyboardHeightChange({ detail: { height: 320 } });
+  } finally {
+    global.wx = originalWx;
+  }
+
+  assert.equal(page.data.inspirationKeyboardHeight, 320);
+  assert.equal(page.data.inspirationDockStyle, '', '窗口已压缩时依赖 CSS bottom:0，避免双重上推');
 });
 
 test('gamepage 只从输入事件接收精确键盘高度并停靠灵感宿主', () => {
@@ -161,6 +212,17 @@ test('gamepage 灵感键盘高度早于 focus 回调时仍立即停靠输入栏'
   assert.equal(page.data.inspirationKeyboardHeight, 286);
   assert.equal(page.data.inspirationDockStyle, 'bottom: 286px;');
   assert.equal(page.data.keyboardViewportStyle, '');
+});
+
+test('effectiveKeyboardBottom 仅在窗口相对基线被压缩时扣除重叠量', () => {
+  const {
+    effectiveKeyboardBottom
+  } = require('../../utils/keyboardAvoidance');
+
+  assert.equal(effectiveKeyboardBottom(320, 800, 800), 320);
+  assert.equal(effectiveKeyboardBottom(320, 800, 480), 0, '接近整段压缩时不再叠加');
+  assert.equal(effectiveKeyboardBottom(320, 800, 700), 220, '部分压缩时只补差额');
+  assert.equal(effectiveKeyboardBottom(320, 0, 480), 320, '缺少基线时保持原始高度');
 });
 
 test('灵感空间按输入事件的精确键盘高度上移输入栏', () => {

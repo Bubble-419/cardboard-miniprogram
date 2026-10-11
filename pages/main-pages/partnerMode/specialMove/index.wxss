@@ -644,7 +644,7 @@
 .reverse-desc {
   display: block;
   width: 100%;
-  font-size: 24rpx;
+  font-size: 28rpx;
   color: rgba(0, 0, 0, 0.4);
   text-align: left;
   line-height: 1.45;
@@ -682,7 +682,7 @@
 
 .reverse-step-label {
   width: 100%;
-  font-size: 23rpx;
+  font-size: 26rpx;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.62);
   text-align: center;
@@ -909,7 +909,7 @@
 .silent-desc {
   display: block;
   width: 100%;
-  font-size: 24rpx;
+  font-size: 28rpx;
   color: rgba(0, 0, 0, 0.4);
   text-align: left;
   line-height: 1.45;
@@ -946,7 +946,7 @@
 }
 
 .silent-action-label {
-  font-size: 23rpx;
+  font-size: 26rpx;
   font-weight: 600;
   color: rgba(0, 0, 0, 0.62);
   text-align: center;

@@ -58,7 +58,7 @@ test('灵感输入模块留在正常布局流，键盘高度交给页面可用�
   assert.equal(definition.observers, undefined);
   assert.doesNotMatch(source, /buildKeyboard(?:Bottom|Lift)Style/);
   assert.doesNotMatch(markup, /keyboardLiftStyle/);
-  assert.match(markup, /keyboardHeight > 0 \? 'inspiration-bar-keyboard-open'/);
+  assert.match(markup, /inputFocused \|\| keyboardHeight > 0 \? 'inspiration-bar-keyboard-open'/);
 });
 
 test('游戏底栏模块只输出业务意图，不执行命令或页面导航', () => {

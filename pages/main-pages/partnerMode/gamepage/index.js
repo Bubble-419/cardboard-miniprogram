@@ -15,7 +15,9 @@ const { resolveRoundContentMedia, resolveCloudDisplayUrls } = require('../../../
 const {
   buildKeyboardBottomStyle,
   buildKeyboardViewportStyle,
-  keyboardHeightFromEvent
+  effectiveKeyboardBottom,
+  keyboardHeightFromEvent,
+  readWindowHeight
 } = require('../../../../utils/keyboardAvoidance');
 const {
   storageKey: roomDraftStorageKey,
@@ -640,6 +642,10 @@ Page(withPageInteractionLock({
 
   onShow() {
     this._pageVisible = true;
+    // 键盘未打开时记录窗口高度，供首次弹键盘时扣除系统已压缩量。
+    if (!(this.data.inspirationKeyboardHeight > 0 || this.data.expressKeyboardHeight > 0)) {
+      this._baseWindowHeight = readWindowHeight();
+    }
     if (this.data.isHistoryReview) {
       this._bindInspirationKeyboard();
       // 历史回顾：只刷新灵感角标，不轮询房间状态/计时器
@@ -5713,16 +5719,30 @@ Page(withPageInteractionLock({
     };
   },
 
+  _resolveInspirationDockBottom(height) {
+    const raw = Math.max(0, Number(height) || 0);
+    if (raw <= 0) return 0;
+    if (!(this._baseWindowHeight > 0)) {
+      this._baseWindowHeight = readWindowHeight();
+    }
+    return effectiveKeyboardBottom(raw, this._baseWindowHeight, readWindowHeight());
+  },
+
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
+    const dockBottom = height > 0 ? this._resolveInspirationDockBottom(height) : 0;
+    const dockStyle = height > 0
+      ? buildKeyboardBottomStyle(dockBottom)
+      : (this._inspirationNativeFocused || this.data.inspirationInputFocused ? 'bottom: 0;' : '');
     if (
       height === this.data.inspirationKeyboardHeight
+      && dockStyle === (this.data.inspirationDockStyle || '')
     ) {
       return;
     }
     this.setData({
       inspirationKeyboardHeight: height,
-      inspirationDockStyle: buildKeyboardBottomStyle(height),
+      inspirationDockStyle: dockStyle,
       keyboardViewportStyle: buildKeyboardViewportStyle(this.data.expressKeyboardHeight)
     });
   },
@@ -5752,17 +5772,29 @@ Page(withPageInteractionLock({
     }, 120);
   },
 
-  onInspirationFocus() {
+  onInspirationFocus(e) {
     if (this._inspirationBlurTimer) {
       clearTimeout(this._inspirationBlurTimer);
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
-    // 原生 input 会在 keyboardheightchange 之前完成首帧定位。先移除底栏，
-    // 避免底栏回流与键盘抬升同帧发生，导致首次聚焦多出一个底栏高度的间隔。
+    // 原生 input 会在 keyboardheightchange 之前完成首帧定位。先移除底栏并把宿主
+    // 钉到 fixed bottom:0，避免底栏回流与键盘抬升同帧叠出空隙。
+    // Android 首次唤起时精确高度也可能只出现在 focus.detail.height。
+    const focusKeyboardHeight = keyboardHeightFromEvent(e);
+    const patch = {};
     if (!this.data.inspirationInputFocused) {
-      this.setData({ inspirationInputFocused: true });
+      patch.inspirationInputFocused = true;
     }
+    if (focusKeyboardHeight > 0) {
+      const dockBottom = this._resolveInspirationDockBottom(focusKeyboardHeight);
+      patch.inspirationKeyboardHeight = focusKeyboardHeight;
+      patch.inspirationDockStyle = buildKeyboardBottomStyle(dockBottom);
+      patch.keyboardViewportStyle = buildKeyboardViewportStyle(this.data.expressKeyboardHeight);
+    } else if (!(this.data.inspirationKeyboardHeight > 0)) {
+      patch.inspirationDockStyle = 'bottom: 0;';
+    }
+    if (Object.keys(patch).length) this.setData(patch);
   },
 
   onInspirationBlur() {

@@ -34,7 +34,7 @@ function staticCdnUrl(packagedPath) {
 const WAIT_HERO_SRC = staticCdnUrl('assets/subAwait/wait-hero-5a8ea5.webp');
 const EMPTY_HISTORY_SRC = staticCdnUrl('assets/home/empty-history-6f27f1.webp');
 
-// 2×2 行优先：左上延时、右上位置、左下属性类型、右下稳定态
+// 2×2 行优先：左上延时、右上属性细节、左下稳定化、右下联动细节
 const CLOSING_RUNE_CARDS = Object.freeze([
   {
     id: 'delay',
@@ -42,18 +42,18 @@ const CLOSING_RUNE_CARDS = Object.freeze([
     src: '/assets/partnerMode/closing-runes/delay-absolute.jpg'
   },
   {
-    id: 'position',
-    label: '位置符文',
+    id: 'attributeDetail',
+    label: '属性细节符文',
     src: '/assets/partnerMode/closing-runes/position-slot.jpg'
   },
   {
-    id: 'attribute',
-    label: '属性类型符文',
+    id: 'stabilize',
+    label: '稳定化符文',
     src: '/assets/partnerMode/closing-runes/attribute-type.jpg'
   },
   {
-    id: 'stable',
-    label: '稳定态符文',
+    id: 'linkageDetail',
+    label: '联动细节符文',
     src: '/assets/partnerMode/closing-runes/stable-assign.jpg'
   }
 ]);
