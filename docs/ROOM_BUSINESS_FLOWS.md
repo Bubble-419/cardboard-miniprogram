@@ -199,6 +199,10 @@ Event 或 Snapshot 收敛到最新 View。
 
 ### 2.4 断线、冷启动与 Snapshot 恢复
 
+普通前台恢复保留原 RoomSession；当前业务页 URL 中的 `roomId` 不是扫码入房指令。
+恢复期间房主已切换业务状态时，最新 Snapshot 必须收起旧页内屏幕并跟随成员权威 Route。
+只有首页/大厅的新入房入口建立扫码闸门；首次入房和扫码加入另一房间的行为保持不变。
+
 ```mermaid
 sequenceDiagram
   autonumber
@@ -756,6 +760,7 @@ flowchart LR
 | Spy 弃票、平票、超时、淘汰、离房、隐私 | [`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
 | 页面交互锁、叠层保留与导航并发 | [`page-interaction-coverage.test.js`](../tests/ui/page-interaction-coverage.test.js)、[`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js) |
 | 导航失败重试、等待页退出与无回调超时释放 | [`v3-navigation.test.js`](../tests/room-client/v3-navigation.test.js)、[`sub-await-scene.test.js`](../tests/ui/sub-await-scene.test.js)、[`page-interaction-lock.test.js`](../tests/ui/page-interaction-lock.test.js) |
+| 页内牌库挂起期间房主取消模式、前台恢复清除过期屏幕、扫码入口与业务参数区分 | [`app-room-resume.test.js`](../tests/ui/app-room-resume.test.js) |
 | Partner 输入键盘、草稿与原生焦点稳定性 | [`inspiration-keyboard-lift.test.js`](../tests/ui/inspiration-keyboard-lift.test.js)、[`room-local-draft.test.js`](../tests/ui/room-local-draft.test.js) |
 | 卡片画布键盘校准、离页/销毁停止副作用、迟到回调与恢复尺寸 | [`game-card-timer-lifecycle.test.js`](../tests/ui/game-card-timer-lifecycle.test.js) |
 | Setup Shell 等待/抽取切换、乱序 View 防回退 | [`select-player-shell.test.js`](../tests/ui/select-player-shell.test.js)、[`select-player-back.test.js`](../tests/ui/select-player-back.test.js) |

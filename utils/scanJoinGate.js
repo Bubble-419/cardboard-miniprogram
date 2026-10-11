@@ -5,6 +5,7 @@
 
 let _roomId = '';
 let _until = 0;
+const ROOM_ENTRY_PAGES = new Set(['pages/main-pages/aaa/index', 'pages/main-pages/addPlayer/index']);
 
 function _expired() {
   if (!_roomId) return true;
@@ -55,13 +56,17 @@ function extractRoomIdFromScene(scene) {
   return eight ? eight[1] : '';
 }
 
-function beginScanJoinFromLaunch(options) {
+function beginScanJoinFromLaunch(options, context = {}) {
+  const path = String((options && options.path) || '').replace(/^\//, '');
+  // 普通前台恢复会携带当前业务页的 roomId；只有入房入口才能建立扫码闸门。
+  if (path && !ROOM_ENTRY_PAGES.has(path)) return '';
   const query = (options && options.query) || {};
   const scene = query.scene || (options && options.scene) || '';
   const roomId = extractRoomIdFromScene(scene)
     || (query.roomId && /^\d{8}$/.test(String(query.roomId)) ? String(query.roomId) : '')
     || (query.rid && /^\d{8}$/.test(String(query.rid)) ? String(query.rid) : '');
-  if (!roomId) return '';
+  // 当前房间恢复复用 RoomSession，不能因相同 URL 参数销毁宿主正在订阅的连接。
+  if (!roomId || roomId === String(context.currentRoomId || '')) return '';
   beginScanJoin(roomId);
   return roomId;
 }

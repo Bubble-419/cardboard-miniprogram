@@ -363,6 +363,9 @@ flowchart LR
 不得安装 View、发布旧 Route/错误、校准时钟或继续握手。随后的 `resume` 串行读取新 Snapshot。
 Command 不因前后台切换被取消：保留原回执、重试 ID 和已提交的创建/加入/离房结果；仅丢弃
 旧世代附带的 Snapshot/Sync，恢复前台后按已确认房间归属读取当前 Snapshot。
+普通 `App.onShow` 可能携带当前业务页的 `roomId`，不代表新的入房意图：复用原 RoomSession
+及其页内屏幕订阅，只执行 `resume → Snapshot`。扫码闸门只接受首页/大厅入房入口；已有连接
+的同一房间不重新建立闸门，进入另一房间时仍由入房流程保护与重建连接。
 
 ```mermaid
 sequenceDiagram

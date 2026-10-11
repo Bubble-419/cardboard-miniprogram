@@ -26,13 +26,13 @@ App({
   onShow(options) {
     try {
       const { beginScanJoinFromLaunch, isScanJoinActive } = require('./utils/scanJoinGate');
-      beginScanJoinFromLaunch(options);
+      const { getActiveRoomSession, disposeRoomSession, resumeRoomSession } = require('./modules/room-session/index');
+      const session = getActiveRoomSession();
+      beginScanJoinFromLaunch(options, { currentRoomId: session && session.roomId });
       if (isScanJoinActive()) {
-        const { disposeRoomSession } = require('./modules/room-session/index');
         disposeRoomSession();
         return;
       }
-      const { resumeRoomSession } = require('./modules/room-session/index');
       resumeRoomSession();
     } catch (e) {
       // ignore
