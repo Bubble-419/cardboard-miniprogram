@@ -35,7 +35,7 @@ const ROOM_LOCAL_SCREENS = {
   '/pages/main-pages/case/index': {
     name: 'caseScreen', routes: ["submitProblem"],
     create: require('../case/controller.js'),
-    intents: require('../case/view/intents')
+    intents: require('../../../components/room-case-screen/intents')
   },
   '/pages/main-pages/partnerMode/confirmBG/index': {
     name: 'scenarioDetail', routes: ["submitProblem"],

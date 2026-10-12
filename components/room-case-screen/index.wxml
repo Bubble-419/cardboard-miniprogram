@@ -1,0 +1,3 @@
+<block wx:if="{{modelReady}}">
+  <include src="../../pages/main-pages/case/index.wxml" />
+</block>

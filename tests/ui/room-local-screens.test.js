@@ -184,13 +184,40 @@ test('展示组件只更新变更字段；传递输入/键盘和触摸意图，�
   assert.equal(events[0].event.event.detail.value, '新草稿');
 });
 
+test('提交问题页的案例本地屏幕必须位于微信可加载的非页面组件目录', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '../..');
+  const appConfig = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
+  const pageConfig = JSON.parse(fs.readFileSync(
+    path.join(root, 'pages/main-pages/submitProblem/index.json'),
+    'utf8'
+  ));
+  const componentPath = pageConfig.usingComponents['room-local-case-screen'].replace(/^\//, '');
+  const registeredPages = [
+    ...(appConfig.pages || []),
+    ...(appConfig.subPackages || []).flatMap((pkg) =>
+      (pkg.pages || []).map((page) => path.posix.join(pkg.root, page))
+    )
+  ];
+
+  assert.equal(
+    registeredPages.some((page) => componentPath.startsWith(`${path.posix.dirname(page)}/`)),
+    false,
+    '自定义组件不能放在已注册页面的目录内，否则微信运行时会报 Component is not found'
+  );
+  for (const extension of ['js', 'json', 'wxml', 'wxss']) {
+    assert.equal(fs.existsSync(path.join(root, `${componentPath}.${extension}`)), true);
+  }
+});
+
 test('迁移的展示组件意图与控制器接口完整对齐，展示层不持有房间连接', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const screens = [
     ['pages/main-pages/selectBG/controller', 'pages/main-pages/selectBG/view'],
     ['components/room-scenario-detail/controller', 'components/room-scenario-detail'],
-    ['pages/main-pages/case/controller', 'pages/main-pages/case/view'],
+    ['pages/main-pages/case/controller', 'components/room-case-screen'],
     ['pages/inspiration/controller', 'pages/inspiration/view'],
     ['pages/main-pages/partnerMode/specialMove/controller', 'pages/main-pages/partnerMode/specialMove/view'],
     ['pages/main-pages/partnerMode/imageCrop/controller', 'pages/main-pages/partnerMode/imageCrop/view'],
