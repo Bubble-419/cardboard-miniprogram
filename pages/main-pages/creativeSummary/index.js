@@ -312,18 +312,19 @@ Page(withPageInteractionLock({
   },
 
   handleGoRoom() {
-    if (!this.data.isHost) return;
     if (!this.data.canRestartRound) return;
     if (this.data.editing) {
       wx.showToast({ title: '请先保存创意修改', icon: 'none' });
       return;
     }
     return runPageInteraction(this, async () => {
-      let result = await this._completeHalliSession();
-      if (result && result.ok === true) result = await dispatchRoomCommand('RETURN_TO_LOBBY', {});
-      if (!result || result.ok !== true) {
-        wx.showToast({ title: result && result.errMsg || '返回房间失败', icon: 'none' });
-        return;
+      if (this.data.isHost) {
+        let result = await this._completeHalliSession();
+        if (result && result.ok === true) result = await dispatchRoomCommand('RETURN_TO_LOBBY', {});
+        if (!result || result.ok !== true) {
+          wx.showToast({ title: result && result.errMsg || '返回房间失败', icon: 'none' });
+          return;
+        }
       }
       await goRoomPage(this.data.roomId);
     }, { loadingText: '正在返回房间…' });

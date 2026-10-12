@@ -153,7 +153,9 @@ test('Halli 汇总页提供原地修改入口，有人修改时不允许房主�
   assert.match(wxml, /icon-problem-confirm\.svg/);
   assert.doesNotMatch(wxml, /修改我的创意/);
   assert.match(wxml, /item\.isMe && canEditIdea/);
-  assert.match(wxml, /footer" wx:if="\{\{isHost\}\}"/);
+  assert.match(wxml, /footer" wx:if="\{\{isHost \|\| canRestartRound\}\}"/);
+  assert.match(wxml, /class="room-btn" bindtap="handleGoRoom">返回房间<\/button>/);
+  assert.match(wxml, /wx:if="\{\{isHost\}\}" class="finish-btn" bindtap="handleFinish"/);
 });
 
 test('非房主进入汇总页同样可原地修改本人创意', () => {
@@ -173,8 +175,30 @@ test('非房主进入汇总页同样可原地修改本人创意', () => {
 
   assert.equal(page.data.isHost, false);
   assert.equal(page.data.canEditIdea, true);
+  assert.equal(page.data.canRestartRound, true);
   assert.equal(page.data.summaryList[0].isMe, true);
   assert.equal(page.data.summaryList[0].ideaText, '副屏创意');
+});
+
+test('非房主从汇总页返回房间时仅本地导航，不提交房主指令', async (t) => {
+  let commandCount = 0;
+  const { h, page } = await openSummaryPage(t, {
+    beforeCommand() {
+      commandCount += 1;
+    }
+  });
+  const navigations = [];
+  global.wx.reLaunch = (options) => {
+    navigations.push(options.url);
+    options.success({});
+  };
+  page.setData({ isHost: false, canRestartRound: true });
+
+  await page.handleGoRoom();
+
+  assert.equal(commandCount, 0);
+  assert.deepEqual(navigations, ['/pages/main-pages/addPlayer/index?roomId=12345678&stayLobby=1']);
+  assert.equal((await h.snapshot('host')).view.session.status, 'RUNNING');
 });
 
 test('断线恢复时汇总页从 Actor View 原地还原编辑态', () => {

@@ -73,10 +73,10 @@
     </scroll-view>
   </view>
 
-  <view class="footer" wx:if="{{isHost}}">
+  <view class="footer" wx:if="{{isHost || canRestartRound}}">
     <view class="footer-actions" wx:if="{{canRestartRound}}">
       <button class="room-btn" bindtap="handleGoRoom">返回房间</button>
-      <button class="finish-btn" bindtap="handleFinish">再来一轮</button>
+      <button wx:if="{{isHost}}" class="finish-btn" bindtap="handleFinish">再来一轮</button>
     </view>
     <button
       wx:else
