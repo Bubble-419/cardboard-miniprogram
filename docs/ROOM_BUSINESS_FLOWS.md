@@ -605,6 +605,8 @@ Event 或 Snapshot 刷新不覆盖草稿、不重设选区。刷新比较完整�
 
 ## 7. 谁是卧底（Spy）
 
+当前可抽取词对、牌库分类与释义见[谁是卧底词组清单](SPY_WORD_LIST.md)。
+
 ```mermaid
 flowchart LR
   INTRO[SPY_INTRO<br/>spyIntro<br/>规则/词库/等待开局]

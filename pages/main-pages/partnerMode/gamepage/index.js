@@ -601,8 +601,16 @@ Page(withRoomLocalScreens(withPageInteractionLock({
       clearTimeout(this._innerScrollUnlockTimer);
       this._innerScrollUnlockTimer = null;
     }
-    if (!this.data.innerScrollLocked) {
-      this.setData({ innerScrollLocked: true });
+    if (this._expressAnchorClearTimer) {
+      clearTimeout(this._expressAnchorClearTimer);
+      this._expressAnchorClearTimer = null;
+    }
+    if (!this.data.innerScrollLocked || this.data.expressChatAnchor || this.data.discussionExpressChatAnchor) {
+      this.setData({
+        innerScrollLocked: true,
+        expressChatAnchor: '',
+        discussionExpressChatAnchor: ''
+      });
     }
   },
 
@@ -5326,7 +5334,8 @@ Page(withRoomLocalScreens(withPageInteractionLock({
       discussionExpressChatList: lists.discussionExpressChatList,
       expressViewRound: viewRound
     };
-    if (options.scrollBottom !== false) {
+    // 手势期间仍更新聊天内容，但不能用底部定位打断 iOS 原生滚动。
+    if (options.scrollBottom !== false && !this.data.innerScrollLocked) {
       if (lists.playExpressChatList.length) {
         patch.expressChatAnchor = 'express-chat-bottom';
       }

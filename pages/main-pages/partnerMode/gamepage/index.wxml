@@ -466,8 +466,9 @@
                 </view>
               </view>
               <view class="discussion-divider"></view>
+              <view class="chat-scroll-viewport">
               <scroll-view
-                class="discussion-scroll"
+                class="discussion-scroll chat-scroll-view"
                 scroll-y
                 enhanced
                 show-scrollbar="{{true}}"
@@ -560,6 +561,7 @@
                   </view>
                 </view>
               </scroll-view>
+              </view>
 
               <!-- 讨论阶段：表达入口统一在卡片右下角 -->
               <view
@@ -658,8 +660,9 @@
 
                   <!-- 点击表达：仅切换卡内内容为匿名聊天（Figma 5966:29140） -->
                   <view class="action-express-chat-body" wx:if="{{expressChatPanelVisible}}">
+                    <view class="chat-scroll-viewport">
                     <scroll-view
-                      class="action-express-chat"
+                      class="action-express-chat chat-scroll-view"
                       scroll-y
                       enhanced
                       show-scrollbar="{{true}}"
@@ -687,6 +690,7 @@
                       </view>
                       <view id="express-chat-bottom" style="height: 1rpx;"></view>
                     </scroll-view>
+                    </view>
                     <view class="action-express-chat-locked" wx:if="{{!expressCanSend}}">
                       <text class="action-express-chat-locked-text">本轮表态结束后可发送</text>
                     </view>
@@ -736,9 +740,9 @@
                 <view class="action-divider"></view>
 
                 <!-- 匿名聊天区：外包一层定高，iOS 原生 scroll-view 才能滚 -->
-                <view class="spectator-chat-wrap">
+                <view class="spectator-chat-wrap chat-scroll-viewport">
                 <scroll-view
-                  class="spectator-chat"
+                  class="spectator-chat chat-scroll-view"
                   scroll-y
                   enhanced
                   show-scrollbar="{{true}}"

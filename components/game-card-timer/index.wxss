@@ -46,7 +46,8 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 1;
+  /* 内容在原生 canvas 上方，避免 iOS 卡内 scroll-view 的手势落到全幅画布。 */
+  z-index: 3;
   border-radius: 28rpx;
   background: #fff;
   overflow: hidden;

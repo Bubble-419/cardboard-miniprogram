@@ -1127,21 +1127,28 @@
   letter-spacing: -0.06em;
 }
 
-.spectator-chat-wrap {
+/* 外层只分配卡片剩余高度；原生滚动节点脱离 flex 内容尺寸计算，避免 iOS 随内容撑高。 */
+.chat-scroll-viewport {
   position: relative;
-  z-index: 5;
   flex: 1;
   min-height: 0;
   height: 0;
   width: 100%;
-  margin-top: 8rpx;
+  overflow: hidden;
 }
 
-.spectator-chat {
+.chat-scroll-view {
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
   width: 100%;
-  padding-bottom: 0;
   box-sizing: border-box;
+}
+
+.spectator-chat-wrap {
+  z-index: 5;
+  margin-top: 8rpx;
 }
 
 .spectator-chat-empty {
@@ -1252,19 +1259,11 @@
 
 .action-express-chat-body {
   flex: 1;
-  min-height: 360rpx;
+  min-height: 0;
+  height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-}
-
-.action-express-chat {
-  flex: 1;
-  height: 100%;
-  min-height: 280rpx;
-  max-height: 520rpx;
-  width: 100%;
   box-sizing: border-box;
 }
 
@@ -2533,11 +2532,6 @@ game-card-timer {
   overflow: hidden;
 }
 
-.discussion-card-body .discussion-scroll {
-  padding-bottom: 88rpx;
-  box-sizing: border-box;
-}
-
 .discussion-header-row {
   position: relative;
   display: flex;
@@ -2584,16 +2578,9 @@ game-card-timer {
   flex-shrink: 0;
 }
 
-.discussion-scroll {
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
 .discussion-scroll-inner {
-  padding: 0 28rpx;
+  /* 留白属于可滚动内容，让最后一条能滚到右下角表达入口上方。 */
+  padding: 0 28rpx 88rpx;
   box-sizing: border-box;
 }
 
