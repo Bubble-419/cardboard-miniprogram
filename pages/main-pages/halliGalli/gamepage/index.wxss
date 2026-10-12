@@ -199,15 +199,21 @@
 }
 
 .gan-step-copy .step-title {
-  font-size: 30rpx;
-  line-height: 40rpx;
+  font-size: 34rpx;
+  line-height: 44rpx;
 }
 
 .gan-step-copy .step-desc {
-  font-size: 22rpx;
-  line-height: 32rpx;
+  font-size: 26rpx;
+  line-height: 36rpx;
   word-break: normal;
   text-align: justify;
+  -webkit-line-clamp: 3;
+}
+
+.gan-step-badge {
+  left: 12rpx;
+  right: auto;
 }
 
 /* 单个步骤外层（card + badge 叠加） */

@@ -30,7 +30,7 @@
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
             <image class="gan-step-img" src="/assets/ganDengYan/rule-deal.jpg" mode="aspectFill" />
-            <view class="step-badge"><text class="step-num">1</text></view>
+            <view class="step-badge gan-step-badge"><text class="step-num">1</text></view>
           </view>
           <view class="gan-step-copy">
             <text class="step-title">洗牌发牌</text>
@@ -41,7 +41,7 @@
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
             <image class="gan-step-img" src="/assets/ganDengYan/rule-first-play.jpg" mode="aspectFill" />
-            <view class="step-badge"><text class="step-num">2</text></view>
+            <view class="step-badge gan-step-badge"><text class="step-num">2</text></view>
           </view>
           <view class="gan-step-copy">
             <text class="step-title">首位出牌</text>
@@ -52,18 +52,18 @@
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
             <image class="gan-step-img" src="/assets/ganDengYan/rule-connect.jpg" mode="aspectFill" />
-            <view class="step-badge"><text class="step-num">3</text></view>
+            <view class="step-badge gan-step-badge"><text class="step-num">3</text></view>
           </view>
           <view class="gan-step-copy">
             <text class="step-title">依次接牌</text>
-            <text class="step-desc">下一位玩家从已拼卡牌的任一可连接处延伸，之后依次进行。</text>
+            <text class="step-desc">下一位玩家从已拼卡牌的任一可连接处延伸（但不可多选可连接处），之后依次进行。</text>
           </view>
         </view>
 
         <view class="gan-step-card">
           <view class="gan-step-image-wrap">
             <image class="gan-step-img" src="/assets/ganDengYan/rule-win.jpg" mode="aspectFill" />
-            <view class="step-badge"><text class="step-num">4</text></view>
+            <view class="step-badge gan-step-badge"><text class="step-num">4</text></view>
           </view>
           <view class="gan-step-copy">
             <text class="step-title">获胜条件</text>
