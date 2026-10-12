@@ -5289,6 +5289,7 @@ var COLLECTIONS;
 var docId;
 var safeGet;
 var initializationError;
+var ROOM_QRCODE_ENV_VERSION = "trial";
 try {
   cloud = require("wx-server-sdk");
   const { createRoomApplication } = require_room_application();
@@ -5307,23 +5308,14 @@ function extractImageBuffer(response) {
   return buffer;
 }
 async function generate(roomId) {
-  const versions = [process.env.QR_ENV_VERSION, "develop", "trial", "release"].filter((value, index, list) => value && list.indexOf(value) === index);
-  let lastError;
-  for (const envVersion of versions) {
-    try {
-      const response = await cloud.openapi.wxacode.getUnlimited({
-        page: "pages/main-pages/addPlayer/index",
-        scene: `rid=${roomId}`,
-        width: 430,
-        check_path: false,
-        env_version: envVersion
-      });
-      return extractImageBuffer(response);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError || new Error("\u751F\u6210\u5C0F\u7A0B\u5E8F\u7801\u5931\u8D25");
+  const response = await cloud.openapi.wxacode.getUnlimited({
+    page: "pages/main-pages/addPlayer/index",
+    scene: `rid=${roomId}`,
+    width: 430,
+    check_path: false,
+    env_version: ROOM_QRCODE_ENV_VERSION
+  });
+  return extractImageBuffer(response);
 }
 async function tempUrl(fileRef) {
   if (!fileRef) return "";
@@ -5397,10 +5389,11 @@ async function qrcode(event, actorContext, measure) {
   if (mediaResult.status === "rejected") throw mediaResult.reason;
   const media = mediaResult.value;
   const force = event && event.force === true;
-  if ((!media || !media.fileRef || force) && access.role !== "HOST") {
+  const hasCurrentQrcode = media && media.fileRef && media.envVersion === ROOM_QRCODE_ENV_VERSION;
+  if ((!hasCurrentQrcode || force) && access.role !== "HOST") {
     return { ok: false, errCode: "HOST_REQUIRED", errMsg: "\u8BF7\u7B49\u5F85\u623F\u4E3B\u751F\u6210\u4E8C\u7EF4\u7801" };
   }
-  let fileRef = media && media.fileRef;
+  let fileRef = hasCurrentQrcode ? media.fileRef : null;
   if (!fileRef || force) {
     const fileContent = await measure("generateMs", () => generate(roomId));
     const upload = await measure("uploadMs", () => cloud.uploadFile({
@@ -5410,7 +5403,13 @@ async function qrcode(event, actorContext, measure) {
     fileRef = upload.fileID;
     const [cacheResult, urlResult] = await Promise.allSettled([
       measure("cacheWriteMs", () => db.collection(COLLECTIONS.media).doc(mediaId).set({
-        data: { roomId, mediaType: "QRCODE", fileRef, updatedAt: Date.now() }
+        data: {
+          roomId,
+          mediaType: "QRCODE",
+          fileRef,
+          envVersion: ROOM_QRCODE_ENV_VERSION,
+          updatedAt: Date.now()
+        }
       })),
       measure("tempUrlMs", () => tempUrl(fileRef))
     ]);

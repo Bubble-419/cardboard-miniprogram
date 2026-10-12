@@ -8,6 +8,9 @@ let docId;
 let safeGet;
 let initializationError;
 
+// 房间邀请码始终指向体验版；非体验成员由微信在扫码入口限制。
+const ROOM_QRCODE_ENV_VERSION = 'trial';
+
 try {
   cloud = require('wx-server-sdk');
   const { createRoomApplication } = require('@cardboard/room-application');
@@ -29,21 +32,11 @@ function extractImageBuffer(response) {
 }
 
 async function generate(roomId) {
-  const versions = [process.env.QR_ENV_VERSION, 'develop', 'trial', 'release']
-    .filter((value, index, list) => value && list.indexOf(value) === index);
-  let lastError;
-  for (const envVersion of versions) {
-    try {
-      const response = await cloud.openapi.wxacode.getUnlimited({
-        page: 'pages/main-pages/addPlayer/index', scene: `rid=${roomId}`,
-        width: 430, check_path: false, env_version: envVersion
-      });
-      return extractImageBuffer(response);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError || new Error('生成小程序码失败');
+  const response = await cloud.openapi.wxacode.getUnlimited({
+    page: 'pages/main-pages/addPlayer/index', scene: `rid=${roomId}`,
+    width: 430, check_path: false, env_version: ROOM_QRCODE_ENV_VERSION
+  });
+  return extractImageBuffer(response);
 }
 
 async function tempUrl(fileRef) {
@@ -124,10 +117,12 @@ async function qrcode(event, actorContext, measure) {
   if (mediaResult.status === 'rejected') throw mediaResult.reason;
   const media = mediaResult.value;
   const force = event && event.force === true;
-  if ((!media || !media.fileRef || force) && access.role !== 'HOST') {
+  const hasCurrentQrcode = media && media.fileRef
+    && media.envVersion === ROOM_QRCODE_ENV_VERSION;
+  if ((!hasCurrentQrcode || force) && access.role !== 'HOST') {
     return { ok: false, errCode: 'HOST_REQUIRED', errMsg: '请等待房主生成二维码' };
   }
-  let fileRef = media && media.fileRef;
+  let fileRef = hasCurrentQrcode ? media.fileRef : null;
   if (!fileRef || force) {
     const fileContent = await measure('generateMs', () => generate(roomId));
     const upload = await measure('uploadMs', () => cloud.uploadFile({
@@ -137,7 +132,13 @@ async function qrcode(event, actorContext, measure) {
     // 上传完成后两者只依赖 fileID；任一失败也等待另一项结束，避免脱离请求的写入。
     const [cacheResult, urlResult] = await Promise.allSettled([
       measure('cacheWriteMs', () => db.collection(COLLECTIONS.media).doc(mediaId).set({
-        data: { roomId, mediaType: 'QRCODE', fileRef, updatedAt: Date.now() }
+        data: {
+          roomId,
+          mediaType: 'QRCODE',
+          fileRef,
+          envVersion: ROOM_QRCODE_ENV_VERSION,
+          updatedAt: Date.now()
+        }
       })),
       measure('tempUrlMs', () => tempUrl(fileRef))
     ]);

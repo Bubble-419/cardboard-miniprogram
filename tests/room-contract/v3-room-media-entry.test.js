@@ -8,10 +8,22 @@ const ALLOWED_AVATAR = 'cloud://test-env/avatars/allowed.png';
 const ALLOWED_ARTIFACT = 'cloud://test-env/artifacts/allowed.png';
 const PRIVATE_FILE = 'cloud://test-env/private/not-in-view.png';
 
-async function invokeRoomMedia({ event, openid = 'member-openid', roomApp, media = null, effects = [], io = {} }) {
+async function invokeRoomMedia({
+  event,
+  openid = 'member-openid',
+  roomApp,
+  media = null,
+  effects = [],
+  io = {},
+  qrEnvVersion
+}) {
   const originalLoad = Module._load;
   const entryPath = require.resolve('../../cloudfunctions/roomMedia/src/entry');
   const tempFileUrlCalls = [];
+  const originalQrEnvVersion = process.env.QR_ENV_VERSION;
+
+  if (qrEnvVersion === undefined) delete process.env.QR_ENV_VERSION;
+  else process.env.QR_ENV_VERSION = qrEnvVersion;
 
   Module._load = function loadWithCloudMocks(request, parent, isMain) {
     if (request === 'wx-server-sdk') {
@@ -24,8 +36,10 @@ async function invokeRoomMedia({ event, openid = 'member-openid', roomApp, media
             if (io.save) return io.save(data);
           }
         }) }) }; },
-        openapi: { wxacode: { getUnlimited: async () => {
-          effects.push(['generate']); return { buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) };
+        openapi: { wxacode: { getUnlimited: async (args) => {
+          effects.push(['generate', args]);
+          if (io.generate) return io.generate(args);
+          return { buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) };
         } } },
         async uploadFile() { effects.push(['upload']); return { fileID: ALLOWED_AVATAR }; },
         getWXContext() { return { OPENID: openid }; },
@@ -67,6 +81,8 @@ async function invokeRoomMedia({ event, openid = 'member-openid', roomApp, media
   } finally {
     Module._load = originalLoad;
     delete require.cache[entryPath];
+    if (originalQrEnvVersion === undefined) delete process.env.QR_ENV_VERSION;
+    else process.env.QR_ENV_VERSION = originalQrEnvVersion;
   }
 }
 
@@ -93,7 +109,7 @@ test('二维码使用轻量成员授权：房主可生成，普通成员只能�
       for (const force of [false, true]) {
         const { result, effects } = await invokeRoomMedia({
           event: { action: 'qrcode', roomId: '12345678', force },
-          media: cached ? { fileRef: ALLOWED_AVATAR } : null,
+          media: cached ? { fileRef: ALLOWED_AVATAR, envVersion: 'trial' } : null,
           roomApp: { readRoomAccess: async () => ({ ok: true, role }),
             readSnapshot: async () => { throw new Error('不应重建 Snapshot'); } }
         });
@@ -137,7 +153,7 @@ test('二维码授权与缓存读取并行，授权成功前不签名或生成',
   try {
     await flush();
     assert.deepEqual(effects, [['authorize'], ['readMedia']]);
-    cache.resolve({ fileRef: ALLOWED_AVATAR });
+    cache.resolve({ fileRef: ALLOWED_AVATAR, envVersion: 'trial' });
     await flush();
     assert.equal(effects.some(([stage]) => stage === 'tempUrl'), false);
     authorization.resolve({ ok: true, role: 'MEMBER' });
@@ -260,6 +276,82 @@ test('roomMedia 依赖加载失败时返回结构化错误', async () => {
     Module._load = originalLoad;
     delete require.cache[entryPath];
   }
+});
+
+test('roomMedia 未配置二维码版本时生成体验版小程序码', async () => {
+  const { result, effects } = await invokeRoomMedia({
+    event: { action: 'qrcode', roomId: '12345678' },
+    roomApp: { readRoomAccess: async () => ({ ok: true, role: 'HOST' }) }
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+  const generated = effects.filter(([kind]) => kind === 'generate');
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0][1].env_version, 'trial');
+});
+
+test('roomMedia 忽略遗留的 develop 配置，仍生成体验版小程序码', async () => {
+  const { result, effects } = await invokeRoomMedia({
+    event: { action: 'qrcode', roomId: '12345678' },
+    roomApp: { readRoomAccess: async () => ({ ok: true, role: 'HOST' }) },
+    qrEnvVersion: 'develop'
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+  const generated = effects.filter(([kind]) => kind === 'generate');
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0][1].env_version, 'trial');
+});
+
+test('roomMedia 不在体验版生成失败后回退到开发版', async () => {
+  const { result, effects } = await invokeRoomMedia({
+    event: { action: 'qrcode', roomId: '12345678' },
+    roomApp: { readRoomAccess: async () => ({ ok: true, role: 'HOST' }) },
+    io: { generate: async () => {
+      throw Object.assign(new Error('trial unavailable'), { code: 'TRIAL_UNAVAILABLE' });
+    } }
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.errCode, 'TRIAL_UNAVAILABLE');
+  const generated = effects.filter(([kind]) => kind === 'generate');
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0][1].env_version, 'trial');
+});
+
+test('roomMedia 会替换未记录版本的旧房间码', async () => {
+  const { result, effects } = await invokeRoomMedia({
+    event: { action: 'qrcode', roomId: '12345678' },
+    roomApp: { readRoomAccess: async () => ({ ok: true, role: 'HOST' }) },
+    media: {
+      roomId: '12345678',
+      mediaType: 'QRCODE',
+      fileRef: 'cloud://test-env/qrcodes/legacy.png'
+    }
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+  assert.equal(effects.filter(([kind]) => kind === 'generate').length, 1);
+  const writes = effects.filter(([kind]) => kind === 'save');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][1].envVersion, 'trial');
+});
+
+test('roomMedia 复用已标记为体验版的房间码', async () => {
+  const { result, effects } = await invokeRoomMedia({
+    event: { action: 'qrcode', roomId: '12345678' },
+    roomApp: { readRoomAccess: async () => ({ ok: true, role: 'HOST' }) },
+    media: {
+      roomId: '12345678',
+      mediaType: 'QRCODE',
+      fileRef: 'cloud://test-env/qrcodes/trial.png',
+      envVersion: 'trial'
+    }
+  });
+
+  assert.equal(result.ok, true, result.errMsg);
+  assert.equal(result.qrcodeFileID, 'cloud://test-env/qrcodes/trial.png');
+  assert.equal(effects.some(([kind]) => kind === 'generate' || kind === 'save'), false);
 });
 
 test('roomMedia tempUrls 只签名当前 MemberView 中可见的文件', async () => {
