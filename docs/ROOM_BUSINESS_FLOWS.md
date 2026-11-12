@@ -774,7 +774,7 @@ flowchart LR
 | Partner 低耦合组件、RoomShell 屏幕切换、特殊行动返回与同路径导航 | [`partner-game-components.test.js`](../tests/ui/partner-game-components.test.js)、[`partner-room-shell.test.js`](../tests/ui/partner-room-shell.test.js)、[`special-move-help-luck.test.js`](../tests/ui/special-move-help-luck.test.js)、[`v3-route-matrix.test.js`](../tests/room-domain/v3-route-matrix.test.js) |
 | 录音声明式交接、跨页重建、迟到确认自动恢复、冻结上下文、授权/设备失败和生命周期轨迹 | [`partner-audio.test.js`](../tests/ui/partner-audio.test.js)；同一公开 Interface 覆盖 MP3/PCM 四种交接、启动中停止失败/迟到开始、重复回调、错误 hook 重入和真实页面接线 |
 | Spy 平票提示每轮只展示一次、提问不重复提示、Snapshot/Event 等价 | [`spy-tie-prompt.test.js`](../tests/ui/spy-tie-prompt.test.js)、[`v3-spy-flow.test.js`](../tests/room-domain/v3-spy-flow.test.js) |
-| Spy 身份卡真实触摸、轻微位移无 tap、全屏与上下翻面 | [`spy-identity-card-fullscreen.test.js`](../tests/ui/spy-identity-card-fullscreen.test.js)、[`flip-word-card.test.js`](../tests/ui/flip-word-card.test.js) |
+| Spy 卡牌单击/滑动翻页、双击横屏全屏与上下翻面 | [`spy-identity-card-fullscreen.test.js`](../tests/ui/spy-identity-card-fullscreen.test.js)、[`flip-word-card.test.js`](../tests/ui/flip-word-card.test.js) |
 
 手工多端验收每个关键 Step 至少覆盖：
 

@@ -4,6 +4,12 @@
   height: 100%;
   box-sizing: border-box;
   border-radius: 28rpx;
+  /* 倒计时描边画在白卡片外侧；勿裁切圆角描边 */
+  overflow: visible;
+}
+
+.gct-wrap-timer-on {
+  overflow: visible;
 }
 
 /* 静止态：与 Figma #5848:3392 对齐的浅绿描边 */
@@ -57,12 +63,15 @@
   box-sizing: border-box;
 }
 
+/* 外框 28、描边 8 → 白卡片圆角 20，与描边内沿同心，避免圆角盖住倒计时线 */
 .gct-wrap-timer-on .gct-inner {
   left: 8rpx;
   top: 8rpx;
   right: 8rpx;
   bottom: 8rpx;
   border-radius: 20rpx;
+  /* 白底只裁内容，不能盖住外侧倒计时描边 */
+  background-clip: padding-box;
 }
 
 .gct-wrap-expiring {

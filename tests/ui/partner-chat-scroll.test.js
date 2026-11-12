@@ -81,6 +81,8 @@ test('普通倒计时与特殊模式一致：聊天内容层在原生画布上�
   }
   const inset = rule(css, '.gct-wrap-timer-on .gct-inner');
   assert.equal(inset.left, '8rpx', '抬高内容层后仍要为倒计时边框留出空间');
+  assert.equal(inset['border-radius'], '20rpx', '白卡片圆角需与 28 外框减 8 描边同心');
+  assert.equal(rule(css, '.gct-wrap')['overflow'], 'visible', '外层不得裁切倒计时描边');
 });
 
 test('三种聊天入口均使用有界视口，滚动内容不能撑开原生 scroll-view', () => {

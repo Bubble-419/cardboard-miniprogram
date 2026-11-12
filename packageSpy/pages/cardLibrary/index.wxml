@@ -47,17 +47,40 @@
         <text class="viewer-title">{{selectedCard.displayName || selectedWord}}</text>
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
-      <text class="viewer-hint">点击或上下滑动：词语 → 词语1 → 词语，可循环翻看</text>
+      <text class="viewer-hint">点击或上下滑动翻页；双击横屏全屏</text>
       <flip-word-card
         wx:if="{{selectedCard}}"
         word="{{selectedCard.word}}"
         skipBack="{{true}}"
+        fullscreenOnAssigned="{{true}}"
+        bind:fullscreen="onOpenCardFullscreen"
         assignedWordSrc="{{selectedCard.assignedWordSrc}}"
         assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
         word1Src="{{selectedCard.word1Src}}"
         word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
       />
       <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
+    </view>
+  </view>
+
+  <view
+    class="card-fullscreen-mask"
+    wx:if="{{cardFullscreenOpen}}"
+    catchtouchmove="noop"
+    bindtap="onCloseCardFullscreen"
+  >
+    <view class="card-fullscreen-stage" catchtap="noop">
+      <view
+        class="card-fullscreen-close"
+        bindtap="onCloseCardFullscreen"
+        role="button"
+        aria-label="关闭卡牌全屏"
+      >关闭</view>
+      <image
+        class="card-fullscreen-image"
+        src="{{cardFullscreenSrc}}"
+        mode="aspectFit"
+      />
     </view>
   </view>
 

@@ -75,6 +75,7 @@ Page(withPageInteractionLock({
     tiedNamesText: '',
     viewerOpen: false,
     identityCardFullscreenOpen: false,
+    identityCardFullscreenSrc: '',
     selectedWord: '',
     selectedCard: null,
     panelScrollY: true
@@ -110,7 +111,7 @@ Page(withPageInteractionLock({
   onHide() {
     this._pageAlive = false;
     if (this.data.identityCardFullscreenOpen) {
-      this.setData({ identityCardFullscreenOpen: false });
+      this.setData({ identityCardFullscreenOpen: false, identityCardFullscreenSrc: '' });
     }
     this.stopPolling();
   },
@@ -307,14 +308,39 @@ Page(withPageInteractionLock({
     });
   },
 
-  onOpenIdentityCardFullscreen() {
+  onOpenIdentityCardFullscreen(e) {
     if (!this.data.cardReady || !this.data.myWord) return;
-    this.setData({ identityCardFullscreenOpen: true });
+    const detail = (e && e.detail) || {};
+    const src = detail.src
+      || this.data.assignedWordSrc
+      || this.data.assignedWordFallbackSrc
+      || '';
+    this.setData({
+      identityCardFullscreenOpen: true,
+      identityCardFullscreenSrc: src
+    });
+  },
+
+  onOpenLibraryCardFullscreen(e) {
+    const card = this.data.selectedCard;
+    if (!card) return;
+    const detail = (e && e.detail) || {};
+    const src = detail.src
+      || card.assignedWordSrc
+      || card.assignedWordFallbackSrc
+      || card.word1Src
+      || card.word1FallbackSrc
+      || '';
+    if (!src) return;
+    this.setData({
+      identityCardFullscreenOpen: true,
+      identityCardFullscreenSrc: src
+    });
   },
 
   onCloseIdentityCardFullscreen() {
     if (!this.data.identityCardFullscreenOpen) return;
-    this.setData({ identityCardFullscreenOpen: false });
+    this.setData({ identityCardFullscreenOpen: false, identityCardFullscreenSrc: '' });
   },
   onFinishSpeak() {
     return runPageInteraction(this, () => this._finishSpeak(), {
@@ -358,6 +384,7 @@ Page(withPageInteractionLock({
   'onTapLibraryCard',
   'onCloseViewer',
   'onOpenIdentityCardFullscreen',
+  'onOpenLibraryCardFullscreen',
   'onCloseIdentityCardFullscreen',
   'onFinishSpeak',
   'handleGoRoom'

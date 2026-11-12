@@ -23,7 +23,7 @@
       <view wx:else class="flip-back-fallback">
         <view class="flip-back-pattern"></view>
         <text class="flip-back-title">词语卡</text>
-        <text class="flip-back-hint">点击或上下滑动翻开</text>
+        <text class="flip-back-hint">点击或上下滑动翻页，双击横屏全屏</text>
       </view>
     </view>
 

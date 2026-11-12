@@ -18,7 +18,7 @@
 <view wx:elif="{{roomShellScreen === 'closingVote'}}" class="room-shell-loading"></view>
 
 <block wx:elif="{{roomShellScreen === 'game'}}">
-<view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}}" style="{{keyboardViewportStyle}}">
+<view class="container {{isHistoryReview ? 'container-history-review' : ''}} {{!isHistoryReview && !isHost && gamepagePhase === 'discussion' ? 'container-discussion-guest' : ''}} {{inspirationInputFocused || inspirationKeyboardHeight > 0 ? 'container-inspiration-composing' : ''}}" style="{{keyboardViewportStyle}}">
   <view class="page-body">
     <partner-game-header
       id="partnerGameHeader"
@@ -902,10 +902,16 @@
 
   <!--
     唯一灵感输入节点放在 page-body 的 overflow:hidden 之外。
-    聚焦后只切换宿主定位，不重建原生 input；匿名表达时完全移出布局。
+    仅键盘升起后才 fixed + 占位，避免“只聚焦、键盘未到”时文档流被抽空留下大块空隙。
+    匿名表达时完全移出布局。
   -->
   <view
-    class="game-inspiration-dock {{inspirationInputFocused || inspirationKeyboardHeight > 0 ? 'game-inspiration-dock-keyboard' : ''}}"
+    wx:if="{{inspirationKeyboardHeight > 0 && !(expressComposerOpen || expressKeyboardHeight > 0 || closingKeyboardHeight > 0)}}"
+    class="game-inspiration-dock-spacer"
+    aria-hidden="true"
+  ></view>
+  <view
+    class="game-inspiration-dock {{inspirationKeyboardHeight > 0 ? 'game-inspiration-dock-keyboard game-inspiration-dock-keyboard-raised' : ''}}"
     style="{{inspirationDockStyle}}"
     hidden="{{expressComposerOpen || expressKeyboardHeight > 0 || closingKeyboardHeight > 0}}"
   >

@@ -178,16 +178,48 @@ test('小位移点击在 touchend 即翻面，不依赖系统 tap', () => {
   assert.equal(flips.length, 1, 'touchend 已翻面后的 tap 不应连翻');
 });
 
-test('发言页与牌库提示支持点击或上下滑动，不依赖失效的侧滑配置', () => {
+test('发言页与牌库提示支持点击/滑动翻页与双击全屏，不依赖失效的侧滑配置', () => {
   const speakWxml = read('packageSpy/pages/speak/index.wxml');
   const libraryWxml = read('packageSpy/pages/cardLibrary/index.wxml');
   const speakJson = read('packageSpy/pages/speak/index.json');
   const libraryJson = read('packageSpy/pages/cardLibrary/index.json');
 
-  assert.match(speakWxml, /点击或上下滑动/);
-  assert.match(libraryWxml, /点击或上下滑动/);
+  assert.match(speakWxml, /点击或上下滑动翻页/);
+  assert.match(libraryWxml, /点击或上下滑动翻页/);
+  assert.match(speakWxml, /双击横屏全屏/);
+  assert.match(libraryWxml, /双击横屏全屏/);
   assert.doesNotMatch(speakJson, /disableSwipeBack/);
   assert.doesNotMatch(libraryJson, /disableSwipeBack/);
+});
+
+test('开启全屏后单击延迟翻页，双击打开全屏', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const component = createFlipCard({
+    data: {
+      fullscreenOnAssigned: true,
+      cardState: 'assignedWord',
+      word: '开关',
+      assignedWordSrc: 'word.png',
+      word1Src: 'word1.png'
+    }
+  });
+  const flips = [];
+  const events = [];
+  component._flipTo = (next, dir) => { flips.push({ next, dir }); };
+  component.triggerEvent = (name, detail) => { events.push({ name, detail }); };
+
+  try {
+    component._handleCardTap();
+    t.mock.timers.tick(100);
+    component._handleCardTap();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].name, 'fullscreen');
+    assert.deepEqual(flips, []);
+    t.mock.timers.tick(280);
+    assert.deepEqual(flips, []);
+  } finally {
+    component._clearTimers();
+  }
 });
 
 test('谁是卧底牌库按四类分组且编号归属正确', () => {

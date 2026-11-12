@@ -38,6 +38,8 @@ return withPageInteractionLock({
     selectedWord: '',
     selectedCard: null,
     viewerOpen: false,
+    cardFullscreenOpen: false,
+    cardFullscreenSrc: '',
     locked: false
   },
 
@@ -109,8 +111,32 @@ return withPageInteractionLock({
     this.setData({
       viewerOpen: false,
       selectedWord: '',
-      selectedCard: null
+      selectedCard: null,
+      cardFullscreenOpen: false,
+      cardFullscreenSrc: ''
     });
+  },
+
+  onOpenCardFullscreen(e) {
+    const card = this.data.selectedCard;
+    if (!card) return;
+    const detail = (e && e.detail) || {};
+    const src = detail.src
+      || card.assignedWordSrc
+      || card.assignedWordFallbackSrc
+      || card.word1Src
+      || card.word1FallbackSrc
+      || '';
+    if (!src) return;
+    this.setData({
+      cardFullscreenOpen: true,
+      cardFullscreenSrc: src
+    });
+  },
+
+  onCloseCardFullscreen() {
+    if (!this.data.cardFullscreenOpen) return;
+    this.setData({ cardFullscreenOpen: false, cardFullscreenSrc: '' });
   },
 
   handleGoBack() {
@@ -131,5 +157,12 @@ return withPageInteractionLock({
   },
 
   noop() {}
-}, ['onTapCard', 'onCloseViewer', 'handleGoBack', 'handleGoRoom']);
+}, [
+  'onTapCard',
+  'onCloseViewer',
+  'onOpenCardFullscreen',
+  'onCloseCardFullscreen',
+  'handleGoBack',
+  'handleGoRoom'
+]);
 };

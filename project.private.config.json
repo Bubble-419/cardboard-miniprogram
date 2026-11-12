@@ -2,6 +2,20 @@
   "cloudbaseCloudEnvId": "cardboard-miniprogram-6a13aab073",
   "libVersion": "3.12.1",
   "projectname": "cardboard-miniprogram",
+  "condition": {
+    "miniprogram": {
+      "current": 0,
+      "list": [
+        {
+          "name": "首页",
+          "pathName": "pages/main-pages/aaa/index",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        }
+      ]
+    }
+  },
   "setting": {
     "urlCheck": false,
     "coverView": true,

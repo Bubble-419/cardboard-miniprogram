@@ -2,7 +2,8 @@ const {
   ROUND_DURATION_SEC,
   getRoundRectSegmentProgresses,
   getRoundCycleStartedAt,
-  isRoundTimerActive
+  isRoundTimerActive,
+  roundedStrokeMetrics
 } = require('../../utils/partnerRoundTimer');
 
 /** 剩余时间：深绿粗边；已消耗：浅绿细边 */
@@ -801,14 +802,13 @@ Component({
       ctx.clearRect(0, 0, w, h);
       const rpxToPx = this._getRpxToPx();
       const thick = SOUND_BAND_MAX_WIDTH_RPX * rpxToPx;
+      const { xL, yT, xR, yB, r } = roundedStrokeMetrics(
+        w,
+        h,
+        thick,
+        BORDER_RADIUS_RPX * rpxToPx
+      );
       const pad = thick / 2 + 0.5;
-      const xL = pad;
-      const yT = pad;
-      const xR = w - pad;
-      const yB = h - pad;
-      const iw = xR - xL;
-      const ih = yB - yT;
-      const r = Math.max(0, Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2));
 
       this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
       ctx.strokeStyle = 'rgba(176, 224, 174, 0.38)';
@@ -907,16 +907,11 @@ Component({
       const rpxToPx = this._getRpxToPx();
       const thick = 8 * rpxToPx;
       const thin = 4 * rpxToPx;
-      const pad = thick / 2 + 0.5;
-      const xL = pad;
-      const yT = pad;
-      const xR = w - pad;
-      const yB = h - pad;
-      const iw = xR - xL;
-      const ih = yB - yT;
-      const r = Math.max(
-        0,
-        Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2)
+      const { xL, yT, xR, yB, iw, ih, r } = roundedStrokeMetrics(
+        w,
+        h,
+        thick,
+        BORDER_RADIUS_RPX * rpxToPx
       );
 
       if (ratio <= 0.0001) {
@@ -944,16 +939,11 @@ Component({
       ctx.clearRect(0, 0, w, h);
       const rpxToPx = this._getRpxToPx();
       const thin = 4 * rpxToPx;
-      const pad = thin / 2 + 0.5;
-      const xL = pad;
-      const yT = pad;
-      const xR = w - pad;
-      const yB = h - pad;
-      const iw = xR - xL;
-      const ih = yB - yT;
-      const r = Math.max(
-        0,
-        Math.min(BORDER_RADIUS_RPX * rpxToPx, iw / 2, ih / 2)
+      const { xL, yT, xR, yB, r } = roundedStrokeMetrics(
+        w,
+        h,
+        thin,
+        BORDER_RADIUS_RPX * rpxToPx
       );
       this._traceRoundedRect(ctx, xL, yT, xR, yB, r);
       this._strokePath(ctx, ELAPSED_COLOR, thin);
