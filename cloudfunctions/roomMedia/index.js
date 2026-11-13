@@ -1963,20 +1963,40 @@ var require_spyWordPairs = __commonJS({
       return pairs;
     }
     var SPY_WORD_PAIRS = buildPairsFromGroups();
-    function pickRandomWordPair() {
-      if (!SPY_WORD_PAIRS.length) return null;
-      const pair = SPY_WORD_PAIRS[Math.floor(Math.random() * SPY_WORD_PAIRS.length)];
-      const swap = Math.random() < 0.5;
+    var CONTRAST_PICK_RATE = 0.8;
+    function assignRoles(wordA, blurbA, wordB, blurbB, id, random) {
+      const swap = random() < 0.5;
       return {
-        id: pair.id,
-        civilianWord: swap ? pair.wordB : pair.wordA,
-        civilianBlurb: swap ? pair.blurbB : pair.blurbA,
-        spyWord: swap ? pair.wordA : pair.wordB,
-        spyBlurb: swap ? pair.blurbA : pair.blurbB
+        id,
+        civilianWord: swap ? wordB : wordA,
+        civilianBlurb: swap ? blurbB : blurbA,
+        spyWord: swap ? wordA : wordB,
+        spyBlurb: swap ? blurbA : blurbB
       };
+    }
+    function pickContrastPair(random) {
+      if (!SPY_WORD_PAIRS.length) return null;
+      const pair = SPY_WORD_PAIRS[Math.floor(random() * SPY_WORD_PAIRS.length)];
+      return assignRoles(pair.wordA, pair.blurbA, pair.wordB, pair.blurbB, pair.id, random);
+    }
+    function pickFreePair(random) {
+      if (WORD_ENTRIES.length < 2) return null;
+      const i = Math.floor(random() * WORD_ENTRIES.length);
+      let j = Math.floor(random() * (WORD_ENTRIES.length - 1));
+      if (j >= i) j += 1;
+      const a = WORD_ENTRIES[i];
+      const b = WORD_ENTRIES[j];
+      return assignRoles(a.word, a.blurb, b.word, b.blurb, `random-${a.word}-${b.word}`, random);
+    }
+    function pickRandomWordPair(random = Math.random) {
+      if (random() < CONTRAST_PICK_RATE) {
+        return pickContrastPair(random) || pickFreePair(random);
+      }
+      return pickFreePair(random) || pickContrastPair(random);
     }
     module2.exports = {
       SPY_WORD_PAIRS,
+      CONTRAST_PICK_RATE,
       pickRandomWordPair,
       WORD_ENTRIES
     };
@@ -1988,7 +2008,7 @@ var require_spy = __commonJS({
   "packages/room-domain/spy.js"(exports2, module2) {
     "use strict";
     var { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require_room_contracts();
-    var { SPY_WORD_PAIRS } = require_spyWordPairs();
+    var { pickRandomWordPair } = require_spyWordPairs();
     var {
       clone,
       event,
@@ -2055,17 +2075,7 @@ var require_spy = __commonJS({
     }
     function pickWords(deps) {
       if (deps && typeof deps.wordPairPicker === "function") return deps.wordPairPicker(randomOf(deps));
-      if (!SPY_WORD_PAIRS.length) return null;
-      const random = randomOf(deps);
-      const pair = SPY_WORD_PAIRS[Math.floor(random() * SPY_WORD_PAIRS.length)];
-      const swap = random() < 0.5;
-      return {
-        id: pair.id,
-        civilianWord: swap ? pair.wordB : pair.wordA,
-        civilianBlurb: swap ? pair.blurbB : pair.blurbA,
-        spyWord: swap ? pair.wordA : pair.wordB,
-        spyBlurb: swap ? pair.blurbA : pair.blurbB
-      };
+      return pickRandomWordPair(randomOf(deps));
     }
     function normalizeSpeakerOptions(options) {
       if (options === true || options === false) return { tieBreak: options === true, question: false };

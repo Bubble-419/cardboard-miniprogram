@@ -152,6 +152,10 @@ test('发言页将卡牌全屏做成本地横屏叠层，并提供明确关闭�
   assert.match(source, /identityCardFullscreen:\s*\{/);
   assert.match(styles, /\.identity-card-fullscreen-mask\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(styles, /\.identity-card-fullscreen-stage\s*\{[\s\S]*?rotate\(90deg\)/);
+  assert.match(
+    styles,
+    /\.identity-card-fullscreen-card\s+flip-word-card\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*100%;/
+  );
 });
 
 test('全屏叠层内左右滑按横屏视觉方向翻页', () => {

@@ -505,6 +505,12 @@
   justify-content: center;
 }
 
+/* 自定义组件宿主不会自动继承父级的尺寸；未指定时内部 100% 高度会塌缩。 */
+.identity-card-fullscreen-card flip-word-card {
+  width: 100%;
+  height: 100%;
+}
+
 .identity-card-fullscreen-close {
   position: absolute;
   right: 32px;
