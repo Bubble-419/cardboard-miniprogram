@@ -8,6 +8,13 @@ const { buildAvatarListAsync } = require('../../utils/avatars');
 const { safeNavigateBack } = require('../../utils/pageNavigate');
 const { resolveSelectedDesignProblem } = require('../../utils/selectedDesignProblem');
 const { buildCategoriesFromBG, normalizeBG } = require('../../utils/scenarioCategories');
+
+/** 只读回看：只要有任一情境字段即可展示叠卡（Halli 可能无 platform） */
+function hasViewableScenarioBG(bg) {
+  const normalized = normalizeBG(bg);
+  if (!normalized) return false;
+  return !!(normalized.scene || normalized.user || normalized.function || normalized.platform);
+}
 const {
   bindPageToRoomSession,
   dispatchRoomCommand,
@@ -57,15 +64,16 @@ return withPageInteractionLock({
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
     const isWaiting = options && (options.isWaiting === '1' || options.isWaiting === true);
     const from = (options && options.from) || '';
-    // game：游戏页回看；submit/select：提交/选择设计问题页回看 —— 均为只读确认情境
-    const fromGameView = from === 'game' || from === 'specialMove' || from === 'submit' || from === 'select'
+    // game：游戏页回看；submit/select：提交/选择设计问题页回看；halli：德国心脏病活动页回看 —— 均为只读
+    const fromGameView = from === 'game' || from === 'specialMove' || from === 'submit'
+      || from === 'select' || from === 'halli'
       || options.fromGame === '1'
       || options.fromGame === true;
     const isGameDetail = from === 'game' || from === 'specialMove'
       || options.fromGame === '1' || options.fromGame === true;
     const returnBtnText = from === 'specialMove'
       ? '返回特殊行动'
-      : ((from === 'submit' || from === 'select') ? '返回' : '返回游戏');
+      : ((from === 'submit' || from === 'select' || from === 'halli') ? '返回' : '返回游戏');
     // 游戏页传入的最终选定设计问题（URL / eventChannel / globalData）
     let passedProblemText = '';
     try {
@@ -108,7 +116,7 @@ return withPageInteractionLock({
               this.setData({ fullProblemText: text });
             }
           }
-          if (payload && payload.selectedBG && isValidPartnerBG(payload.selectedBG, { requirePlatform: true })) {
+          if (payload && payload.selectedBG && hasViewableScenarioBG(payload.selectedBG)) {
             getApp().globalData.selectedBG = payload.selectedBG;
           }
         });
