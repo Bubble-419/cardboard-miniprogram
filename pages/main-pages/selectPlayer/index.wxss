@@ -104,13 +104,13 @@
   box-sizing: border-box;
 }
 
-/* 触摸交互区域（限制在文字和按钮之间） */
+/* 触摸区铺满选择屏。提示文字和人数不拦截触点；导航、底栏和加人按钮在更上层。 */
 .touch-area {
   position: absolute;
-  top: 440rpx;
+  top: 0;
   left: 0;
   right: 0;
-  bottom: 250rpx;
+  bottom: 0;
   background-color: #f8fbfa;
   z-index: 1;
   overflow: hidden;
@@ -334,6 +334,7 @@
   align-items: baseline;
   justify-content: center;
   z-index: 2;
+  pointer-events: none;
 }
 
 .count-number {

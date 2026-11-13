@@ -287,6 +287,39 @@ test('iOS 六人局第六个触摸必须加入抽取池并走正常倒计时', (
   }
 });
 
+test('iOS 第六个触点只在 touchmove 出现时仍加入抽取池', () => {
+  const page = makePage();
+  const touches = Array.from({ length: 5 }, (_, index) => ({
+    identifier: index + 1,
+    clientX: 40 + index * 50,
+    clientY: 300
+  }));
+  page.data.members = Array.from({ length: 6 }, (_, index) => ({
+    memberId: `member-${index + 1}`,
+    playerIndex: index + 1
+  }));
+  page.data.minPlayers = 6;
+  page.data.activeTouches = touches.map((touch) => ({
+    id: touch.identifier,
+    x: touch.clientX,
+    y: touch.clientY,
+    timestamp: 1,
+    visible: true
+  }));
+
+  try {
+    page.onTouchMove({
+      touches,
+      changedTouches: [{ identifier: 6, clientX: 320, clientY: 280 }]
+    });
+    assert.equal(page.data.activeTouches.length, 6, '移动事件里的新触点也要进入抽取池');
+    assert.equal(page.data.playerCount, 6);
+    assert.equal(page._longPressTimer != null, true);
+  } finally {
+    page._clearLongPressTimer();
+  }
+});
+
 test('iOS 六人局只有五个触点时不得提前抽取', () => {
   const page = makePage();
   const previousSetTimeout = global.setTimeout;

@@ -185,61 +185,70 @@ Page({
     }
   },
 
+  _touchCapacity() {
+    return (this.data.members || []).length || Number(this.data.minPlayers) || 0;
+  },
+
+  /**
+   * iOS 的 touches 最多 5 个。第六个点可能只在 changedTouches，
+   * 也可能要等第一次 touchmove 才出现。两处都要并入，并按 identifier 去重。
+   * 抽取池最多容纳当前房间成员数。
+   */
+  _listedTouches(e) {
+    const seen = new Set();
+    const list = [];
+    [...((e && e.touches) || []), ...((e && e.changedTouches) || [])].forEach((touch) => {
+      if (!touch || touch.identifier == null || touch.identifier === '') return;
+      const key = String(touch.identifier);
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push(touch);
+    });
+    return list;
+  },
+
+  _upsertTouches(touchList) {
+    const maxTouches = this._touchCapacity();
+    const now = Date.now();
+    let added = 0;
+    touchList.forEach((touch) => {
+      const touchId = touch.identifier;
+      const existingIndex = this.data.activeTouches.findIndex((item) => item.id === touchId);
+      if (existingIndex === -1) {
+        if (!(maxTouches > 0) || this.data.activeTouches.length >= maxTouches) return;
+        this.data.activeTouches.push({
+          id: touchId,
+          x: touch.clientX,
+          y: touch.clientY,
+          timestamp: now,
+          visible: true
+        });
+        added += 1;
+        return;
+      }
+      this.data.activeTouches[existingIndex].x = touch.clientX;
+      this.data.activeTouches[existingIndex].y = touch.clientY;
+    });
+    return added;
+  },
+
   // 触摸开始
   onTouchStart(e) {
     if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
-    const maxTouches = (this.data.members || []).length || Number(this.data.minPlayers) || 0;
-    const touches = [...(e.touches || []), ...(e.changedTouches || [])];
-    const now = Date.now();
-
-    // iOS 可能只在 changedTouches 中提供新增触点；合并后按 identifier 去重。
-    // 抽取池最多容纳当前房间成员数，额外手指不创建波纹，也不参与随机选择。
-    touches.forEach(touch => {
-      const touchId = touch.identifier;
-      // 使用 clientX/clientY 相对于视口的坐标
-      const newTouch = {
-        id: touchId,
-        x: touch.clientX,
-        y: touch.clientY,
-        timestamp: now,
-        visible: true
-      };
-      
-      // 检查是否已存在该触摸点
-      const existingIndex = this.data.activeTouches.findIndex(t => t.id === touchId);
-      if (existingIndex === -1) {
-        if (maxTouches > 0 && this.data.activeTouches.length < maxTouches) {
-          this.data.activeTouches.push(newTouch);
-        }
-      } else {
-        // 更新现有触摸点位置
-        this.data.activeTouches[existingIndex] = newTouch;
-      }
-    });
-    
+    this._upsertTouches(this._listedTouches(e));
     this.updatePlayerCount();
     this.setData({
       activeTouches: [...this.data.activeTouches]
     });
   },
 
-  // 触摸移动（选中后不处理）
+  // 触摸移动（选中后不处理）。第六个点可能直到移动才出现在事件里。
   onTouchMove(e) {
     if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
-    const touches = e.touches;
-    
-    // 更新触摸点位置
-    touches.forEach(touch => {
-      const touchId = touch.identifier;
-      const index = this.data.activeTouches.findIndex(t => t.id === touchId);
-      if (index !== -1) {
-        this.data.activeTouches[index].x = touch.clientX;
-        this.data.activeTouches[index].y = touch.clientY;
-      }
-    });
-    
+    const added = this._upsertTouches(this._listedTouches(e));
+    if (added > 0) this.updatePlayerCount();
     this.setData({
       activeTouches: [...this.data.activeTouches]
     });
@@ -249,7 +258,10 @@ Page({
   onTouchEnd(e) {
     if (isPageInteractionLocked(this)) return;
     if (this.data.selectedPlayerIndex) return;
-    const changedTouches = e.changedTouches;
+    const changedTouches = e.changedTouches || [];
+    const endedIds = new Set(changedTouches.map((touch) => touch && touch.identifier));
+    const stillDown = ((e && e.touches) || []).filter((touch) => touch && !endedIds.has(touch.identifier));
+    this._upsertTouches(stillDown);
 
     // 移除结束的触摸点
     changedTouches.forEach(touch => {
