@@ -13,7 +13,40 @@ const {
 } = require('./spyGameState');
 const { openUrl } = require('../../utils/pageNavigate');
 const { goRoomPage } = require('../../utils/goRoomPage');
-const { buildAvatarList, buildAvatarListAsync } = require('../../utils/avatars');
+const {
+  assignAvatarImages,
+  buildAvatarList,
+  buildAvatarListAsync,
+  getMemberAvatarUserKey
+} = require('../../utils/avatars');
+
+/**
+ * 顶栏头像列表：按 spyGame.players 的 alive 标记出局者（eliminated）。
+ * 用 seat/playerIndex 对齐，避免 userId 覆盖后对不上座次。
+ */
+function buildSpyAvatarList(members, spyPlayers) {
+  const eliminatedSeats = new Set();
+  (spyPlayers || []).forEach((player) => {
+    if (!player || player.alive !== false || player.playerIndex == null) return;
+    eliminatedSeats.add(Number(player.playerIndex));
+  });
+  return assignAvatarImages(members || [])
+    .filter((member) => !!member)
+    .map((member) => {
+      const playerIndex = member.playerIndex != null ? Number(member.playerIndex) : null;
+      return {
+        id: member.userId || String(member.playerIndex),
+        nickName: member.nickName || `玩家${member.playerIndex}`,
+        avatar: member.avatarImage,
+        avatarImage: member.avatarImage,
+        avatarFileID: member.avatarFileID || '',
+        userKey: getMemberAvatarUserKey(member),
+        isMe: member.isMe === true,
+        playerIndex,
+        eliminated: playerIndex != null && eliminatedSeats.has(playerIndex)
+      };
+    });
+}
 const { handleRoomGoneFromResult } = require('../../utils/roomDissolved');
 const {
   bindPageToRoomSession,
@@ -372,6 +405,7 @@ module.exports = {
   openUrl,
   goRoomPage,
   buildAvatarList,
+  buildSpyAvatarList,
   buildAvatarListAsync,
   startSpyCountdownTicker,
   safePageSetData,

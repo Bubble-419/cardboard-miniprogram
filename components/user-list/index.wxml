@@ -83,17 +83,20 @@
             <!-- 默认视觉（房间顶栏 / 卧底等） -->
             <view
               wx:else
-              class="avatar-frame-box {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-frame-expiring' : ''}}"
+              class="avatar-frame-box {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-frame-expiring' : ''}} {{item.eliminated ? 'is-eliminated' : ''}}"
             >
-              <view class="avatar-wrap {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-wrap-expiring' : ''}}">
+              <view class="avatar-wrap {{item.id == resolvedActingUser && actingFrameMode === 'expiring' ? 'avatar-wrap-expiring' : ''}} {{item.eliminated ? 'is-eliminated' : ''}}">
                 <image
-                  class="avatar-img"
+                  class="avatar-img {{item.eliminated ? 'is-eliminated' : ''}}"
                   src="{{item.avatar || item.avatarImage || item.url || defaultAvatar}}"
                   mode="aspectFill"
                   data-player-index="{{item.id}}"
                   data-user-key="{{item.userKey || item.userId || item.id}}"
                   binderror="onAvatarImgError"
                 />
+                <view wx:if="{{item.eliminated}}" class="avatar-eliminated-mask" aria-hidden="true">
+                  <text class="avatar-eliminated-label">out</text>
+                </view>
               </view>
               <block wx:if="{{item.id == resolvedActingUser && actingFrameMode === 'timer' && !suppressTimerCanvas}}">
                 <canvas

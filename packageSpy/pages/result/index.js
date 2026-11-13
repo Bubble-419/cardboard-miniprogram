@@ -3,7 +3,7 @@ const {
   callSpyAction,
   captureSpyCommandContext,
   goRoomPage,
-  buildAvatarList,
+  buildSpyAvatarList,
   roleLabel,
   withSpyRefreshGuard,
   startSpyRoomPoll,
@@ -96,7 +96,7 @@ Page(withPageInteractionLock({
 
         const tied = !!last.tied;
         this.setData({
-          avatarList: buildAvatarList(result.members || []),
+          avatarList: buildSpyAvatarList(result.members || [], players),
           round: spyGame.round || 1,
           hasElimination: eliminatedIndex != null,
           eliminatedName: last.eliminatedName || '',

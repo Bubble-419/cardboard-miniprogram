@@ -3,7 +3,7 @@ const {
   callSpyAction,
   captureSpyCommandContext,
   goRoomPage,
-  buildAvatarList,
+  buildSpyAvatarList,
   withSpyRefreshGuard,
   startSpyRoomPoll,
   stopSpyRoomPoll,
@@ -159,7 +159,7 @@ Page(withPageInteractionLock({
           ? captureSpyCommandContext(result)
           : null;
         const members = result.members || [];
-        const avatarList = buildAvatarList(members);
+        const avatarList = buildSpyAvatarList(members, spyGame && spyGame.players);
         const currentSpeakerSeat = spyGame && spyGame.speakOrder
           && spyGame.speakOrder[spyGame.currentSpeakerIndex];
         const currentSpeaker = members.find((member) => Number(member.playerIndex) === Number(currentSpeakerSeat));

@@ -3,7 +3,7 @@ const {
   callSpyAction,
   captureSpyCommandContext,
   goRoomPage,
-  buildAvatarList,
+  buildSpyAvatarList,
   buildSpyRevealPlayers,
   winnerLabel,
   withSpyRefreshGuard,
@@ -118,7 +118,7 @@ Page(withPageInteractionLock({
         const gamePairCards = buildGamePairCards(civilianWord, spyWord);
 
         const patch = {
-          avatarList: buildAvatarList(result.members || []),
+          avatarList: buildSpyAvatarList(result.members || [], spyGame.players),
           isHost: result.isHost === true,
           winnerSide,
           winnerText: winnerLabel(winnerSide) || '本局结束',

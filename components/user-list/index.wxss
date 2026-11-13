@@ -64,6 +64,39 @@
   background-color: #e8e8e8;
 }
 
+.avatar-img.is-eliminated {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
+.avatar-eliminated-mask {
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
+  right: 4rpx;
+  bottom: 4rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.avatar-eliminated-label {
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.5rpx;
+  text-transform: lowercase;
+}
+
+.layout-stack.compact-stack .avatar-eliminated-label {
+  font-size: 16rpx;
+}
+
 .partner-ring {
   position: absolute;
   left: 0;

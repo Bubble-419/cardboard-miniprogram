@@ -11,9 +11,10 @@ const {
   playerIndexIncludes,
   startSpyRoomPoll,
   stopSpyRoomPoll,
-  bumpSpyRoomSession
+  bumpSpyRoomSession,
+  buildSpyAvatarList
 } = require('../../utils/spyMode');
-const { assignAvatarImages, buildAvatarList } = require('../../../utils/avatars');
+const { assignAvatarImages } = require('../../../utils/avatars');
 const {
   buildTiedNames,
   isTieReturnPending,
@@ -192,7 +193,7 @@ Page(withPageInteractionLock({
           && caps.START_SPY_QUESTION_ROUND.allowed);
 
         this.setData({
-          avatarList: buildAvatarList(members),
+          avatarList: buildSpyAvatarList(members, spyGame.players),
           selectedIndex: voteSessionChanged ? null : this.data.selectedIndex,
           hasVoted,
           eliminated,
