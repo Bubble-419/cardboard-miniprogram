@@ -321,7 +321,7 @@ flowchart LR
 | `assets/partnerMode/actions/action-*.jpg` | 4 | Partner 普通/静默行动卡 |
 | `assets/partnerMode/actions/reverse-step-*.jpg` | 4 | 反面随机拼预览 |
 
-发布前使用开发者工具检查实际包体积。卧底卡面换图后必须重新执行 `pnpm upload:static`，客户端仍请求原来的文件名。
+发布前使用开发者工具检查实际包体积。卧底卡面换图后必须重新执行 `pnpm upload:static`，并提高 `packageSpy/utils/spyWordCardAssets.js` 的 `CARD_ASSET_VERSION`。云上 key 仍是原文件名，版本参数只用来避开微信对同名地址的旧图缓存。
 
 Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。

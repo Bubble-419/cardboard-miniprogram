@@ -15,7 +15,7 @@ const {
   staticCdnUrl,
   staticFileName
 } = require('../../utils/staticCdn');
-const { getWordCardAssets, CARD_BACK_WEBP } = require('../../packageSpy/utils/spyWordCardAssets');
+const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION } = require('../../packageSpy/utils/spyWordCardAssets');
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -40,23 +40,12 @@ test('CDN URL 使用 miniprogram-static 根下的文件名，并编码中文', (
 
 test('Spy 交互卡走 CDN 文件名，晃动复用震动卡面', () => {
   const assets = getWordCardAssets('开关');
-  assert.equal(
-    assets.assignedWordSrc,
-    `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent('开关3x.webp')}`
-  );
-  assert.equal(
-    assets.word1Src,
-    `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent('开关13x.webp')}`
-  );
-  assert.equal(
-    CARD_BACK_WEBP,
-    `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent('背面3x.webp')}`
-  );
+  const versioned = (name) => `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent(name)}?v=${CARD_ASSET_VERSION}`;
+  assert.equal(assets.assignedWordSrc, versioned('开关3x.webp'));
+  assert.equal(assets.word1Src, versioned('开关13x.webp'));
+  assert.equal(CARD_BACK_WEBP, versioned('背面3x.webp'));
   assert.equal(getWordCardAssets('晃动').assignedWordSrc, getWordCardAssets('震动').assignedWordSrc);
-  assert.equal(
-    getWordCardAssets('震动').assignedWordSrc,
-    `${CDN_HOST}/${STATIC_PREFIX}/${encodeURIComponent('震动3x.webp')}`
-  );
+  assert.equal(getWordCardAssets('震动').assignedWordSrc, versioned('震动3x.webp'));
   const webpDir = path.join(ROOT, 'packageSpy/assets/interactionCards/webp');
   assert.ok(fs.existsSync(path.join(webpDir, '开关3x.webp')));
   assert.ok(fs.existsSync(path.join(webpDir, '震动3x.webp')));

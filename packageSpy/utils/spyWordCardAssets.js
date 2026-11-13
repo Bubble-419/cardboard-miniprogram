@@ -14,7 +14,15 @@ const { staticCdnUrl } = require('../../utils/staticCdn');
 const ASSET_ROOT = 'packageSpy/assets/interactionCards';
 const RAW_DIR = `${ASSET_ROOT}/raw`;
 const WEBP_DIR = `${ASSET_ROOT}/webp`;
-const CARD_BACK_WEBP = staticCdnUrl(`${WEBP_DIR}/背面3x.webp`);
+// 云上 key 仍是文件名。同名覆盖后微信会沿用旧图，换图时改这个参数。
+const CARD_ASSET_VERSION = '20261113';
+
+function cardAssetUrl(rel) {
+  const url = staticCdnUrl(rel);
+  return url ? `${url}?v=${CARD_ASSET_VERSION}` : '';
+}
+
+const CARD_BACK_WEBP = cardAssetUrl(`${WEBP_DIR}/背面3x.webp`);
 const FILE_WORD_ALIAS = { 晃动: '震动' };
 
 /** 旧 PNG 编号映射，仅作 WebP 缺失时的回退（游戏词） */
@@ -138,9 +146,9 @@ function getWordCardAssets(word) {
   const fileWord = assetWord(word);
   const raw = WORD_RAW_FALLBACK[word] || WORD_RAW_FALLBACK[fileWord];
   return {
-    assignedWordSrc: staticCdnUrl(`${WEBP_DIR}/${fileWord}3x.webp`),
+    assignedWordSrc: cardAssetUrl(`${WEBP_DIR}/${fileWord}3x.webp`),
     assignedWordFallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.method}`) : '',
-    word1Src: staticCdnUrl(`${WEBP_DIR}/${fileWord}13x.webp`),
+    word1Src: cardAssetUrl(`${WEBP_DIR}/${fileWord}13x.webp`),
     word1FallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
     backSrc: CARD_BACK_WEBP
   };
@@ -208,5 +216,6 @@ module.exports = {
   ASSET_ROOT,
   RAW_DIR,
   WEBP_DIR,
-  CARD_BACK_WEBP
+  CARD_BACK_WEBP,
+  CARD_ASSET_VERSION
 };
