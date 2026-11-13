@@ -4,6 +4,6 @@
   "disableScroll": true,
   "usingComponents": {
     "player-top-bar": "/components/player-top-bar/index",
-    "flip-word-card": "/components/flip-word-card/index"
+    "flip-word-card": "/packageSpy/components/flip-word-card/index"
   }
 }

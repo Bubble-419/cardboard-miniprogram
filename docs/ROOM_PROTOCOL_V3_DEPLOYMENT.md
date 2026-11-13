@@ -313,11 +313,12 @@ flowchart LR
 - `assets/halliGalli/step-*.webp`
 
 以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中。
-卧底卡面在 Spy 分包内；换图后重新编译客户端即可生效，无需上传云存储：
+卧底卡面在 Spy 分包内，文件名为 `card-01-a.webp` 这类英文名，翻牌组件也放在该分包。
+真机不能用主包组件读取分包图片，也不能打开代码包里的中文路径。换图后重新编译客户端即可生效：
 
 | 本地资源 | 数量 | 使用位置 |
 |---|---|---|
-| `packageSpy/assets/interactionCards/webp/*.webp` | 73 | 卧底交互卡与牌背 |
+| `packageSpy/assets/interactionCards/webp/card-*.webp` | 73 | 卧底交互卡与牌背 |
 | `assets/ganDengYan/rule-*.jpg` | 4 | 干瞪眼规则页 |
 | `assets/partnerMode/actions/action-*.jpg` | 4 | Partner 普通/静默行动卡 |
 | `assets/partnerMode/actions/reverse-step-*.jpg` | 4 | 反面随机拼预览 |

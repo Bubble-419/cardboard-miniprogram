@@ -2,7 +2,7 @@
   "component": true,
   "usingComponents": {
     "player-top-bar": "/components/player-top-bar/index",
-    "flip-word-card": "/components/flip-word-card/index",
+    "flip-word-card": "/packageSpy/components/flip-word-card/index",
     "page-footer": "/components/page-footer/index",
     "interaction-lock-layer": "/components/interaction-lock-layer/index"
   }

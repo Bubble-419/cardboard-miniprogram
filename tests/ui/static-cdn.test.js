@@ -38,12 +38,19 @@ test('CDN URL 使用 miniprogram-static 根下的文件名，并编码中文', (
   assert.equal(staticFileName('assets/halliGalli/step-deal.webp'), 'step-deal.webp');
 });
 
-test('Spy 交互卡与牌背随分包发布，不再读取 CDN', () => {
+test('Spy 交互卡使用分包内英文文件名，真机才能打开', () => {
   const assets = getWordCardAssets('开关');
-  assert.equal(assets.assignedWordSrc, '/packageSpy/assets/interactionCards/webp/开关3x.webp');
-  assert.equal(assets.word1Src, '/packageSpy/assets/interactionCards/webp/开关13x.webp');
-  assert.equal(CARD_BACK_WEBP, '/packageSpy/assets/interactionCards/webp/背面3x.webp');
+  assert.equal(assets.assignedWordSrc, '/packageSpy/assets/interactionCards/webp/card-01-a.webp');
+  assert.equal(assets.word1Src, '/packageSpy/assets/interactionCards/webp/card-01-b.webp');
+  assert.equal(CARD_BACK_WEBP, '/packageSpy/assets/interactionCards/webp/card-back.webp');
+  assert.equal(getWordCardAssets('晃动').assignedWordSrc, getWordCardAssets('震动').assignedWordSrc);
+  assert.equal(getWordCardAssets('震动').assignedWordSrc, '/packageSpy/assets/interactionCards/webp/card-15-a.webp');
   assert.doesNotMatch(assets.assignedWordSrc, /^https:\/\//);
+  const speakJson = JSON.parse(read('packageSpy/pages/speak/index.json'));
+  assert.equal(
+    speakJson.usingComponents['flip-word-card'],
+    '/packageSpy/components/flip-word-card/index'
+  );
   const config = JSON.parse(read('project.config.json'));
   const ignore = (config.packOptions && config.packOptions.ignore) || [];
   assert.ok(!ignore.some((item) => item.value === 'packageSpy/assets'));

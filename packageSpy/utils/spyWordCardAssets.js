@@ -1,12 +1,12 @@
 /**
- * 词语 → 交互卡 WebP（文件名与词语对应）
- * 游戏分词与牌库浏览共用本模块。卡片随 Spy 分包发布。
- * 云存储 miniprogram-static/ 里的同名对象不会随本地换图更新，对局不读取那些地址。
+ * 词语 → 交互卡 WebP。游戏分词与牌库浏览共用本模块。
+ * 卡片放在 Spy 分包内，文件名只用英文：真机无法从主包组件加载分包资源，
+ * 也无法打开代码包里的中文路径。
  *
  * 约定（webp/ 目录）：
- * - {词语}3x.webp   → 词语（交互方式卡）
- * - {词语}13x.webp  → 词语1（IxDL 逻辑卡）
- * - 背面3x.webp     → 统一背面
+ * - card-{编号}-a.webp → 词语（交互方式卡）
+ * - card-{编号}-b.webp → 词语1（IxDL 逻辑卡）
+ * - card-back.webp     → 统一背面
  */
 
 const { WORD_ENTRIES, SPY_WORD_PAIRS } = require('./spyWordPairs');
@@ -20,7 +20,8 @@ function localAssetUrl(rel) {
   return normalized ? `/${normalized}` : '';
 }
 
-const CARD_BACK_WEBP = localAssetUrl(`${WEBP_DIR}/背面3x.webp`);
+const CARD_BACK_WEBP = localAssetUrl(`${WEBP_DIR}/card-back.webp`);
+const FILE_WORD_ALIAS = { 晃动: '震动' };
 
 /** 旧 PNG 编号映射，仅作 WebP 缺失时的回退（游戏词） */
 const WORD_RAW_FALLBACK = {
@@ -125,6 +126,22 @@ const GAME_WORD_SET = WORD_ENTRIES.reduce((acc, item) => {
   return acc;
 }, {});
 
+function cardFileNo(word) {
+  const key = FILE_WORD_ALIAS[word] || word;
+  for (let i = 0; i < LIBRARY_CATEGORIES.length; i += 1) {
+    const found = LIBRARY_CATEGORIES[i].cards.find((item) => item.word === key);
+    if (found) return found.no;
+  }
+  return '';
+}
+
+function cardFileUrl(word, side) {
+  const no = cardFileNo(word);
+  if (!no) return '';
+  const suffix = side === 'b' ? 'b' : 'a';
+  return localAssetUrl(`${WEBP_DIR}/card-${no}-${suffix}.webp`);
+}
+
 function getWordCardAssets(word) {
   if (!word) {
     return {
@@ -136,11 +153,11 @@ function getWordCardAssets(word) {
     };
   }
 
-  const raw = WORD_RAW_FALLBACK[word];
+  const raw = WORD_RAW_FALLBACK[word] || WORD_RAW_FALLBACK[FILE_WORD_ALIAS[word]];
   return {
-    assignedWordSrc: localAssetUrl(`${WEBP_DIR}/${word}3x.webp`),
+    assignedWordSrc: cardFileUrl(word, 'a'),
     assignedWordFallbackSrc: raw ? localAssetUrl(`${RAW_DIR}/${raw.method}`) : '',
-    word1Src: localAssetUrl(`${WEBP_DIR}/${word}13x.webp`),
+    word1Src: cardFileUrl(word, 'b'),
     word1FallbackSrc: raw ? localAssetUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
     backSrc: CARD_BACK_WEBP
   };

@@ -22,7 +22,7 @@ function loadComponent(relativePath) {
 }
 
 function createFlipCard(overrides = {}) {
-  const definition = loadComponent('components/flip-word-card/index.js');
+  const definition = loadComponent('packageSpy/components/flip-word-card/index.js');
   const events = [];
   const component = {
     data: {
@@ -55,8 +55,8 @@ function createFlipCard(overrides = {}) {
 }
 
 test('身份卡使用上下翻 rotateX，不再使用左右翻 rotateY', () => {
-  const styles = read('components/flip-word-card/index.wxss');
-  const markup = read('components/flip-word-card/index.wxml');
+  const styles = read('packageSpy/components/flip-word-card/index.wxss');
+  const markup = read('packageSpy/components/flip-word-card/index.wxml');
 
   assert.match(styles, /rotateX\(-90deg\)/);
   assert.match(styles, /rotateX\(90deg\)/);

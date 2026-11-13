@@ -15,7 +15,7 @@ function loadComponent() {
   const originalComponent = global.Component;
   let definition;
   global.Component = (value) => { definition = value; };
-  const modulePath = require.resolve('../../components/flip-word-card/index');
+  const modulePath = require.resolve('../../packageSpy/components/flip-word-card/index');
   delete require.cache[modulePath];
   require(modulePath);
   delete require.cache[modulePath];
