@@ -97,7 +97,7 @@ test('发言页我的交互模板卡使用三面循环并接入背面图', () =>
   assert.match(styles, /\.my-word-label[\s\S]*?text-align:\s*left/);
   assert.match(styles, /\.my-word-card-frame[\s\S]*?width:\s*100%/);
   assert.match(styles, /\.my-word-card-frame[\s\S]*?aspect-ratio:\s*876\s*\/\s*609/);
-  assert.match(styles, /\.my-word-card-frame[\s\S]*?background:\s*#2a2a2a/);
+  assert.match(styles, /\.my-word-card-frame[\s\S]*?background:\s*transparent/);
   const myCard = markup.match(/my-word-card-frame[\s\S]*?<\/view>\s*<\/view>\s*<\/view>/)[0];
   assert.match(myCard, /<flip-word-card/);
   assert.doesNotMatch(myCard, /imageMode="aspectFill"/);

@@ -137,7 +137,7 @@
   max-width: 100%;
   margin: 0 auto;
   aspect-ratio: 876 / 609;
-  background: #2a2a2a;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }

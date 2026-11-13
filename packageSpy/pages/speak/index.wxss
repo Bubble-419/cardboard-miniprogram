@@ -125,8 +125,7 @@
   aspect-ratio: 876 / 609;
   position: relative;
   box-sizing: border-box;
-  /* 深色底托住卡面透明挖空，避免露出页面底色像缺角 */
-  background: #2a2a2a;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }
@@ -294,7 +293,7 @@
   position: relative;
   border-radius: 16rpx;
   overflow: hidden;
-  background: #2a2a2a;
+  background: transparent;
 }
 
 .tile-cover {
@@ -483,7 +482,7 @@
   max-width: 100%;
   margin: 0 auto;
   aspect-ratio: 876 / 609;
-  background: #2a2a2a;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }

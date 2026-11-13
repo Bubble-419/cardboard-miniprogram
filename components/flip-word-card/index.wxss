@@ -5,7 +5,7 @@
   perspective: 1200px;
   -webkit-perspective: 1200px;
   box-sizing: border-box;
-  background: #2a2a2a;
+  background: transparent;
   /* 吃掉卡面手势，避免竖滑/斜滑冒泡到页面触发返回 */
   touch-action: none;
 }
@@ -84,7 +84,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #2a2a2a;
+  background: transparent;
   overflow: hidden;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;

@@ -93,9 +93,9 @@
 .tile-stack {
   position: relative;
   width: 100%;
-  /* 609/876 ≈ 69.5%，贴合卡面资源比例，避免透明挖空露底 */
+  /* 609/876 ≈ 69.5%，贴合卡面资源比例 */
   padding-top: 69.52%;
-  background: #2a2a2a;
+  background: transparent;
   border-radius: 16rpx;
   overflow: hidden;
 }
@@ -106,7 +106,7 @@
   top: 0;
   width: 100%;
   height: 100%;
-  background: #2a2a2a;
+  background: transparent;
 }
 
 .tile-meta {
@@ -192,7 +192,7 @@
   max-width: 100%;
   margin: 0 auto;
   aspect-ratio: 876 / 609;
-  background: #2a2a2a;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }
