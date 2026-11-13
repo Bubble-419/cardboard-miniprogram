@@ -52,16 +52,19 @@
 }
 
 .player-word {
-  font-size: 26rpx;
-  font-weight: 500;
-  color: #475569;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #334155;
   text-align: left;
+  line-height: 1.35;
 }
 
 .word-link {
+  font-size: 36rpx;
+  font-weight: 700;
   color: #3AAE34;
   text-decoration: underline;
-  text-underline-offset: 4rpx;
+  text-underline-offset: 6rpx;
 }
 
 .viewer-mask {

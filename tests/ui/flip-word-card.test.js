@@ -91,10 +91,16 @@ test('点击与上滑前进、下滑后退切换卡面', () => {
 test('发言页我的交互模板卡使用三面循环并接入背面图', () => {
   const markup = read('packageSpy/pages/speak/index.wxml');
   const styles = read('packageSpy/pages/speak/index.wxss');
+  const source = read('packageSpy/pages/speak/index.js');
   assert.match(markup, /my-word-card-wrap[\s\S]*?我的交互模板卡[\s\S]*?my-word-card-frame/);
+  assert.match(markup, /bindtap="onToggleMyCard"/);
+  assert.match(markup, /myCardCollapsed \? '展开' : '收起'/);
+  assert.match(markup, /wx:if="\{\{!myCardCollapsed\}\}"/);
+  assert.match(source, /onToggleMyCard\s*\(/);
   assert.doesNotMatch(markup, /title-row/);
   assert.doesNotMatch(markup, /我的词语卡/);
   assert.match(styles, /\.my-word-label[\s\S]*?text-align:\s*left/);
+  assert.match(styles, /\.my-word-collapse-btn/);
   assert.match(styles, /\.my-word-card-frame[\s\S]*?width:\s*100%/);
   assert.match(styles, /\.my-word-card-frame[\s\S]*?aspect-ratio:\s*876\s*\/\s*609/);
   assert.match(styles, /\.my-word-card-frame[\s\S]*?background:\s*transparent/);

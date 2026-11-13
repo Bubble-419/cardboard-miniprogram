@@ -2128,7 +2128,13 @@ var require_spy = __commonJS({
     function openVote(aggregate, deps) {
       const session = aggregate.currentSession;
       const spy = spyState(aggregate);
-      const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
+      const aliveIds = alivePlayers(spy).map((player) => player.memberId);
+      let requiredMemberIds = aliveIds;
+      if (spy.tieBreak === true) {
+        const tiedSet = new Set(spy.lastResult && spy.lastResult.tiedMemberIds || []);
+        const nonTied = aliveIds.filter((id) => !tiedSet.has(id));
+        if (nonTied.length > 0) requiredMemberIds = nonTied;
+      }
       spy.questionRound = false;
       spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
       spy.voteStartedAt = nowOf(deps);
@@ -2365,6 +2371,9 @@ var require_spy = __commonJS({
         if (!progress || progress.voteSessionId !== command.context.voteSessionId) return fail(ERR.STALE_CONTEXT, "\u6295\u7968\u573A\u6B21\u5DF2\u7ECF\u53D8\u5316");
         const player = playerByMemberId(check.spy, actor.member.memberId);
         if (!player || !player.alive || player.left) return fail(ERR.INVALID_TRANSITION, "\u51FA\u5C40\u6210\u5458\u4E0D\u80FD\u6295\u7968");
+        if (!progress.requiredMemberIds.includes(actor.member.memberId)) {
+          return fail(ERR.NOT_PARTICIPANT, "\u5E76\u5217\u6210\u5458\u4E0D\u53C2\u4E0E\u52A0\u65F6\u6295\u7968");
+        }
         if (progress.submittedMemberIds.includes(actor.member.memberId)) return fail(ERR.ALREADY_VOTED);
         const voteExpired = check.spy.voteStartedAt != null && nowOf(deps) >= Number(check.spy.voteStartedAt) + SPY_VOTE_DURATION_MS;
         const abstain = command.payload.abstain === true || voteExpired;
@@ -3640,9 +3649,10 @@ var require_room_projection = __commonJS({
         isHost && step === WORKFLOW_STEP.SPY_VOTE && spy && spy.questionRoundUsed !== true,
         "INVALID_TRANSITION"
       );
+      const requiredVoter = !!(spy && spy.voteProgress && (spy.voteProgress.requiredMemberIds || []).includes(actor.memberId));
       caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
-        alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
-        "INVALID_TRANSITION"
+        alive && requiredVoter && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
+        requiredVoter ? "INVALID_TRANSITION" : "NOT_PARTICIPANT"
       );
       caps[COMMAND_TYPES.START_NEXT_SPY_ROUND] = capability(isParticipant && step === WORKFLOW_STEP.SPY_RESULT, "INVALID_TRANSITION");
       caps[COMMAND_TYPES.RESTART_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, "INVALID_TRANSITION");

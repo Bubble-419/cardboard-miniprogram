@@ -625,7 +625,7 @@ flowchart LR
   VOTE -->|Host“开始提问”<br/>START_SPY_QUESTION_ROUND| ASK
   ASK -->|每人提问完毕| VOTE
   VOTE -->|最高票并列| TIE
-  TIE -->|并列者讲完| VOTE
+  TIE -->|并列者讲完，其余玩家重投| VOTE
   VOTE -->|无胜负| RESULT
   RESULT -->|“进入下一轮”<br/>START_NEXT_SPY_ROUND| SPEAK
   VOTE -->|卧底数为 0<br/>或卧底数 >= 平民数| SETTLE

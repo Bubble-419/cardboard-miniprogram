@@ -172,7 +172,7 @@ test('Spy 有人淘汰时保留上轮随机顺序并从淘汰者之后继续', a
   assert.deepEqual(snapshot.view.session.publicModeState.speakOrder, expectedOrder);
 });
 
-test('Spy 平票加时只能投首轮并列成员', async () => {
+test('Spy 平票加时只能投首轮并列成员，且并列本人不参与投票', async () => {
   const { h, sessionId, gameId } = await seedSpy();
   let snapshot = await finishSpeaking(h, sessionId, gameId);
   const firstVoteSessionId = snapshot.view.session.publicModeState.voteSessionId;
@@ -196,13 +196,35 @@ test('Spy 平票加时只能投首轮并列成员', async () => {
   snapshot = await finishSpeaking(h, sessionId, gameId);
   const tieVoteSessionId = snapshot.view.session.publicModeState.voteSessionId;
   const u3MemberId = (await h.snapshot('u3')).view.actor.memberId;
-  const invalid = await h.command('host', 'SUBMIT_SPY_VOTE', {
+  assert.equal(snapshot.view.session.publicModeState.requiredVoteCount, 1);
+  assert.equal(snapshot.view.actor.capabilities.SUBMIT_SPY_VOTE.allowed, false, '并列 host 不能投');
+  assert.equal((await h.snapshot('u2')).view.actor.capabilities.SUBMIT_SPY_VOTE.allowed, false, '并列 u2 不能投');
+  assert.equal((await h.snapshot('u3')).view.actor.capabilities.SUBMIT_SPY_VOTE.allowed, true, '非并列 u3 可投');
+
+  const tiedCannotVote = await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: tieVoteSessionId }, payload: { targetMemberId: u2MemberId }
+  });
+  assert.equal(tiedCannotVote.ok, false);
+  assert.equal(tiedCannotVote.errCode, 'NOT_PARTICIPANT');
+
+  const invalid = await h.command('u3', 'SUBMIT_SPY_VOTE', {
     context: { sessionId, gameId, voteSessionId: tieVoteSessionId }, payload: { targetMemberId: u3MemberId }
   });
 
   assert.equal(invalid.ok, false);
   assert.equal(invalid.errCode, 'INVALID_ARGUMENT');
-  assert.equal((await h.snapshot('host')).view.actor.voteStatus.submitted, false);
+  assert.equal((await h.snapshot('u3')).view.actor.voteStatus.submitted, false);
+
+  const resolved = await h.command('u3', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId: tieVoteSessionId }, payload: { targetMemberId: hostMemberId }
+  });
+  assert.equal(resolved.ok, true);
+  snapshot = await h.snapshot('host');
+  assert.ok(
+    ['SPY_RESULT', 'SPY_SETTLED'].includes(snapshot.view.session.workflow.step),
+    '非并列一人表决后应收束本轮'
+  );
+  assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedMemberId, hostMemberId);
 });
 
 test('Spy 平票加时后开启提问不重复提示平票，新的真实平票仍需确认', async () => {
@@ -243,6 +265,23 @@ test('Spy 平票加时后开启提问不重复提示平票，新的真实平票�
     assert.equal(isTieReturnPending(pageState(snapshot.view)), false, 'Snapshot 恢复提问时不能误弹加时提示');
     assert.equal(isTieReturnPending(pageState(reduced)), false, 'Event 进入提问时不能误弹加时提示');
   }
+
+  // 提问后重开票：仅非并列玩家投票；弃票无人出局，进入下一轮后再造真实平票
+  const afterQuestion = await finishSpeaking(h, sessionId, gameId);
+  assert.equal(afterQuestion.view.session.publicModeState.requiredVoteCount, 1);
+  assert.equal((await h.command('u3', 'SUBMIT_SPY_VOTE', {
+    context: {
+      sessionId,
+      gameId,
+      voteSessionId: afterQuestion.view.session.publicModeState.voteSessionId
+    },
+    payload: { abstain: true }
+  })).ok, true);
+  const resultSnap = await h.snapshot('host');
+  assert.equal(resultSnap.view.session.workflow.step, 'SPY_RESULT');
+  assert.equal((await h.command('host', 'START_NEXT_SPY_ROUND', {
+    context: { sessionId, gameId, roundNo: resultSnap.view.session.publicModeState.roundNo }
+  })).ok, true);
 
   const nextTie = await castTie();
   assert.equal(nextTie.view.session.workflow.step, 'SPY_TIE_SPEAK');

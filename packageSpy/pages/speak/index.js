@@ -60,6 +60,7 @@ Page(withPageInteractionLock({
     word1Src: '',
     word1FallbackSrc: '',
     cardReady: false,
+    myCardCollapsed: false,
     libraryGroupCount: 0,
     libraryCategories: [],
     libraryCards: [],
@@ -299,6 +300,10 @@ Page(withPageInteractionLock({
         this.setData({ panelScrollY: needScroll });
       }
     });
+  },
+
+  onToggleMyCard() {
+    this.setData({ myCardCollapsed: !this.data.myCardCollapsed });
   },
 
   onToggleLibraryCategory(e) {

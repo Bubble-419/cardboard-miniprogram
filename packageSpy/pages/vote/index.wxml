@@ -11,7 +11,7 @@
     <view class="title-block">
       <text class="page-title">匿名投票</text>
       <text class="page-subtitle">
-        {{eliminated ? '你已出局，等待本轮投票结束' : (hasVoted ? '已提交，等待全员投完后统一公布' : '点选你怀疑的人（不可投自己）')}}
+        {{eliminated ? '你已出局，等待本轮投票结束' : (!canVote && tieBreak ? '你是并列玩家，本轮不参与投票，等待其他人表决' : (hasVoted ? '已提交，等待全员投完后统一公布' : '点选你怀疑的人（不可投自己）'))}}
       </text>
     </view>
     <view class="tie-banner" wx:if="{{showTieBanner}}">
@@ -49,32 +49,35 @@
   <view class="section" wx:if="{{eliminated}}">
     <view class="section-body" style="text-align: center">你已出局，本轮无需投票，请等待结果公布</view>
   </view>
+  <view class="section" wx:elif="{{!canVote && tieBreak && !hasVoted}}">
+    <view class="section-body" style="text-align: center">你是并列玩家，本轮由其他人表决，请等待结果公布</view>
+  </view>
 
   <!-- 底栏对齐合伙人：左侧近正方形「进行提问」+ 右侧绿色主按钮「确认投票」 -->
-  <view class="vote-actions" wx:if="{{(!eliminated && !hasVoted) || canStartQuestion}}">
+  <view class="vote-actions" wx:if="{{(canVote && !hasVoted) || canStartQuestion}}">
     <view class="vote-bottom-row">
       <view
         wx:if="{{canStartQuestion}}"
-        class="question-btn-wrap {{eliminated || hasVoted ? 'question-btn-wrap-alone' : ''}}"
+        class="question-btn-wrap {{!canVote || hasVoted ? 'question-btn-wrap-alone' : ''}}"
       >
         <view class="question-btn {{acting ? 'dimmed' : ''}}" bindtap="onStartQuestion">
           <text class="question-btn-line">进行</text>
           <text class="question-btn-line">提问</text>
         </view>
       </view>
-      <view class="vote-bottom-gap" wx:if="{{canStartQuestion && !eliminated && !hasVoted}}"></view>
-      <view class="confirm-btn-wrap" wx:if="{{!eliminated && !hasVoted}}">
+      <view class="vote-bottom-gap" wx:if="{{canStartQuestion && canVote && !hasVoted}}"></view>
+      <view class="confirm-btn-wrap" wx:if="{{canVote && !hasVoted}}">
         <view
           class="confirm-btn {{selectedIndex && !acting ? 'confirm-btn-enabled' : 'confirm-btn-disabled'}}"
           bindtap="onConfirmVote"
         >确认投票</view>
       </view>
     </view>
-    <text class="abstain-link" wx:if="{{!eliminated && !hasVoted}}" bindtap="onAbstain">弃票</text>
-    <view class="voted-wait" wx:elif="{{!eliminated && hasVoted}}">投票已提交，不可修改</view>
+    <text class="abstain-link" wx:if="{{canVote && !hasVoted}}" bindtap="onAbstain">弃票</text>
+    <view class="voted-wait" wx:elif="{{canVote && hasVoted}}">投票已提交，不可修改</view>
   </view>
 
-  <view class="voted-wait" wx:elif="{{!eliminated && hasVoted}}">投票已提交，不可修改</view>
+  <view class="voted-wait" wx:elif="{{canVote && hasVoted}}">投票已提交，不可修改</view>
 </view>
 
 <interaction-lock-layer

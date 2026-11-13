@@ -7,7 +7,7 @@
   overflow: hidden;
   box-sizing: border-box;
   /* 底栏 fixed，给主内容留空，避免被遮 */
-  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
 }
 
 .page-body {
@@ -17,31 +17,50 @@
   min-height: 0;
 }
 
-.page-intro {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #94a3b8;
-  line-height: 1.5;
+.header-section {
+  padding-bottom: 12rpx;
 }
 
+.title-block {
+  gap: 6rpx;
+  margin-top: 4rpx;
+}
+
+.page-intro {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* 当前玩家 / 快捷入口 / 玩法说明：统一 16rpx 间距 */
 .section-players {
-  margin-top: 8rpx;
+  margin: 0 40rpx 16rpx;
+  padding: 22rpx 24rpx;
+}
+
+.section-players .section-title {
+  margin-bottom: 10rpx;
 }
 
 .member-list-wrap {
+  margin-top: 8rpx;
+}
+
+.players-hint {
   margin-top: 12rpx;
 }
 
 .body-spacer {
   flex: 1;
-  min-height: 24rpx;
+  min-height: 16rpx;
 }
 
 .secondary-actions {
-  margin: 20rpx 40rpx 12rpx;
+  margin: 0 40rpx 16rpx;
   display: flex;
   flex-direction: row;
-  gap: 20rpx;
+  gap: 16rpx;
   flex-shrink: 0;
 }
 
@@ -50,11 +69,17 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 16rpx;
-  padding: 22rpx 20rpx;
+  gap: 14rpx;
+  margin-top: 0;
+  height: auto;
+  min-height: 0;
+  padding: 16rpx 18rpx;
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.92);
   border: 2rpx solid rgba(148, 163, 184, 0.25);
+  color: inherit;
+  font-size: inherit;
+  justify-content: flex-start;
   box-sizing: border-box;
 }
 
@@ -148,16 +173,37 @@
   min-width: 0;
   min-height: 0;
   width: calc(100% - 80rpx);
-  margin-top: 8rpx;
+  margin: 0 40rpx 0;
+  padding: 18rpx 22rpx;
   height: 0;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.section-rules .section-title {
+  margin-bottom: 8rpx;
+  font-size: 26rpx;
 }
 
 .rules-content {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+/* 六点规则尽量一屏排开，避免依赖滚动 */
+.section-rules .rules-list {
+  gap: 6rpx;
+}
+
+.section-rules .rules-item {
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.footer {
+  padding-top: 24rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
 }
 
 /* 非房主底栏：与主按钮同高的等待条，占满主操作位 */

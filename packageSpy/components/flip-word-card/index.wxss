@@ -38,34 +38,34 @@
   box-sizing: border-box;
 }
 
-/* 上滑 / 点击：向上翻 */
+/* 上滑 / 点击：向上翻（与手指同向） */
 .flip-card.flip-out-up {
   transition: transform 300ms ease-in-out;
   -webkit-transition: -webkit-transform 300ms ease-in-out;
-  transform: rotateX(-90deg);
-  -webkit-transform: rotateX(-90deg);
+  transform: rotateX(90deg);
+  -webkit-transform: rotateX(90deg);
 }
 
 .flip-card.flip-in-start-up {
   transition: none;
   -webkit-transition: none;
-  transform: rotateX(90deg);
-  -webkit-transform: rotateX(90deg);
+  transform: rotateX(-90deg);
+  -webkit-transform: rotateX(-90deg);
 }
 
-/* 下滑：向下翻 */
+/* 下滑：向下翻（与手指同向） */
 .flip-card.flip-out-down {
   transition: transform 300ms ease-in-out;
   -webkit-transition: -webkit-transform 300ms ease-in-out;
-  transform: rotateX(90deg);
-  -webkit-transform: rotateX(90deg);
+  transform: rotateX(-90deg);
+  -webkit-transform: rotateX(-90deg);
 }
 
 .flip-card.flip-in-start-down {
   transition: none;
   -webkit-transition: none;
-  transform: rotateX(-90deg);
-  -webkit-transform: rotateX(-90deg);
+  transform: rotateX(90deg);
+  -webkit-transform: rotateX(90deg);
 }
 
 .flip-card.flip-in {

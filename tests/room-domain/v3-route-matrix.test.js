@@ -365,11 +365,11 @@ test('Spy：发言、投票、平票、轮次结果、下一轮和结算均投�
 
   host = await h.snapshot('host');
   voteSessionId = host.view.session.publicModeState.voteSessionId;
-  for (const userId of ['host', 'u2', 'u3']) {
-    await runCommand(h, userId, 'SUBMIT_SPY_VOTE', {
-      context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
-    });
-  }
+  assert.equal(host.view.session.publicModeState.requiredVoteCount, 1);
+  // 并列 host/u2 不参与重投，仅 u3 投票即可收束
+  await runCommand(h, 'u3', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { abstain: true }
+  });
   await assertRoutes(h, { host: 'spyResult', u2: 'spyResult', u3: 'spyResult' }, 'Spy 轮次结果');
 
   host = await h.snapshot('host');

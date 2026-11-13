@@ -75,7 +75,14 @@ function startSpeaker(aggregate, order, deps, options) {
 }
 function openVote(aggregate, deps) {
   const session = aggregate.currentSession; const spy = spyState(aggregate);
-  const requiredMemberIds = alivePlayers(spy).map((player) => player.memberId);
+  const aliveIds = alivePlayers(spy).map((player) => player.memberId);
+  // 平票加时：并列玩家只接受投票，本人不参与重投；若全体并列则回退为全员投票。
+  let requiredMemberIds = aliveIds;
+  if (spy.tieBreak === true) {
+    const tiedSet = new Set((spy.lastResult && spy.lastResult.tiedMemberIds) || []);
+    const nonTied = aliveIds.filter((id) => !tiedSet.has(id));
+    if (nonTied.length > 0) requiredMemberIds = nonTied;
+  }
   spy.questionRound = false;
   spy.voteProgress = { voteSessionId: idOf(deps, 'vote'), requiredMemberIds, submittedMemberIds: [] };
   spy.voteStartedAt = nowOf(deps);
@@ -266,6 +273,9 @@ function reduceSpyCommand(aggregate, command, actorUserId, deps) {
     if (!progress || progress.voteSessionId !== command.context.voteSessionId) return fail(ERR.STALE_CONTEXT, '投票场次已经变化');
     const player = playerByMemberId(check.spy, actor.member.memberId);
     if (!player || !player.alive || player.left) return fail(ERR.INVALID_TRANSITION, '出局成员不能投票');
+    if (!progress.requiredMemberIds.includes(actor.member.memberId)) {
+      return fail(ERR.NOT_PARTICIPANT, '并列成员不参与加时投票');
+    }
     if (progress.submittedMemberIds.includes(actor.member.memberId)) return fail(ERR.ALREADY_VOTED);
     // 截止时间由服务端时钟裁决；迟到的目标票统一按弃票记录，客户端倒计时只负责展示。
     const voteExpired = check.spy.voteStartedAt != null

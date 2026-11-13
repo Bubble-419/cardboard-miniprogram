@@ -417,9 +417,14 @@ function projectCapabilities(aggregate, actor) {
     isHost && step === WORKFLOW_STEP.SPY_VOTE && spy && spy.questionRoundUsed !== true,
     'INVALID_TRANSITION'
   );
+  const requiredVoter = !!(spy && spy.voteProgress
+    && (spy.voteProgress.requiredMemberIds || []).includes(actor.memberId));
   caps[COMMAND_TYPES.SUBMIT_SPY_VOTE] = capability(
-    alive && step === WORKFLOW_STEP.SPY_VOTE && !(actor.voteStatus && actor.voteStatus.submitted),
-    'INVALID_TRANSITION'
+    alive
+      && requiredVoter
+      && step === WORKFLOW_STEP.SPY_VOTE
+      && !(actor.voteStatus && actor.voteStatus.submitted),
+    requiredVoter ? 'INVALID_TRANSITION' : 'NOT_PARTICIPANT'
   );
   caps[COMMAND_TYPES.START_NEXT_SPY_ROUND] = capability(isParticipant && step === WORKFLOW_STEP.SPY_RESULT, 'INVALID_TRANSITION');
   caps[COMMAND_TYPES.RESTART_SPY_GAME] = capability(isHost && step === WORKFLOW_STEP.SPY_SETTLED, 'INVALID_TRANSITION');

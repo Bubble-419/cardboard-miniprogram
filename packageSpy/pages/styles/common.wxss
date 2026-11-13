@@ -190,12 +190,14 @@
 }
 
 .footer {
-  padding: 40rpx 40rpx calc(56rpx + env(safe-area-inset-bottom));
+  padding: 56rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  /* 与页面底色 #F3FAF9 同色渐变叠底，避免白块硬切 */
   background: linear-gradient(
-    0deg,
-    rgba(255, 255, 255, 1) 0%,
-    rgba(255, 255, 255, 0.95) 50%,
-    rgba(255, 255, 255, 0) 100%
+    180deg,
+    rgba(243, 250, 249, 0) 0%,
+    rgba(243, 250, 249, 0.72) 36%,
+    rgba(243, 250, 249, 0.96) 62%,
+    #F3FAF9 100%
   );
 }
 

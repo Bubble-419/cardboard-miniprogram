@@ -60,6 +60,7 @@ Page(withPageInteractionLock({
     totalVoters: 0,
     acting: false,
     eliminated: false,
+    canVote: true,
     tieBreak: false,
     showTieBanner: false,
     tiedNamesText: '',
@@ -191,12 +192,18 @@ Page(withPageInteractionLock({
         const canStartQuestion = !!(caps
           && caps.START_SPY_QUESTION_ROUND
           && caps.START_SPY_QUESTION_ROUND.allowed);
+        // 平票加时：并列玩家本人不参与重投（与服务端 requiredVoters 一致）
+        const isTiedSelf = spyGame.tieBreak === true
+          && myIndex != null
+          && tiedIndexSet.has(Number(myIndex));
+        const canVote = !eliminated && !isTiedSelf;
 
         this.setData({
           avatarList: buildSpyAvatarList(members, spyGame.players),
-          selectedIndex: voteSessionChanged ? null : this.data.selectedIndex,
+          selectedIndex: voteSessionChanged || !canVote ? null : this.data.selectedIndex,
           hasVoted,
           eliminated,
+          canVote,
           isHost: result.isHost === true,
           canStartQuestion,
           tieBreak: spyGame.tieBreak === true,
@@ -265,7 +272,7 @@ Page(withPageInteractionLock({
   },
 
   onSelectTarget(e) {
-    if (this.data.hasVoted || this.data.eliminated) return;
+    if (this.data.hasVoted || this.data.eliminated || !this.data.canVote) return;
     const index = Number(e.currentTarget.dataset.index);
     const slot = (this.data.circleSlots || []).find((s) => samePlayerIndex(s.playerIndex, index));
     if (!slot || slot.isMe) {
@@ -281,6 +288,10 @@ Page(withPageInteractionLock({
 
   onConfirmVote() {
     return runPageInteraction(this, async () => {
+      if (!this.data.canVote) {
+        wx.showToast({ title: '并列玩家本轮不投票', icon: 'none' });
+        return;
+      }
       if (!this.data.selectedIndex) {
         wx.showToast({ title: '请先选择怀疑对象', icon: 'none' });
         return;
@@ -291,7 +302,7 @@ Page(withPageInteractionLock({
 
   onAbstain() {
     return runPageInteraction(this, async () => {
-      if (this.data.hasVoted || this.data.eliminated || this.data.acting) return;
+      if (this.data.hasVoted || this.data.eliminated || !this.data.canVote || this.data.acting) return;
       await this.submitVote({ abstain: true });
     }, { loadingText: '正在提交投票…' });
   },

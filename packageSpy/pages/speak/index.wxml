@@ -23,9 +23,17 @@
         </view>
       </view>
 
-      <view class="my-word-card-wrap">
-        <text class="my-word-label">我的交互模板卡</text>
-        <view class="my-word-card-frame">
+      <view class="my-word-card-wrap {{myCardCollapsed ? 'is-collapsed' : ''}}">
+        <view class="my-word-card-heading">
+          <text class="my-word-label">我的交互模板卡</text>
+          <view
+            class="my-word-collapse-btn"
+            role="button"
+            aria-label="{{myCardCollapsed ? '展开我的交互模板卡' : '收起我的交互模板卡'}}"
+            bindtap="onToggleMyCard"
+          >{{myCardCollapsed ? '展开' : '收起'}}</view>
+        </view>
+        <view class="my-word-card-frame" wx:if="{{!myCardCollapsed}}">
           <flip-word-card
             wx:if="{{cardReady}}"
             word="{{myWord}}"
@@ -127,7 +135,7 @@
               <text class="rules-item">3. 发言阶段可翻看自己的词语卡；全员完成发言后系统自动进入投票。</text>
               <text class="rules-item">4. 若信息不足，房主可在投票页开启一轮提问，每人最多提出一个问题。</text>
               <text class="rules-item">5. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
-              <text class="rules-item">6. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后重投。</text>
+              <text class="rules-item">6. 全员投完后统一公布票数与淘汰结果；平票则并列玩家再陈述后，由其余玩家重投（并列者本人不参与）。</text>
             </view>
           </view>
         </view>

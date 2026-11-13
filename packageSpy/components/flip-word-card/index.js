@@ -222,6 +222,7 @@ Component({
       }
 
       // 横屏叠层（父级 rotate 90deg）：屏幕左右对应卡面视觉上下
+      // 顺时针 90° 后，卡面视觉上方朝向屏幕右侧（dx > 0）
       if (
         this.data.landscapeGestures
         && absDx >= SWIPE_THRESHOLD_PX
