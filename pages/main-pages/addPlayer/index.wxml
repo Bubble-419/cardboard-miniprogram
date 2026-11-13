@@ -40,10 +40,10 @@
       <!-- 有模式：房主可点切换；无模式：房主可点选择；成员只看提示 -->
       <view
         class="mode-pill {{isHost ? 'mode-pill-clickable' : ''}}"
-        wx:if="{{hasSelectedMode && selectedModeTitle}}"
+        wx:if="{{hasSelectedMode}}"
         catchtap="onTapModePill"
       >
-        <text class="mode-pill-text">{{selectedModeTitle}}</text>
+        <text class="mode-pill-text">{{selectedModeTitle || '游戏进行中'}}</text>
         <text class="mode-pill-action" wx:if="{{isHost}}">切换 ›</text>
       </view>
       <view

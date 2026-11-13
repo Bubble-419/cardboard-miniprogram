@@ -32,14 +32,13 @@
   margin-top: 12rpx;
 }
 
-/* 把牌库/说明推到中下部，减少“顶重底空” */
 .body-spacer {
   flex: 1;
-  min-height: 48rpx;
+  min-height: 24rpx;
 }
 
 .secondary-actions {
-  margin: 0 40rpx 12rpx;
+  margin: 20rpx 40rpx 12rpx;
   display: flex;
   flex-direction: row;
   gap: 20rpx;

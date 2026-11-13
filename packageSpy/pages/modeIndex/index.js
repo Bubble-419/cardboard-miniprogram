@@ -132,7 +132,7 @@ Page(withRoomLocalScreens(withPageInteractionLock({
         let statusText = '等待更多玩家加入…';
         let waitFooterText = '等待更多玩家加入…';
         if (playerCount >= MIN_PLAYERS) {
-          statusText = isHost ? '人数已齐，可开始游戏' : '人数已齐，等待房主开始游戏';
+          statusText = isHost ? '人数足够，可开始游戏' : '人数足够，等待房主开始游戏';
           waitFooterText = '等待房主开始游戏…';
         }
 

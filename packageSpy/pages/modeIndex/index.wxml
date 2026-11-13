@@ -30,10 +30,7 @@
       <view class="warn-text" wx:if="{{playerCount < minPlayers}}">至少需要 {{minPlayers}} 名玩家才能开始</view>
     </view>
 
-    <!-- 弹性占位：把次级入口与底栏之间的空白摊开 -->
-    <view class="body-spacer" wx:if="{{!rulesExpanded}}"></view>
-
-    <!-- 次级功能：牌库 / 玩法说明 -->
+    <!-- 固定在当前玩家下方：展开规则时向下展开，按钮位置不跳动 -->
     <view class="secondary-actions">
       <view
         wx:if="{{showLibraryEntry}}"
@@ -86,7 +83,7 @@
         <view class="section-title">玩法说明</view>
         <view class="rules-list">
           <view class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</view>
-          <view class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述。不能撒谎，也不要直接念出词名。</view>
+          <view class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述。<text class="rules-emphasis">不能撒谎</text>，也不要直接念出词名。</view>
           <view class="rules-item">3. 发言阶段可翻看自己的词语卡；全员完成发言后系统自动进入投票。</view>
           <view class="rules-item">4. 若信息不足，房主可在投票页开启一轮提问，每人最多提出一个问题。</view>
           <view class="rules-item">5. 进入匿名投票后，投出你怀疑的人（不可投自己）。</view>
@@ -94,6 +91,8 @@
         </view>
       </view>
     </scroll-view>
+
+    <view class="body-spacer" wx:if="{{!rulesExpanded}}"></view>
   </view>
 
   <page-footer extClass="footer footer-{{isHost ? 'host' : 'member'}}" showPrev="{{isHost}}" bind:prev="handleGoBack">

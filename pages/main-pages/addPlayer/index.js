@@ -342,7 +342,7 @@ Page(withPageInteractionLock({
       brainstormSessionEnded: !!(result.roomState && result.roomState.brainstormSessionEnded),
       selectedModeId: result.selectedModeId || '',
       selectedModeTitle: normalizeModeDisplayTitle(
-        result.selectedModeTitle || '',
+        result.selectedModeTitle || this.data.selectedModeTitle || '',
         result.selectedModeId
       ),
       selectedModeDesc: result.selectedModeDesc || '',

@@ -33,19 +33,29 @@
   margin-top: 12rpx;
 }
 
+.player-row {
+  align-items: flex-start;
+}
+
 .player-main {
   display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 16rpx;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6rpx;
   min-width: 0;
   flex: 1;
   padding-right: 16rpx;
 }
 
+.player-meta {
+  padding-top: 4rpx;
+}
+
 .player-word {
-  font-size: 28rpx;
-  font-weight: 600;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: #475569;
+  text-align: left;
 }
 
 .word-link {

@@ -354,6 +354,11 @@
   line-height: 1.65;
 }
 
+.rules-emphasis {
+  color: #111111;
+  font-weight: 700;
+}
+
 /* ===== 底部操作区：安全区 + 12rpx ===== */
 .bottom-action {
   flex-shrink: 0;

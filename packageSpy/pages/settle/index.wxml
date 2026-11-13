@@ -38,11 +38,7 @@
     <view class="player-row" wx:for="{{revealPlayers}}" wx:key="memberId">
       <view class="player-main">
         <text class="player-name">{{item.name}}</text>
-        <text
-          class="player-word word-link"
-          data-word="{{item.word}}"
-          catchtap="onTapRevealWord"
-        >{{item.word}}</text>
+        <text class="player-word">{{item.word}}</text>
       </view>
       <view class="player-meta">{{item.roleLabel}}{{item.alive ? '' : ' · 已出局'}}</view>
     </view>
@@ -84,7 +80,6 @@
         word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
       />
     </view>
-    <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
   </view>
 </view>
 

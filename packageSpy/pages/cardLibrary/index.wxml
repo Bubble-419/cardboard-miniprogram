@@ -74,7 +74,6 @@
           word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
         />
       </view>
-      <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
     </view>
   </view>
 

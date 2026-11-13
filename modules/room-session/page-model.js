@@ -2,6 +2,7 @@
 
 const { PROTOCOL_VERSION, MODE, WORKFLOW_STEP } = require('../../packages/room-contracts/index');
 const { getStatementLabel } = require('../../utils/partnerRoundContent');
+const { titleForModeId } = require('../../utils/modeDisplayNames');
 
 const PARTNER_CLOSING_STEPS = new Set([
   WORKFLOW_STEP.PARTNER_CLOSING_VOTE,
@@ -353,6 +354,7 @@ function projectPageSnapshot(view, clientState) {
     createdAt: view.room.createdAt,
     joinedAt: members.find((item) => item.isMe) && members.find((item) => item.isMe).joinedAt,
     selectedModeId: session && modeId(session.mode),
+    selectedModeTitle: session ? titleForModeId(modeId(session.mode)) : '',
     hasSelectedMode: !!session,
     brainstormSessionEnded: !!(session && session.status === 'COMPLETED'),
     selectedBG: session && session.setup.scenario,

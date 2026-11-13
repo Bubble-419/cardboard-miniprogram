@@ -33,10 +33,11 @@ test('Spy 结算 reveal 把 nickName/词语映射为页面可展示字段', () =
   ]);
 });
 
-test('Spy 结算页词语与玩家名同行，点击词语可翻阅本局词对', () => {
+test('Spy 结算页全员身份为两行左对齐，列表词语不可点开', () => {
   const root = path.resolve(__dirname, '../..');
   const source = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.js'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.wxml'), 'utf8');
+  const styles = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.wxss'), 'utf8');
   const pageJson = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.json'), 'utf8');
   assert.match(source, /buildSpyRevealPlayers/);
   assert.match(source, /onTapRevealWord/);
@@ -44,13 +45,17 @@ test('Spy 结算页词语与玩家名同行，点击词语可翻阅本局词对'
   assert.match(source, /buildGamePairCards/);
   assert.match(template, /全员身份与词语/);
   assert.match(template, /player-main/);
-  assert.match(template, /catchtap="onTapRevealWord"/);
   assert.match(template, /\{\{item\.name\}\}/);
-  assert.match(template, /\{\{item\.word\}\}/);
+  assert.match(template, /class="player-word">\{\{item\.word\}\}/);
   assert.match(template, /\{\{item\.roleLabel\}\}/);
+  assert.doesNotMatch(
+    template,
+    /player-word[\s\S]*?catchtap="onTapRevealWord"/
+  );
+  assert.match(styles, /\.player-main\s*\{[\s\S]*?flex-direction:\s*column/);
+  assert.match(styles, /\.player-main\s*\{[\s\S]*?align-items:\s*flex-start/);
   assert.match(template, /enableHorizontalSwipe="\{\{true\}\}"/);
   assert.match(template, /bind:horizontalswipe="onViewerHorizontalSwipe"/);
   assert.match(template, /bind:fullscreen="onOpenCardFullscreen"/);
   assert.match(pageJson, /flip-word-card/);
-  assert.doesNotMatch(template, /词语：\{\{item\.word\}\}/);
 });

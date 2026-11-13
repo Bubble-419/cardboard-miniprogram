@@ -260,3 +260,8 @@
   overflow-wrap: anywhere;
   box-sizing: border-box;
 }
+
+.rules-emphasis {
+  color: #111111;
+  font-weight: 700;
+}
