@@ -83,6 +83,10 @@
         "type": "folder"
       },
       {
+        "value": "packageSpy/assets",
+        "type": "folder"
+      },
+      {
         "value": "assets/subAwait/wait-hero-5a8ea5.webp",
         "type": "file"
       },

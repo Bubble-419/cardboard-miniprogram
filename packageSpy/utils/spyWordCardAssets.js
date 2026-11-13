@@ -1,26 +1,20 @@
 /**
- * 词语 → 交互卡 WebP。游戏分词与牌库浏览共用本模块。
- * 卡片放在 Spy 分包内，文件名只用英文：真机无法从主包组件加载分包资源，
- * 也无法打开代码包里的中文路径。
+ * 词语 → 交互卡 WebP（文件名与词语对应）。
+ * 游戏分词与牌库浏览共用本模块。卡片文件在仓库中，打包时忽略，运行时走 CDN。
  *
- * 约定（webp/ 目录）：
- * - card-{编号}-a.webp → 词语（交互方式卡）
- * - card-{编号}-b.webp → 词语1（IxDL 逻辑卡）
- * - card-back.webp     → 统一背面
+ * 约定（webp/ 目录，云上 key 为文件名）：
+ * - {词语}3x.webp   → 词语（交互方式卡）
+ * - {词语}13x.webp  → 词语1（IxDL 逻辑卡）
+ * - 背面3x.webp     → 统一背面
  */
 
 const { WORD_ENTRIES, SPY_WORD_PAIRS } = require('./spyWordPairs');
+const { staticCdnUrl } = require('../../utils/staticCdn');
 
 const ASSET_ROOT = 'packageSpy/assets/interactionCards';
 const RAW_DIR = `${ASSET_ROOT}/raw`;
 const WEBP_DIR = `${ASSET_ROOT}/webp`;
-
-function localAssetUrl(rel) {
-  const normalized = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  return normalized ? `/${normalized}` : '';
-}
-
-const CARD_BACK_WEBP = localAssetUrl(`${WEBP_DIR}/card-back.webp`);
+const CARD_BACK_WEBP = staticCdnUrl(`${WEBP_DIR}/背面3x.webp`);
 const FILE_WORD_ALIAS = { 晃动: '震动' };
 
 /** 旧 PNG 编号映射，仅作 WebP 缺失时的回退（游戏词） */
@@ -126,20 +120,8 @@ const GAME_WORD_SET = WORD_ENTRIES.reduce((acc, item) => {
   return acc;
 }, {});
 
-function cardFileNo(word) {
-  const key = FILE_WORD_ALIAS[word] || word;
-  for (let i = 0; i < LIBRARY_CATEGORIES.length; i += 1) {
-    const found = LIBRARY_CATEGORIES[i].cards.find((item) => item.word === key);
-    if (found) return found.no;
-  }
-  return '';
-}
-
-function cardFileUrl(word, side) {
-  const no = cardFileNo(word);
-  if (!no) return '';
-  const suffix = side === 'b' ? 'b' : 'a';
-  return localAssetUrl(`${WEBP_DIR}/card-${no}-${suffix}.webp`);
+function assetWord(word) {
+  return FILE_WORD_ALIAS[word] || word;
 }
 
 function getWordCardAssets(word) {
@@ -153,12 +135,13 @@ function getWordCardAssets(word) {
     };
   }
 
-  const raw = WORD_RAW_FALLBACK[word] || WORD_RAW_FALLBACK[FILE_WORD_ALIAS[word]];
+  const fileWord = assetWord(word);
+  const raw = WORD_RAW_FALLBACK[word] || WORD_RAW_FALLBACK[fileWord];
   return {
-    assignedWordSrc: cardFileUrl(word, 'a'),
-    assignedWordFallbackSrc: raw ? localAssetUrl(`${RAW_DIR}/${raw.method}`) : '',
-    word1Src: cardFileUrl(word, 'b'),
-    word1FallbackSrc: raw ? localAssetUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
+    assignedWordSrc: staticCdnUrl(`${WEBP_DIR}/${fileWord}3x.webp`),
+    assignedWordFallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.method}`) : '',
+    word1Src: staticCdnUrl(`${WEBP_DIR}/${fileWord}13x.webp`),
+    word1FallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
     backSrc: CARD_BACK_WEBP
   };
 }

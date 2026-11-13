@@ -311,19 +311,17 @@ flowchart LR
 - `assets/home/empty-history-6f27f1.webp`
 - `assets/brainstormMode/mode-cover-*.jpg`
 - `assets/halliGalli/step-*.webp`
+- `packageSpy/assets/interactionCards/webp/{词语}3x.webp`、`{词语}13x.webp`、`背面3x.webp` → 云上同名文件
 
-以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中。
-卧底卡面在 Spy 分包内，文件名为 `card-01-a.webp` 这类英文名，翻牌组件也放在该分包。
-真机不能用主包组件读取分包图片，也不能打开代码包里的中文路径。换图后重新编译客户端即可生效：
+以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中：
 
 | 本地资源 | 数量 | 使用位置 |
 |---|---|---|
-| `packageSpy/assets/interactionCards/webp/card-*.webp` | 73 | 卧底交互卡与牌背 |
 | `assets/ganDengYan/rule-*.jpg` | 4 | 干瞪眼规则页 |
 | `assets/partnerMode/actions/action-*.jpg` | 4 | Partner 普通/静默行动卡 |
 | `assets/partnerMode/actions/reverse-step-*.jpg` | 4 | 反面随机拼预览 |
 
-发布前使用开发者工具检查实际包体积。Spy 分包需低于 2MB，并确认卧底卡面加载的是分包内新图。
+发布前使用开发者工具检查实际包体积。卧底卡面换图后必须重新执行 `pnpm upload:static`，客户端仍请求原来的文件名。
 
 Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
