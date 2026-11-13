@@ -93,8 +93,11 @@
 .tile-stack {
   position: relative;
   width: 100%;
-  padding-top: 62%;
-  background: transparent;
+  /* 609/876 ≈ 69.5%，贴合卡面资源比例，避免透明挖空露底 */
+  padding-top: 69.52%;
+  background: #2a2a2a;
+  border-radius: 16rpx;
+  overflow: hidden;
 }
 
 .tile-cover {
@@ -103,7 +106,7 @@
   top: 0;
   width: 100%;
   height: 100%;
-  background: transparent;
+  background: #2a2a2a;
 }
 
 .tile-meta {
@@ -185,11 +188,11 @@
 }
 
 .viewer-card-frame {
-  width: 78%;
+  width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  aspect-ratio: 16 / 10;
-  background: #eef2f6;
+  aspect-ratio: 876 / 609;
+  background: #2a2a2a;
   border-radius: 18rpx;
   overflow: hidden;
 }

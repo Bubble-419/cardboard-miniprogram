@@ -38,7 +38,9 @@ Component({
     /** 为 true 时左右滑也翻页（配合父级横屏旋转叠层） */
     landscapeGestures: { type: Boolean, value: false },
     /** 为 true 时左右滑向父级派发 horizontalswipe（用于切换本局词对） */
-    enableHorizontalSwipe: { type: Boolean, value: false }
+    enableHorizontalSwipe: { type: Boolean, value: false },
+    /** 图片填充：aspectFit 完整显示；aspectFill 铺满容器左右对齐 */
+    imageMode: { type: String, value: 'aspectFit' }
   },
 
   data: {

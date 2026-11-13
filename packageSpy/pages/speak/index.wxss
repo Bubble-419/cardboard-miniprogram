@@ -120,11 +120,13 @@
 }
 
 .my-word-card-frame {
+  /* 与标题/标签同宽；比例贴合卡面资源（约 876×609），避免裁切或左右留白 */
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 876 / 609;
   position: relative;
   box-sizing: border-box;
-  background: transparent;
+  /* 深色底托住卡面透明挖空，避免露出页面底色像缺角 */
+  background: #2a2a2a;
   border-radius: 18rpx;
   overflow: hidden;
 }
@@ -288,11 +290,11 @@
 
 .tile-stack {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 876 / 609;
   position: relative;
   border-radius: 16rpx;
   overflow: hidden;
-  background: transparent;
+  background: #2a2a2a;
 }
 
 .tile-cover {
@@ -477,11 +479,11 @@
 }
 
 .viewer-card-frame {
-  width: 78%;
+  width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  aspect-ratio: 16 / 10;
-  background: transparent;
+  aspect-ratio: 876 / 609;
+  background: #2a2a2a;
   border-radius: 18rpx;
   overflow: hidden;
 }
@@ -589,7 +591,7 @@
 }
 
 .is-compact .viewer-card-frame {
-  width: 82%;
+  width: 100%;
 }
 
 .is-compact .primary-btn {
@@ -605,3 +607,4 @@
 .is-single-col .card-grid {
   margin: 0;
 }
+

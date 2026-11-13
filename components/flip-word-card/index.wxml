@@ -1,5 +1,5 @@
 <view
-  class="flip-scene {{animating ? 'is-animating' : ''}} {{landscapeGestures ? 'is-landscape' : ''}}"
+  class="flip-scene {{animating ? 'is-animating' : ''}} {{landscapeGestures ? 'is-landscape' : ''}} {{imageMode === 'aspectFill' ? 'is-cover' : ''}}"
   hover-class="is-pressed"
   hover-start-time="0"
   hover-stay-time="80"
@@ -16,7 +16,7 @@
         wx:if="{{backSrc && !imgError}}"
         class="flip-img"
         src="{{backSrc}}"
-        mode="aspectFit"
+        mode="{{imageMode}}"
         binderror="onImgError"
         bindload="onImgLoad"
       />
@@ -33,7 +33,7 @@
         wx:if="{{displaySrc && !imgError}}"
         class="flip-img"
         src="{{displaySrc}}"
-        mode="aspectFit"
+        mode="{{imageMode}}"
         binderror="onImgError"
         bindload="onImgLoad"
       />
