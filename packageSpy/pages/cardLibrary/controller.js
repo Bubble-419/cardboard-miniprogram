@@ -38,13 +38,18 @@ return withPageInteractionLock({
     selectedWord: '',
     selectedCard: null,
     viewerOpen: false,
+    cardFullscreenOpen: false,
+    cardFullscreen: null,
     locked: false
   },
 
   onLoad(options) {
     this._pageAlive = true;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const categories = listLibraryCategories();
+    const categories = listLibraryCategories().map((group) => ({
+      ...group,
+      collapsed: false
+    }));
     const cards = listLibraryCards();
     this.setData({
       roomId,
@@ -52,6 +57,19 @@ return withPageInteractionLock({
       categories,
       cards
     });
+  },
+
+  onToggleCategory(e) {
+    const id = e && e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.id
+      : '';
+    if (!id) return;
+    const categories = (this.data.categories || []).map((group) => (
+      group.id === id
+        ? { ...group, collapsed: !group.collapsed }
+        : group
+    ));
+    this.setData({ categories });
   },
 
   onShow() {
@@ -109,8 +127,39 @@ return withPageInteractionLock({
     this.setData({
       viewerOpen: false,
       selectedWord: '',
-      selectedCard: null
+      selectedCard: null,
+      cardFullscreenOpen: false,
+      cardFullscreen: null
     });
+  },
+
+  onOpenCardFullscreen(e) {
+    const card = this.data.selectedCard;
+    if (!card) return;
+    const detail = (e && e.detail) || {};
+    const hasFace = !!(
+      card.assignedWordSrc
+      || card.assignedWordFallbackSrc
+      || card.word1Src
+      || card.word1FallbackSrc
+    );
+    if (!hasFace) return;
+    this.setData({
+      cardFullscreenOpen: true,
+      cardFullscreen: {
+        word: card.word || this.data.selectedWord || '',
+        initialCardState: detail.cardState || 'assignedWord',
+        assignedWordSrc: card.assignedWordSrc || '',
+        assignedWordFallbackSrc: card.assignedWordFallbackSrc || '',
+        word1Src: card.word1Src || '',
+        word1FallbackSrc: card.word1FallbackSrc || ''
+      }
+    });
+  },
+
+  onCloseCardFullscreen() {
+    if (!this.data.cardFullscreenOpen) return;
+    this.setData({ cardFullscreenOpen: false, cardFullscreen: null });
   },
 
   handleGoBack() {
@@ -131,5 +180,13 @@ return withPageInteractionLock({
   },
 
   noop() {}
-}, ['onTapCard', 'onCloseViewer', 'handleGoBack', 'handleGoRoom']);
+}, [
+  'onTapCard',
+  'onToggleCategory',
+  'onCloseViewer',
+  'onOpenCardFullscreen',
+  'onCloseCardFullscreen',
+  'handleGoBack',
+  'handleGoRoom'
+]);
 };

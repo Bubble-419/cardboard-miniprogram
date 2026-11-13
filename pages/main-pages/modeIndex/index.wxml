@@ -41,28 +41,20 @@
         </view>
       </view>
 
-      <!-- 主内容区 -->
+      <!-- 主内容区：新建情境置顶；线下情境在脑暴列表中排在案例前 -->
       <view class="main-content">
-        <!-- 线下情境卡片（固定） -->
-        <view
-          wx:if="{{offlineScenario}}"
-          class="offline-card"
-          data-id="{{offlineScenario.id}}"
-          bindtap="onCardArrow"
-        >
-          <view class="offline-card-inner">
-            <view class="offline-icon-wrap">
-              <image class="offline-icon" src="/assets/modeIndex/icon-offline-bg.svg" mode="aspectFit" />
+        <!-- 新建情境（主入口，置顶） -->
+        <view class="create-card" catchtap="handleAddScenario">
+          <view class="create-card-inner">
+            <view class="create-icon-wrap">
+              <image class="create-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
             </view>
-            <view class="offline-details">
-              <view class="badge badge-blue">
-                <text class="badge-text">线下</text>
-              </view>
-              <text class="offline-title">线下情境</text>
-              <text class="offline-desc">选择线下大屏上已展示的情境，直接进入游戏</text>
+            <view class="create-details">
+              <text class="create-title">新建情境</text>
+              <text class="create-desc">自定义场景、角色与设计问题，开始脑暴</text>
             </view>
-            <view class="arrow-wrap arrow-wrap-blue">
-              <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-blue.svg" mode="aspectFit" />
+            <view class="arrow-wrap arrow-wrap-green">
+              <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-green.svg" mode="aspectFit" />
             </view>
           </view>
         </view>
@@ -74,13 +66,33 @@
               <view class="section-indicator"></view>
               <text class="section-title">脑暴情境</text>
             </view>
-            <view class="section-add-btn" catchtap="handleAddScenario">
-              <text class="section-add-text">新增情境</text>
-              <image class="section-add-icon" src="/assets/modeIndex/icon-plus.svg" mode="aspectFit" />
-            </view>
           </view>
 
           <scroll-view class="scenario-list" scroll-y enhanced show-scrollbar="{{false}}">
+            <!-- 线下情境：原样式，排在案例情境前 -->
+            <view
+              wx:if="{{offlineScenario}}"
+              class="offline-card"
+              data-id="{{offlineScenario.id}}"
+              bindtap="onCardArrow"
+            >
+              <view class="offline-card-inner">
+                <view class="offline-icon-wrap">
+                  <image class="offline-icon" src="/assets/modeIndex/icon-offline-bg.svg" mode="aspectFit" />
+                </view>
+                <view class="offline-details">
+                  <view class="badge badge-blue">
+                    <text class="badge-text">线下</text>
+                  </view>
+                  <text class="offline-title">线下情境</text>
+                  <text class="offline-desc">选择线下大屏上已展示的情境，直接进入游戏</text>
+                </view>
+                <view class="arrow-wrap arrow-wrap-blue">
+                  <image class="arrow-icon" src="/assets/modeIndex/icon-arrow-blue.svg" mode="aspectFit" />
+                </view>
+              </view>
+            </view>
+
             <view
               class="scenario-item"
               wx:for="{{customScenarios}}"

@@ -13,13 +13,26 @@
 
   <!-- 牌库也可挂在 disableScroll 的 owner 中，列表不能依赖原生页面滚动。 -->
   <scroll-view class="category-list" scroll-y="{{!viewerOpen}}">
-    <view class="category-block" wx:for="{{categories}}" wx:key="id" wx:for-item="group">
-      <view class="category-heading">
+    <view
+      class="category-block {{group.collapsed ? 'is-collapsed' : ''}}"
+      wx:for="{{categories}}"
+      wx:key="id"
+      wx:for-item="group"
+    >
+      <view
+        class="category-heading"
+        data-id="{{group.id}}"
+        bindtap="onToggleCategory"
+        role="button"
+        aria-expanded="{{!group.collapsed}}"
+        aria-label="{{group.collapsed ? '展开' : '收起'}}{{group.title}}"
+      >
         <view class="category-mark"></view>
         <text class="category-title">{{group.title}}</text>
         <text class="category-count">{{group.count}}种</text>
+        <text class="category-chevron">{{group.collapsed ? '›' : '⌄'}}</text>
       </view>
-      <view class="card-grid">
+      <view class="card-grid" wx:if="{{!group.collapsed}}">
         <view
           class="card-tile"
           wx:for="{{group.cards}}"
@@ -47,17 +60,47 @@
         <text class="viewer-title">{{selectedCard.displayName || selectedWord}}</text>
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
-      <text class="viewer-hint">点击或上下滑动：词语 → 词语1 → 词语，可循环翻看</text>
+      <text class="viewer-hint">点击或上下滑动翻页；双击横屏全屏</text>
       <flip-word-card
         wx:if="{{selectedCard}}"
         word="{{selectedCard.word}}"
         skipBack="{{true}}"
+        fullscreenOnAssigned="{{true}}"
+        bind:fullscreen="onOpenCardFullscreen"
         assignedWordSrc="{{selectedCard.assignedWordSrc}}"
         assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
         word1Src="{{selectedCard.word1Src}}"
         word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
       />
       <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
+    </view>
+  </view>
+
+  <view
+    class="card-fullscreen-mask"
+    wx:if="{{cardFullscreenOpen && cardFullscreen}}"
+    catchtouchmove="noop"
+    bindtap="onCloseCardFullscreen"
+  >
+    <view class="card-fullscreen-stage" catchtap="noop">
+      <view
+        class="card-fullscreen-close"
+        bindtap="onCloseCardFullscreen"
+        role="button"
+        aria-label="关闭卡牌全屏"
+      >关闭</view>
+      <view class="card-fullscreen-card">
+        <flip-word-card
+          word="{{cardFullscreen.word}}"
+          skipBack="{{true}}"
+          initialCardState="{{cardFullscreen.initialCardState}}"
+          landscapeGestures="{{true}}"
+          assignedWordSrc="{{cardFullscreen.assignedWordSrc}}"
+          assignedWordFallbackSrc="{{cardFullscreen.assignedWordFallbackSrc}}"
+          word1Src="{{cardFullscreen.word1Src}}"
+          word1FallbackSrc="{{cardFullscreen.word1FallbackSrc}}"
+        />
+      </view>
     </view>
   </view>
 

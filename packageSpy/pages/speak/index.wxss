@@ -233,6 +233,10 @@
   padding: 0 4rpx;
 }
 
+.library-category.is-collapsed .library-category-heading {
+  margin-bottom: 0;
+}
+
 .library-category-mark {
   width: 8rpx;
   height: 26rpx;
@@ -251,6 +255,14 @@
 .library-category-count {
   font-size: 22rpx;
   font-weight: 500;
+  color: #94a3b8;
+  line-height: 36rpx;
+}
+
+.library-category-chevron {
+  margin-left: auto;
+  font-size: 26rpx;
+  font-weight: 600;
   color: #94a3b8;
   line-height: 36rpx;
 }
@@ -458,7 +470,7 @@
   line-height: 1.55;
 }
 
-/* ===== 本人身份卡全屏（纯本地叠层） ===== */
+/* ===== 卡牌横屏全屏（纯本地叠层，竖屏设备旋转内容） ===== */
 .identity-card-fullscreen-mask {
   position: fixed;
   left: 0;
@@ -466,31 +478,37 @@
   top: 0;
   bottom: 0;
   z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: calc(32px + env(safe-area-inset-top)) 32px calc(32px + env(safe-area-inset-bottom));
-  box-sizing: border-box;
   background: rgba(10, 18, 28, 0.92);
 }
 
-.identity-card-fullscreen-content {
-  position: relative;
-  width: 100%;
-  max-width: 720px;
-  aspect-ratio: 16 / 10;
+.identity-card-fullscreen-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vh;
+  height: 100vw;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 48px 32px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center center;
 }
 
-.identity-card-fullscreen-image {
+.identity-card-fullscreen-card {
   width: 100%;
   height: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .identity-card-fullscreen-close {
   position: absolute;
-  right: 0;
-  top: -48px;
+  right: 32px;
+  top: 8px;
   min-width: 64px;
   height: 40px;
   padding: 0 14px;

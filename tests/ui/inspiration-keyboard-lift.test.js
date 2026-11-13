@@ -53,8 +53,8 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.doesNotMatch(composerWxml, /style="\{\{keyboardLiftStyle\}\}"/);
   assert.match(
     gameWxml,
-    /class="game-inspiration-dock \{\{inspirationInputFocused \|\| inspirationKeyboardHeight > 0 \? 'game-inspiration-dock-keyboard' : ''\}\}"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
-    '灵感输入宿主应脱离 page-body 裁切，聚焦瞬间即 fixed，并在匿名表达时完全移出布局'
+    /class="game-inspiration-dock \{\{inspirationKeyboardHeight > 0 \? 'game-inspiration-dock-keyboard game-inspiration-dock-keyboard-raised' : ''\}\}"[\s\S]*?style="\{\{inspirationDockStyle\}\}"[\s\S]*?hidden="\{\{expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\}\}"/,
+    '灵感输入宿主应脱离 page-body 裁切；仅键盘升起后 fixed，并在匿名表达时完全移出布局'
   );
   assert.match(
     gameWxml,
@@ -67,7 +67,7 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.ok(dockIndex >= 0 && composerIndex > dockIndex && composerIndex < footerIndex);
   assert.match(
     gameWxss,
-    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;/
+    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*800;/
   );
   assert.match(composerInputs[0], /cursor-spacing="24"/);
 
@@ -90,7 +90,53 @@ test('gamepage 灵感输入脱离裁切容器并固定到键盘上方', () => {
   assert.doesNotMatch(gameWxml, /style="\{\{closingComposeLiftStyle\}\}"/);
 });
 
-test('游戏页首次聚焦时先移除底栏并钉住灵感宿主，再等待键盘高度事件', () => {
+test('游戏页灵感仅在键盘升起后占位并抬高层级，避免聚焦空隙', () => {
+  const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+
+  assert.match(
+    gameWxml,
+    /wx:if="\{\{inspirationKeyboardHeight > 0 && !\(expressComposerOpen \|\| expressKeyboardHeight > 0 \|\| closingKeyboardHeight > 0\)\}\}"/
+  );
+  assert.match(gameWxml, /class="game-inspiration-dock-spacer"/);
+  assert.match(
+    gameWxml,
+    /inspirationKeyboardHeight > 0 \? 'game-inspiration-dock-keyboard game-inspiration-dock-keyboard-raised' : ''/
+  );
+  assert.match(
+    gameWxss,
+    /\.game-inspiration-dock-spacer\s*\{[\s\S]*?height:\s*calc\(110rpx \+ env\(safe-area-inset-bottom\)\);/
+  );
+  assert.match(
+    gameWxss,
+    /\.game-inspiration-dock-keyboard\s*\{[\s\S]*?z-index:\s*800;[\s\S]*?background:\s*#fafafa;/
+  );
+});
+
+test('游戏页聚焦灵感输入后整页切换为灵感空间背景', () => {
+  const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
+  const gameWxss = read('pages/main-pages/partnerMode/gamepage/index.wxss');
+  const inspirationWxss = read('pages/inspiration/index.wxss');
+
+  assert.match(
+    gameWxml,
+    /inspirationInputFocused \|\| inspirationKeyboardHeight > 0 \? 'container-inspiration-composing' : ''/
+  );
+  assert.match(
+    gameWxss,
+    /\.container-inspiration-composing\s*\{[\s\S]*?linear-gradient\(168deg,\s*#d8f0e4/
+  );
+  assert.match(
+    inspirationWxss,
+    /\.container\s*\{[\s\S]*?linear-gradient\(168deg,\s*#d8f0e4/
+  );
+  assert.match(
+    gameWxss,
+    /\.container-inspiration-composing \.game-inspiration-dock-keyboard\s*\{[\s\S]*?background:\s*transparent;/
+  );
+});
+
+test('游戏页首次聚焦时先移除底栏并切背景，无键盘高度时保持文档流', () => {
   const gameWxml = read('pages/main-pages/partnerMode/gamepage/index.wxml');
   const footer = gameWxml.match(/<partner-game-footer[\s\S]*?\/>/);
 
@@ -105,7 +151,7 @@ test('游戏页首次聚焦时先移除底栏并钉住灵感宿主，再等待�
   const page = makePage(definition, {
     inspirationInputFocused: false,
     inspirationKeyboardHeight: 0,
-    inspirationDockStyle: ''
+    inspirationDockStyle: 'bottom: 0;'
   });
 
   page.onInspirationFocus();
@@ -113,7 +159,7 @@ test('游戏页首次聚焦时先移除底栏并钉住灵感宿主，再等待�
   assert.equal(page._inspirationNativeFocused, true);
   assert.equal(page.data.inspirationInputFocused, true);
   assert.equal(page.data.inspirationKeyboardHeight, 0, '无精确高度时不猜测键盘高度');
-  assert.equal(page.data.inspirationDockStyle, 'bottom: 0;', '聚焦瞬间先钉在屏幕底，脱离底栏文档流');
+  assert.equal(page.data.inspirationDockStyle, '', '无键盘高度时不 fixed，避免布局抽空');
 });
 
 test('安卓首次 focus 携带键盘高度时立即停靠游戏页灵感输入栏', () => {
@@ -500,4 +546,33 @@ test('灵感空间输入栏抬升后不显示灰底，输入卡片继续保留�
   assert.doesNotMatch(barRule[0], /transition:/);
   assert.ok(focusedRule);
   assert.doesNotMatch(focusedRule[0], /background:/);
+});
+
+test('灵感空间占位文案与聚焦态需区别于匿名表达输入框', () => {
+  const inspirationWxml = read('pages/inspiration/index.wxml');
+  const inspirationWxss = read('pages/inspiration/index.wxss');
+
+  assert.match(inspirationWxml, /placeholder="记录一条灵感"/);
+  assert.match(inspirationWxml, /class="inspiration-composer-label"/);
+  assert.match(inspirationWxml, /灵感记录/);
+  assert.match(
+    inspirationWxss,
+    /\.inspiration-composer-focused\s*\{[\s\S]*?#5eba6d[\s\S]*?linear-gradient/
+  );
+  assert.match(
+    inspirationWxss,
+    /\.inspiration-focus-mask\s*\{[\s\S]*?background:\s*rgba\(24,\s*56,\s*42,\s*0\.22\);/
+  );
+  assert.doesNotMatch(inspirationWxml, /说点什么/);
+  assert.doesNotMatch(inspirationWxss, /background:\s*#f2f2f2/);
+});
+
+test('灵感空间已发布文字支持长按选择与复制', () => {
+  const inspirationWxml = read('pages/inspiration/index.wxml');
+  const publishedTexts = inspirationWxml.match(/<text class="card-text"[^>]*>/g) || [];
+  assert.equal(publishedTexts.length, 3, '文字/图片/音频灵感正文都应可选择');
+  publishedTexts.forEach((markup) => {
+    assert.match(markup, /\buser-select\b/);
+    assert.match(markup, /\bselectable\b/);
+  });
 });

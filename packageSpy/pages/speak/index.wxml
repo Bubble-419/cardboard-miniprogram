@@ -74,13 +74,26 @@
         bindtouchcancel="onPanelTouchEnd"
       >
         <view class="panel panel-visible" wx:if="{{contentTab === 0}}">
-          <view class="library-category" wx:for="{{libraryCategories}}" wx:key="id" wx:for-item="group">
-            <view class="library-category-heading">
+          <view
+            class="library-category {{group.collapsed ? 'is-collapsed' : ''}}"
+            wx:for="{{libraryCategories}}"
+            wx:key="id"
+            wx:for-item="group"
+          >
+            <view
+              class="library-category-heading"
+              data-id="{{group.id}}"
+              bindtap="onToggleLibraryCategory"
+              role="button"
+              aria-expanded="{{!group.collapsed}}"
+              aria-label="{{group.collapsed ? '展开' : '收起'}}{{group.title}}"
+            >
               <view class="library-category-mark"></view>
               <text class="library-category-title">{{group.title}}</text>
               <text class="library-category-count">{{group.count}}种</text>
+              <text class="library-category-chevron">{{group.collapsed ? '›' : '⌄'}}</text>
             </view>
-            <view class="card-grid">
+            <view class="card-grid" wx:if="{{!group.collapsed}}">
               <view
                 class="card-tile"
                 wx:for="{{group.cards}}"
@@ -129,12 +142,14 @@
         <text class="viewer-title">{{selectedCard.displayName || selectedWord}}</text>
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
-      <text class="viewer-hint">点击或上下滑动：词语 → 词语1 → 词语，可循环翻看</text>
+      <text class="viewer-hint">点击或上下滑动翻页；双击横屏全屏</text>
       <view class="viewer-card-frame">
         <flip-word-card
           wx:if="{{selectedCard}}"
           word="{{selectedCard.word}}"
           skipBack="{{true}}"
+          fullscreenOnAssigned="{{true}}"
+          bind:fullscreen="onOpenLibraryCardFullscreen"
           assignedWordSrc="{{selectedCard.assignedWordSrc}}"
           assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
           word1Src="{{selectedCard.word1Src}}"
@@ -160,25 +175,33 @@
   </view>
 </view>
 
-<!-- 身份卡只使用当前成员已获得的私密卡面，不创建新 Route 或远端状态。 -->
+<!-- 身份/牌库卡横屏全屏：纯本地叠层，可点击/滑动翻面，不创建新 Route 或远端状态。 -->
 <view
   class="identity-card-fullscreen-mask"
-  wx:if="{{identityCardFullscreenOpen}}"
+  wx:if="{{identityCardFullscreenOpen && identityCardFullscreen}}"
   catchtouchmove="noop"
   bindtap="onCloseIdentityCardFullscreen"
 >
-  <view class="identity-card-fullscreen-content" catchtap="noop">
+  <view class="identity-card-fullscreen-stage" catchtap="noop">
     <view
       class="identity-card-fullscreen-close"
       bindtap="onCloseIdentityCardFullscreen"
       role="button"
-      aria-label="关闭身份卡全屏"
+      aria-label="关闭卡牌全屏"
     >关闭</view>
-    <image
-      class="identity-card-fullscreen-image"
-      src="{{assignedWordSrc || assignedWordFallbackSrc}}"
-      mode="aspectFit"
-    />
+    <view class="identity-card-fullscreen-card">
+      <flip-word-card
+        word="{{identityCardFullscreen.word}}"
+        skipBack="{{identityCardFullscreen.skipBack}}"
+        initialCardState="{{identityCardFullscreen.initialCardState}}"
+        landscapeGestures="{{true}}"
+        backSrc="{{identityCardFullscreen.backSrc}}"
+        assignedWordSrc="{{identityCardFullscreen.assignedWordSrc}}"
+        assignedWordFallbackSrc="{{identityCardFullscreen.assignedWordFallbackSrc}}"
+        word1Src="{{identityCardFullscreen.word1Src}}"
+        word1FallbackSrc="{{identityCardFullscreen.word1FallbackSrc}}"
+      />
+    </view>
   </view>
 </view>
 

@@ -5770,9 +5770,8 @@ Page(withRoomLocalScreens(withPageInteractionLock({
   _commitInspirationKeyboardHeight(next) {
     const height = Math.max(0, Number(next) || 0);
     const dockBottom = height > 0 ? this._resolveInspirationDockBottom(height) : 0;
-    const dockStyle = height > 0
-      ? buildKeyboardBottomStyle(dockBottom)
-      : (this._inspirationNativeFocused || this.data.inspirationInputFocused ? 'bottom: 0;' : '');
+    // 仅键盘升起时位移；聚焦但高度为 0 时清空，保持文档流。
+    const dockStyle = height > 0 ? buildKeyboardBottomStyle(dockBottom) : '';
     if (
       height === this.data.inspirationKeyboardHeight
       && dockStyle === (this.data.inspirationDockStyle || '')
@@ -5817,9 +5816,8 @@ Page(withRoomLocalScreens(withPageInteractionLock({
       this._inspirationBlurTimer = null;
     }
     this._inspirationNativeFocused = true;
-    // 原生 input 会在 keyboardheightchange 之前完成首帧定位。先移除底栏并把宿主
-    // 钉到 fixed bottom:0，避免底栏回流与键盘抬升同帧叠出空隙。
-    // Android 首次唤起时精确高度也可能只出现在 focus.detail.height。
+    // 先切聚焦态与背景；有精确键盘高度时再 fixed 停靠。
+    // 无高度时保持文档流，避免 fixed+占位抽空布局留下大块空隙。
     const focusKeyboardHeight = keyboardHeightFromEvent(e);
     const patch = {};
     if (!this.data.inspirationInputFocused) {
@@ -5830,8 +5828,8 @@ Page(withRoomLocalScreens(withPageInteractionLock({
       patch.inspirationKeyboardHeight = focusKeyboardHeight;
       patch.inspirationDockStyle = buildKeyboardBottomStyle(dockBottom);
       patch.keyboardViewportStyle = buildKeyboardViewportStyle(this.data.expressKeyboardHeight);
-    } else if (!(this.data.inspirationKeyboardHeight > 0)) {
-      patch.inspirationDockStyle = 'bottom: 0;';
+    } else if (!(this.data.inspirationKeyboardHeight > 0) && this.data.inspirationDockStyle) {
+      patch.inspirationDockStyle = '';
     }
     if (Object.keys(patch).length) this.setData(patch);
   },

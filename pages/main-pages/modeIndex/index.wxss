@@ -8,7 +8,7 @@
   overflow: hidden;
 }
 
-/* 房主页：头/线下卡固定，仅脑暴列表滚动 */
+/* 房主页：头/新建卡固定，仅脑暴列表滚动（列表内：线下 → 案例） */
 .host-page {
   flex: 1;
   min-height: 0;
@@ -131,15 +131,73 @@
 }
 
 /* ===== 主内容区 ===== */
-/* Figma Main: padding 0 20px, gap 32px → 0 40rpx, gap 64rpx */
 .main-content {
   flex: 1;
   min-height: 0;
   padding: 0 40rpx;
   display: flex;
   flex-direction: column;
-  gap: 64rpx;
+  gap: 40rpx;
   box-sizing: border-box;
+}
+
+/* ===== 新建情境卡片（主入口） ===== */
+.create-card {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 55%, #f8fafc 100%);
+  border: 2rpx solid #5eba6d;
+  border-radius: 48rpx;
+  padding: 28rpx 40rpx;
+  box-shadow: 0 16rpx 20rpx -12rpx rgba(13, 128, 23, 0.12),
+              0 20rpx 40rpx -16rpx rgba(13, 128, 23, 0.08);
+}
+
+.create-card:active {
+  opacity: 0.92;
+}
+
+.create-card-inner {
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+}
+
+.create-icon-wrap {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 28rpx;
+  background-color: #dcfce7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.create-icon {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.create-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.create-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #166534;
+  line-height: 56rpx;
+}
+
+.create-desc {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #6b7280;
+  line-height: 36rpx;
 }
 
 /* ===== 线下情境卡片 ===== */
@@ -300,38 +358,6 @@
   color: #1f2937;
 }
 
-.section-add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 5;
-  height: 64rpx;
-  padding: 0 22rpx 0 20rpx;
-  border-radius: 9999rpx;
-  border: 2rpx solid #5eba6d;
-  background-color: rgba(220, 252, 231, 0.9);
-  gap: 12rpx;
-}
-
-.section-add-btn:active {
-  background-color: rgba(220, 252, 231, 1);
-}
-
-.section-add-text {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #5eba6d;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.section-add-icon {
-  width: 40rpx;
-  height: 40rpx;
-}
-
 /* ===== 情境列表（唯一可滚动区域） ===== */
 .scenario-list {
   flex: 1;
@@ -340,6 +366,7 @@
   box-sizing: border-box;
 }
 
+.scenario-list .offline-card,
 .scenario-list .scenario-item {
   margin-bottom: 32rpx;
 }

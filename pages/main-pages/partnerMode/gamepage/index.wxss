@@ -9,6 +9,52 @@
   box-sizing: border-box;
 }
 
+/* 聚焦灵感输入：整页切到灵感空间青绿雾感背景 */
+.container-inspiration-composing {
+  position: relative;
+  background:
+    radial-gradient(ellipse 90% 55% at 12% -8%, rgba(126, 224, 186, 0.55) 0%, transparent 58%),
+    radial-gradient(ellipse 70% 45% at 92% 18%, rgba(94, 193, 89, 0.28) 0%, transparent 52%),
+    radial-gradient(ellipse 80% 50% at 50% 108%, rgba(0, 140, 120, 0.18) 0%, transparent 55%),
+    linear-gradient(168deg, #d8f0e4 0%, #eaf6ef 38%, #f3faf6 72%, #e4f2ea 100%);
+}
+
+.container-inspiration-composing::before {
+  content: '';
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  top: 18%;
+  height: 42%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.55) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container-inspiration-composing::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container-inspiration-composing > .page-body,
+.container-inspiration-composing > .game-inspiration-dock,
+.container-inspiration-composing > .game-inspiration-dock-spacer,
+.container-inspiration-composing > partner-game-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.container-inspiration-composing .game-inspiration-dock-keyboard {
+  background: transparent;
+}
+
 /* 历史回顾：一屏定高，禁止整页滚动；灵感栏贴底并可随键盘上移 */
 .container-history-review {
   height: 100vh;
@@ -54,6 +100,7 @@
 /*
  * 灵感输入宿主不放进 page-body，避免 iOS 原生 input 被 overflow:hidden 裁切。
  * 键盘打开后宿主直接固定到键盘上沿，节点本身不重建。
+ * fixed 时用同高占位条保住 flex 高度，并抬高层级，避免卡片回流盖住输入栏。
  */
 .game-inspiration-dock {
   flex-shrink: 0;
@@ -61,12 +108,25 @@
   z-index: 60;
 }
 
+.game-inspiration-dock-spacer {
+  flex-shrink: 0;
+  height: calc(110rpx + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+
 .game-inspiration-dock-keyboard {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 120;
+  z-index: 800;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+  background: #fafafa;
+}
+
+.game-inspiration-dock-keyboard-raised {
+  padding-bottom: 0;
 }
 
 /* Figma #5848:3368 — 顶部内容避开微信胶囊 */

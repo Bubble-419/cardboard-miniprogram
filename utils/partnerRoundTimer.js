@@ -147,6 +147,24 @@ function getRoundRectSegmentProgresses(ratio, w, h, r) {
   });
 }
 
+/**
+ * 圆角描边几何：路径内缩 stroke/2，圆心半径用 outerR - stroke/2，
+ * 使描边外沿对齐外框圆角、内沿对齐白卡片圆角，避免被白底挡住。
+ */
+function roundedStrokeMetrics(w, h, strokeWidthPx, outerRadiusPx) {
+  const thick = Math.max(0, Number(strokeWidthPx) || 0);
+  const outerR = Math.max(0, Number(outerRadiusPx) || 0);
+  const pad = thick / 2 + 0.5;
+  const xL = pad;
+  const yT = pad;
+  const xR = w - pad;
+  const yB = h - pad;
+  const iw = xR - xL;
+  const ih = yB - yT;
+  const r = Math.max(0, Math.min(Math.max(0, outerR - thick / 2), iw / 2, ih / 2));
+  return { xL, yT, xR, yB, iw, ih, r, thick };
+}
+
 module.exports = {
   ROUND_DURATION_SEC,
   PAGINATION_MAX_VISIBLE,
@@ -157,5 +175,6 @@ module.exports = {
   getRoundTimerState,
   buildPaginationIndexes,
   buildPaginationDots,
-  getRoundRectSegmentProgresses
+  getRoundRectSegmentProgresses,
+  roundedStrokeMetrics
 };

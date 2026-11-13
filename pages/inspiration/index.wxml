@@ -57,7 +57,7 @@
           </view>
 
           <view class="card-content" wx:if="{{inspiration.type === 'text'}}">
-            <text class="card-text">{{inspiration.content}}</text>
+            <text class="card-text" user-select selectable>{{inspiration.content}}</text>
           </view>
 
           <view class="card-content" wx:if="{{inspiration.type === 'image'}}">
@@ -69,7 +69,7 @@
               data-id="{{inspiration.id}}"
               binderror="onInspirationImageError"
             ></image>
-            <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
+            <text class="card-text" user-select selectable wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
           </view>
 
           <view class="card-content" wx:if="{{inspiration.type === 'audio'}}">
@@ -82,7 +82,7 @@
                 <view class="wave-bar" wx:for="{{[1,2,3,4,5,6,7,8]}}" wx:key="*this"></view>
               </view>
             </view>
-            <text class="card-text" wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
+            <text class="card-text" user-select selectable wx:if="{{inspiration.content}}">{{inspiration.content}}</text>
           </view>
 
           <!-- AI_TEMP_DISABLED: 恢复 AI 时改回 wx:if="{{inspiration.isAIGenerated}}" -->
@@ -104,6 +104,13 @@
     style="{{inspirationLiftStyle}}"
   >
     <view class="inspiration-composer {{inspirationInputFocused || inspirationKeyboardHeight > 0 ? 'inspiration-composer-focused' : ''}}" catchtap="onInspirationComposerTap">
+      <view
+        class="inspiration-composer-label"
+        wx:if="{{inspirationInputFocused || inspirationKeyboardHeight > 0}}"
+      >
+        <view class="inspiration-composer-label-mark"></view>
+        <text class="inspiration-composer-label-text">灵感记录</text>
+      </view>
       <scroll-view
         wx:if="{{inspirationDraftPhotos.length}}"
         class="inspiration-photo-strip"
@@ -141,7 +148,7 @@
           bindblur="onInspirationBlur"
           bindinput="onInspirationInput"
           bindkeyboardheightchange="onInspirationKeyboardHeightChange"
-          placeholder="记录您的灵感..."
+          placeholder="记录一条灵感"
           placeholder-class="inspiration-placeholder"
           maxlength="2000"
           auto-height

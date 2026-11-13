@@ -34,7 +34,7 @@
           </view>
           <view class="gan-step-copy">
             <text class="step-title">洗牌发牌</text>
-            <text class="step-desc">打乱所有卡牌，随机分给玩家，每人获得相同数量的卡牌。</text>
+            <text class="step-desc">打乱所有卡牌，随机分给玩家，每人随机获得8张组件卡。</text>
           </view>
         </view>
 

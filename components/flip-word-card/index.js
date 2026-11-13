@@ -4,7 +4,9 @@
  * skipBack：跳过背面，词语 → 词语1 → 词语 …（牌库浏览用）
  * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1
  *
- * 交互：点击前进一态；上滑前进、下滑后退。手势在组件内 catch，避免误触页面返回。
+ * 交互：单击/上下滑翻页；开启 fullscreenOnAssigned 时双击请求横屏全屏。
+ * landscapeGestures：父级 rotate(90deg) 横屏叠层时，左右滑也按视觉上下翻页。
+ * 手势在组件内 catch，避免误触页面返回。
  */
 
 const SWIPE_THRESHOLD_PX = 36;
@@ -12,6 +14,8 @@ const SWIPE_THRESHOLD_PX = 36;
 const TAP_SLOP_PX = 14;
 /** 竖直位移需明显大于水平，才认定为上下翻手势 */
 const VERTICAL_AXIS_RATIO = 1.2;
+/** 双击判定窗口；单击翻页会延迟到窗口结束，避免与双击抢手势 */
+const DOUBLE_TAP_MS = 280;
 
 Component({
   properties: {
@@ -26,8 +30,12 @@ Component({
     skipBack: { type: Boolean, value: false },
     /** 为 true 时仅背面 ↔ 词语两态翻转，跳过词语1（第三态） */
     twoFaceOnly: { type: Boolean, value: false },
-    /** 已展示分配词时，再次点击改为请求父级全屏展示，不翻回背面 */
-    fullscreenOnAssigned: { type: Boolean, value: false }
+    /** 为 true 时双击请求父级横屏全屏；单击与滑动仍只翻页 */
+    fullscreenOnAssigned: { type: Boolean, value: false },
+    /** 挂载时优先进入的卡面：back / assignedWord / word1 */
+    initialCardState: { type: String, value: '' },
+    /** 为 true 时左右滑也翻页（配合父级横屏旋转叠层） */
+    landscapeGestures: { type: Boolean, value: false }
   },
 
   data: {
@@ -64,7 +72,16 @@ Component({
   },
 
   methods: {
+    _normalizeState(state) {
+      if (state !== 'back' && state !== 'assignedWord' && state !== 'word1') return null;
+      if (this.data.skipBack && state === 'back') return 'assignedWord';
+      if (this.data.twoFaceOnly && state === 'word1') return 'assignedWord';
+      return state;
+    },
+
     _initialState() {
+      const preferred = this._normalizeState(this.data.initialCardState);
+      if (preferred) return preferred;
       return this.data.skipBack ? 'assignedWord' : 'back';
     },
 
@@ -77,8 +94,15 @@ Component({
       this._unlockTimer = null;
     },
 
+    _clearPendingTap() {
+      if (this._pendingTapTimer) clearTimeout(this._pendingTapTimer);
+      this._pendingTapTimer = null;
+      this._lastTapAt = 0;
+    },
+
     _clearTimers() {
       this._clearFlipTimers();
+      this._clearPendingTap();
       if (this._tapGuardTimer) clearTimeout(this._tapGuardTimer);
       this._tapGuardTimer = null;
     },
@@ -185,8 +209,22 @@ Component({
       const absDy = Math.abs(dy);
 
       if (absDy >= SWIPE_THRESHOLD_PX && absDy >= absDx * VERTICAL_AXIS_RATIO) {
+        this._clearPendingTap();
         this._guardTapAfterSwipe();
         if (dy < 0) this._requestFlip('next', 'up');
+        else this._requestFlip('prev', 'down');
+        return;
+      }
+
+      // 横屏叠层（父级 rotate 90deg）：屏幕左右对应卡面视觉上下
+      if (
+        this.data.landscapeGestures
+        && absDx >= SWIPE_THRESHOLD_PX
+        && absDx >= absDy * VERTICAL_AXIS_RATIO
+      ) {
+        this._clearPendingTap();
+        this._guardTapAfterSwipe();
+        if (dx > 0) this._requestFlip('next', 'up');
         else this._requestFlip('prev', 'down');
         return;
       }
@@ -212,13 +250,38 @@ Component({
       this._handleCardTap();
     },
 
+    _emitFullscreen() {
+      const state = this.data.cardState;
+      this.triggerEvent('fullscreen', {
+        word: this.data.word || '',
+        cardState: state,
+        src: this._srcForState(state) || this.data.assignedWordSrc || this.data.assignedWordFallbackSrc || ''
+      });
+    },
+
     _handleCardTap() {
       if (this.data.animating) return;
-      if (this.data.fullscreenOnAssigned && this.data.cardState === 'assignedWord') {
-        this.triggerEvent('fullscreen', { word: this.data.word || '' });
+
+      if (!this.data.fullscreenOnAssigned) {
+        this._requestFlip('next', 'up');
         return;
       }
-      this._requestFlip('next', 'up');
+
+      const now = Date.now();
+      if (this._lastTapAt && now - this._lastTapAt <= DOUBLE_TAP_MS) {
+        this._clearPendingTap();
+        this._emitFullscreen();
+        return;
+      }
+
+      this._lastTapAt = now;
+      if (this._pendingTapTimer) clearTimeout(this._pendingTapTimer);
+      this._pendingTapTimer = setTimeout(() => {
+        this._pendingTapTimer = null;
+        this._lastTapAt = 0;
+        if (this.data.animating) return;
+        this._requestFlip('next', 'up');
+      }, DOUBLE_TAP_MS);
     },
 
     _requestFlip(direction, axisDir) {

@@ -1,2 +1,11 @@
 'use strict';
-module.exports = Object.freeze(["handleGoRoom","onTapCard","noop","onCloseViewer","handleGoBack"]);
+module.exports = Object.freeze([
+  "handleGoRoom",
+  "onTapCard",
+  "onToggleCategory",
+  "noop",
+  "onCloseViewer",
+  "onOpenCardFullscreen",
+  "onCloseCardFullscreen",
+  "handleGoBack"
+]);
