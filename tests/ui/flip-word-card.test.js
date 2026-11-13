@@ -252,4 +252,10 @@ test('谁是卧底牌库按四类分组且编号归属正确', () => {
   const libraryWxml = read('packageSpy/pages/cardLibrary/index.wxml');
   assert.match(libraryWxml, /wx:for="\{\{categories\}\}"/);
   assert.match(libraryWxml, /category-title/);
+  assert.match(libraryWxml, /bindtap="onToggleCategory"/);
+  assert.match(libraryWxml, /wx:if="\{\{!group\.collapsed\}\}"/);
+
+  const speakWxml = read('packageSpy/pages/speak/index.wxml');
+  assert.match(speakWxml, /bindtap="onToggleLibraryCategory"/);
+  assert.match(speakWxml, /library-category-chevron/);
 });

@@ -75,7 +75,7 @@ Page(withPageInteractionLock({
     tiedNamesText: '',
     viewerOpen: false,
     identityCardFullscreenOpen: false,
-    identityCardFullscreenSrc: '',
+    identityCardFullscreen: null,
     selectedWord: '',
     selectedCard: null,
     panelScrollY: true
@@ -95,7 +95,10 @@ Page(withPageInteractionLock({
     this.setData({
       roomId: (options && options.roomId) || getApp().globalData.roomId || '',
       libraryGroupCount: getLibraryGroupCount(),
-      libraryCategories: listLibraryCategories(),
+      libraryCategories: listLibraryCategories().map((group) => ({
+        ...group,
+        collapsed: false
+      })),
       libraryCards: listLibraryCards(),
       contentTab: 0
     });
@@ -111,7 +114,7 @@ Page(withPageInteractionLock({
   onHide() {
     this._pageAlive = false;
     if (this.data.identityCardFullscreenOpen) {
-      this.setData({ identityCardFullscreenOpen: false, identityCardFullscreenSrc: '' });
+      this.setData({ identityCardFullscreenOpen: false, identityCardFullscreen: null });
     }
     this.stopPolling();
   },
@@ -289,6 +292,19 @@ Page(withPageInteractionLock({
     });
   },
 
+  onToggleLibraryCategory(e) {
+    const id = e && e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.id
+      : '';
+    if (!id) return;
+    const libraryCategories = (this.data.libraryCategories || []).map((group) => (
+      group.id === id
+        ? { ...group, collapsed: !group.collapsed }
+        : group
+    ));
+    this.setData({ libraryCategories });
+  },
+
   onTapLibraryCard(e) {
     const word = e.currentTarget.dataset.word;
     const card = (this.data.libraryCards || []).find((c) => c.word === word);
@@ -311,13 +327,18 @@ Page(withPageInteractionLock({
   onOpenIdentityCardFullscreen(e) {
     if (!this.data.cardReady || !this.data.myWord) return;
     const detail = (e && e.detail) || {};
-    const src = detail.src
-      || this.data.assignedWordSrc
-      || this.data.assignedWordFallbackSrc
-      || '';
     this.setData({
       identityCardFullscreenOpen: true,
-      identityCardFullscreenSrc: src
+      identityCardFullscreen: {
+        word: this.data.myWord,
+        skipBack: false,
+        initialCardState: detail.cardState || 'assignedWord',
+        backSrc: this.data.cardBackSrc || '',
+        assignedWordSrc: this.data.assignedWordSrc || '',
+        assignedWordFallbackSrc: this.data.assignedWordFallbackSrc || '',
+        word1Src: this.data.word1Src || '',
+        word1FallbackSrc: this.data.word1FallbackSrc || ''
+      }
     });
   },
 
@@ -325,22 +346,31 @@ Page(withPageInteractionLock({
     const card = this.data.selectedCard;
     if (!card) return;
     const detail = (e && e.detail) || {};
-    const src = detail.src
-      || card.assignedWordSrc
+    const hasFace = !!(
+      card.assignedWordSrc
       || card.assignedWordFallbackSrc
       || card.word1Src
       || card.word1FallbackSrc
-      || '';
-    if (!src) return;
+    );
+    if (!hasFace) return;
     this.setData({
       identityCardFullscreenOpen: true,
-      identityCardFullscreenSrc: src
+      identityCardFullscreen: {
+        word: card.word || this.data.selectedWord || '',
+        skipBack: true,
+        initialCardState: detail.cardState || 'assignedWord',
+        backSrc: '',
+        assignedWordSrc: card.assignedWordSrc || '',
+        assignedWordFallbackSrc: card.assignedWordFallbackSrc || '',
+        word1Src: card.word1Src || '',
+        word1FallbackSrc: card.word1FallbackSrc || ''
+      }
     });
   },
 
   onCloseIdentityCardFullscreen() {
     if (!this.data.identityCardFullscreenOpen) return;
-    this.setData({ identityCardFullscreenOpen: false, identityCardFullscreenSrc: '' });
+    this.setData({ identityCardFullscreenOpen: false, identityCardFullscreen: null });
   },
   onFinishSpeak() {
     return runPageInteraction(this, () => this._finishSpeak(), {
@@ -381,6 +411,7 @@ Page(withPageInteractionLock({
   'onTapContentTab',
   'onPanelTouchStart',
   'onPanelTouchEnd',
+  'onToggleLibraryCategory',
   'onTapLibraryCard',
   'onCloseViewer',
   'onOpenIdentityCardFullscreen',

@@ -2,6 +2,7 @@
 module.exports = Object.freeze([
   "handleGoRoom",
   "onTapCard",
+  "onToggleCategory",
   "noop",
   "onCloseViewer",
   "onOpenCardFullscreen",

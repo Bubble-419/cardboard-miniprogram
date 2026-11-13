@@ -233,6 +233,10 @@
   padding: 0 4rpx;
 }
 
+.library-category.is-collapsed .library-category-heading {
+  margin-bottom: 0;
+}
+
 .library-category-mark {
   width: 8rpx;
   height: 26rpx;
@@ -251,6 +255,14 @@
 .library-category-count {
   font-size: 22rpx;
   font-weight: 500;
+  color: #94a3b8;
+  line-height: 36rpx;
+}
+
+.library-category-chevron {
+  margin-left: auto;
+  font-size: 26rpx;
+  font-weight: 600;
   color: #94a3b8;
   line-height: 36rpx;
 }
@@ -485,10 +497,12 @@
   transform-origin: center center;
 }
 
-.identity-card-fullscreen-image {
+.identity-card-fullscreen-card {
   width: 100%;
   height: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .identity-card-fullscreen-close {

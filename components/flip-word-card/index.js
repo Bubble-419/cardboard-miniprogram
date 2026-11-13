@@ -5,6 +5,7 @@
  * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1
  *
  * 交互：单击/上下滑翻页；开启 fullscreenOnAssigned 时双击请求横屏全屏。
+ * landscapeGestures：父级 rotate(90deg) 横屏叠层时，左右滑也按视觉上下翻页。
  * 手势在组件内 catch，避免误触页面返回。
  */
 
@@ -30,7 +31,11 @@ Component({
     /** 为 true 时仅背面 ↔ 词语两态翻转，跳过词语1（第三态） */
     twoFaceOnly: { type: Boolean, value: false },
     /** 为 true 时双击请求父级横屏全屏；单击与滑动仍只翻页 */
-    fullscreenOnAssigned: { type: Boolean, value: false }
+    fullscreenOnAssigned: { type: Boolean, value: false },
+    /** 挂载时优先进入的卡面：back / assignedWord / word1 */
+    initialCardState: { type: String, value: '' },
+    /** 为 true 时左右滑也翻页（配合父级横屏旋转叠层） */
+    landscapeGestures: { type: Boolean, value: false }
   },
 
   data: {
@@ -67,7 +72,16 @@ Component({
   },
 
   methods: {
+    _normalizeState(state) {
+      if (state !== 'back' && state !== 'assignedWord' && state !== 'word1') return null;
+      if (this.data.skipBack && state === 'back') return 'assignedWord';
+      if (this.data.twoFaceOnly && state === 'word1') return 'assignedWord';
+      return state;
+    },
+
     _initialState() {
+      const preferred = this._normalizeState(this.data.initialCardState);
+      if (preferred) return preferred;
       return this.data.skipBack ? 'assignedWord' : 'back';
     },
 
@@ -198,6 +212,19 @@ Component({
         this._clearPendingTap();
         this._guardTapAfterSwipe();
         if (dy < 0) this._requestFlip('next', 'up');
+        else this._requestFlip('prev', 'down');
+        return;
+      }
+
+      // 横屏叠层（父级 rotate 90deg）：屏幕左右对应卡面视觉上下
+      if (
+        this.data.landscapeGestures
+        && absDx >= SWIPE_THRESHOLD_PX
+        && absDx >= absDy * VERTICAL_AXIS_RATIO
+      ) {
+        this._clearPendingTap();
+        this._guardTapAfterSwipe();
+        if (dx > 0) this._requestFlip('next', 'up');
         else this._requestFlip('prev', 'down');
         return;
       }

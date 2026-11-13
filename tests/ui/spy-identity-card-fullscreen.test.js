@@ -140,11 +140,54 @@ test('发言页将卡牌全屏做成本地横屏叠层，并提供明确关闭�
 
   assert.match(markup, /fullscreenOnAssigned="\{\{true\}\}"/);
   assert.match(markup, /bind:fullscreen="onOpenIdentityCardFullscreen"/);
-  assert.match(markup, /wx:if="\{\{identityCardFullscreenOpen\}\}"/);
+  assert.match(markup, /wx:if="\{\{identityCardFullscreenOpen && identityCardFullscreen\}\}"/);
   assert.match(markup, /bindtap="onCloseIdentityCardFullscreen"/);
+  assert.match(markup, /landscapeGestures="\{\{true\}\}"/);
+  assert.match(markup, /initialCardState="\{\{identityCardFullscreen\.initialCardState\}\}"/);
+  assert.match(markup, /identity-card-fullscreen-card/);
+  assert.doesNotMatch(markup, /identity-card-fullscreen-image/);
   assert.match(source, /onOpenIdentityCardFullscreen\(/);
   assert.match(source, /onOpenLibraryCardFullscreen\(/);
   assert.match(source, /onCloseIdentityCardFullscreen\(/);
+  assert.match(source, /identityCardFullscreen:\s*\{/);
   assert.match(styles, /\.identity-card-fullscreen-mask\s*\{[\s\S]*?position:\s*fixed;/);
   assert.match(styles, /\.identity-card-fullscreen-stage\s*\{[\s\S]*?rotate\(90deg\)/);
+});
+
+test('全屏叠层内左右滑按横屏视觉方向翻页', () => {
+  const definition = loadComponent();
+  const component = makeComponent(definition, {
+    landscapeGestures: true,
+    cardState: 'assignedWord',
+    assignedWordSrc: 'word.png',
+    word1Src: 'word1.png',
+    backSrc: 'back.png',
+    animating: false
+  });
+  const flips = [];
+  component._flipTo = (next, dir) => { flips.push({ next, dir }); };
+
+  component.onTouchStart({ changedTouches: [{ clientX: 100, clientY: 200 }] });
+  component.onTouchEnd({ changedTouches: [{ clientX: 160, clientY: 204 }] });
+  assert.deepEqual(flips, [{ next: 'word1', dir: 'up' }]);
+
+  flips.length = 0;
+  component.data.cardState = 'word1';
+  component.onTouchStart({ changedTouches: [{ clientX: 160, clientY: 200 }] });
+  component.onTouchEnd({ changedTouches: [{ clientX: 100, clientY: 204 }] });
+  assert.deepEqual(flips, [{ next: 'assignedWord', dir: 'down' }]);
+});
+
+test('initialCardState 可指定全屏打开时的起始面', () => {
+  const definition = loadComponent();
+  const component = makeComponent(definition, {
+    skipBack: true,
+    initialCardState: 'word1',
+    assignedWordSrc: 'word.png',
+    word1Src: 'word1.png'
+  });
+  assert.equal(component._initialState(), 'word1');
+  component.data.skipBack = false;
+  component.data.initialCardState = 'assignedWord';
+  assert.equal(component._initialState(), 'assignedWord');
 });
