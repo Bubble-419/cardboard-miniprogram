@@ -19,7 +19,6 @@ const {
 const ROOT = path.join(__dirname, '..');
 
 const ENTRIES = [
-  { type: 'dir', rel: 'packageSpy/assets/interactionCards/webp' },
   { type: 'file', rel: 'assets/subAwait/wait-hero-5a8ea5.webp' },
   { type: 'file', rel: 'assets/home/empty-history-6f27f1.webp' },
   { type: 'file', rel: 'assets/brainstormMode/mode-cover-halligalli.jpg' },

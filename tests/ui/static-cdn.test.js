@@ -38,13 +38,27 @@ test('CDN URL 使用 miniprogram-static 根下的文件名，并编码中文', (
   assert.equal(staticFileName('assets/halliGalli/step-deal.webp'), 'step-deal.webp');
 });
 
-test('Spy 交互卡与牌背改为 CDN URL，不再引用代码包路径', () => {
+test('Spy 交互卡与牌背随分包发布，不再读取 CDN', () => {
   const assets = getWordCardAssets('开关');
-  assert.equal(assets.assignedWordSrc, staticCdnUrl('packageSpy/assets/interactionCards/webp/开关3x.webp'));
-  assert.equal(assets.word1Src, staticCdnUrl('packageSpy/assets/interactionCards/webp/开关13x.webp'));
-  assert.equal(CARD_BACK_WEBP, staticCdnUrl('packageSpy/assets/interactionCards/webp/背面3x.webp'));
-  assert.doesNotMatch(assets.assignedWordSrc, /^\/packageSpy\//);
-  assert.match(assets.assignedWordSrc, /^https:\/\//);
+  assert.equal(assets.assignedWordSrc, '/packageSpy/assets/interactionCards/webp/开关3x.webp');
+  assert.equal(assets.word1Src, '/packageSpy/assets/interactionCards/webp/开关13x.webp');
+  assert.equal(CARD_BACK_WEBP, '/packageSpy/assets/interactionCards/webp/背面3x.webp');
+  assert.doesNotMatch(assets.assignedWordSrc, /^https:\/\//);
+  const config = JSON.parse(read('project.config.json'));
+  const ignore = (config.packOptions && config.packOptions.ignore) || [];
+  assert.ok(!ignore.some((item) => item.value === 'packageSpy/assets'));
+  const pkg = path.join(ROOT, 'packageSpy');
+  let total = 0;
+  const walk = (dir) => {
+    fs.readdirSync(dir).forEach((name) => {
+      const abs = path.join(dir, name);
+      const stat = fs.statSync(abs);
+      if (stat.isDirectory()) walk(abs);
+      else total += stat.size;
+    });
+  };
+  walk(pkg);
+  assert.ok(total < 2 * 1024 * 1024, `packageSpy ${total} exceeds 2MB`);
 });
 
 test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', () => {
@@ -124,9 +138,4 @@ test('平铺到云存储根目录的文件名互不冲突', () => {
   add('assets/home/empty-history-6f27f1.webp');
   ['halligalli', 'partner', 'spy'].forEach((id) => add(`assets/brainstormMode/mode-cover-${id}.jpg`));
   ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => add(`assets/halliGalli/step-${key}.webp`));
-  const spyDir = path.join(ROOT, 'packageSpy/assets/interactionCards/webp');
-  fs.readdirSync(spyDir).forEach((name) => {
-    const abs = path.join(spyDir, name);
-    if (fs.statSync(abs).isFile()) add(`packageSpy/assets/interactionCards/webp/${name}`);
-  });
 });
