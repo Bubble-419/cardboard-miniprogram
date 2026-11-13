@@ -124,7 +124,7 @@
   aspect-ratio: 16 / 10;
   position: relative;
   box-sizing: border-box;
-  background: #eef2f6;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }
@@ -292,7 +292,7 @@
   position: relative;
   border-radius: 16rpx;
   overflow: hidden;
-  background: #e8edf2;
+  background: transparent;
 }
 
 .tile-cover {
@@ -457,7 +457,7 @@
   max-width: 100%;
   margin: 0 auto;
   aspect-ratio: 16 / 10;
-  background: #eef2f6;
+  background: transparent;
   border-radius: 18rpx;
   overflow: hidden;
 }
