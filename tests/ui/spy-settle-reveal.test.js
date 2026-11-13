@@ -33,13 +33,24 @@ test('Spy 结算 reveal 把 nickName/词语映射为页面可展示字段', () =
   ]);
 });
 
-test('Spy 结算页绑定玩家-词语对照，不依赖空的 name 字段', () => {
+test('Spy 结算页词语与玩家名同行，点击词语可翻阅本局词对', () => {
   const root = path.resolve(__dirname, '../..');
   const source = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.js'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.wxml'), 'utf8');
+  const pageJson = fs.readFileSync(path.join(root, 'packageSpy/pages/settle/index.json'), 'utf8');
   assert.match(source, /buildSpyRevealPlayers/);
+  assert.match(source, /onTapRevealWord/);
+  assert.match(source, /onViewerHorizontalSwipe/);
+  assert.match(source, /buildGamePairCards/);
   assert.match(template, /全员身份与词语/);
-  assert.match(template, /词语：\{\{item\.word\}\}/);
+  assert.match(template, /player-main/);
+  assert.match(template, /catchtap="onTapRevealWord"/);
   assert.match(template, /\{\{item\.name\}\}/);
+  assert.match(template, /\{\{item\.word\}\}/);
   assert.match(template, /\{\{item\.roleLabel\}\}/);
+  assert.match(template, /enableHorizontalSwipe="\{\{true\}\}"/);
+  assert.match(template, /bind:horizontalswipe="onViewerHorizontalSwipe"/);
+  assert.match(template, /bind:fullscreen="onOpenCardFullscreen"/);
+  assert.match(pageJson, /flip-word-card/);
+  assert.doesNotMatch(template, /词语：\{\{item\.word\}\}/);
 });

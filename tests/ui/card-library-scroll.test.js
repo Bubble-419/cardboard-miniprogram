@@ -37,7 +37,7 @@ test('牌库最后一类词卡仍可打开/关闭；后退只关闭本地屏幕�
   };
   const definition = withLocalScreens({ data: { draft: '保持原来的输入' } }, {
     '/library': { name: 'library', routes: ['spyIntro'], create: createLibrary,
-      intents: ['onTapCard', 'onCloseViewer', 'handleGoBack'] }
+      intents: ['onTapCard', 'onCloseViewer', 'onOpenCardFullscreen', 'onCloseCardFullscreen', 'handleGoBack'] }
   });
   const page = { ...definition, route: 'packageSpy/pages/modeIndex/index',
     data: structuredClone(definition.data),
@@ -56,6 +56,14 @@ test('牌库最后一类词卡仍可打开/关闭；后退只关闭本地屏幕�
     page._localScreens.intent(token, 'onTapCard', { currentTarget: { dataset: { word: last.word } } });
     assert.equal(screen.data.selectedCard.word, last.word);
     assert.equal(screen.data.viewerOpen, true);
+    page._localScreens.intent(token, 'onOpenCardFullscreen', {
+      detail: { cardState: 'word1', src: last.word1Src || last.assignedWordSrc }
+    });
+    assert.equal(screen.data.cardFullscreenOpen, true);
+    assert.equal(screen.data.cardFullscreen.word, last.word);
+    assert.equal(screen.data.cardFullscreen.initialCardState, 'word1');
+    page._localScreens.intent(token, 'onCloseCardFullscreen', {});
+    assert.equal(screen.data.cardFullscreenOpen, false);
     page._localScreens.intent(token, 'onCloseViewer', {});
     assert.equal(screen.data.viewerOpen, false);
     assert.equal(page._localScreens.current(), screen, '关闭翻牌不关闭牌库');
@@ -67,4 +75,20 @@ test('牌库最后一类词卡仍可打开/关闭；后退只关闭本地屏幕�
     page.onUnload();
     Object.assign(global, previous);
   }
+});
+
+test('开局前牌库全屏与发言页一致：可翻面叠层并为 flip-word-card 宿主指定尺寸', () => {
+  const template = read('packageSpy/pages/cardLibrary/index.wxml');
+  const styles = read('packageSpy/pages/cardLibrary/index.wxss');
+  assert.match(template, /fullscreenOnAssigned="\{\{true\}\}"/);
+  assert.match(template, /bind:fullscreen="onOpenCardFullscreen"/);
+  assert.match(template, /wx:if="\{\{cardFullscreenOpen && cardFullscreen\}\}"/);
+  assert.match(template, /landscapeGestures="\{\{true\}\}"/);
+  assert.match(template, /initialCardState="\{\{cardFullscreen\.initialCardState\}\}"/);
+  assert.match(styles, /\.card-fullscreen-mask\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.match(styles, /\.card-fullscreen-stage\s*\{[\s\S]*?rotate\(90deg\)/);
+  assert.match(
+    styles,
+    /\.card-fullscreen-card\s+flip-word-card\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*100%;/
+  );
 });

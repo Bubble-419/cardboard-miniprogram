@@ -58,14 +58,20 @@ test('Spy 发言页向全体非发言玩家展示当前发言人提示', () => {
   const root = path.resolve(__dirname, '../..');
   const source = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.js'), 'utf8');
   const template = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxml'), 'utf8');
+  const styles = fs.readFileSync(path.join(root, 'packageSpy/pages/speak/index.wxss'), 'utf8');
   assert.match(source, /currentSpeakerName:/);
-  assert.match(template, /\{\{waitingHintPrefix\}\}：\{\{currentSpeakerName\}\}/);
+  assert.match(source, /currentSpeakerAvatar:/);
+  assert.match(template, /\{\{waitingHintPrefix\}\}/);
+  assert.match(template, /action-hint-avatar/);
+  assert.match(template, /\{\{currentSpeakerAvatar\}\}/);
+  assert.match(template, /\{\{currentSpeakerName\}\}/);
   assert.match(template, /wx:if="\{\{!isCurrentSpeaker && currentSpeakerName\}\}"/);
   assert.doesNotMatch(template, /isHost && !isCurrentSpeaker && currentSpeakerName/);
   assert.match(
     template,
     /wx:if="\{\{isCurrentSpeaker \|\| currentSpeakerName\}\}"/
   );
+  assert.match(styles, /\.action-hint-avatar[\s\S]*?48rpx/);
 });
 
 test('Spy 投票页房主可开启提问轮，提问页复用发言壳', () => {

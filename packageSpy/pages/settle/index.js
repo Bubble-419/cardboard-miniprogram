@@ -12,9 +12,38 @@ const {
   bumpSpyRoomSession
 } = require('../../utils/spyMode');
 const {
+  getWordCardAssets,
+  listLibraryCards
+} = require('../../utils/spyWordCardAssets');
+const {
   runPageInteraction,
   withPageInteractionLock
 } = require('../../../utils/pageInteractionLock');
+
+function buildGamePairCards(civilianWord, spyWord) {
+  const libraryByWord = {};
+  listLibraryCards().forEach((card) => {
+    if (card && card.word) libraryByWord[card.word] = card;
+  });
+
+  return [
+    { word: civilianWord, roleTag: '平民词' },
+    { word: spyWord, roleTag: '卧底词' }
+  ].filter((item) => item.word).map((item) => {
+    const fromLibrary = libraryByWord[item.word] || {};
+    const assets = getWordCardAssets(item.word);
+    return {
+      word: item.word,
+      displayName: fromLibrary.displayName || item.word,
+      roleTag: item.roleTag,
+      blurb: fromLibrary.blurb || '',
+      assignedWordSrc: assets.assignedWordSrc,
+      assignedWordFallbackSrc: assets.assignedWordFallbackSrc,
+      word1Src: assets.word1Src,
+      word1FallbackSrc: assets.word1FallbackSrc
+    };
+  });
+}
 
 Page(withPageInteractionLock({
   data: {
@@ -25,8 +54,14 @@ Page(withPageInteractionLock({
     civilianWord: '',
     spyWord: '',
     revealPlayers: [],
+    gamePairCards: [],
     isHost: false,
-    acting: false
+    acting: false,
+    viewerOpen: false,
+    selectedCardIndex: 0,
+    selectedCard: null,
+    cardFullscreenOpen: false,
+    cardFullscreen: null
   },
 
   onLoad(options) {
@@ -78,22 +113,122 @@ Page(withPageInteractionLock({
           : null;
         const winnerSide = spyGame.winnerSide || '';
         const revealPlayers = buildSpyRevealPlayers(spyGame);
+        const civilianWord = spyGame.civilianWord || '';
+        const spyWord = spyGame.spyWord || '';
+        const gamePairCards = buildGamePairCards(civilianWord, spyWord);
 
-        this.setData({
+        const patch = {
           avatarList: buildAvatarList(result.members || []),
           isHost: result.isHost === true,
           winnerSide,
           winnerText: winnerLabel(winnerSide) || '本局结束',
-          civilianWord: spyGame.civilianWord || '',
-          spyWord: spyGame.spyWord || '',
-          revealPlayers
-        }, () => {
+          civilianWord,
+          spyWord,
+          revealPlayers,
+          gamePairCards
+        };
+
+        if (this.data.viewerOpen) {
+          const nextIndex = Math.min(
+            this.data.selectedCardIndex || 0,
+            Math.max(gamePairCards.length - 1, 0)
+          );
+          patch.selectedCardIndex = nextIndex;
+          patch.selectedCard = gamePairCards[nextIndex] || null;
+          if (!patch.selectedCard) {
+            patch.viewerOpen = false;
+            patch.selectedCardIndex = 0;
+          }
+        }
+
+        this.setData(patch, () => {
           if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });
       } catch (e) {
         console.warn('spy settle refresh', e);
       }
     });
+  },
+
+  onTapRevealWord(e) {
+    const word = e && e.currentTarget && e.currentTarget.dataset
+      ? e.currentTarget.dataset.word
+      : '';
+    if (!word) return;
+    const cards = this.data.gamePairCards || [];
+    let index = cards.findIndex((card) => card.word === word);
+    if (index < 0) {
+      const rebuilt = buildGamePairCards(
+        this.data.civilianWord,
+        this.data.spyWord
+      );
+      index = rebuilt.findIndex((card) => card.word === word);
+      if (index < 0) return;
+      this.setData({
+        gamePairCards: rebuilt,
+        selectedCardIndex: index,
+        selectedCard: rebuilt[index],
+        viewerOpen: true
+      });
+      return;
+    }
+    this.setData({
+      selectedCardIndex: index,
+      selectedCard: cards[index],
+      viewerOpen: true
+    });
+  },
+
+  onCloseViewer() {
+    this.setData({
+      viewerOpen: false,
+      selectedCard: null,
+      selectedCardIndex: 0
+    });
+  },
+
+  onViewerHorizontalSwipe(e) {
+    const direction = e && e.detail ? e.detail.direction : '';
+    const cards = this.data.gamePairCards || [];
+    if (cards.length < 2) return;
+    const current = this.data.selectedCardIndex || 0;
+    const delta = direction === 'left' ? 1 : direction === 'right' ? -1 : 0;
+    if (!delta) return;
+    const next = (current + delta + cards.length) % cards.length;
+    if (next === current) return;
+    this.setData({
+      selectedCardIndex: next,
+      selectedCard: cards[next]
+    });
+  },
+
+  onOpenCardFullscreen(e) {
+    const card = this.data.selectedCard;
+    if (!card) return;
+    const detail = (e && e.detail) || {};
+    const hasFace = !!(
+      card.assignedWordSrc
+      || card.assignedWordFallbackSrc
+      || card.word1Src
+      || card.word1FallbackSrc
+    );
+    if (!hasFace) return;
+    this.setData({
+      cardFullscreenOpen: true,
+      cardFullscreen: {
+        word: card.word || '',
+        initialCardState: detail.cardState || 'assignedWord',
+        assignedWordSrc: card.assignedWordSrc || '',
+        assignedWordFallbackSrc: card.assignedWordFallbackSrc || '',
+        word1Src: card.word1Src || '',
+        word1FallbackSrc: card.word1FallbackSrc || ''
+      }
+    });
+  },
+
+  onCloseCardFullscreen() {
+    if (!this.data.cardFullscreenOpen) return;
+    this.setData({ cardFullscreenOpen: false, cardFullscreen: null });
   },
 
   onRestart() {

@@ -24,7 +24,7 @@
       </view>
 
       <view class="my-word-card-wrap">
-        <view class="my-word-label">我的词语卡</view>
+        <text class="my-word-label">我的交互模板卡</text>
         <view class="my-word-card-frame">
           <flip-word-card
             wx:if="{{cardReady}}"
@@ -169,7 +169,14 @@
         bindtap="onFinishSpeak"
       >{{finishActionText}}</view>
       <view class="action-hint" wx:if="{{!isCurrentSpeaker && currentSpeakerName}}">
-        {{waitingHintPrefix}}：{{currentSpeakerName}}
+        <text class="action-hint-label">{{waitingHintPrefix}}</text>
+        <image
+          wx:if="{{currentSpeakerAvatar}}"
+          class="action-hint-avatar"
+          src="{{currentSpeakerAvatar}}"
+          mode="aspectFill"
+        />
+        <text class="action-hint-name">{{currentSpeakerName}}</text>
       </view>
     </view>
   </view>

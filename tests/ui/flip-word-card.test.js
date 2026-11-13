@@ -23,6 +23,7 @@ function loadComponent(relativePath) {
 
 function createFlipCard(overrides = {}) {
   const definition = loadComponent('components/flip-word-card/index.js');
+  const events = [];
   const component = {
     data: {
       ...(definition.data || {}),
@@ -33,12 +34,16 @@ function createFlipCard(overrides = {}) {
       ...(overrides.data || {})
     },
     properties: {},
+    events,
     setData(patch) { Object.assign(this.data, patch); },
+    triggerEvent(name, detail) { events.push({ name, detail }); },
     ...definition.methods
   };
   Object.assign(component.data, {
     skipBack: false,
     twoFaceOnly: false,
+    enableHorizontalSwipe: false,
+    landscapeGestures: false,
     assignedWordSrc: 'a.png',
     assignedWordFallbackSrc: '',
     word1Src: 'b.png',
@@ -83,8 +88,14 @@ test('点击与上滑前进、下滑后退切换卡面', () => {
   assert.equal(library._prevState('assignedWord'), 'word1');
 });
 
-test('发言页我的词语卡使用三面循环并接入背面图', () => {
+test('发言页我的交互模板卡使用三面循环并接入背面图', () => {
   const markup = read('packageSpy/pages/speak/index.wxml');
+  const styles = read('packageSpy/pages/speak/index.wxss');
+  assert.match(markup, /my-word-card-wrap[\s\S]*?我的交互模板卡[\s\S]*?my-word-card-frame/);
+  assert.doesNotMatch(markup, /title-row/);
+  assert.doesNotMatch(markup, /我的词语卡/);
+  assert.match(styles, /\.my-word-label[\s\S]*?text-align:\s*right/);
+  assert.match(styles, /\.my-word-card-frame[\s\S]*?width:\s*100%/);
   const myCard = markup.match(/my-word-card-frame[\s\S]*?<\/view>\s*<\/view>\s*<\/view>/)[0];
   assert.match(myCard, /<flip-word-card/);
   assert.match(myCard, /backSrc="\{\{cardBackSrc\}\}"/);
@@ -130,6 +141,44 @@ test('竖直滑动超过阈值才翻牌，水平滑动不触发', () => {
     changedTouches: [{ clientX: 102, clientY: 180 }]
   });
   assert.deepEqual(flips, [{ next: 'back', dir: 'down' }]);
+});
+
+test('开启水平滑动后左右滑派发 horizontalswipe，不翻面', () => {
+  const component = createFlipCard({
+    data: {
+      cardState: 'assignedWord',
+      skipBack: true,
+      enableHorizontalSwipe: true,
+      word: '开关',
+      assignedWordSrc: 'word.png'
+    }
+  });
+  const flips = [];
+  component._flipTo = (next, dir) => { flips.push({ next, dir }); };
+
+  component.onTouchStart({
+    changedTouches: [{ clientX: 200, clientY: 120 }]
+  });
+  component.onTouchEnd({
+    changedTouches: [{ clientX: 120, clientY: 124 }]
+  });
+  assert.deepEqual(flips, []);
+  assert.deepEqual(component.events, [{
+    name: 'horizontalswipe',
+    detail: { direction: 'left', word: '开关' }
+  }]);
+
+  component.events.length = 0;
+  component.onTouchStart({
+    changedTouches: [{ clientX: 100, clientY: 120 }]
+  });
+  component.onTouchEnd({
+    changedTouches: [{ clientX: 180, clientY: 118 }]
+  });
+  assert.deepEqual(component.events, [{
+    name: 'horizontalswipe',
+    detail: { direction: 'right', word: '开关' }
+  }]);
 });
 
 test('滑动翻牌后忽略紧随其后的 tap，避免连翻', () => {

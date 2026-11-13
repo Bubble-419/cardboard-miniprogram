@@ -99,28 +99,28 @@
   line-height: 1.5;
 }
 
-/* ===== 我的词语卡（略缩小高度，保持宽高比） ===== */
+/* ===== 我的交互模板卡：宽度与下方牌库/文案对齐 ===== */
 .my-word-card-wrap {
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   margin: 14rpx 0 0;
   box-sizing: border-box;
 }
 
 .my-word-label {
-  width: 78%;
-  max-width: 100%;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #3AAE34;
+  width: 100%;
   margin-bottom: 10rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #334155;
+  line-height: 36rpx;
+  text-align: right;
 }
 
 .my-word-card-frame {
-  width: 78%;
-  max-width: 100%;
+  width: 100%;
   aspect-ratio: 16 / 10;
   position: relative;
   box-sizing: border-box;
@@ -368,9 +368,33 @@
 }
 
 .action-hint {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
   color: #64748b;
   font-size: 24rpx;
   text-align: center;
+}
+
+.action-hint-label {
+  flex-shrink: 0;
+}
+
+.action-hint-avatar {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.action-hint-name {
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .primary-btn {
@@ -555,10 +579,6 @@
   font-size: 26rpx;
 }
 
-.is-compact .my-word-label {
-  font-size: 20rpx;
-}
-
 .is-compact .card-grid {
   margin: 0 -10rpx;
 }
@@ -568,8 +588,6 @@
   margin-bottom: 20rpx;
 }
 
-.is-compact .my-word-card-frame,
-.is-compact .my-word-label,
 .is-compact .viewer-card-frame {
   width: 82%;
 }

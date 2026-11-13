@@ -184,6 +184,21 @@
   margin-bottom: 20rpx;
 }
 
+.viewer-card-frame {
+  width: 78%;
+  max-width: 100%;
+  margin: 0 auto;
+  aspect-ratio: 16 / 10;
+  background: #eef2f6;
+  border-radius: 18rpx;
+  overflow: hidden;
+}
+
+.viewer-card-frame flip-word-card {
+  width: 100%;
+  height: 100%;
+}
+
 .viewer-blurb {
   display: block;
   margin-top: 20rpx;
@@ -223,6 +238,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 自定义组件宿主不会自动继承父级的尺寸；未指定时内部 100% 高度会塌缩。 */
+.card-fullscreen-card flip-word-card {
+  width: 100%;
+  height: 100%;
 }
 
 .card-fullscreen-close {

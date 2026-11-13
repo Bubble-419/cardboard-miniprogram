@@ -61,17 +61,19 @@
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
       <text class="viewer-hint">点击或上下滑动翻页；双击横屏全屏</text>
-      <flip-word-card
-        wx:if="{{selectedCard}}"
-        word="{{selectedCard.word}}"
-        skipBack="{{true}}"
-        fullscreenOnAssigned="{{true}}"
-        bind:fullscreen="onOpenCardFullscreen"
-        assignedWordSrc="{{selectedCard.assignedWordSrc}}"
-        assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
-        word1Src="{{selectedCard.word1Src}}"
-        word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
-      />
+      <view class="viewer-card-frame">
+        <flip-word-card
+          wx:if="{{selectedCard}}"
+          word="{{selectedCard.word}}"
+          skipBack="{{true}}"
+          fullscreenOnAssigned="{{true}}"
+          bind:fullscreen="onOpenCardFullscreen"
+          assignedWordSrc="{{selectedCard.assignedWordSrc}}"
+          assignedWordFallbackSrc="{{selectedCard.assignedWordFallbackSrc}}"
+          word1Src="{{selectedCard.word1Src}}"
+          word1FallbackSrc="{{selectedCard.word1FallbackSrc}}"
+        />
+      </view>
       <text class="viewer-blurb" wx:if="{{selectedCard.blurb}}">{{selectedCard.blurb}}</text>
     </view>
   </view>

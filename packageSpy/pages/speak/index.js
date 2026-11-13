@@ -67,6 +67,7 @@ Page(withPageInteractionLock({
     acting: false,
     isCurrentSpeaker: false,
     currentSpeakerName: '',
+    currentSpeakerAvatar: '',
     questionRound: false,
     phaseTitle: '发言阶段',
     finishActionText: '我已完成发言',
@@ -158,13 +159,21 @@ Page(withPageInteractionLock({
           ? captureSpyCommandContext(result)
           : null;
         const members = result.members || [];
+        const avatarList = buildAvatarList(members);
         const currentSpeakerSeat = spyGame && spyGame.speakOrder
           && spyGame.speakOrder[spyGame.currentSpeakerIndex];
         const currentSpeaker = members.find((member) => Number(member.playerIndex) === Number(currentSpeakerSeat));
+        const speakerKey = currentSpeaker
+          ? (currentSpeaker.userId || String(currentSpeaker.playerIndex))
+          : '';
+        const speakerAvatarItem = speakerKey
+          ? avatarList.find((item) => String(item.id) === String(speakerKey))
+          : null;
         this.setData({
-          avatarList: buildAvatarList(members),
+          avatarList,
           isCurrentSpeaker: !!(currentSpeaker && currentSpeaker.isMe),
-          currentSpeakerName: currentSpeaker && currentSpeaker.nickName || ''
+          currentSpeakerName: currentSpeaker && currentSpeaker.nickName || '',
+          currentSpeakerAvatar: (speakerAvatarItem && (speakerAvatarItem.avatar || speakerAvatarItem.avatarImage)) || ''
         }, () => {
           if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });

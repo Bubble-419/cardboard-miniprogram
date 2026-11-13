@@ -6,6 +6,7 @@
  *
  * 交互：单击/上下滑翻页；开启 fullscreenOnAssigned 时双击请求横屏全屏。
  * landscapeGestures：父级 rotate(90deg) 横屏叠层时，左右滑也按视觉上下翻页。
+ * enableHorizontalSwipe：竖屏左右滑派发 horizontalswipe，供父级切换词对。
  * 手势在组件内 catch，避免误触页面返回。
  */
 
@@ -35,7 +36,9 @@ Component({
     /** 挂载时优先进入的卡面：back / assignedWord / word1 */
     initialCardState: { type: String, value: '' },
     /** 为 true 时左右滑也翻页（配合父级横屏旋转叠层） */
-    landscapeGestures: { type: Boolean, value: false }
+    landscapeGestures: { type: Boolean, value: false },
+    /** 为 true 时左右滑向父级派发 horizontalswipe（用于切换本局词对） */
+    enableHorizontalSwipe: { type: Boolean, value: false }
   },
 
   data: {
@@ -226,6 +229,22 @@ Component({
         this._guardTapAfterSwipe();
         if (dx > 0) this._requestFlip('next', 'up');
         else this._requestFlip('prev', 'down');
+        return;
+      }
+
+      // 竖屏：左右滑交给父级（如结算页切换本局两词），不翻面
+      if (
+        this.data.enableHorizontalSwipe
+        && !this.data.landscapeGestures
+        && absDx >= SWIPE_THRESHOLD_PX
+        && absDx >= absDy * VERTICAL_AXIS_RATIO
+      ) {
+        this._clearPendingTap();
+        this._guardTapAfterSwipe();
+        this.triggerEvent('horizontalswipe', {
+          direction: dx < 0 ? 'left' : 'right',
+          word: this.data.word || ''
+        });
         return;
       }
 
