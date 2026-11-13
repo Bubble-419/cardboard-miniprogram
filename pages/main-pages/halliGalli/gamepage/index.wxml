@@ -11,9 +11,9 @@
 
   <!-- Halli 一屏适配；干瞪眼内容更长时允许内部滚动 -->
   <view class="page-body {{isGanDengYan ? 'is-scrollable' : 'is-fit'}}">
-    <!-- 情境格子 -->
+    <!-- 情境格子：点击回看情境卡（与创意合伙人 confirmBG 同款叠卡） -->
     <view class="header-section" wx:if="{{!isGanDengYan}}">
-      <context-display bg="{{selectedBG}}" />
+      <context-display bg="{{selectedBG}}" bind:opentap="handleViewContext" />
     </view>
 
     <!-- 规则说明区 -->
