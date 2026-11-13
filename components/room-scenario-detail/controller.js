@@ -189,7 +189,8 @@ return withPageInteractionLock({
     let roomResult = null;
     if (fromGameView) {
       roomResult = await this._fetchRoomFull(roomId);
-      bg = (roomResult && roomResult.selectedBG) || null;
+      // 房间快照优先；若暂时为空则保留 opener 传入的 globalData
+      bg = (roomResult && roomResult.selectedBG) || bg || null;
       if (bg) {
         getApp().globalData.selectedBG = bg;
       }
@@ -199,7 +200,10 @@ return withPageInteractionLock({
       if (bg) getApp().globalData.selectedBG = bg;
     }
 
-    if (!isValidPartnerBG(bg, { requirePlatform: true })) {
+    const bgOk = fromGameView
+      ? hasViewableScenarioBG(bg)
+      : isValidPartnerBG(bg, { requirePlatform: true });
+    if (!bgOk) {
       wx.showToast({ title: '请先选择情境', icon: 'none' });
       if (this._localScreenHost) {
         await this._localScreenHost.close(this);
@@ -242,12 +246,15 @@ return withPageInteractionLock({
     }
     const { cards, fullProblemText, categories } = this._buildCardsAndFullText(bg, selectedProblemText);
     const canConfirm = cards.length === PARTNER_CARD_DEFS.length;
+    const cardCount = Math.max(cards.length, 1);
+    const deckHeightRpx = (cardCount - 1) * DECK_STEP_RPX + DECK_CARD_HEIGHT_RPX;
 
     this.setData({
       roomId,
       cards,
       categories,
       fullProblemText,
+      deckHeightRpx,
       canConfirm: fromGameView ? false : canConfirm,
       isWaiting: false
     });
@@ -362,6 +369,14 @@ return withPageInteractionLock({
         fallbackUrl: roomEnc
           ? `/pages/main-pages/selectProblem/index?roomId=${roomEnc}`
           : '/pages/main-pages/selectProblem/index'
+      }, this);
+    }
+    if (from === 'halli') {
+      return safeNavigateBack({
+        expectedPrev: 'pages/main-pages/halliGalli/gamepage/index',
+        fallbackUrl: roomEnc
+          ? `/pages/main-pages/halliGalli/gamepage/index?roomId=${roomEnc}`
+          : '/pages/main-pages/halliGalli/gamepage/index'
       }, this);
     }
     return safeNavigateBack({
