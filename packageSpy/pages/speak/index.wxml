@@ -14,7 +14,7 @@
         <text class="page-title">{{phaseTitle}}</text>
         <view class="tie-banner" wx:if="{{questionRound}}">
           <text class="tie-banner-kicker">补充提问</text>
-          <text class="tie-banner-title">每人最多提出一个问题</text>
+          <text class="tie-banner-title">每人最多向一个人提出一个问题，对方可以不回答</text>
         </view>
         <view class="tie-banner" wx:elif="{{tieBreak}}">
           <text class="tie-banner-kicker">平票加时</text>
@@ -123,7 +123,7 @@
           <view class="rules-panel">
             <view class="rules-list">
               <text class="rules-item">1. 系统为每位玩家随机分配词语，多数人词相同，卧底词相近但不同。</text>
-              <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述，不要直接念出词名。</text>
+              <text class="rules-item">2. 每人只能看到自己的词语，按顺序口头描述。不能撒谎，也不要直接念出词名。</text>
               <text class="rules-item">3. 发言阶段可翻看自己的词语卡；全员完成发言后系统自动进入投票。</text>
               <text class="rules-item">4. 若信息不足，房主可在投票页开启一轮提问，每人最多提出一个问题。</text>
               <text class="rules-item">5. 进入匿名投票后，投出你怀疑的人（不可投自己）。</text>
