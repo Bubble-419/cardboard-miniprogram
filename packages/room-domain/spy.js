@@ -1,7 +1,7 @@
 'use strict';
 
 const { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require('@cardboard/room-contracts');
-const { SPY_WORD_PAIRS } = require('./spyWordPairs');
+const { pickRandomWordPair } = require('./spyWordPairs');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
   transitionWorkflow, activeParticipantsBySeat, progressComplete,
@@ -40,12 +40,7 @@ function reveal(aggregate, spy) {
 }
 function pickWords(deps) {
   if (deps && typeof deps.wordPairPicker === 'function') return deps.wordPairPicker(randomOf(deps));
-  if (!SPY_WORD_PAIRS.length) return null;
-  const random = randomOf(deps);
-  const pair = SPY_WORD_PAIRS[Math.floor(random() * SPY_WORD_PAIRS.length)];
-  const swap = random() < 0.5;
-  return { id: pair.id, civilianWord: swap ? pair.wordB : pair.wordA, civilianBlurb: swap ? pair.blurbB : pair.blurbA,
-    spyWord: swap ? pair.wordA : pair.wordB, spyBlurb: swap ? pair.blurbA : pair.blurbB };
+  return pickRandomWordPair(randomOf(deps));
 }
 function normalizeSpeakerOptions(options) {
   if (options === true || options === false) return { tieBreak: options === true, question: false };
