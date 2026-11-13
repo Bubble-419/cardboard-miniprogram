@@ -307,22 +307,22 @@ flowchart LR
 下面的 CDN 插图不进小程序代码包，本地文件仍保留在仓库，由 `packOptions.ignore` 排除。
 云存储对象平铺在 `miniprogram-static/` 根下，key 为文件名（不含仓库目录）：
 
-- `packageSpy/assets/interactionCards/webp/*` → `miniprogram-static/开关3x.webp` 等
 - `assets/subAwait/wait-hero-5a8ea5.webp` → `miniprogram-static/wait-hero-5a8ea5.webp`
 - `assets/home/empty-history-6f27f1.webp`
 - `assets/brainstormMode/mode-cover-*.jpg`
 - `assets/halliGalli/step-*.webp`
 
-以下 12 张流程说明图使用 `/assets/...` 本地路径并随小程序打包，不依赖 CDN，
-不在 `packOptions.ignore` 或静态上传清单中；重新编译客户端即可生效，无需上传云函数或图片：
+以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中。
+卧底卡面在 Spy 分包内；换图后重新编译客户端即可生效，无需上传云存储：
 
 | 本地资源 | 数量 | 使用位置 |
 |---|---|---|
+| `packageSpy/assets/interactionCards/webp/*.webp` | 73 | 卧底交互卡与牌背 |
 | `assets/ganDengYan/rule-*.jpg` | 4 | 干瞪眼规则页 |
 | `assets/partnerMode/actions/action-*.jpg` | 4 | Partner 普通/静默行动卡 |
 | `assets/partnerMode/actions/reverse-step-*.jpg` | 4 | 反面随机拼预览 |
 
-发布前使用开发者工具检查实际包体积，并验证上述三个入口的图片加载；不能仅以仓库文件存在作为验收。
+发布前使用开发者工具检查实际包体积。Spy 分包需低于 2MB，并确认卧底卡面加载的是分包内新图。
 
 Halli 规则页优先加载 CDN WebP；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。

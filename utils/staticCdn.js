@@ -4,6 +4,7 @@
  * 非必要插图走云存储 HTTPS。对象平铺在 miniprogram-static/ 根下，key 为文件名。
  * 列表内原图由 packOptions.ignore 排除打包。
  * Halli 的小体积 PNG 作为断网降级资源保留在代码包，不列入此处。
+ * Spy 交互卡随分包发布，不走这里。
  */
 
 const CLOUD_ENV_ID = 'cardboard-miniprogram-6a13aab073';
@@ -59,7 +60,6 @@ const CLOSING_RUNE_CARDS = Object.freeze([
 ]);
 
 const PACK_IGNORE_FOR_CDN = [
-  { value: 'packageSpy/assets', type: 'folder' },
   { value: 'assets/subAwait/wait-hero-5a8ea5.webp', type: 'file' },
   { value: 'assets/home/empty-history-6f27f1.webp', type: 'file' },
   { value: 'assets/brainstormMode/*.jpg', type: 'glob' },
