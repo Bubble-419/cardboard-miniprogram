@@ -32,8 +32,9 @@ function halliStepSrc(key, version) {
   return staticCdnUrl(`assets/halliGalli/step-${key}-${version}.webp`);
 }
 
-function halliStepFallback(key, version) {
-  return `/assets/halliGalli/step-${key}-${version}.png`;
+function halliStepFallback(key) {
+  // 随包仅保留一份通用 PNG，避免双版本回退图撑爆主包；CDN WebP 才区分 v1/v2
+  return `/assets/halliGalli/step-${key}.png`;
 }
 
 function buildRuleArtVersions() {
@@ -46,7 +47,7 @@ function buildRuleArtVersions() {
       desc: step.desc,
       num: stepIndex + 1,
       src: halliStepSrc(step.key, id),
-      fallback: halliStepFallback(step.key, id)
+      fallback: halliStepFallback(step.key)
     }))
   }));
 }

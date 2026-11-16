@@ -110,7 +110,7 @@ test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
   const ignore = (config.packOptions && config.packOptions.ignore) || [];
 
   assert.match(halliJs, /onStepImgError\(e\)/);
-  assert.match(halliJs, /step-\$\{key\}-\$\{version\}\.png/);
+  assert.match(halliJs, /`\/assets\/halliGalli\/step-\$\{key\}\.png`/);
   assert.match(halliWxml, /binderror="onStepImgError"/);
   assert.match(halliWxml, /data-key="\{\{step\.key\}\}"/);
   assert.match(halliWxml, /data-version="\{\{version\.id\}\}"/);
@@ -132,9 +132,12 @@ test('Halli 说明图支持两套版本左右滑动切换，资源齐全', () =>
   assert.match(halliWxss, /\.rule-art-dot/);
 
   ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => {
+    assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}.png`)),
+      `missing local fallback step-${key}.png`);
     ['v1', 'v2'].forEach((ver) => {
       assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-${ver}.webp`)));
-      assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-${ver}.png`)));
+      assert.equal(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-${ver}.png`)), false,
+        '版本化 PNG 不得进仓，避免撑爆主包');
     });
   });
 });
