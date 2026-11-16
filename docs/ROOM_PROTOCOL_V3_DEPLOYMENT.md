@@ -324,7 +324,7 @@ flowchart LR
 
 发布前使用开发者工具检查实际包体积。卧底卡面换图后必须重新执行 `pnpm upload:static`，并提高 `packageSpy/utils/spyWordCardAssets.js` 的 `CARD_ASSET_VERSION`。云上 key 仍是原文件名，版本参数只用来避开微信对同名地址的旧图缓存。
 
-Halli 规则页优先加载 CDN 上的 `step-*-v2.webp`；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
+Halli 规则页左右滑动加载 CDN 上的 `step-*-v1.webp` 与 `step-*-v2.webp`；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
 
 HTTPS 形如：

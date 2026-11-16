@@ -113,7 +113,7 @@ test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大�
   assert.match(closingJs, /CLOSING_RUNE_CARDS/);
   assert.match(homeJs, /EMPTY_HISTORY_SRC/);
   assert.match(brainstormJs, /staticCdnUrl\('assets\/brainstormMode\/mode-cover-/);
-  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-v2\.webp`\)/);
+  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-\$\{id\}\.webp`\)/);
 });
 
 test('补全符文四张图按原比例接入，不拉伸', () => {
@@ -142,24 +142,33 @@ test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
   assert.match(halliJs, /`\/assets\/halliGalli\/step-\$\{step\.key\}\.png`/);
   assert.match(halliWxml, /binderror="onStepImgError"/);
   assert.match(halliWxml, /data-key="\{\{step\.key\}\}"/);
+  assert.match(halliWxml, /data-version="\{\{version\.id\}\}"/);
+  assert.match(halliWxml, /bindchange="onRuleArtChange"/);
   assert.ok(!ignore.some((item) => item.value === 'assets/halliGalli/*.png'),
     '随包 PNG 不能被 packOptions 排除');
 });
 
-test('Halli 说明图使用云上 v2 新图', () => {
+test('Halli 说明图支持 v1/v2 左右滑动，发牌翻牌文案随版本互换', () => {
   const halliJs = read('pages/main-pages/halliGalli/gamepage/index.js');
   const halliWxml = read('pages/main-pages/halliGalli/gamepage/index.wxml');
+  const halliWxss = read('pages/main-pages/halliGalli/gamepage/index.wxss');
 
-  assert.match(halliJs, /ruleSteps:\s*buildRuleSteps\(\)/);
-  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-v2\.webp`\)/);
-  assert.doesNotMatch(halliJs, /step-\$\{step\.key\}-v1\.webp/);
-  assert.match(halliWxml, /wx:for="\{\{ruleSteps\}\}"/);
-  assert.doesNotMatch(halliWxml, /左右滑动切换图示版本/);
+  assert.match(halliJs, /ruleArtVersions:\s*buildRuleArtVersions\(\)/);
+  assert.match(halliJs, /\['v1',\s*'v2'\]/);
+  assert.match(halliJs, /deal:\s*'每位玩家获得3张交互方式卡'/);
+  assert.match(halliJs, /flip:\s*'展示本轮控件形态卡'/);
+  assert.match(halliJs, /deal:\s*'每位玩家获得3张控件形态卡'/);
+  assert.match(halliJs, /flip:\s*'展示本轮交互方式卡'/);
+  assert.match(halliWxml, /class="steps-swiper"/);
+  assert.match(halliWxml, /左右滑动切换图示版本/);
+  assert.match(halliWxss, /\.rule-art-dot/);
 
   ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => {
     assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}.png`)),
       `missing local fallback step-${key}.png`);
-    assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-v2.webp`)));
+    ['v1', 'v2'].forEach((ver) => {
+      assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-${ver}.webp`)));
+    });
   });
 });
 

@@ -7,9 +7,9 @@
 1. **代码包内保留**
    - 小图标、SVG、默认头像等 UI chrome。
    - 体积小、首屏立刻需要、且不适合远程拉取的资源。
-   - Halli 步骤 PNG：仅保留一份未版本化回退图（`step-{key}.png`）。页面使用的新图是 CDN 上的 `step-*-v2.webp`。
+   - Halli 步骤 PNG：仅保留一份未版本化回退图（`step-{key}.png`）。页面左右滑动切换 CDN 上的 `step-*-v1.webp` 与 `step-*-v2.webp`。
 2. **云存储 CDN（`miniprogram-static/` 根目录）**
-   - 等待页 hero、首页历史空状态、模式封面、Halli 步骤 WebP（页面使用 `step-*-v2.webp`）、Spy 交互卡 WebP（中文 `{词语}3x.webp` / `{词语}13x.webp` / `背面3x.webp`，英文 `1-A.webp`、`1-A-1.webp` 至 `4-i.webp`）。
+   - 等待页 hero、首页历史空状态、模式封面、Halli 步骤 WebP（页面使用 `step-*-v1.webp` 与 `step-*-v2.webp`）、Spy 交互卡 WebP（中文 `{词语}3x.webp` / `{词语}13x.webp` / `背面3x.webp`，英文 `1-A.webp`、`1-A-1.webp` 至 `4-i.webp`）。
    - 对象 key 为文件名，例如 `miniprogram-static/wait-hero-5a8ea5.webp`。
    - 本地文件仍在仓库，由 `project.config.json` 的 `packOptions.ignore` 排除出代码包。
    - 页面通过 `utils/staticCdn.js` 的 `staticCdnUrl()` 引用。

@@ -20,22 +20,37 @@ const { clearPendingNavigation } = require('../../../../utils/pageNavigate');
 const { staticCdnUrl } = require('../../../../utils/staticCdn');
 
 const STEP_META = [
-  { key: 'deal', title: '发牌', desc: '每位玩家获得3张交互方式卡' },
-  { key: 'flip', title: '翻牌', desc: '展示本轮控件形态卡' },
+  { key: 'deal', title: '发牌' },
+  { key: 'flip', title: '翻牌' },
   { key: 'ring', title: '抢铃', desc: '准备完成后抢铃争取出牌权' },
   { key: 'play', title: '出牌', desc: '说明如何与情境信息结合' },
   { key: 'vote', title: '表决', desc: '其他玩家投票或提问评分' },
   { key: 'judge', title: '判定', desc: '半数通过即成功，否则失败并摸1张牌' }
 ];
 
-function buildRuleSteps() {
-  return STEP_META.map((step, stepIndex) => ({
-    key: step.key,
-    title: step.title,
-    desc: step.desc,
-    num: stepIndex + 1,
-    src: staticCdnUrl(`assets/halliGalli/step-${step.key}-v2.webp`),
-    fallback: `/assets/halliGalli/step-${step.key}.png`
+const VERSION_STEP_DESC = {
+  v1: {
+    deal: '每位玩家获得3张交互方式卡',
+    flip: '展示本轮控件形态卡'
+  },
+  v2: {
+    deal: '每位玩家获得3张控件形态卡',
+    flip: '展示本轮交互方式卡'
+  }
+};
+
+function buildRuleArtVersions() {
+  return ['v1', 'v2'].map((id, index) => ({
+    id,
+    label: `图示 ${index + 1}`,
+    steps: STEP_META.map((step, stepIndex) => ({
+      key: step.key,
+      title: step.title,
+      desc: (VERSION_STEP_DESC[id] && VERSION_STEP_DESC[id][step.key]) || step.desc,
+      num: stepIndex + 1,
+      src: staticCdnUrl(`assets/halliGalli/step-${step.key}-${id}.webp`),
+      fallback: `/assets/halliGalli/step-${step.key}.png`
+    }))
   }));
 }
 
@@ -50,7 +65,8 @@ Page(withPageInteractionLock({
     canEndGame: false,
     isGanDengYan: false,
     selectedBG: null,
-    ruleSteps: buildRuleSteps()
+    ruleArtVersions: buildRuleArtVersions(),
+    ruleArtIndex: 0
   },
 
   onLoad(options) {
@@ -154,16 +170,31 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
+  onRuleArtChange(e) {
+    const index = e && e.detail && typeof e.detail.current === 'number'
+      ? e.detail.current
+      : 0;
+    if (index === this.data.ruleArtIndex) return;
+    this.setData({ ruleArtIndex: index });
+  },
+
   onStepImgError(e) {
     const dataset = e && e.currentTarget && e.currentTarget.dataset;
     const key = dataset && dataset.key;
-    if (!key) return;
-    const ruleSteps = (this.data.ruleSteps || []).map((step) => (
-      step.key === key && step.fallback && step.src !== step.fallback
-        ? { ...step, src: step.fallback }
-        : step
-    ));
-    this.setData({ ruleSteps });
+    const version = dataset && dataset.version;
+    if (!key || !version) return;
+    const ruleArtVersions = (this.data.ruleArtVersions || []).map((ver) => {
+      if (ver.id !== version) return ver;
+      return {
+        ...ver,
+        steps: (ver.steps || []).map((step) => (
+          step.key === key && step.fallback && step.src !== step.fallback
+            ? { ...step, src: step.fallback }
+            : step
+        ))
+      };
+    });
+    this.setData({ ruleArtVersions });
   },
 
   handleGoRoom() {
@@ -221,4 +252,4 @@ Page(withPageInteractionLock({
       this._startStatePolling();
     }
   }
-}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError']));
+}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError', 'onRuleArtChange']));
