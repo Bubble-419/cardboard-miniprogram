@@ -276,7 +276,7 @@ test('发言页与牌库提示支持点击/滑动翻页与左下角放大全屏�
   assert.match(speakWxml, /左下角图标横屏全屏/);
   assert.match(libraryWxml, /左下角图标横屏全屏/);
   assert.match(cardWxml, /flip-expand-btn/);
-  assert.match(cardWxml, /flip-expand-arrow/);
+  assert.match(cardWxml, /icon-expand-diag\.svg/);
   assert.doesNotMatch(speakJson, /disableSwipeBack/);
   assert.doesNotMatch(libraryJson, /disableSwipeBack/);
 });

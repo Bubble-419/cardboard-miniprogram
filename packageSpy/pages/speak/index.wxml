@@ -64,10 +64,11 @@
             aria-label="放大图片"
             catchtap="onExpandMyWordCard"
           >
-            <view class="my-word-expand-arrow is-tl"></view>
-            <view class="my-word-expand-arrow is-tr"></view>
-            <view class="my-word-expand-arrow is-bl"></view>
-            <view class="my-word-expand-arrow is-br"></view>
+            <image
+              class="my-word-expand-icon"
+              src="/assets/icons/icon-expand-diag.svg"
+              mode="aspectFit"
+            />
           </view>
         </view>
       </view>

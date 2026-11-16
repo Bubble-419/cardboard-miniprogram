@@ -182,9 +182,7 @@
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
-  background: rgba(15, 23, 42, 0.62);
-  border: 2rpx solid rgba(255, 255, 255, 0.55);
-  box-shadow: 0 6rpx 16rpx rgba(15, 23, 42, 0.28);
+  background: rgba(0, 0, 0, 0.45);
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -196,35 +194,8 @@
   transform: scale(0.96);
 }
 
-.flip-expand-arrow {
-  position: absolute;
-  width: 18rpx;
-  height: 18rpx;
-  box-sizing: border-box;
-  border-color: rgba(255, 255, 255, 0.98);
-  border-style: solid;
-}
-
-.flip-expand-arrow.is-tl {
-  top: 20rpx;
-  left: 20rpx;
-  border-width: 4rpx 0 0 4rpx;
-}
-
-.flip-expand-arrow.is-tr {
-  top: 20rpx;
-  right: 20rpx;
-  border-width: 4rpx 4rpx 0 0;
-}
-
-.flip-expand-arrow.is-bl {
-  bottom: 20rpx;
-  left: 20rpx;
-  border-width: 0 0 4rpx 4rpx;
-}
-
-.flip-expand-arrow.is-br {
-  bottom: 20rpx;
-  right: 20rpx;
-  border-width: 0 4rpx 4rpx 0;
+.flip-expand-icon {
+  width: 36rpx;
+  height: 36rpx;
+  display: block;
 }

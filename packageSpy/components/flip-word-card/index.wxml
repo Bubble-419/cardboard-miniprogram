@@ -60,9 +60,10 @@
     catchtouchcancel="onExpandCatch"
     catchtap="onExpandTap"
   >
-    <view class="flip-expand-arrow is-tl"></view>
-    <view class="flip-expand-arrow is-tr"></view>
-    <view class="flip-expand-arrow is-bl"></view>
-    <view class="flip-expand-arrow is-br"></view>
+    <image
+      class="flip-expand-icon"
+      src="/assets/icons/icon-expand-diag.svg"
+      mode="aspectFit"
+    />
   </view>
 </view>
