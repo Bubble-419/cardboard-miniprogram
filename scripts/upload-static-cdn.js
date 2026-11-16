@@ -30,7 +30,19 @@ const ENTRIES = [
   { type: 'file', rel: 'assets/halliGalli/step-ring.webp' },
   { type: 'file', rel: 'assets/halliGalli/step-play.webp' },
   { type: 'file', rel: 'assets/halliGalli/step-vote.webp' },
-  { type: 'file', rel: 'assets/halliGalli/step-judge.webp' }
+  { type: 'file', rel: 'assets/halliGalli/step-judge.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-deal-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-flip-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-ring-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-play-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-vote-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-judge-v1.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-deal-v2.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-flip-v2.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-ring-v2.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-play-v2.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-vote-v2.webp' },
+  { type: 'file', rel: 'assets/halliGalli/step-judge-v2.webp' }
 ];
 
 function listFiles() {

@@ -19,8 +19,36 @@ const {
 const { clearPendingNavigation } = require('../../../../utils/pageNavigate');
 const { staticCdnUrl } = require('../../../../utils/staticCdn');
 
-function halliStepSrc(key) {
-  return staticCdnUrl(`assets/halliGalli/step-${key}.webp`);
+const STEP_META = [
+  { key: 'deal', title: '发牌', desc: '每位玩家获得3张交互方式卡' },
+  { key: 'flip', title: '翻牌', desc: '展示本轮控件形态卡' },
+  { key: 'ring', title: '抢铃', desc: '准备完成后抢铃争取出牌权' },
+  { key: 'play', title: '出牌', desc: '说明如何与情境信息结合' },
+  { key: 'vote', title: '表决', desc: '其他玩家投票或提问评分' },
+  { key: 'judge', title: '判定', desc: '半数通过即成功，否则失败并摸1张牌' }
+];
+
+function halliStepSrc(key, version) {
+  return staticCdnUrl(`assets/halliGalli/step-${key}-${version}.webp`);
+}
+
+function halliStepFallback(key, version) {
+  return `/assets/halliGalli/step-${key}-${version}.png`;
+}
+
+function buildRuleArtVersions() {
+  return ['v1', 'v2'].map((id, index) => ({
+    id,
+    label: `图示 ${index + 1}`,
+    steps: STEP_META.map((step, stepIndex) => ({
+      key: step.key,
+      title: step.title,
+      desc: step.desc,
+      num: stepIndex + 1,
+      src: halliStepSrc(step.key, id),
+      fallback: halliStepFallback(step.key, id)
+    }))
+  }));
 }
 
 Page(withPageInteractionLock({
@@ -34,12 +62,8 @@ Page(withPageInteractionLock({
     canEndGame: false,
     isGanDengYan: false,
     selectedBG: null,
-    stepImgDeal: halliStepSrc('deal'),
-    stepImgFlip: halliStepSrc('flip'),
-    stepImgRing: halliStepSrc('ring'),
-    stepImgPlay: halliStepSrc('play'),
-    stepImgVote: halliStepSrc('vote'),
-    stepImgJudge: halliStepSrc('judge')
+    ruleArtVersions: buildRuleArtVersions(),
+    ruleArtIndex: 0
   },
 
   onLoad(options) {
@@ -143,16 +167,31 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
+  onRuleArtChange(e) {
+    const index = e && e.detail && typeof e.detail.current === 'number'
+      ? e.detail.current
+      : 0;
+    if (index === this.data.ruleArtIndex) return;
+    this.setData({ ruleArtIndex: index });
+  },
+
   onStepImgError(e) {
-    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
-    const fields = {
-      deal: 'stepImgDeal', flip: 'stepImgFlip', ring: 'stepImgRing',
-      play: 'stepImgPlay', vote: 'stepImgVote', judge: 'stepImgJudge'
-    };
-    const field = fields[key];
-    if (!field) return;
-    const fallback = `/assets/halliGalli/step-${key}.png`;
-    if (this.data[field] !== fallback) this.setData({ [field]: fallback });
+    const dataset = e && e.currentTarget && e.currentTarget.dataset;
+    const key = dataset && dataset.key;
+    const version = dataset && dataset.version;
+    if (!key || !version) return;
+    const versions = (this.data.ruleArtVersions || []).map((ver) => {
+      if (ver.id !== version) return ver;
+      return {
+        ...ver,
+        steps: (ver.steps || []).map((step) => (
+          step.key === key && step.fallback && step.src !== step.fallback
+            ? { ...step, src: step.fallback }
+            : step
+        ))
+      };
+    });
+    this.setData({ ruleArtVersions: versions });
   },
 
   handleGoRoom() {
@@ -210,4 +249,4 @@ Page(withPageInteractionLock({
       this._startStatePolling();
     }
   }
-}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError']));
+}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError', 'onRuleArtChange']));

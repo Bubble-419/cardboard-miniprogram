@@ -132,9 +132,60 @@
   line-height: 34rpx;
 }
 
+/* ===== 两套图示：左右滑动切换 ===== */
+.steps-swiper-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.steps-swiper {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.steps-swiper swiper-item {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.rule-art-indicator {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-height: 28rpx;
+}
+
+.rule-art-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 999rpx;
+  background: #D1D5DB;
+}
+
+.rule-art-dot.is-active {
+  width: 24rpx;
+  background: #5EC159;
+}
+
+.rule-art-label {
+  margin-left: 6rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #9CA3AF;
+  line-height: 28rpx;
+}
+
 /* ===== 步骤卡片组：吃满剩余高度 ===== */
 .steps-card {
-  flex: 1;
+  height: 100%;
   min-height: 0;
   background: #FFFFFF;
   border-radius: 36rpx;
