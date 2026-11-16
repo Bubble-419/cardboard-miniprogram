@@ -25,7 +25,18 @@
 
       <view class="my-word-card-wrap {{myCardCollapsed ? 'is-collapsed' : ''}}">
         <view class="my-word-card-heading">
-          <text class="my-word-label">我的交互模板卡</text>
+          <view class="my-word-label-row">
+            <text class="my-word-label">我的交互模板卡</text>
+            <view
+              class="my-word-lang-btn {{cardLocale === 'en' ? 'is-en' : ''}}"
+              role="button"
+              aria-label="{{cardLocale === 'en' ? '切换为中文卡面' : '切换为英文卡面'}}"
+              bindtap="onToggleCardLocale"
+            >
+              <text class="my-word-lang-mark">文</text>
+              <text class="my-word-lang-code">{{cardLocale === 'en' ? '中' : 'EN'}}</text>
+            </view>
+          </view>
           <view
             class="my-word-collapse-btn"
             role="button"

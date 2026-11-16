@@ -15,7 +15,7 @@ const {
   staticCdnUrl,
   staticFileName
 } = require('../../utils/staticCdn');
-const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION } = require('../../packageSpy/utils/spyWordCardAssets');
+const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION, englishFilePair, LIBRARY_WORDS } = require('../../packageSpy/utils/spyWordCardAssets');
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -50,6 +50,31 @@ test('Spy 交互卡走 CDN 文件名，晃动复用震动卡面', () => {
   assert.ok(fs.existsSync(path.join(webpDir, '开关3x.webp')));
   assert.ok(fs.existsSync(path.join(webpDir, '震动3x.webp')));
   assert.ok(fs.existsSync(path.join(webpDir, '背面3x.webp')));
+
+  const englishSwitch = getWordCardAssets('开关', { locale: 'en' });
+  assert.equal(englishSwitch.assignedWordSrc, versioned('1-A-1.webp'));
+  assert.equal(englishSwitch.word1Src, versioned('1-A.webp'));
+  assert.equal(englishSwitch.assignedWordFallbackSrc, versioned('开关3x.webp'));
+  const englishTap = getWordCardAssets('单击', { locale: 'en' });
+  assert.equal(englishTap.assignedWordSrc, versioned('1-B.webp'));
+  assert.equal(englishTap.word1Src, versioned('1-B-1.webp'));
+  const englishShake = getWordCardAssets('晃动', { locale: 'en' });
+  assert.equal(englishShake.assignedWordSrc, versioned('2-f.webp'));
+  assert.equal(englishShake.word1Src, versioned('2-f-1.webp'));
+  const englishPinch = getWordCardAssets('捏合解耦', { locale: 'en' });
+  assert.equal(englishPinch.assignedWordSrc, versioned('4-i.webp'));
+  assert.equal(englishPinch.word1Src, versioned('4-i-1.webp'));
+  ['1-A-1.webp', '1-B.webp', '2-f.webp', '4-i.webp'].forEach((name) => {
+    assert.ok(fs.existsSync(path.join(webpDir, name)), `missing ${name}`);
+  });
+  assert.equal(LIBRARY_WORDS.length, 36);
+  LIBRARY_WORDS.forEach((word) => {
+    const pair = englishFilePair(word);
+    assert.ok(pair, word);
+    assert.notEqual(pair.template, pair.logic);
+    assert.ok(fs.existsSync(path.join(webpDir, pair.template)), pair.template);
+    assert.ok(fs.existsSync(path.join(webpDir, pair.logic)), pair.logic);
+  });
 });
 
 test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', () => {

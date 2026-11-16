@@ -69,6 +69,28 @@ test('身份卡使用上下翻 rotateX，不再使用左右翻 rotateY', () => {
   assert.match(markup, /catchtap="onTap"/);
 });
 
+test('切换卡面地址时保持当前翻面并刷新图片', () => {
+  const definition = loadComponent('packageSpy/components/flip-word-card/index.js');
+  const component = createFlipCard({
+    data: {
+      cardState: 'assignedWord',
+      showBackFace: false,
+      displaySrc: 'zh.png',
+      assignedWordSrc: 'zh.png',
+      word1Src: 'zh-logic.png'
+    }
+  });
+  const observer = definition.observers[
+    'assignedWordSrc, word1Src, backSrc, assignedWordFallbackSrc, word1FallbackSrc'
+  ];
+  component.data.assignedWordSrc = 'en.png';
+  component.data.word1Src = 'en-logic.png';
+  observer.call(component);
+  assert.equal(component.data.cardState, 'assignedWord');
+  assert.equal(component.data.displaySrc, 'en.png');
+  assert.equal(component.data.imgError, false);
+});
+
 test('点击与上滑前进、下滑后退切换卡面', () => {
   const threeFace = createFlipCard({ data: { cardState: 'back' } });
   assert.equal(threeFace._nextState('back'), 'assignedWord');
@@ -94,9 +116,13 @@ test('发言页我的交互模板卡使用三面循环并接入背面图', () =>
   const source = read('packageSpy/pages/speak/index.js');
   assert.match(markup, /my-word-card-wrap[\s\S]*?我的交互模板卡[\s\S]*?my-word-card-frame/);
   assert.match(markup, /bindtap="onToggleMyCard"/);
+  assert.match(markup, /bindtap="onToggleCardLocale"/);
+  assert.match(markup, /切换为英文卡面/);
   assert.match(markup, /myCardCollapsed \? '展开' : '收起'/);
   assert.match(markup, /wx:if="\{\{!myCardCollapsed\}\}"/);
   assert.match(source, /onToggleMyCard\s*\(/);
+  assert.match(source, /onToggleCardLocale\s*\(/);
+  assert.match(source, /getWordCardAssets\(myWord,\s*\{\s*locale:\s*this\.data\.cardLocale\s*\}\)/);
   assert.doesNotMatch(markup, /title-row/);
   assert.doesNotMatch(markup, /我的词语卡/);
   assert.match(styles, /\.my-word-label[\s\S]*?text-align:\s*left/);

@@ -60,6 +60,7 @@ Page(withPageInteractionLock({
     word1Src: '',
     word1FallbackSrc: '',
     cardReady: false,
+    cardLocale: 'zh',
     myCardCollapsed: false,
     libraryGroupCount: 0,
     libraryCategories: [],
@@ -193,7 +194,7 @@ Page(withPageInteractionLock({
         }
 
         const myWord = (myCard && myCard.word) || '';
-        const assets = getWordCardAssets(myWord);
+        const assets = getWordCardAssets(myWord, { locale: this.data.cardLocale });
         const questionRound = spyGame.questionRound === true
           || (result.view && result.view.session
             && result.view.session.workflow
@@ -304,6 +305,20 @@ Page(withPageInteractionLock({
 
   onToggleMyCard() {
     this.setData({ myCardCollapsed: !this.data.myCardCollapsed });
+  },
+
+  onToggleCardLocale() {
+    const cardLocale = this.data.cardLocale === 'en' ? 'zh' : 'en';
+    const assets = getWordCardAssets(this.data.myWord, { locale: cardLocale });
+    const next = { cardLocale };
+    if (this.data.myWord) {
+      next.cardBackSrc = assets.backSrc;
+      next.assignedWordSrc = assets.assignedWordSrc;
+      next.assignedWordFallbackSrc = assets.assignedWordFallbackSrc;
+      next.word1Src = assets.word1Src;
+      next.word1FallbackSrc = assets.word1FallbackSrc;
+    }
+    this.setData(next);
   },
 
   onToggleLibraryCategory(e) {

@@ -312,6 +312,7 @@ flowchart LR
 - `assets/brainstormMode/mode-cover-*.jpg`
 - `assets/halliGalli/step-*.webp`
 - `packageSpy/assets/interactionCards/webp/{词语}3x.webp`、`{词语}13x.webp`、`背面3x.webp` → 云上同名文件
+- 英文卡面 `1-A.webp`、`1-A-1.webp` 至 `4-i.webp`、`4-i-1.webp`（72 张）→ 云上同名文件。发言页按牌库顺序选用，模板卡与逻辑卡的对应关系见 `packageSpy/utils/spyWordCardAssets.js`
 
 以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中：
 
