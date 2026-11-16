@@ -236,7 +236,7 @@ test('小位移点击在 touchend 即翻面，不依赖系统 tap', () => {
   assert.equal(flips.length, 1, 'touchend 已翻面后的 tap 不应连翻');
 });
 
-test('发言页与牌库提示支持点击/滑动翻页与右下角放大全屏，不依赖失效的侧滑配置', () => {
+test('发言页与牌库提示支持点击/滑动翻页与左下角放大全屏，不依赖失效的侧滑配置', () => {
   const speakWxml = read('packageSpy/pages/speak/index.wxml');
   const libraryWxml = read('packageSpy/pages/cardLibrary/index.wxml');
   const speakJson = read('packageSpy/pages/speak/index.json');
@@ -245,9 +245,10 @@ test('发言页与牌库提示支持点击/滑动翻页与右下角放大全屏�
 
   assert.match(speakWxml, /点击或上下滑动翻页/);
   assert.match(libraryWxml, /点击或上下滑动翻页/);
-  assert.match(speakWxml, /右下角图标横屏全屏/);
-  assert.match(libraryWxml, /右下角图标横屏全屏/);
+  assert.match(speakWxml, /左下角图标横屏全屏/);
+  assert.match(libraryWxml, /左下角图标横屏全屏/);
   assert.match(cardWxml, /flip-expand-btn/);
+  assert.match(cardWxml, /flip-expand-arrow/);
   assert.doesNotMatch(speakJson, /disableSwipeBack/);
   assert.doesNotMatch(libraryJson, /disableSwipeBack/);
 });

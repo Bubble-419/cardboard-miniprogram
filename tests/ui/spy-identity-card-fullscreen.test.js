@@ -53,7 +53,7 @@ test('开启全屏后单击立即翻页，不打开全屏', () => {
   assert.deepEqual(flips, [{ next: 'word1', dir: 'up' }]);
 });
 
-test('右下角放大图标请求横屏全屏，且不触发翻页', () => {
+test('左下角放大图标请求横屏全屏，且不触发翻页', () => {
   const markup = read('packageSpy/components/flip-word-card/index.wxml');
   assert.match(markup, /class="flip-expand-btn"/);
   assert.match(markup, /catchtap="onExpandTap"/);
@@ -118,14 +118,19 @@ test('发言页将卡牌全屏做成本地横屏叠层，并提供明确关闭�
   const source = read('packageSpy/pages/speak/index.js');
   const styles = read('packageSpy/pages/speak/index.wxss');
 
+  assert.match(markup, /class="my-word-expand-btn"/);
+  assert.match(markup, /my-word-expand-arrow/);
+  assert.match(markup, /catchtap="onExpandMyWordCard"/);
+  assert.match(styles, /\.my-word-expand-btn\s*\{[\s\S]*?left:\s*16rpx;/);
   assert.match(markup, /fullscreenOnAssigned="\{\{true\}\}"/);
-  assert.match(markup, /bind:fullscreen="onOpenIdentityCardFullscreen"/);
+  assert.match(markup, /bind:fullscreen="onOpenLibraryCardFullscreen"/);
   assert.match(markup, /wx:if="\{\{identityCardFullscreenOpen && identityCardFullscreen\}\}"/);
   assert.match(markup, /bindtap="onCloseIdentityCardFullscreen"/);
   assert.match(markup, /landscapeGestures="\{\{true\}\}"/);
   assert.match(markup, /initialCardState="\{\{identityCardFullscreen\.initialCardState\}\}"/);
   assert.match(markup, /identity-card-fullscreen-card/);
   assert.doesNotMatch(markup, /identity-card-fullscreen-image/);
+  assert.match(source, /onExpandMyWordCard\(/);
   assert.match(source, /onOpenIdentityCardFullscreen\(/);
   assert.match(source, /onOpenLibraryCardFullscreen\(/);
   assert.match(source, /onCloseIdentityCardFullscreen\(/);

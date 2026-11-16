@@ -1,5 +1,7 @@
 {
   "navigationBarTitleText": "脑暴工作坊",
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "interaction-lock-layer": "/components/interaction-lock-layer/index"
+  }
 }

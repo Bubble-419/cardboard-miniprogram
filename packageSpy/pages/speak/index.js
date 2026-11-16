@@ -338,6 +338,20 @@ Page(withPageInteractionLock({
     });
   },
 
+  onExpandMyWordCard() {
+    if (!this.data.cardReady || !this.data.myWord) return;
+    let cardState = 'assignedWord';
+    try {
+      const card = this.selectComponent('#myWordCard');
+      if (card && card.data && card.data.cardState) {
+        cardState = card.data.cardState;
+      }
+    } catch (e) {
+      cardState = 'assignedWord';
+    }
+    this.onOpenIdentityCardFullscreen({ detail: { cardState } });
+  },
+
   onOpenIdentityCardFullscreen(e) {
     if (!this.data.cardReady || !this.data.myWord) return;
     const detail = (e && e.detail) || {};
@@ -428,6 +442,7 @@ Page(withPageInteractionLock({
   'onToggleLibraryCategory',
   'onTapLibraryCard',
   'onCloseViewer',
+  'onExpandMyWordCard',
   'onOpenIdentityCardFullscreen',
   'onOpenLibraryCardFullscreen',
   'onCloseIdentityCardFullscreen',

@@ -4,7 +4,7 @@
  * skipBack：跳过背面，词语 → 词语1 → 词语 …（牌库浏览用）
  * twoFaceOnly：仅在背面 back ↔ 词语 assignedWord 间翻转，不出现词语1
  *
- * 交互：单击/上下滑翻页；开启 fullscreenOnAssigned 时右下角放大图标请求横屏全屏。
+ * 交互：单击/上下滑翻页；开启 fullscreenOnAssigned 时左下角外扩箭头图标请求横屏全屏。
  * landscapeGestures：父级 rotate(90deg) 横屏叠层时，左右滑也按视觉上下翻页。
  * enableHorizontalSwipe：竖屏左右滑派发 horizontalswipe，供父级切换词对。
  * 手势在组件内 catch，避免误触页面返回。
@@ -29,7 +29,7 @@ Component({
     skipBack: { type: Boolean, value: false },
     /** 为 true 时仅背面 ↔ 词语两态翻转，跳过词语1（第三态） */
     twoFaceOnly: { type: Boolean, value: false },
-    /** 为 true 时显示右下角放大图标，点击请求父级横屏全屏；单击与滑动仍只翻页 */
+    /** 为 true 时显示左下角外扩箭头放大图标，点击请求父级横屏全屏；单击与滑动仍只翻页 */
     fullscreenOnAssigned: { type: Boolean, value: false },
     /** 挂载时优先进入的卡面：back / assignedWord / word1 */
     initialCardState: { type: String, value: '' },

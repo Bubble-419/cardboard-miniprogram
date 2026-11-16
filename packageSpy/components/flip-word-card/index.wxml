@@ -1,61 +1,68 @@
 <view
-  class="flip-scene {{animating ? 'is-animating' : ''}} {{landscapeGestures ? 'is-landscape' : ''}} {{imageMode === 'aspectFill' ? 'is-cover' : ''}}"
-  hover-class="is-pressed"
-  hover-start-time="0"
-  hover-stay-time="80"
-  catchtouchstart="onTouchStart"
-  catchtouchmove="onTouchMove"
-  catchtouchend="onTouchEnd"
-  catchtouchcancel="onTouchCancel"
-  catchtap="onTap"
+  class="flip-scene {{landscapeGestures ? 'is-landscape' : ''}} {{imageMode === 'aspectFill' ? 'is-cover' : ''}}"
 >
-  <view class="flip-card {{flipClass}}">
-    <!-- 1. 背面 -->
-    <view wx:if="{{showBackFace}}" class="flip-face">
-      <image
-        wx:if="{{backSrc && !imgError}}"
-        class="flip-img"
-        src="{{backSrc}}"
-        mode="{{imageMode}}"
-        binderror="onImgError"
-        bindload="onImgLoad"
-      />
-      <view wx:else class="flip-back-fallback">
-        <view class="flip-back-pattern"></view>
-        <text class="flip-back-title">词语卡</text>
-        <text class="flip-back-hint">点击或上下滑动翻页，右下角放大</text>
+  <!-- 透视仅包住卡面，避免把左下角放大按钮压进 3D 层 -->
+  <view
+    class="flip-stage {{animating ? 'is-animating' : ''}}"
+    hover-class="is-pressed"
+    hover-start-time="0"
+    hover-stay-time="80"
+    catchtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove"
+    catchtouchend="onTouchEnd"
+    catchtouchcancel="onTouchCancel"
+    catchtap="onTap"
+  >
+    <view class="flip-card {{flipClass}}">
+      <!-- 1. 背面 -->
+      <view wx:if="{{showBackFace}}" class="flip-face">
+        <image
+          wx:if="{{backSrc && !imgError}}"
+          class="flip-img"
+          src="{{backSrc}}"
+          mode="{{imageMode}}"
+          binderror="onImgError"
+          bindload="onImgLoad"
+        />
+        <view wx:else class="flip-back-fallback">
+          <view class="flip-back-pattern"></view>
+          <text class="flip-back-title">词语卡</text>
+          <text class="flip-back-hint">点击或上下滑动翻页，左下角放大</text>
+        </view>
       </view>
-    </view>
 
-    <!-- 2. 词语 / 3. 词语1 -->
-    <view wx:else class="flip-face">
-      <image
-        wx:if="{{displaySrc && !imgError}}"
-        class="flip-img"
-        src="{{displaySrc}}"
-        mode="{{imageMode}}"
-        binderror="onImgError"
-        bindload="onImgLoad"
-      />
-      <view wx:else class="flip-placeholder">
-        <text class="flip-placeholder-text">图片暂不可用</text>
+      <!-- 2. 词语 / 3. 词语1 -->
+      <view wx:else class="flip-face">
+        <image
+          wx:if="{{displaySrc && !imgError}}"
+          class="flip-img"
+          src="{{displaySrc}}"
+          mode="{{imageMode}}"
+          binderror="onImgError"
+          bindload="onImgLoad"
+        />
+        <view wx:else class="flip-placeholder">
+          <text class="flip-placeholder-text">图片暂不可用</text>
+        </view>
       </view>
     </view>
   </view>
 
-  <!-- 独立热区：不走卡面双击判定，避免单击翻页被延迟 -->
+  <!-- 叠在图片上层：独立热区，单击翻页无延迟 -->
   <view
     wx:if="{{fullscreenOnAssigned}}"
     class="flip-expand-btn"
     role="button"
-    aria-label="横屏放大"
+    aria-label="放大图片"
     catchtouchstart="onExpandCatch"
     catchtouchmove="onExpandCatch"
     catchtouchend="onExpandCatch"
     catchtouchcancel="onExpandCatch"
     catchtap="onExpandTap"
   >
-    <view class="flip-expand-lens"></view>
-    <view class="flip-expand-handle"></view>
+    <view class="flip-expand-arrow is-tl"></view>
+    <view class="flip-expand-arrow is-tr"></view>
+    <view class="flip-expand-arrow is-bl"></view>
+    <view class="flip-expand-arrow is-br"></view>
   </view>
 </view>

@@ -60,7 +60,7 @@
         <text class="viewer-title">{{selectedCard.displayName || selectedWord}}</text>
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
-      <text class="viewer-hint">点击或上下滑动翻页；右下角图标横屏全屏</text>
+      <text class="viewer-hint">点击或上下滑动翻页；左下角图标横屏全屏</text>
       <view class="viewer-card-frame">
         <flip-word-card
           wx:if="{{selectedCard}}"

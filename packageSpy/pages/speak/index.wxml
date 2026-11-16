@@ -36,9 +36,8 @@
         <view class="my-word-card-frame" wx:if="{{!myCardCollapsed}}">
           <flip-word-card
             wx:if="{{cardReady}}"
+            id="myWordCard"
             word="{{myWord}}"
-            fullscreenOnAssigned="{{true}}"
-            bind:fullscreen="onOpenIdentityCardFullscreen"
             backSrc="{{cardBackSrc}}"
             assignedWordSrc="{{assignedWordSrc}}"
             assignedWordFallbackSrc="{{assignedWordFallbackSrc}}"
@@ -46,6 +45,19 @@
             word1FallbackSrc="{{word1FallbackSrc}}"
           />
           <view class="my-word-card-loading" wx:else>词语加载中…</view>
+          <!-- 叠在图片上层左下角，点击横屏放大 -->
+          <view
+            wx:if="{{cardReady}}"
+            class="my-word-expand-btn"
+            role="button"
+            aria-label="放大图片"
+            catchtap="onExpandMyWordCard"
+          >
+            <view class="my-word-expand-arrow is-tl"></view>
+            <view class="my-word-expand-arrow is-tr"></view>
+            <view class="my-word-expand-arrow is-bl"></view>
+            <view class="my-word-expand-arrow is-br"></view>
+          </view>
         </view>
       </view>
     </view>
@@ -150,7 +162,7 @@
         <text class="viewer-title">{{selectedCard.displayName || selectedWord}}</text>
         <view class="viewer-close" bindtap="onCloseViewer">关闭</view>
       </view>
-      <text class="viewer-hint">点击或上下滑动翻页；右下角图标横屏全屏</text>
+      <text class="viewer-hint">点击或上下滑动翻页；左下角图标横屏全屏</text>
       <view class="viewer-card-frame">
         <flip-word-card
           wx:if="{{selectedCard}}"
