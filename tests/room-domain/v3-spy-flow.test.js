@@ -227,6 +227,39 @@ test('Spy 平票加时只能投首轮并列成员，且并列本人不参与投�
   assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedMemberId, hostMemberId);
 });
 
+test('Spy 剩余全员平票时本轮不再投票，直接进入下一轮发言', async () => {
+  const { h, sessionId, gameId } = await seedSpy();
+  let snapshot = await finishSpeaking(h, sessionId, gameId);
+  const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+  const hostId = snapshot.view.actor.memberId;
+  const u2Id = (await h.snapshot('u2')).view.actor.memberId;
+  const u3Id = (await h.snapshot('u3')).view.actor.memberId;
+  assert.equal(snapshot.view.session.publicModeState.roundNo, 1);
+
+  // 三人互投，最高票三人并列
+  assert.equal((await h.command('host', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { targetMemberId: u2Id }
+  })).ok, true);
+  assert.equal((await h.command('u2', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { targetMemberId: u3Id }
+  })).ok, true);
+  assert.equal((await h.command('u3', 'SUBMIT_SPY_VOTE', {
+    context: { sessionId, gameId, voteSessionId }, payload: { targetMemberId: hostId }
+  })).ok, true);
+
+  snapshot = await h.snapshot('host');
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_SPEAK');
+  assert.equal(snapshot.view.session.publicModeState.roundNo, 2);
+  assert.equal(snapshot.view.session.publicModeState.tieBreak, false);
+  assert.equal(snapshot.view.session.publicModeState.voteSessionId, null);
+  assert.equal(snapshot.view.session.publicModeState.lastResult, null);
+  assert.equal(
+    snapshot.view.session.publicModeState.players.filter((player) => player.alive).length,
+    3,
+    '全员并列不得淘汰任何人'
+  );
+});
+
 test('Spy 平票加时后开启提问不重复提示平票，新的真实平票仍需确认', async () => {
   const { h, sessionId, gameId } = await seedSpy();
   const users = ['host', 'u2', 'u3'];

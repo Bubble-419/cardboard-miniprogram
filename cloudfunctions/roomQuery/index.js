@@ -2111,6 +2111,29 @@ var require_spy = __commonJS({
         questionRound: spy.questionRound === true
       });
     }
+    function beginNextSpeakRoundAfterAllTie(aggregate, deps, { memberIds, maxVotes }) {
+      const spy = spyState(aggregate);
+      const aliveMemberIds = alivePlayers(spy).map((player) => player.memberId);
+      const tiedIds = Array.isArray(memberIds) && memberIds.length ? memberIds.slice() : aliveMemberIds.slice();
+      const events = [
+        event(EVENT_TYPES.SPY_VOTE_TIED, {
+          memberIds: tiedIds,
+          maxVotes: maxVotes || 0,
+          allTiedAdvance: true
+        })
+      ];
+      spy.roundNo += 1;
+      spy.lastResult = null;
+      spy.voteProgress = null;
+      spy.voteStartedAt = null;
+      spy.tieBreak = false;
+      spy.questionRound = false;
+      spy.questionRoundUsed = false;
+      const order = shuffle(aliveMemberIds, randomOf(deps));
+      events.push(event(EVENT_TYPES.SPY_ROUND_STARTED, { roundNo: spy.roundNo }));
+      events.push(startSpeaker(aggregate, order, deps, false));
+      return events;
+    }
     function openVote(aggregate, deps) {
       const session = aggregate.currentSession;
       const spy = spyState(aggregate);
@@ -2119,7 +2142,13 @@ var require_spy = __commonJS({
       if (spy.tieBreak === true) {
         const tiedSet = new Set(spy.lastResult && spy.lastResult.tiedMemberIds || []);
         const nonTied = aliveIds.filter((id) => !tiedSet.has(id));
-        if (nonTied.length > 0) requiredMemberIds = nonTied;
+        if (nonTied.length === 0) {
+          return beginNextSpeakRoundAfterAllTie(aggregate, deps, {
+            memberIds: aliveIds,
+            maxVotes: spy.lastResult && spy.lastResult.maxVotes
+          });
+        }
+        requiredMemberIds = nonTied;
       }
       spy.questionRound = false;
       spy.voteProgress = { voteSessionId: idOf(deps, "vote"), requiredMemberIds, submittedMemberIds: [] };
@@ -2129,7 +2158,11 @@ var require_spy = __commonJS({
         activeMemberId: null,
         turnId: spy.voteProgress.voteSessionId
       });
-      return event(EVENT_TYPES.SPY_VOTE_OPENED, { voteSessionId: spy.voteProgress.voteSessionId, requiredCount: requiredMemberIds.length, tieBreak: spy.tieBreak });
+      return [event(EVENT_TYPES.SPY_VOTE_OPENED, {
+        voteSessionId: spy.voteProgress.voteSessionId,
+        requiredCount: requiredMemberIds.length,
+        tieBreak: spy.tieBreak
+      })];
     }
     function startGame(aggregate, deps, restarted) {
       const session = aggregate.currentSession;
@@ -2224,6 +2257,11 @@ var require_spy = __commonJS({
       const max = Math.max(0, ...Object.values(tally));
       const top = max ? Object.keys(tally).filter((memberId) => tally[memberId] === max) : [];
       if (top.length > 1) {
+        const aliveIds = [...validTargets];
+        const allAliveTied = aliveIds.length > 1 && aliveIds.every((id) => top.includes(id));
+        if (allAliveTied) {
+          return beginNextSpeakRoundAfterAllTie(aggregate, deps, { memberIds: top, maxVotes: max });
+        }
         spy.lastResult = { eliminatedMemberId: null, maxVotes: max, tied: true, tiedMemberIds: top, tallies: tally, winnerSide: null };
         const started = startSpeaker(aggregate, shuffle(top, randomOf(deps)), deps, true);
         return [event(EVENT_TYPES.SPY_VOTE_TIED, { memberIds: top, maxVotes: max }), started];
@@ -2302,7 +2340,7 @@ var require_spy = __commonJS({
           if (player && player.alive && !player.left) break;
           check.spy.currentSpeakerIndex += 1;
         }
-        if (check.spy.currentSpeakerIndex >= check.spy.speakOrder.length) events.push(openVote(aggregate, deps));
+        if (check.spy.currentSpeakerIndex >= check.spy.speakOrder.length) events.push(...openVote(aggregate, deps));
         else {
           check.spy.speakerTurnId = idOf(deps, "speaker");
           check.spy.speakTurnStartedAt = nowOf(deps);
@@ -2480,7 +2518,7 @@ var require_spy = __commonJS({
           if (next && next.alive && !next.left) break;
           spy.currentSpeakerIndex += 1;
         }
-        if (spy.currentSpeakerIndex >= spy.speakOrder.length) events.push(openVote(aggregate, deps));
+        if (spy.currentSpeakerIndex >= spy.speakOrder.length) events.push(...openVote(aggregate, deps));
         else {
           const now = nowOf(deps);
           spy.speakerTurnId = idOf(deps, "speaker");
