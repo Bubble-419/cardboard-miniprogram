@@ -48,6 +48,23 @@ function buildCircleSlots(players, memberByIndex, tiedIndexSet) {
   });
 }
 
+/** 应投票人数：优先服务端 requiredVoteCount；回退时排除出局，平票加时再排除并列者 */
+function resolveTotalVoters(spyGame, players, tiedIndexSet, voteStatus) {
+  const fromStatus = voteStatus && voteStatus.totalVoters;
+  const fromState = spyGame && spyGame.requiredVoteCount;
+  const serverCount = fromStatus != null ? fromStatus : fromState;
+  if (Number.isFinite(Number(serverCount)) && Number(serverCount) >= 0
+    && (spyGame && spyGame.phase === 'vote' || Number(serverCount) > 0)) {
+    return Number(serverCount);
+  }
+  const alive = (players || []).filter((p) => p.alive !== false && p.left !== true && p.leftRoom !== true);
+  if (spyGame && spyGame.tieBreak === true) {
+    const tied = tiedIndexSet || new Set();
+    return alive.filter((p) => !tied.has(Number(p.playerIndex))).length;
+  }
+  return alive.length;
+}
+
 Page(withPageInteractionLock({
   data: {
     roomId: '',
@@ -124,10 +141,11 @@ Page(withPageInteractionLock({
     );
   },
 
-  /** 倒计时结束：若未出局且尚未投票，自动提交弃票 */
+  /** 倒计时结束：仅应投票人自动弃票（出局 / 平票并列者跳过） */
   _onCountdownTick(msLeft) {
     if (msLeft > 0) return;
-    if (!this._pageAlive || this.data.eliminated || this.data.hasVoted || this._autoAbstaining) return;
+    if (!this._pageAlive || this.data.eliminated || !this.data.canVote
+      || this.data.hasVoted || this._autoAbstaining) return;
     this._autoAbstaining = true;
     this.submitVote({ abstain: true }).finally(() => {
       this._autoAbstaining = false;
@@ -214,9 +232,7 @@ Page(withPageInteractionLock({
             : '并列玩家需重新投票',
           circleSlots: buildCircleSlots(players, memberByIndex, tiedIndexSet),
           votedCount: voteStatus.votedCount != null ? voteStatus.votedCount : voted.length,
-          totalVoters: voteStatus.totalVoters != null
-            ? voteStatus.totalVoters
-            : players.filter((p) => p.alive !== false && p.leftRoom !== true).length
+          totalVoters: resolveTotalVoters(spyGame, players, tiedIndexSet, voteStatus)
         }, () => {
           if (nextCommandContext) this._spyCommandContext = nextCommandContext;
         });

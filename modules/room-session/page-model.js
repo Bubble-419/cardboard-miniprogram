@@ -220,7 +220,8 @@ function spyPageState(view, session, projectedMembers) {
     requiredVoteCount: state.requiredVoteCount,
     voteStatus: {
       votedCount: state.votedCount || 0,
-      totalVoters: state.requiredVoteCount || 0,
+      // 保留 0（例如异常空票池）；不要用 || 把合法 0 吃掉，方便页面区分“未下发”
+      totalVoters: state.requiredVoteCount != null ? state.requiredVoteCount : null,
       votedPlayerIndexes: view.actor && view.actor.voteStatus.submitted ? [actorSeat] : []
     },
     voteDeadlineMs: state.voteDeadlineAt && state.voteStartedAt

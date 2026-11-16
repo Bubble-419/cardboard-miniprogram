@@ -170,6 +170,22 @@ test('Spy 有人淘汰时保留上轮随机顺序并从淘汰者之后继续', a
   });
   snapshot = await h.snapshot('host');
   assert.deepEqual(snapshot.view.session.publicModeState.speakOrder, expectedOrder);
+
+  // 下一轮开票：应投票人数不含已出局者；出局者不能再投
+  snapshot = await finishSpeaking(h, sessionId, gameId);
+  assert.equal(snapshot.view.session.workflow.step, 'SPY_VOTE');
+  assert.equal(snapshot.view.session.publicModeState.requiredVoteCount, 3);
+  const eliminatedSnap = await h.snapshot(targetUser);
+  assert.equal(eliminatedSnap.view.actor.capabilities.SUBMIT_SPY_VOTE.allowed, false);
+  const rejected = await h.command(targetUser, 'SUBMIT_SPY_VOTE', {
+    context: {
+      sessionId,
+      gameId,
+      voteSessionId: snapshot.view.session.publicModeState.voteSessionId
+    },
+    payload: { abstain: true }
+  });
+  assert.equal(rejected.ok, false);
 });
 
 test('Spy 平票加时只能投首轮并列成员，且并列本人不参与投票', async () => {
