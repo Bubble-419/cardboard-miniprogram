@@ -6,7 +6,9 @@ const {
   SPY_WORD_PAIRS,
   WORD_ENTRIES,
   CONTRAST_PICK_RATE,
-  pickRandomWordPair
+  RECENT_PAIR_COOLDOWN,
+  pickRandomWordPair,
+  pairIdentityKey
 } = require('../../packages/room-domain/spyWordPairs');
 
 function sequenceRandom(values) {
@@ -72,5 +74,26 @@ describe('pickRandomWordPair 80/20', () => {
     assert.equal(result.id, `random-${WORD_ENTRIES[0].word}-${WORD_ENTRIES[1].word}`);
     assert.equal(result.civilianWord, WORD_ENTRIES[1].word);
     assert.equal(result.spyWord, WORD_ENTRIES[0].word);
+  });
+
+  it('exports recent pair cooldown of 5 games', () => {
+    assert.equal(RECENT_PAIR_COOLDOWN, 5);
+  });
+
+  it('pairIdentityKey ignores civilian/spy role order', () => {
+    assert.equal(
+      pairIdentityKey({ civilianWord: '开关', spyWord: '单击' }),
+      pairIdentityKey({ civilianWord: '单击', spyWord: '开关' })
+    );
+    assert.equal(pairIdentityKey('开关', '单击'), pairIdentityKey('单击', '开关'));
+  });
+
+  it('skips excluded contrast pairs within cooldown window', () => {
+    const blocked = SPY_WORD_PAIRS.slice(0, 3).map((pair) => pairIdentityKey(pair.wordA, pair.wordB));
+    // mode < 0.8, first remaining index 0 in filtered pool (= original [3]), swap=false
+    const result = pickRandomWordPair(sequenceRandom([0.1, 0, 0.6]), { excludeKeys: blocked });
+    assert.ok(result);
+    assert.equal(result.id, SPY_WORD_PAIRS[3].id);
+    assert.equal(blocked.includes(pairIdentityKey(result)), false);
   });
 });

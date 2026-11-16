@@ -497,3 +497,75 @@ test('Spy 离房成员已经提交的票不再参与当轮淘汰', async () => {
   assert.equal(snapshot.view.session.workflow.step, 'SPY_RESULT');
   assert.equal(snapshot.view.session.publicModeState.lastResult.eliminatedMemberId, null);
 });
+
+test('Spy 连续至少5局内同一词对不再一同出现', async () => {
+  const pool = [
+    { id: 'p1', civilianWord: '开关', civilianBlurb: 'a', spyWord: '单击', spyBlurb: 'b' },
+    { id: 'p2', civilianWord: '拖拽', civilianBlurb: 'a', spyWord: '甩动', spyBlurb: 'b' },
+    { id: 'p3', civilianWord: '长按', civilianBlurb: 'a', spyWord: '快击', spyBlurb: 'b' },
+    { id: 'p4', civilianWord: '缩放', civilianBlurb: 'a', spyWord: '旋转', spyBlurb: 'b' },
+    { id: 'p5', civilianWord: '滑动', civilianBlurb: 'a', spyWord: '轻扫', spyBlurb: 'b' },
+    { id: 'p6', civilianWord: '双击', civilianBlurb: 'a', spyWord: '按下', spyBlurb: 'b' }
+  ];
+  const pairKey = (pair) => [pair.civilianWord, pair.spyWord].sort().join('|');
+  const seenExcludeSizes = [];
+  const h = createHarness({
+    wordPairPicker: (_random, options) => {
+      const exclude = new Set((options && options.excludeKeys) || []);
+      seenExcludeSizes.push(exclude.size);
+      const next = pool.find((pair) => !exclude.has(pairKey(pair)));
+      assert.ok(next, '排除近5局后仍应抽到新词对');
+      return { ...next };
+    }
+  });
+  await h.seedMembers(3);
+  await h.command('host', 'START_WORKSHOP_SESSION', { payload: { mode: 'SPY' } });
+  let snapshot = await h.snapshot('host');
+  const sessionId = snapshot.view.session.sessionId;
+  const keys = [];
+  for (let i = 0; i < 6; i += 1) {
+    const prevGameId = snapshot.view.session.publicModeState && snapshot.view.session.publicModeState.gameId;
+    const started = await h.command('host', i === 0 ? 'START_SPY_GAME' : 'RESTART_SPY_GAME', {
+      context: i === 0 ? { sessionId } : { sessionId, gameId: prevGameId }
+    });
+    assert.equal(started.ok, true);
+    snapshot = await h.snapshot('host');
+    const gameId = snapshot.view.session.publicModeState.gameId;
+    const words = [];
+    for (const userId of ['host', 'u2', 'u3']) {
+      words.push((await h.snapshot(userId)).view.actor.privateModeState.word);
+    }
+    const unique = [...new Set(words)];
+    assert.equal(unique.length, 2);
+    keys.push([unique[0], unique[1]].sort().join('|'));
+
+    await finishSpeaking(h, sessionId, gameId);
+    snapshot = await h.snapshot('host');
+    const voteSessionId = snapshot.view.session.publicModeState.voteSessionId;
+    const actorCards = {};
+    for (const userId of ['host', 'u2', 'u3']) {
+      actorCards[userId] = (await h.snapshot(userId)).view.actor.privateModeState;
+    }
+    const spyUser = Object.keys(actorCards).find((userId) => actorCards[userId].role === 'spy');
+    const spyMemberId = (await h.snapshot(spyUser)).view.actor.memberId;
+    for (const userId of ['host', 'u2', 'u3']) {
+      const payload = userId === spyUser ? { abstain: true } : { targetMemberId: spyMemberId };
+      await h.command(userId, 'SUBMIT_SPY_VOTE', {
+        context: { sessionId, gameId, voteSessionId },
+        payload
+      });
+    }
+    snapshot = await h.snapshot('host');
+    assert.equal(snapshot.view.session.workflow.step, 'SPY_SETTLED');
+  }
+  assert.deepEqual(seenExcludeSizes, [0, 1, 2, 3, 4, 5]);
+  for (let i = 0; i < keys.length; i += 1) {
+    for (let j = Math.max(0, i - 5); j < i; j += 1) {
+      assert.notEqual(keys[i], keys[j], `第${i + 1}局与第${j + 1}局不应重复同一词对`);
+    }
+  }
+  assert.deepEqual(
+    h.repo.rooms.get('12345678').room.spyRecentPairKeys,
+    keys.slice().reverse().slice(0, 5)
+  );
+});

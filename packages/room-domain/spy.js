@@ -1,7 +1,11 @@
 'use strict';
 
 const { COMMAND_TYPES, SPY_VOTE_DURATION_MS } = require('@cardboard/room-contracts');
-const { pickRandomWordPair } = require('./spyWordPairs');
+const {
+  pickRandomWordPair,
+  pairIdentityKey,
+  RECENT_PAIR_COOLDOWN
+} = require('./spyWordPairs');
 const {
   clone, event, domainOk, fail, idOf, nowOf, ensureFacts, assertHost, assertParticipant, assertSession,
   transitionWorkflow, activeParticipantsBySeat, progressComplete,
@@ -38,9 +42,29 @@ function reveal(aggregate, spy) {
       word: secret.word || null, alive: player.alive, left: player.left };
   });
 }
-function pickWords(deps) {
-  if (deps && typeof deps.wordPairPicker === 'function') return deps.wordPairPicker(randomOf(deps));
-  return pickRandomWordPair(randomOf(deps));
+function listRecentSpyPairKeys(room) {
+  const list = room && Array.isArray(room.spyRecentPairKeys) ? room.spyRecentPairKeys : [];
+  return list
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, RECENT_PAIR_COOLDOWN);
+}
+
+function rememberSpyWordPair(room, words) {
+  if (!room || !words) return;
+  const key = pairIdentityKey(words);
+  if (!key) return;
+  const next = [key].concat(listRecentSpyPairKeys(room).filter((item) => item !== key));
+  room.spyRecentPairKeys = next.slice(0, RECENT_PAIR_COOLDOWN);
+}
+
+function pickWords(aggregate, deps) {
+  const excludeKeys = listRecentSpyPairKeys(aggregate && aggregate.room);
+  const options = { excludeKeys };
+  if (deps && typeof deps.wordPairPicker === 'function') {
+    return deps.wordPairPicker(randomOf(deps), options);
+  }
+  return pickRandomWordPair(randomOf(deps), options);
 }
 function normalizeSpeakerOptions(options) {
   if (options === true || options === false) return { tieBreak: options === true, question: false };
@@ -143,7 +167,8 @@ function startGame(aggregate, deps, restarted) {
   }
   const participants = activeParticipantsBySeat(aggregate);
   if (participants.length < 3) return fail(ERR.NOT_ENOUGH_PLAYERS, 'Spy 至少需要 3 人');
-  const words = pickWords(deps); if (!words) return fail(ERR.NO_WORD_PAIR);
+  const words = pickWords(aggregate, deps); if (!words) return fail(ERR.NO_WORD_PAIR);
+  rememberSpyWordPair(aggregate.room, words);
   const random = randomOf(deps); const shuffled = shuffle(participants, random); const spyMemberId = shuffled[0].memberId;
   const gameId = idOf(deps, 'spy');
   const players = participants.map((member) => ({ memberId: member.memberId, seatNoAtStart: member.seatNo,

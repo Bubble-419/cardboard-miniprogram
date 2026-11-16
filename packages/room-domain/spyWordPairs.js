@@ -103,6 +103,9 @@ function buildPairsFromGroups() {
 
 const SPY_WORD_PAIRS = buildPairsFromGroups();
 const CONTRAST_PICK_RATE = 0.8;
+/** 连续局数内，同一对词语不得再次一同出现 */
+const RECENT_PAIR_COOLDOWN = 5;
+const PICK_ATTEMPTS = 48;
 
 function assignRoles(wordA, blurbA, wordB, blurbB, id, random) {
   const swap = random() < 0.5;
@@ -115,32 +118,67 @@ function assignRoles(wordA, blurbA, wordB, blurbB, id, random) {
   };
 }
 
-function pickContrastPair(random) {
-  if (!SPY_WORD_PAIRS.length) return null;
-  const pair = SPY_WORD_PAIRS[Math.floor(random() * SPY_WORD_PAIRS.length)];
+/** 忽略平民/卧底角色，只按两个词本身判重 */
+function pairIdentityKey(wordsOrA, maybeB) {
+  let a;
+  let b;
+  if (wordsOrA && typeof wordsOrA === 'object') {
+    a = wordsOrA.civilianWord || wordsOrA.wordA || '';
+    b = wordsOrA.spyWord || wordsOrA.wordB || '';
+  } else {
+    a = wordsOrA || '';
+    b = maybeB || '';
+  }
+  const left = String(a || '').trim();
+  const right = String(b || '').trim();
+  if (!left || !right) return '';
+  return [left, right].sort().join('|');
+}
+
+function pickContrastPair(random, excludeKeys) {
+  const blocked = excludeKeys instanceof Set ? excludeKeys : new Set(excludeKeys || []);
+  const pool = blocked.size
+    ? SPY_WORD_PAIRS.filter((pair) => !blocked.has(pairIdentityKey(pair.wordA, pair.wordB)))
+    : SPY_WORD_PAIRS;
+  if (!pool.length) return null;
+  const pair = pool[Math.floor(random() * pool.length)];
   return assignRoles(pair.wordA, pair.blurbA, pair.wordB, pair.blurbB, pair.id, random);
 }
 
-function pickFreePair(random) {
+function pickFreePair(random, excludeKeys) {
   if (WORD_ENTRIES.length < 2) return null;
-  const i = Math.floor(random() * WORD_ENTRIES.length);
-  let j = Math.floor(random() * (WORD_ENTRIES.length - 1));
-  if (j >= i) j += 1;
-  const a = WORD_ENTRIES[i];
-  const b = WORD_ENTRIES[j];
-  return assignRoles(a.word, a.blurb, b.word, b.blurb, `random-${a.word}-${b.word}`, random);
+  const blocked = excludeKeys instanceof Set ? excludeKeys : new Set(excludeKeys || []);
+  for (let attempt = 0; attempt < PICK_ATTEMPTS; attempt += 1) {
+    const i = Math.floor(random() * WORD_ENTRIES.length);
+    let j = Math.floor(random() * (WORD_ENTRIES.length - 1));
+    if (j >= i) j += 1;
+    const a = WORD_ENTRIES[i];
+    const b = WORD_ENTRIES[j];
+    const key = pairIdentityKey(a.word, b.word);
+    if (blocked.has(key)) continue;
+    return assignRoles(a.word, a.blurb, b.word, b.blurb, `random-${a.word}-${b.word}`, random);
+  }
+  return null;
 }
 
-function pickRandomWordPair(random = Math.random) {
-  if (random() < CONTRAST_PICK_RATE) {
-    return pickContrastPair(random) || pickFreePair(random);
+function pickRandomWordPair(random = Math.random, options) {
+  const excludeKeys = new Set((options && options.excludeKeys) || []);
+  const preferContrast = () => pickContrastPair(random, excludeKeys) || pickFreePair(random, excludeKeys);
+  const preferFree = () => pickFreePair(random, excludeKeys) || pickContrastPair(random, excludeKeys);
+  let words = random() < CONTRAST_PICK_RATE ? preferContrast() : preferFree();
+  if (words) return words;
+  // 近几局把可选对耗尽时，降级为不排除，保证仍能开局
+  if (excludeKeys.size) {
+    return pickRandomWordPair(random, { excludeKeys: [] });
   }
-  return pickFreePair(random) || pickContrastPair(random);
+  return null;
 }
 
 module.exports = {
   SPY_WORD_PAIRS,
   CONTRAST_PICK_RATE,
+  RECENT_PAIR_COOLDOWN,
   pickRandomWordPair,
+  pairIdentityKey,
   WORD_ENTRIES
 };

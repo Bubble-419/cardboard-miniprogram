@@ -23,7 +23,7 @@
       <view wx:else class="flip-back-fallback">
         <view class="flip-back-pattern"></view>
         <text class="flip-back-title">词语卡</text>
-        <text class="flip-back-hint">点击或上下滑动翻页，双击横屏全屏</text>
+        <text class="flip-back-hint">点击或上下滑动翻页，右下角放大</text>
       </view>
     </view>
 
@@ -41,5 +41,21 @@
         <text class="flip-placeholder-text">图片暂不可用</text>
       </view>
     </view>
+  </view>
+
+  <!-- 独立热区：不走卡面双击判定，避免单击翻页被延迟 -->
+  <view
+    wx:if="{{fullscreenOnAssigned}}"
+    class="flip-expand-btn"
+    role="button"
+    aria-label="横屏放大"
+    catchtouchstart="onExpandCatch"
+    catchtouchmove="onExpandCatch"
+    catchtouchend="onExpandCatch"
+    catchtouchcancel="onExpandCatch"
+    catchtap="onExpandTap"
+  >
+    <view class="flip-expand-lens"></view>
+    <view class="flip-expand-handle"></view>
   </view>
 </view>

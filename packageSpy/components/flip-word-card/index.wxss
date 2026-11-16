@@ -1,4 +1,5 @@
 .flip-scene {
+  position: relative;
   width: 100%;
   height: 100%;
   aspect-ratio: 876 / 609;
@@ -164,4 +165,40 @@
 .flip-placeholder-text {
   color: #8a91a0;
   font-size: 26rpx;
+}
+
+.flip-expand-btn {
+  position: absolute;
+  right: 10rpx;
+  bottom: 10rpx;
+  z-index: 6;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(20, 24, 32, 0.52);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flip-expand-lens {
+  width: 22rpx;
+  height: 22rpx;
+  margin: -6rpx 0 0 -6rpx;
+  border: 3rpx solid rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.flip-expand-handle {
+  position: absolute;
+  width: 16rpx;
+  height: 3rpx;
+  right: 16rpx;
+  bottom: 18rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 2rpx;
+  transform: rotate(45deg);
+  transform-origin: center;
 }

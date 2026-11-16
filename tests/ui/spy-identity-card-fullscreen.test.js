@@ -35,8 +35,7 @@ function makeComponent(definition, data) {
   return component;
 }
 
-test('开启全屏后单击只翻页，不立刻打开全屏', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('开启全屏后单击立即翻页，不打开全屏', () => {
   const definition = loadComponent();
   const component = makeComponent(definition, {
     fullscreenOnAssigned: true,
@@ -49,21 +48,17 @@ test('开启全屏后单击只翻页，不立刻打开全屏', (t) => {
   const flips = [];
   component._flipTo = (next, dir) => { flips.push({ next, dir }); };
 
-  try {
-    component.onTap();
-    assert.deepEqual(component.events, []);
-    assert.deepEqual(flips, []);
-
-    t.mock.timers.tick(280);
-    assert.deepEqual(flips, [{ next: 'word1', dir: 'up' }]);
-    assert.deepEqual(component.events, []);
-  } finally {
-    component._clearTimers();
-  }
+  component.onTap();
+  assert.deepEqual(component.events, []);
+  assert.deepEqual(flips, [{ next: 'word1', dir: 'up' }]);
 });
 
-test('双击请求横屏全屏，并取消待执行的单击翻页', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+test('右下角放大图标请求横屏全屏，且不触发翻页', () => {
+  const markup = read('packageSpy/components/flip-word-card/index.wxml');
+  assert.match(markup, /class="flip-expand-btn"/);
+  assert.match(markup, /catchtap="onExpandTap"/);
+  assert.match(markup, /wx:if="\{\{fullscreenOnAssigned\}\}"/);
+
   const component = makeComponent(loadComponent(), {
     fullscreenOnAssigned: true,
     cardState: 'assignedWord',
@@ -75,27 +70,13 @@ test('双击请求横屏全屏，并取消待执行的单击翻页', (t) => {
   const flips = [];
   component._flipTo = (next, dir) => { flips.push({ next, dir }); };
 
-  try {
-    component.onTouchStart({ changedTouches: [{ clientX: 100, clientY: 200 }] });
-    component.onTouchEnd({ changedTouches: [{ clientX: 104, clientY: 203 }] });
-    component.onTap();
-    t.mock.timers.tick(120);
-    component.onTouchStart({ changedTouches: [{ clientX: 100, clientY: 200 }] });
-    component.onTouchEnd({ changedTouches: [{ clientX: 102, clientY: 201 }] });
-    component.onTap();
-
-    assert.equal(component.events.length, 1);
-    assert.equal(component.events[0].name, 'fullscreen');
-    assert.equal(component.events[0].detail.word, '海洋');
-    assert.equal(component.events[0].detail.src, 'word.png');
-    assert.equal(component.data.cardState, 'assignedWord');
-    assert.deepEqual(flips, []);
-
-    t.mock.timers.tick(280);
-    assert.deepEqual(flips, [], '双击后不应再执行延迟单击翻页');
-  } finally {
-    component._clearTimers();
-  }
+  component.onExpandTap();
+  assert.equal(component.events.length, 1);
+  assert.equal(component.events[0].name, 'fullscreen');
+  assert.equal(component.events[0].detail.word, '海洋');
+  assert.equal(component.events[0].detail.src, 'word.png');
+  assert.equal(component.data.cardState, 'assignedWord');
+  assert.deepEqual(flips, []);
 });
 
 test('上下滑动仍翻页，翻面动画期间不误开全屏', (t) => {
@@ -111,7 +92,6 @@ test('上下滑动仍翻页，翻面动画期间不误开全屏', (t) => {
   try {
     component.onTouchStart({ changedTouches: [{ clientX: 100, clientY: 200 }] });
     component.onTouchEnd({ changedTouches: [{ clientX: 100, clientY: 260 }] });
-    component.onTap();
     component.onTap();
     assert.deepEqual(component.events, []);
     t.mock.timers.tick(300);
