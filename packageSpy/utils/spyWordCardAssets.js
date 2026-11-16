@@ -6,6 +6,10 @@
  * - {词语}3x.webp   → 词语（交互方式卡）
  * - {词语}13x.webp  → 词语1（IxDL 逻辑卡）
  * - 背面3x.webp     → 统一背面
+ *
+ * 英文版与牌库顺序一一对应，云上 key 保持原文件名：
+ * 第 1 类为 1-A…1-I，第 2–4 类为 2-a…4-i。
+ * 同一词有两张：无后缀与 `-1`。哪一张是模板卡由画面决定，不能按后缀一刀切。
  */
 
 const { WORD_ENTRIES, SPY_WORD_PAIRS } = require('./spyWordPairs');
@@ -24,6 +28,15 @@ function cardAssetUrl(rel) {
 
 const CARD_BACK_WEBP = cardAssetUrl(`${WEBP_DIR}/背面3x.webp`);
 const FILE_WORD_ALIAS = { 晃动: '震动' };
+const ENGLISH_LETTERS = 'abcdefghi';
+/** 这些编号的模板卡是无后缀文件；其余第 1、2 类模板卡是 `-1` 文件。第 3、4 类全部用无后缀文件做模板卡。 */
+const ENGLISH_TEMPLATE_USES_BASE_NAME = {
+  '1-B': true,
+  '2-f': true,
+  '2-g': true,
+  '2-h': true,
+  '2-i': true
+};
 
 /** 旧 PNG 编号映射，仅作 WebP 缺失时的回退（游戏词） */
 const WORD_RAW_FALLBACK = {
@@ -132,7 +145,35 @@ function assetWord(word) {
   return FILE_WORD_ALIAS[word] || word;
 }
 
-function getWordCardAssets(word) {
+function englishStem(fileWord) {
+  for (let groupIndex = 0; groupIndex < LIBRARY_CATEGORIES.length; groupIndex += 1) {
+    const cardIndex = LIBRARY_CATEGORIES[groupIndex].cards.findIndex((item) => item.word === fileWord);
+    if (cardIndex < 0) continue;
+    const groupNo = groupIndex + 1;
+    const letter = groupNo === 1
+      ? ENGLISH_LETTERS.charAt(cardIndex).toUpperCase()
+      : ENGLISH_LETTERS.charAt(cardIndex);
+    return `${groupNo}-${letter}`;
+  }
+  return '';
+}
+
+function englishFilePair(fileWord) {
+  const stem = englishStem(fileWord);
+  if (!stem) return null;
+  const groupNo = stem.charAt(0);
+  const templateUsesBase = groupNo === '3'
+    || groupNo === '4'
+    || ENGLISH_TEMPLATE_USES_BASE_NAME[stem] === true;
+  const baseName = `${stem}.webp`;
+  const altName = `${stem}-1.webp`;
+  return templateUsesBase
+    ? { template: baseName, logic: altName }
+    : { template: altName, logic: baseName };
+}
+
+function getWordCardAssets(word, options) {
+  const locale = options && options.locale === 'en' ? 'en' : 'zh';
   if (!word) {
     return {
       assignedWordSrc: '',
@@ -145,18 +186,29 @@ function getWordCardAssets(word) {
 
   const fileWord = assetWord(word);
   const raw = WORD_RAW_FALLBACK[word] || WORD_RAW_FALLBACK[fileWord];
-  return {
+  const zh = {
     assignedWordSrc: cardAssetUrl(`${WEBP_DIR}/${fileWord}3x.webp`),
     assignedWordFallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.method}`) : '',
     word1Src: cardAssetUrl(`${WEBP_DIR}/${fileWord}13x.webp`),
     word1FallbackSrc: raw ? staticCdnUrl(`${RAW_DIR}/${raw.ixdl}`) : '',
     backSrc: CARD_BACK_WEBP
   };
+  if (locale !== 'en') return zh;
+
+  const english = englishFilePair(fileWord);
+  if (!english) return zh;
+  return {
+    assignedWordSrc: cardAssetUrl(`${WEBP_DIR}/${english.template}`),
+    assignedWordFallbackSrc: zh.assignedWordSrc,
+    word1Src: cardAssetUrl(`${WEBP_DIR}/${english.logic}`),
+    word1FallbackSrc: zh.word1Src,
+    backSrc: CARD_BACK_WEBP
+  };
 }
 
-function buildLibraryCard(item) {
+function buildLibraryCard(item, locale) {
   const word = item.word;
-  const assets = getWordCardAssets(word);
+  const assets = getWordCardAssets(word, { locale });
   const blurbKey = item.blurbWord || word;
   return {
     no: item.no,
@@ -187,12 +239,13 @@ function getGamePairCount() {
  * 牌库分类列表（浏览用，不参与抽卡）
  * @returns {Array<{id:string,title:string,count:number,cards:Array}>}
  */
-function listLibraryCategories() {
+function listLibraryCategories(options) {
+  const locale = options && options.locale === 'en' ? 'en' : 'zh';
   return LIBRARY_CATEGORIES.map((category) => ({
     id: category.id,
     title: category.title,
     count: category.cards.length,
-    cards: category.cards.map(buildLibraryCard)
+    cards: category.cards.map((item) => buildLibraryCard(item, locale))
   }));
 }
 
@@ -200,8 +253,8 @@ function listLibraryCategories() {
  * 牌库扁平列表（兼容发言页等查找）
  * @returns {Array}
  */
-function listLibraryCards() {
-  return listLibraryCategories().reduce((all, category) => all.concat(category.cards), []);
+function listLibraryCards(options) {
+  return listLibraryCategories(options).reduce((all, category) => all.concat(category.cards), []);
 }
 
 module.exports = {
@@ -217,5 +270,6 @@ module.exports = {
   RAW_DIR,
   WEBP_DIR,
   CARD_BACK_WEBP,
-  CARD_ASSET_VERSION
+  CARD_ASSET_VERSION,
+  englishFilePair
 };

@@ -128,14 +128,73 @@
   margin-bottom: 0;
 }
 
-.my-word-label {
+.my-word-label-row {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.my-word-label {
+  flex: none;
+  max-width: 100%;
   font-size: 28rpx;
   font-weight: 700;
   color: #334155;
   line-height: 36rpx;
   text-align: left;
+}
+
+.my-word-lang-btn {
+  flex-shrink: 0;
+  height: 36rpx;
+  padding: 0 10rpx 0 8rpx;
+  border-radius: 18rpx;
+  border: 2rpx solid #3AAE34;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4rpx;
+  box-sizing: border-box;
+  background: #FFFFFF;
+}
+
+.my-word-lang-btn.is-en {
+  background: #3AAE34;
+}
+
+.my-word-lang-mark {
+  width: 22rpx;
+  height: 22rpx;
+  border-radius: 11rpx;
+  background: #3AAE34;
+  color: #FFFFFF;
+  font-size: 14rpx;
+  font-weight: 700;
+  line-height: 22rpx;
+  text-align: center;
+}
+
+.my-word-lang-btn.is-en .my-word-lang-mark {
+  background: #FFFFFF;
+  color: #3AAE34;
+}
+
+.my-word-lang-code {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #3AAE34;
+  line-height: 22rpx;
+}
+
+.my-word-lang-btn.is-en .my-word-lang-code {
+  color: #FFFFFF;
+}
+
+.my-word-lang-btn:active {
+  opacity: 0.7;
 }
 
 .my-word-collapse-btn {

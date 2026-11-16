@@ -8,6 +8,7 @@ const {
   listLibraryCategories,
   getLibraryGroupCount
 } = require('../../utils/spyWordCardAssets');
+const { readSpyCardLocale, setSpyCardLocale } = require('../../utils/spyCardLocale');
 const { SPY_PHASE } = require('../../utils/spyGameState');
 const { safeNavigateBack } = require('../../../utils/pageNavigate');
 const {
@@ -29,10 +30,36 @@ function isLibraryLocked(spyGame) {
   );
 }
 
+function libraryForLocale(locale, previousCategories) {
+  const collapsedById = {};
+  (previousCategories || []).forEach((group) => {
+    collapsedById[group.id] = group.collapsed === true;
+  });
+  const categories = listLibraryCategories({ locale }).map((group) => ({
+    ...group,
+    collapsed: collapsedById[group.id] === true
+  }));
+  const cards = listLibraryCards({ locale });
+  return { cardLocale: locale, categories, cards };
+}
+
+function cardFacePatch(card, previous) {
+  if (!card) return null;
+  return {
+    ...(previous || {}),
+    word: card.word,
+    assignedWordSrc: card.assignedWordSrc || '',
+    assignedWordFallbackSrc: card.assignedWordFallbackSrc || '',
+    word1Src: card.word1Src || '',
+    word1FallbackSrc: card.word1FallbackSrc || ''
+  };
+}
+
 return withPageInteractionLock({
   data: {
     roomId: '',
     groupCount: 0,
+    cardLocale: 'zh',
     categories: [],
     cards: [],
     selectedWord: '',
@@ -46,17 +73,34 @@ return withPageInteractionLock({
   onLoad(options) {
     this._pageAlive = true;
     const roomId = (options && options.roomId) || getApp().globalData.roomId || '';
-    const categories = listLibraryCategories().map((group) => ({
-      ...group,
-      collapsed: false
-    }));
-    const cards = listLibraryCards();
+    const cardLocale = readSpyCardLocale();
+    const library = libraryForLocale(cardLocale);
     this.setData({
       roomId,
       groupCount: getLibraryGroupCount(),
-      categories,
-      cards
+      ...library
     });
+  },
+
+  onToggleCardLocale() {
+    const cardLocale = setSpyCardLocale(this.data.cardLocale === 'en' ? 'zh' : 'en');
+    const library = libraryForLocale(cardLocale, this.data.categories);
+    const selected = this.data.selectedCard
+      ? library.cards.find((card) => card.word === this.data.selectedCard.word) || null
+      : null;
+    const next = {
+      ...library,
+      selectedCard: selected,
+      selectedWord: selected ? selected.word : ''
+    };
+    if (!selected) {
+      next.viewerOpen = false;
+      next.cardFullscreenOpen = false;
+      next.cardFullscreen = null;
+    } else if (this.data.cardFullscreen) {
+      next.cardFullscreen = cardFacePatch(selected, this.data.cardFullscreen);
+    }
+    this.setData(next);
   },
 
   onToggleCategory(e) {
@@ -74,6 +118,22 @@ return withPageInteractionLock({
 
   onShow() {
     this._pageAlive = true;
+    const cardLocale = readSpyCardLocale();
+    if (cardLocale !== this.data.cardLocale && (this.data.categories || []).length) {
+      const library = libraryForLocale(cardLocale, this.data.categories);
+      const selected = this.data.selectedCard
+        ? library.cards.find((card) => card.word === this.data.selectedCard.word) || null
+        : null;
+      const next = {
+        ...library,
+        selectedCard: selected,
+        selectedWord: selected ? selected.word : this.data.selectedWord
+      };
+      if (selected && this.data.cardFullscreen) {
+        next.cardFullscreen = cardFacePatch(selected, this.data.cardFullscreen);
+      }
+      this.setData(next);
+    }
     this.checkLock();
   },
 

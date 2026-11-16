@@ -56,6 +56,13 @@ Component({
       this._wordKey = word || '';
       this._applyState(this._initialState());
     },
+    'assignedWordSrc, word1Src, backSrc, assignedWordFallbackSrc, word1FallbackSrc'() {
+      if (this.data.animating) return;
+      const nextSrc = this._srcForState(this.data.cardState);
+      if (!nextSrc || nextSrc === this.data.displaySrc) return;
+      this._usedFallback = false;
+      this.setData({ displaySrc: nextSrc, imgError: false });
+    },
     skipBack() {
       if (this.data.animating) return;
       if (this.data.skipBack && this.data.cardState === 'back') {

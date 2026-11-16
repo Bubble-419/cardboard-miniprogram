@@ -312,6 +312,7 @@ flowchart LR
 - `assets/brainstormMode/mode-cover-*.jpg`
 - `assets/halliGalli/step-*.webp`
 - `packageSpy/assets/interactionCards/webp/{词语}3x.webp`、`{词语}13x.webp`、`背面3x.webp` → 云上同名文件
+- 英文卡面 `1-A.webp`、`1-A-1.webp` 至 `4-i.webp`、`4-i-1.webp`（72 张）→ 云上同名文件。发言页按牌库顺序选用，模板卡与逻辑卡的对应关系见 `packageSpy/utils/spyWordCardAssets.js`
 
 以下资源使用本地路径并随小程序打包，不依赖 CDN，不在 `packOptions.ignore` 或静态上传清单中：
 
@@ -323,7 +324,7 @@ flowchart LR
 
 发布前使用开发者工具检查实际包体积。卧底卡面换图后必须重新执行 `pnpm upload:static`，并提高 `packageSpy/utils/spyWordCardAssets.js` 的 `CARD_ASSET_VERSION`。云上 key 仍是原文件名，版本参数只用来避开微信对同名地址的旧图缓存。
 
-Halli 规则页优先加载 CDN 上的 `step-*-v2.webp`；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
+Halli 规则页左右滑动加载 CDN 上的 `step-*-v1.webp` 与 `step-*-v2.webp`；约 250 KiB 的同源 `step-*.png` 保留在代码包中，WebP
 加载失败时按步骤键自动回退，避免 CDN 或单文件异常使规则图空白。
 
 HTTPS 形如：

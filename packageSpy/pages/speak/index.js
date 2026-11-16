@@ -15,6 +15,7 @@ const {
   listLibraryCards,
   listLibraryCategories
 } = require('../../utils/spyWordCardAssets');
+const { readSpyCardLocale, setSpyCardLocale } = require('../../utils/spyCardLocale');
 const {
   buildTiedNames,
   isTieReturnPending,
@@ -26,6 +27,20 @@ const {
 } = require('../../../utils/pageInteractionLock');
 
 const SWIPE_THRESHOLD_PX = 48;
+
+function libraryForLocale(locale, previousCategories) {
+  const collapsedById = {};
+  (previousCategories || []).forEach((group) => {
+    collapsedById[group.id] = group.collapsed === true;
+  });
+  return {
+    libraryCategories: listLibraryCategories({ locale }).map((group) => ({
+      ...group,
+      collapsed: collapsedById[group.id] === true
+    })),
+    libraryCards: listLibraryCards({ locale })
+  };
+}
 
 function getWindowMetrics() {
   try {
@@ -60,6 +75,7 @@ Page(withPageInteractionLock({
     word1Src: '',
     word1FallbackSrc: '',
     cardReady: false,
+    cardLocale: 'zh',
     myCardCollapsed: false,
     libraryGroupCount: 0,
     libraryCategories: [],
@@ -94,14 +110,12 @@ Page(withPageInteractionLock({
   onLoad(options) {
     this._pageAlive = true;
     this._applyLayoutMetrics();
+    const cardLocale = readSpyCardLocale();
     this.setData({
       roomId: (options && options.roomId) || getApp().globalData.roomId || '',
+      cardLocale,
       libraryGroupCount: getLibraryGroupCount(),
-      libraryCategories: listLibraryCategories().map((group) => ({
-        ...group,
-        collapsed: false
-      })),
-      libraryCards: listLibraryCards(),
+      ...libraryForLocale(cardLocale),
       contentTab: 0
     });
   },
@@ -193,7 +207,9 @@ Page(withPageInteractionLock({
         }
 
         const myWord = (myCard && myCard.word) || '';
-        const assets = getWordCardAssets(myWord);
+        const cardLocale = readSpyCardLocale();
+        const localeChanged = cardLocale !== this.data.cardLocale;
+        const assets = getWordCardAssets(myWord, { locale: cardLocale });
         const questionRound = spyGame.questionRound === true
           || (result.view && result.view.session
             && result.view.session.workflow
@@ -210,10 +226,43 @@ Page(withPageInteractionLock({
           tiedNamesText: buildTiedNames(spyGame).join('、')
         };
         const cardReady = !!(myWord && (assets.assignedWordSrc || assets.assignedWordFallbackSrc));
+        if (localeChanged) {
+          const library = libraryForLocale(cardLocale, this.data.libraryCategories);
+          nextCard.cardLocale = cardLocale;
+          nextCard.libraryCategories = library.libraryCategories;
+          nextCard.libraryCards = library.libraryCards;
+          if (this.data.selectedCard) {
+            const selected = library.libraryCards.find((card) => card.word === this.data.selectedCard.word) || null;
+            nextCard.selectedCard = selected;
+            nextCard.selectedWord = selected ? selected.word : '';
+            if (!selected) nextCard.viewerOpen = false;
+            if (selected && this.data.identityCardFullscreen && this.data.identityCardFullscreen.skipBack === true) {
+              nextCard.identityCardFullscreen = {
+                ...this.data.identityCardFullscreen,
+                word: selected.word,
+                assignedWordSrc: selected.assignedWordSrc || '',
+                assignedWordFallbackSrc: selected.assignedWordFallbackSrc || '',
+                word1Src: selected.word1Src || '',
+                word1FallbackSrc: selected.word1FallbackSrc || ''
+              };
+            }
+          }
+          if (this.data.identityCardFullscreen && this.data.identityCardFullscreen.skipBack !== true) {
+            nextCard.identityCardFullscreen = {
+              ...this.data.identityCardFullscreen,
+              backSrc: assets.backSrc,
+              assignedWordSrc: assets.assignedWordSrc,
+              assignedWordFallbackSrc: assets.assignedWordFallbackSrc,
+              word1Src: assets.word1Src,
+              word1FallbackSrc: assets.word1FallbackSrc
+            };
+          }
+        }
         if (
           myWord !== this.data.myWord
           || assets.assignedWordSrc !== this.data.assignedWordSrc
           || !this.data.cardReady
+          || localeChanged
         ) {
           nextCard.cardBackSrc = assets.backSrc;
           nextCard.assignedWordSrc = assets.assignedWordSrc;
@@ -304,6 +353,51 @@ Page(withPageInteractionLock({
 
   onToggleMyCard() {
     this.setData({ myCardCollapsed: !this.data.myCardCollapsed });
+  },
+
+  onToggleCardLocale() {
+    const cardLocale = setSpyCardLocale(this.data.cardLocale === 'en' ? 'zh' : 'en');
+    const assets = getWordCardAssets(this.data.myWord, { locale: cardLocale });
+    const library = libraryForLocale(cardLocale, this.data.libraryCategories);
+    const next = {
+      cardLocale,
+      libraryCategories: library.libraryCategories,
+      libraryCards: library.libraryCards
+    };
+    if (this.data.myWord) {
+      next.cardBackSrc = assets.backSrc;
+      next.assignedWordSrc = assets.assignedWordSrc;
+      next.assignedWordFallbackSrc = assets.assignedWordFallbackSrc;
+      next.word1Src = assets.word1Src;
+      next.word1FallbackSrc = assets.word1FallbackSrc;
+    }
+    if (this.data.selectedCard) {
+      const selected = library.libraryCards.find((card) => card.word === this.data.selectedCard.word) || null;
+      next.selectedCard = selected;
+      next.selectedWord = selected ? selected.word : '';
+      if (!selected) next.viewerOpen = false;
+      if (selected && this.data.identityCardFullscreen && this.data.identityCardFullscreen.skipBack === true) {
+        next.identityCardFullscreen = {
+          ...this.data.identityCardFullscreen,
+          word: selected.word,
+          assignedWordSrc: selected.assignedWordSrc || '',
+          assignedWordFallbackSrc: selected.assignedWordFallbackSrc || '',
+          word1Src: selected.word1Src || '',
+          word1FallbackSrc: selected.word1FallbackSrc || ''
+        };
+      }
+    }
+    if (this.data.identityCardFullscreen && this.data.identityCardFullscreen.skipBack !== true) {
+      next.identityCardFullscreen = {
+        ...this.data.identityCardFullscreen,
+        backSrc: assets.backSrc,
+        assignedWordSrc: assets.assignedWordSrc,
+        assignedWordFallbackSrc: assets.assignedWordFallbackSrc,
+        word1Src: assets.word1Src,
+        word1FallbackSrc: assets.word1FallbackSrc
+      };
+    }
+    this.setData(next);
   },
 
   onToggleLibraryCategory(e) {

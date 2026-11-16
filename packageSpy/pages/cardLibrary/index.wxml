@@ -6,7 +6,18 @@
   />
   <view class="header-section">
     <view class="title-block">
-      <text class="page-title">谁是卧底牌库</text>
+      <view class="library-title-row">
+        <text class="page-title">谁是卧底牌库</text>
+        <view
+          class="card-lang-btn {{cardLocale === 'en' ? 'is-en' : ''}}"
+          role="button"
+          aria-label="{{cardLocale === 'en' ? '切换为中文卡面' : '切换为英文卡面'}}"
+          bindtap="onToggleCardLocale"
+        >
+          <text class="card-lang-mark">文</text>
+          <text class="card-lang-code">{{cardLocale === 'en' ? '中' : 'EN'}}</text>
+        </view>
+      </view>
       <text class="page-subtitle">共 {{groupCount}} 组词语卡 · 分四类浏览，不参与本局分词</text>
     </view>
   </view>

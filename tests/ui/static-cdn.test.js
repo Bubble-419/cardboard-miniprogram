@@ -15,7 +15,7 @@ const {
   staticCdnUrl,
   staticFileName
 } = require('../../utils/staticCdn');
-const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION } = require('../../packageSpy/utils/spyWordCardAssets');
+const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION, englishFilePair, LIBRARY_WORDS, listLibraryCategories } = require('../../packageSpy/utils/spyWordCardAssets');
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -50,6 +50,35 @@ test('Spy 交互卡走 CDN 文件名，晃动复用震动卡面', () => {
   assert.ok(fs.existsSync(path.join(webpDir, '开关3x.webp')));
   assert.ok(fs.existsSync(path.join(webpDir, '震动3x.webp')));
   assert.ok(fs.existsSync(path.join(webpDir, '背面3x.webp')));
+
+  const englishSwitch = getWordCardAssets('开关', { locale: 'en' });
+  assert.equal(englishSwitch.assignedWordSrc, versioned('1-A-1.webp'));
+  assert.equal(englishSwitch.word1Src, versioned('1-A.webp'));
+  assert.equal(englishSwitch.assignedWordFallbackSrc, versioned('开关3x.webp'));
+  const englishTap = getWordCardAssets('单击', { locale: 'en' });
+  assert.equal(englishTap.assignedWordSrc, versioned('1-B.webp'));
+  assert.equal(englishTap.word1Src, versioned('1-B-1.webp'));
+  const englishShake = getWordCardAssets('晃动', { locale: 'en' });
+  assert.equal(englishShake.assignedWordSrc, versioned('2-f.webp'));
+  assert.equal(englishShake.word1Src, versioned('2-f-1.webp'));
+  const englishPinch = getWordCardAssets('捏合解耦', { locale: 'en' });
+  assert.equal(englishPinch.assignedWordSrc, versioned('4-i.webp'));
+  assert.equal(englishPinch.word1Src, versioned('4-i-1.webp'));
+  const englishLibrary = listLibraryCategories({ locale: 'en' });
+  assert.equal(englishLibrary[0].cards[0].coverSrc, versioned('1-A-1.webp'));
+  assert.equal(englishLibrary[0].cards[0].word1Src, versioned('1-A.webp'));
+  assert.equal(englishLibrary[0].cards[1].coverSrc, versioned('1-B.webp'));
+  ['1-A-1.webp', '1-B.webp', '2-f.webp', '4-i.webp'].forEach((name) => {
+    assert.ok(fs.existsSync(path.join(webpDir, name)), `missing ${name}`);
+  });
+  assert.equal(LIBRARY_WORDS.length, 36);
+  LIBRARY_WORDS.forEach((word) => {
+    const pair = englishFilePair(word);
+    assert.ok(pair, word);
+    assert.notEqual(pair.template, pair.logic);
+    assert.ok(fs.existsSync(path.join(webpDir, pair.template)), pair.template);
+    assert.ok(fs.existsSync(path.join(webpDir, pair.logic)), pair.logic);
+  });
 });
 
 test('packOptions 排除已改走 CDN 的插图，保留小图标在代码包', () => {
@@ -84,7 +113,7 @@ test('等待页 / 首页 / 模式封面 / Halli 步骤图不再写死本地大�
   assert.match(closingJs, /CLOSING_RUNE_CARDS/);
   assert.match(homeJs, /EMPTY_HISTORY_SRC/);
   assert.match(brainstormJs, /staticCdnUrl\('assets\/brainstormMode\/mode-cover-/);
-  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-v2\.webp`\)/);
+  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-\$\{id\}\.webp`\)/);
 });
 
 test('补全符文四张图按原比例接入，不拉伸', () => {
@@ -113,24 +142,33 @@ test('Halli CDN 步骤图加载失败时回退到随包 PNG', () => {
   assert.match(halliJs, /`\/assets\/halliGalli\/step-\$\{step\.key\}\.png`/);
   assert.match(halliWxml, /binderror="onStepImgError"/);
   assert.match(halliWxml, /data-key="\{\{step\.key\}\}"/);
+  assert.match(halliWxml, /data-version="\{\{version\.id\}\}"/);
+  assert.match(halliWxml, /bindchange="onRuleArtChange"/);
   assert.ok(!ignore.some((item) => item.value === 'assets/halliGalli/*.png'),
     '随包 PNG 不能被 packOptions 排除');
 });
 
-test('Halli 说明图使用云上 v2 新图', () => {
+test('Halli 说明图支持 v1/v2 左右滑动，发牌翻牌文案随版本互换', () => {
   const halliJs = read('pages/main-pages/halliGalli/gamepage/index.js');
   const halliWxml = read('pages/main-pages/halliGalli/gamepage/index.wxml');
+  const halliWxss = read('pages/main-pages/halliGalli/gamepage/index.wxss');
 
-  assert.match(halliJs, /ruleSteps:\s*buildRuleSteps\(\)/);
-  assert.match(halliJs, /staticCdnUrl\(`assets\/halliGalli\/step-\$\{step\.key\}-v2\.webp`\)/);
-  assert.doesNotMatch(halliJs, /step-\$\{step\.key\}-v1\.webp/);
-  assert.match(halliWxml, /wx:for="\{\{ruleSteps\}\}"/);
-  assert.doesNotMatch(halliWxml, /左右滑动切换图示版本/);
+  assert.match(halliJs, /ruleArtVersions:\s*buildRuleArtVersions\(\)/);
+  assert.match(halliJs, /\['v1',\s*'v2'\]/);
+  assert.match(halliJs, /deal:\s*'每位玩家获得3张交互方式卡'/);
+  assert.match(halliJs, /flip:\s*'展示本轮控件形态卡'/);
+  assert.match(halliJs, /deal:\s*'每位玩家获得3张控件形态卡'/);
+  assert.match(halliJs, /flip:\s*'展示本轮交互方式卡'/);
+  assert.match(halliWxml, /class="steps-swiper"/);
+  assert.match(halliWxml, /左右滑动切换图示版本/);
+  assert.match(halliWxss, /\.rule-art-dot/);
 
   ['deal', 'flip', 'ring', 'play', 'vote', 'judge'].forEach((key) => {
     assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}.png`)),
       `missing local fallback step-${key}.png`);
-    assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-v2.webp`)));
+    ['v1', 'v2'].forEach((ver) => {
+      assert.ok(fs.existsSync(path.join(ROOT, `assets/halliGalli/step-${key}-${ver}.webp`)));
+    });
   });
 });
 
