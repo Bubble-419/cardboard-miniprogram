@@ -122,7 +122,9 @@ test('发言页我的交互模板卡使用三面循环并接入背面图', () =>
   assert.match(markup, /wx:if="\{\{!myCardCollapsed\}\}"/);
   assert.match(source, /onToggleMyCard\s*\(/);
   assert.match(source, /onToggleCardLocale\s*\(/);
-  assert.match(source, /getWordCardAssets\(myWord,\s*\{\s*locale:\s*this\.data\.cardLocale\s*\}\)/);
+  assert.match(source, /setSpyCardLocale\(/);
+  assert.match(source, /readSpyCardLocale\(\)/);
+  assert.match(source, /getWordCardAssets\(myWord,\s*\{\s*locale:\s*cardLocale\s*\}\)/);
   assert.doesNotMatch(markup, /title-row/);
   assert.doesNotMatch(markup, /我的词语卡/);
   assert.match(styles, /\.my-word-label[\s\S]*?text-align:\s*left/);
@@ -331,6 +333,8 @@ test('谁是卧底牌库按四类分组且编号归属正确', () => {
   );
 
   const libraryWxml = read('packageSpy/pages/cardLibrary/index.wxml');
+  assert.match(libraryWxml, /谁是卧底牌库[\s\S]*?bindtap="onToggleCardLocale"/);
+  assert.match(libraryWxml, /切换为英文卡面/);
   assert.match(libraryWxml, /wx:for="\{\{categories\}\}"/);
   assert.match(libraryWxml, /category-title/);
   assert.match(libraryWxml, /bindtap="onToggleCategory"/);

@@ -52,6 +52,14 @@ test('牌库最后一类词卡仍可打开/关闭；后退只关闭本地屏幕�
     const screen = page._localScreens.current();
     assert.equal(screen.data.categories.length, 4);
     assert.equal(screen.data.cards.length, 36);
+    const chineseCover = screen.data.categories[0].cards[0].coverSrc;
+    screen.onToggleCardLocale();
+    const englishCover = screen.data.categories[0].cards[0].coverSrc;
+    assert.notEqual(englishCover, chineseCover);
+    assert.match(englishCover, /1-A-1\.webp/);
+    assert.match(screen.data.categories[3].cards.at(-1).coverSrc, /4-i\.webp/);
+    screen.onToggleCardLocale();
+    assert.equal(screen.data.categories[0].cards[0].coverSrc, chineseCover);
     const last = screen.data.categories.at(-1).cards.at(-1);
     page._localScreens.intent(token, 'onTapCard', { currentTarget: { dataset: { word: last.word } } });
     assert.equal(screen.data.selectedCard.word, last.word);
@@ -72,6 +80,8 @@ test('牌库最后一类词卡仍可打开/关闭；后退只关闭本地屏幕�
     assert.equal(page.route, 'packageSpy/pages/modeIndex/index');
     assert.equal(page.data.draft, '保持原来的输入');
   } finally {
+    const { setSpyCardLocale } = require('../../packageSpy/utils/spyCardLocale');
+    setSpyCardLocale('zh');
     page.onUnload();
     Object.assign(global, previous);
   }

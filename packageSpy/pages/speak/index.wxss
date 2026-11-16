@@ -187,7 +187,6 @@
   font-weight: 700;
   color: #3AAE34;
   line-height: 22rpx;
-  letter-spacing: 0.5rpx;
 }
 
 .my-word-lang-btn.is-en .my-word-lang-code {

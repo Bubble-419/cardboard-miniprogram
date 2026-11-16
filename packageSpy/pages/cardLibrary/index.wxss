@@ -18,6 +18,63 @@
   flex-shrink: 0;
 }
 
+.library-title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.card-lang-btn {
+  flex-shrink: 0;
+  height: 44rpx;
+  padding: 0 14rpx 0 10rpx;
+  border-radius: 22rpx;
+  border: 2rpx solid #3AAE34;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6rpx;
+  box-sizing: border-box;
+  background: #FFFFFF;
+}
+
+.card-lang-btn.is-en {
+  background: #3AAE34;
+}
+
+.card-lang-mark {
+  width: 26rpx;
+  height: 26rpx;
+  border-radius: 13rpx;
+  background: #3AAE34;
+  color: #FFFFFF;
+  font-size: 16rpx;
+  font-weight: 700;
+  line-height: 26rpx;
+  text-align: center;
+}
+
+.card-lang-btn.is-en .card-lang-mark {
+  background: #FFFFFF;
+  color: #3AAE34;
+}
+
+.card-lang-code {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #3AAE34;
+  line-height: 26rpx;
+}
+
+.card-lang-btn.is-en .card-lang-code {
+  color: #FFFFFF;
+}
+
+.card-lang-btn:active {
+  opacity: 0.7;
+}
+
 .category-list {
   flex: 1;
   height: 0;

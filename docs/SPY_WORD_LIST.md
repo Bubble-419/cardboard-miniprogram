@@ -13,7 +13,7 @@
 | 客户端词条与词对副本 | [packageSpy/utils/spyWordPairs.js](../packageSpy/utils/spyWordPairs.js) |
 | 牌库分类、展示顺序和图片映射 | [packageSpy/utils/spyWordCardAssets.js](../packageSpy/utils/spyWordCardAssets.js) |
 
-英文卡面与牌库四类顺序一致，云上文件名保持 `1-A.webp` / `1-A-1.webp` 这种原名。发言页标题右侧的语言按钮只切换「我的交互模板卡」，牌库仍用中文图。
+英文卡面与牌库四类顺序一致，云上文件名保持 `1-A.webp` / `1-A-1.webp` 这种原名。牌库标题和发言页「我的交互模板卡」旁的语言按钮共用同一选择，会同时切换牌库封面和自己的词语卡。
 
 服务端与客户端的词条、释义和展开后的词对在本次核对时一致。源码注释将来源标为《交互机制的对比》和《交互方式通用手册》词典2.0；当前仓库未包含这两份原始文档。
 

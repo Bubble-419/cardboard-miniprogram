@@ -206,9 +206,9 @@ function getWordCardAssets(word, options) {
   };
 }
 
-function buildLibraryCard(item) {
+function buildLibraryCard(item, locale) {
   const word = item.word;
-  const assets = getWordCardAssets(word);
+  const assets = getWordCardAssets(word, { locale });
   const blurbKey = item.blurbWord || word;
   return {
     no: item.no,
@@ -239,12 +239,13 @@ function getGamePairCount() {
  * 牌库分类列表（浏览用，不参与抽卡）
  * @returns {Array<{id:string,title:string,count:number,cards:Array}>}
  */
-function listLibraryCategories() {
+function listLibraryCategories(options) {
+  const locale = options && options.locale === 'en' ? 'en' : 'zh';
   return LIBRARY_CATEGORIES.map((category) => ({
     id: category.id,
     title: category.title,
     count: category.cards.length,
-    cards: category.cards.map(buildLibraryCard)
+    cards: category.cards.map((item) => buildLibraryCard(item, locale))
   }));
 }
 
@@ -252,8 +253,8 @@ function listLibraryCategories() {
  * 牌库扁平列表（兼容发言页等查找）
  * @returns {Array}
  */
-function listLibraryCards() {
-  return listLibraryCategories().reduce((all, category) => all.concat(category.cards), []);
+function listLibraryCards(options) {
+  return listLibraryCategories(options).reduce((all, category) => all.concat(category.cards), []);
 }
 
 module.exports = {

@@ -15,7 +15,7 @@ const {
   staticCdnUrl,
   staticFileName
 } = require('../../utils/staticCdn');
-const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION, englishFilePair, LIBRARY_WORDS } = require('../../packageSpy/utils/spyWordCardAssets');
+const { getWordCardAssets, CARD_BACK_WEBP, CARD_ASSET_VERSION, englishFilePair, LIBRARY_WORDS, listLibraryCategories } = require('../../packageSpy/utils/spyWordCardAssets');
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -64,6 +64,10 @@ test('Spy 交互卡走 CDN 文件名，晃动复用震动卡面', () => {
   const englishPinch = getWordCardAssets('捏合解耦', { locale: 'en' });
   assert.equal(englishPinch.assignedWordSrc, versioned('4-i.webp'));
   assert.equal(englishPinch.word1Src, versioned('4-i-1.webp'));
+  const englishLibrary = listLibraryCategories({ locale: 'en' });
+  assert.equal(englishLibrary[0].cards[0].coverSrc, versioned('1-A-1.webp'));
+  assert.equal(englishLibrary[0].cards[0].word1Src, versioned('1-A.webp'));
+  assert.equal(englishLibrary[0].cards[1].coverSrc, versioned('1-B.webp'));
   ['1-A-1.webp', '1-B.webp', '2-f.webp', '4-i.webp'].forEach((name) => {
     assert.ok(fs.existsSync(path.join(webpDir, name)), `missing ${name}`);
   });
