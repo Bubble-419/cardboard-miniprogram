@@ -35,9 +35,10 @@ const STICKY_MAX_AGE_MS = 50 * 60 * 1000;
 
 function getMemberAvatarUserKey(member) {
   if (!member) return '';
-  if (member.userId) return String(member.userId);
-  if (member.openid) return String(member.openid);
-  if (member.playerIndex != null) return `p${member.playerIndex}`;
+  if (member.memberId) return `member:${member.memberId}`;
+  if (member.userId) return `user:${member.userId}`;
+  if (member.openid) return `openid:${member.openid}`;
+  if (member.userKey) return String(member.userKey);
   return '';
 }
 
@@ -108,24 +109,20 @@ function _writeSticky(userKey, url) {
   });
 }
 
+function memberOwnsCustomAvatar(member) {
+  if (!member) return false;
+  return isCloudFileId(member.avatarUrl)
+    || isCloudFileId(member.avatarFileID)
+    || isCustomDisplayAvatar(member.avatarUrl);
+}
+
 function _readStickyForMember(member) {
-  const userKey = getMemberAvatarUserKey(member);
-  const byUser = _readSticky(userKey);
-  if (byUser && isCustomDisplayAvatar(byUser.url)) return byUser;
-  if (member && member.playerIndex != null) {
-    const bySeat = _readSticky(`p${member.playerIndex}`);
-    if (bySeat && isCustomDisplayAvatar(bySeat.url)) return bySeat;
-  }
-  return byUser;
+  return _readSticky(getMemberAvatarUserKey(member));
 }
 
 function _writeStickyForMember(member, url) {
   if (!isCustomDisplayAvatar(url)) return;
-  const userKey = getMemberAvatarUserKey(member);
-  _writeSticky(userKey, url);
-  if (member && member.playerIndex != null) {
-    _writeSticky(`p${member.playerIndex}`, url);
-  }
+  _writeSticky(getMemberAvatarUserKey(member), url);
 }
 
 /** 加载失败时清掉该用户粘性，避免一直挂坏链 */
@@ -195,7 +192,12 @@ function assignAvatarImages(members) {
       _writeStickyForMember(m, incoming);
       return { ...m, avatarImage: incoming };
     }
-    if (sticky && isCustomDisplayAvatar(sticky.url)) {
+    // 没有本人的自定义头像时，只能用规定的随机头像，不能沿用席位上别人上传的图。
+    if (
+      sticky &&
+      isCustomDisplayAvatar(sticky.url) &&
+      memberOwnsCustomAvatar(m)
+    ) {
       return { ...m, avatarImage: sticky.url };
     }
     return { ...m, avatarImage: pickFallbackAvatarImage(m, i) };
@@ -208,22 +210,20 @@ function assignAvatarImages(members) {
  */
 function preserveMemberAvatars(nextMembers, prevMembers) {
   const prevByUser = new Map();
-  const prevBySeat = new Map();
   (prevMembers || []).forEach((m) => {
     if (!m) return;
     const url = m.avatarImage || m.avatarUrl || '';
     if (!isCustomDisplayAvatar(url)) return;
     const userKey = getMemberAvatarUserKey(m);
     if (userKey) prevByUser.set(userKey, url);
-    if (m.playerIndex != null) prevBySeat.set(String(m.playerIndex), url);
   });
   return (nextMembers || []).map((m) => {
     if (!m) return m;
     const current = m.avatarImage || m.avatarUrl || '';
     if (isCustomDisplayAvatar(current)) return m;
+    if (!memberOwnsCustomAvatar(m)) return m;
     const userKey = getMemberAvatarUserKey(m);
-    const preserved = (userKey && prevByUser.get(userKey))
-      || (m.playerIndex != null ? prevBySeat.get(String(m.playerIndex)) : '');
+    const preserved = userKey && prevByUser.get(userKey);
     if (!preserved) return m;
     _writeStickyForMember(m, preserved);
     return { ...m, avatarImage: preserved };

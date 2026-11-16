@@ -521,10 +521,11 @@ Page(withPageInteractionLock({
     this.setData({ showAvatarAuth: false, pendingJoinRoomId: '' });
     endUserAuthFlow();
     cancelDeferredExit();
-    if (roomId) await this.joinRoomThenLoad(roomId);
+    if (roomId) await this.joinRoomThenLoad(roomId, { useRandomAvatar: true });
   },
 
-  async _ensureMyAvatarSynced(roomId, result) {
+  async _ensureMyAvatarSynced(roomId, result, options) {
+    if (options && options.useRandomAvatar) return;
     if (!roomId || !result) return;
     const me = (result.members || []).find((m) => m.isMe);
     if (me && me.avatarUrl) return;
@@ -567,14 +568,15 @@ Page(withPageInteractionLock({
     });
   },
 
-  async joinRoomThenLoad(roomId) {
+  async joinRoomThenLoad(roomId, options) {
+    const useRandomAvatar = !!(options && options.useRandomAvatar);
     this._joinInFlight = true;
     beginScanJoin(roomId);
     this._stopMemberPolling();
-    const profile = await getOptionalProfileForRoom();
+    const profile = useRandomAvatar ? null : await getOptionalProfileForRoom();
 
     try {
-      const joinPayload = buildRoomJoinPayload(profile);
+      const joinPayload = buildRoomJoinPayload(profile, options);
       const result = await dispatchRoomCommand('JOIN_ROOM', joinPayload, {}, { roomId });
       if (result.ok !== true) {
         this._joinInFlight = false;
@@ -608,7 +610,7 @@ Page(withPageInteractionLock({
         // 房间已推进到游戏页时尽快跟随，避免成员卡在大厅需手动点「继续游戏」
         this._followRoomPageFromResult(loaded, roomId);
       }
-      this._ensureMyAvatarSynced(roomId, loaded);
+      this._ensureMyAvatarSynced(roomId, loaded, options);
       this._preloadBrainstormMode();
     } catch (err) {
       this._joinInFlight = false;

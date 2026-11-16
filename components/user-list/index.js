@@ -266,20 +266,21 @@ Component({
         && (url.startsWith('/assets/avatar/') || url === this.data.defaultAvatar);
     },
 
-    /** 轮询刷新时保留上一帧已成功展示的自定义头像，避免闪回默认占位图 */
+    /** 轮询刷新时只为同一成员保留上一帧自定义头像，不能按席位把别人的上传头像带进随机头像 */
     _preserveDisplayAvatars(nextList, prevList) {
-      const prevMap = new Map();
+      const prevByUser = new Map();
       (prevList || []).forEach((item) => {
-        if (!item) return;
+        if (!item || !item.userKey) return;
         const url = item.avatar || item.avatarImage || item.url || '';
         if (url && !this._isPackagedAvatar(url)) {
-          prevMap.set(String(item.id), url);
+          prevByUser.set(String(item.userKey), url);
         }
       });
       return (nextList || []).map((item) => {
+        if (!item) return item;
         const url = item.avatar || item.avatarImage || item.url || '';
         if (url && !this._isPackagedAvatar(url)) return item;
-        const preserved = prevMap.get(String(item.id));
+        const preserved = item.userKey ? prevByUser.get(String(item.userKey)) : '';
         if (preserved) {
           return { ...item, avatar: preserved, avatarImage: preserved };
         }

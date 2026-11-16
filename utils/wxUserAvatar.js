@@ -163,7 +163,10 @@ async function getOptionalProfileForRoom(options = {}) {
   }
 }
 
-function buildRoomJoinPayload(profile) {
+function buildRoomJoinPayload(profile, options) {
+  if (options && options.useRandomAvatar) {
+    return { avatarRef: null };
+  }
   const data = {};
   if (profile && profile.avatarUrl) {
     data.avatarRef = profile.avatarUrl;
