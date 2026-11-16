@@ -28,27 +28,14 @@ const STEP_META = [
   { key: 'judge', title: '判定', desc: '半数通过即成功，否则失败并摸1张牌' }
 ];
 
-function halliStepSrc(key, version) {
-  return staticCdnUrl(`assets/halliGalli/step-${key}-${version}.webp`);
-}
-
-function halliStepFallback(key) {
-  // 随包仅保留一份通用 PNG，避免双版本回退图撑爆主包；CDN WebP 才区分 v1/v2
-  return `/assets/halliGalli/step-${key}.png`;
-}
-
-function buildRuleArtVersions() {
-  return ['v1', 'v2'].map((id, index) => ({
-    id,
-    label: `图示 ${index + 1}`,
-    steps: STEP_META.map((step, stepIndex) => ({
-      key: step.key,
-      title: step.title,
-      desc: step.desc,
-      num: stepIndex + 1,
-      src: halliStepSrc(step.key, id),
-      fallback: halliStepFallback(step.key)
-    }))
+function buildRuleSteps() {
+  return STEP_META.map((step, stepIndex) => ({
+    key: step.key,
+    title: step.title,
+    desc: step.desc,
+    num: stepIndex + 1,
+    src: staticCdnUrl(`assets/halliGalli/step-${step.key}-v2.webp`),
+    fallback: `/assets/halliGalli/step-${step.key}.png`
   }));
 }
 
@@ -63,8 +50,7 @@ Page(withPageInteractionLock({
     canEndGame: false,
     isGanDengYan: false,
     selectedBG: null,
-    ruleArtVersions: buildRuleArtVersions(),
-    ruleArtIndex: 0
+    ruleSteps: buildRuleSteps()
   },
 
   onLoad(options) {
@@ -168,31 +154,16 @@ Page(withPageInteractionLock({
     }, { loadingText: '正在结束游戏…' });
   },
 
-  onRuleArtChange(e) {
-    const index = e && e.detail && typeof e.detail.current === 'number'
-      ? e.detail.current
-      : 0;
-    if (index === this.data.ruleArtIndex) return;
-    this.setData({ ruleArtIndex: index });
-  },
-
   onStepImgError(e) {
     const dataset = e && e.currentTarget && e.currentTarget.dataset;
     const key = dataset && dataset.key;
-    const version = dataset && dataset.version;
-    if (!key || !version) return;
-    const versions = (this.data.ruleArtVersions || []).map((ver) => {
-      if (ver.id !== version) return ver;
-      return {
-        ...ver,
-        steps: (ver.steps || []).map((step) => (
-          step.key === key && step.fallback && step.src !== step.fallback
-            ? { ...step, src: step.fallback }
-            : step
-        ))
-      };
-    });
-    this.setData({ ruleArtVersions: versions });
+    if (!key) return;
+    const ruleSteps = (this.data.ruleSteps || []).map((step) => (
+      step.key === key && step.fallback && step.src !== step.fallback
+        ? { ...step, src: step.fallback }
+        : step
+    ));
+    this.setData({ ruleSteps });
   },
 
   handleGoRoom() {
@@ -250,4 +221,4 @@ Page(withPageInteractionLock({
       this._startStatePolling();
     }
   }
-}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError', 'onRuleArtChange']));
+}, ['handleEndGame', 'handleGoRoom', 'handleViewContext', 'onStepImgError']));

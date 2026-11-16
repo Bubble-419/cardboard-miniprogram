@@ -23,7 +23,7 @@
       <view class="rules-header">
         <text class="rules-title">线下游戏进行中</text>
         <text class="rules-subtitle" wx:if="{{isGanDengYan}}">可随时查看规则；完成后进入创意提交阶段</text>
-        <text class="rules-subtitle" wx:else>可随时查看规则；左右滑动切换图示版本</text>
+        <text class="rules-subtitle" wx:else>可随时查看规则；完成后进入创意提交阶段</text>
       </view>
 
       <!-- 干瞪眼：独立四步规则，不依赖情境 -->
@@ -73,47 +73,29 @@
         </view>
       </view>
 
-      <!-- 德国心脏病步骤：两套图示左右滑动切换 -->
+      <!-- 德国心脏病步骤：云上新图 v2 -->
       <view class="steps-swiper-wrap" wx:else>
-        <swiper
-          class="steps-swiper"
-          current="{{ruleArtIndex}}"
-          duration="280"
-          bindchange="onRuleArtChange"
-        >
-          <swiper-item wx:for="{{ruleArtVersions}}" wx:for-item="version" wx:key="id">
-            <view class="steps-card">
-              <view class="steps-grid">
-                <view class="step-wrap" wx:for="{{version.steps}}" wx:for-item="step" wx:key="key">
-                  <view class="step-card">
-                    <view class="step-img-wrap">
-                      <image
-                        class="step-img"
-                        src="{{step.src}}"
-                        data-key="{{step.key}}"
-                        data-version="{{version.id}}"
-                        binderror="onStepImgError"
-                        mode="aspectFit"
-                      />
-                    </view>
-                    <view class="step-text-col">
-                      <text class="step-title">{{step.title}}</text>
-                      <text class="step-desc">{{step.desc}}</text>
-                    </view>
-                  </view>
-                  <view class="step-badge"><text class="step-num">{{step.num}}</text></view>
+        <view class="steps-card">
+          <view class="steps-grid">
+            <view class="step-wrap" wx:for="{{ruleSteps}}" wx:for-item="step" wx:key="key">
+              <view class="step-card">
+                <view class="step-img-wrap">
+                  <image
+                    class="step-img"
+                    src="{{step.src}}"
+                    data-key="{{step.key}}"
+                    binderror="onStepImgError"
+                    mode="aspectFit"
+                  />
+                </view>
+                <view class="step-text-col">
+                  <text class="step-title">{{step.title}}</text>
+                  <text class="step-desc">{{step.desc}}</text>
                 </view>
               </view>
+              <view class="step-badge"><text class="step-num">{{step.num}}</text></view>
             </view>
-          </swiper-item>
-        </swiper>
-        <view class="rule-art-indicator" aria-hidden="true">
-          <view
-            class="rule-art-dot {{ruleArtIndex === index ? 'is-active' : ''}}"
-            wx:for="{{ruleArtVersions}}"
-            wx:key="id"
-          ></view>
-          <text class="rule-art-label">{{ruleArtVersions[ruleArtIndex].label}}</text>
+          </view>
         </view>
       </view>
 
